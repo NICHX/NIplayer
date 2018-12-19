@@ -4,15 +4,15 @@ package com.player.ijkplayer.media;
  * Created by xyy on 2018/9/30.
  */
 
-public class AudioTrack {
+public class VideoInfoTrack {
     private int stream;
     private String name;
     private boolean isSelect;
 
-    public AudioTrack() {
+    public VideoInfoTrack() {
     }
 
-    public AudioTrack(int stream, String name, boolean isSelect) {
+    public VideoInfoTrack(int stream, String name, boolean isSelect) {
         this.stream = stream;
         this.name = name;
         this.isSelect = isSelect;
