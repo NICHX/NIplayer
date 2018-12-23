@@ -14,30 +14,29 @@
         android:layout_height="wrap_content"
         android:layout_centerHorizontal="true"
         android:textSize="20sp"
-        android:text="修改昵称"/>
+        android:text=""/>
 
 
     <android.support.design.widget.TextInputLayout
-        android:id="@+id/user_screen_name_layout"
+        android:id="@+id/edit_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/tips"
         android:layout_marginTop="20dp">
 
         <android.support.design.widget.TextInputEditText
-            android:id="@+id/user_screen_name_et"
+            android:id="@+id/edit_et"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_toEndOf="@+id/user_name_iv"
-            android:hint="昵称"
-            android:singleLine="true" />
+            android:hint="" />
     </android.support.design.widget.TextInputLayout>
 
     <Button
         android:id="@+id/confirm_bt"
         android:layout_width="match_parent"
         android:layout_height="38dp"
-        android:layout_below="@+id/user_screen_name_layout"
+        android:layout_below="@+id/edit_layout"
         android:layout_marginTop="20dp"
         android:background="@drawable/btn_corner_blue"
         android:textColor="@color/white"
