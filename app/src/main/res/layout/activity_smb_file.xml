@@ -10,16 +10,16 @@
     <RelativeLayout
         android:id="@+id/path_rl"
         android:layout_width="match_parent"
-        android:layout_height="40dp"
+        android:layout_height="42dp"
         android:orientation="horizontal"
-        android:background="@color/item_bg_color"
-        android:visibility="gone">
+        android:background="@color/item_bg_color">
 
         <ImageView
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:id="@+id/previous_iv"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
             android:padding="5dp"
-            android:src="@drawable/ic_chevron_left_dark"/>
+            android:src="@drawable/ic_chevron_left_gray"/>
 
         <TextView
             android:id="@+id/path_tv"
@@ -41,7 +41,7 @@
     </RelativeLayout>
 
     <android.support.v7.widget.RecyclerView
-        android:id="@+id/smb_rv"
+        android:id="@+id/smb_file_rv"
         android:layout_width="match_parent"
         android:layout_height="match_parent"/>
 

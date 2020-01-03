@@ -6,16 +6,18 @@ import android.support.annotation.NonNull;
  * Created by xyoye on 2019/3/30.
  */
 
-public class SmbBean implements Comparable<SmbBean>{
+public class SmbDeviceBean implements Comparable<SmbDeviceBean>{
     private String url;
     private String name;
     private String nickName;
     private String domain;
     private String account;
     private String password;
+    private String rootFolder;
     private boolean anonymous;
 
     private int smbType;
+    private boolean isEditStatus;
 
     public String getUrl() {
         return url;
@@ -73,6 +75,14 @@ public class SmbBean implements Comparable<SmbBean>{
         this.anonymous = anonymous;
     }
 
+    public String getRootFolder() {
+        return rootFolder;
+    }
+
+    public void setRootFolder(String rootFolder) {
+        this.rootFolder = rootFolder;
+    }
+
     public int getSmbType() {
         return smbType;
     }
@@ -81,8 +91,16 @@ public class SmbBean implements Comparable<SmbBean>{
         this.smbType = smbType;
     }
 
+    public boolean isEditStatus() {
+        return isEditStatus;
+    }
+
+    public void setEditStatus(boolean editStatus) {
+        isEditStatus = editStatus;
+    }
+
     @Override
-    public int compareTo(@NonNull SmbBean o) {
+    public int compareTo(@NonNull SmbDeviceBean o) {
         return url.compareTo(o.url);
     }
 }
