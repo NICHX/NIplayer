@@ -19,8 +19,7 @@ import com.xyoye.common_component.network.repository.AnimeRepository
 import com.xyoye.common_component.network.repository.ResourceRepository
 import com.xyoye.common_component.source.base.BaseVideoSource
 import com.xyoye.common_component.source.media.StorageVideoSource
-import com.xyoye.common_component.storage.file.impl.ScreencastStorageFile
-import com.xyoye.common_component.storage.helper.ScreencastConstants
+
 import com.xyoye.common_component.utils.JsonHelper
 import com.xyoye.common_component.utils.MediaUtils
 import com.xyoye.common_component.utils.PathHelper
@@ -75,8 +74,6 @@ object PlayRecorder {
             // 保存播放历史到数据库
             DatabaseManager.instance.getPlayHistoryDao()
                 .insert(history)
-            // 上报剧集播放进度到投屏端
-            recordToScreencastProvider(source, history)
             // 上报剧集播放到云端
             recordToCloud(source)
 
@@ -239,33 +236,5 @@ object PlayRecorder {
         AnimeRepository.addEpisodePlayHistory(listOf(episodeId))
     }
 
-    /**
-     * 上报剧集播放进度到投屏端
-     */
-    private suspend fun recordToScreencastProvider(
-        source: BaseVideoSource,
-        history: PlayHistoryEntity
-    ) {
-        // 仅处理媒体库视频源
-        if (source !is StorageVideoSource) {
-            return
-        }
 
-        // 仅处理投屏文件
-        val storageFile = source.getStorageFile()
-        if (storageFile !is ScreencastStorageFile) {
-            return
-        }
-
-        // 构建包含播放进度的回调地址
-        val callbackUrl = storageFile.getCallbackUrl()
-        val completeUrl = Uri.parse(callbackUrl).buildUpon()
-            .appendQueryParameter(ScreencastConstants.Param.position, history.videoPosition.toString())
-            .appendQueryParameter(ScreencastConstants.Param.duration, history.videoDuration.toString())
-            .build()
-            .toString()
-
-        // 发送请求，忽略结果
-        ResourceRepository.getResourceResponseBody(completeUrl)
-    }
 }
