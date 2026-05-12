@@ -60,11 +60,7 @@ enum class MediaType(
         cover = R.drawable.ic_remote_storage
     ),
 
-    SCREEN_CAST(
-        "screen_cast",
-        "远程投屏",
-        cover = R.drawable.ic_screencast
-    ),
+
 
     EXTERNAL_STORAGE(
         "external_storage",
@@ -88,7 +84,6 @@ enum class MediaType(
                 "webdav_server" -> WEBDAV_SERVER
                 "smb_server" -> SMB_SERVER
                 "remote_storage" -> REMOTE_STORAGE
-                "screen_cast" -> SCREEN_CAST
                 "external_storage" -> EXTERNAL_STORAGE
                 "alist_storage" -> ALSIT_STORAGE
                 else -> OTHER_STORAGE

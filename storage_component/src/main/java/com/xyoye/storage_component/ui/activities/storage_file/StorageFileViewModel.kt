@@ -16,41 +16,11 @@ import kotlinx.coroutines.launch
 
 class StorageFileViewModel : BaseViewModel() {
     val playLiveData = MutableLiveData<Any>()
-    val castLiveData = MutableLiveData<MediaLibraryEntity>()
-
-    val selectDeviceLiveData = MutableLiveData<Pair<StorageFile, List<MediaLibraryEntity>>>()
 
     fun playItem(file: StorageFile) {
         viewModelScope.launch(Dispatchers.IO) {
             if (setupVideoSource(file)) {
                 playLiveData.postValue(Any())
-            }
-        }
-    }
-
-    fun castItem(file: StorageFile) {
-        viewModelScope.launch(Dispatchers.IO) {
-            //获取所有可用的投屏设备
-            val devices = DatabaseManager.instance.getMediaLibraryDao()
-                .getByMediaTypeSuspend(MediaType.SCREEN_CAST)
-
-            if (devices.isEmpty()) {
-                ToastCenter.showError("无可用投屏设备")
-                return@launch
-            }
-            if (devices.size == 1) {
-                castItem(file, devices.first())
-                return@launch
-            }
-
-            selectDeviceLiveData.postValue(file to devices)
-        }
-    }
-
-    fun castItem(file: StorageFile, device: MediaLibraryEntity) {
-        viewModelScope.launch(Dispatchers.IO) {
-            if (setupVideoSource(file)) {
-                castLiveData.postValue(device)
             }
         }
     }

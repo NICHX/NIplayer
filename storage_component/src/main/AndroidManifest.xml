@@ -17,16 +17,7 @@
         <activity
             android:name=".ui.activities.remote_scan.RemoteScanActivity"
             android:configChanges="orientation|screenSize" />
-        <activity
-            android:name=".ui.activities.screencast.receiver.ScreencastActivity"
-            android:configChanges="screenSize" />
 
-        <service
-            android:name=".services.ScreencastProvideService"
-            android:exported="false" />
-        <service
-            android:name=".services.ScreencastReceiveService"
-            android:exported="false" />
 
         <provider
             android:name="androidx.startup.InitializationProvider"

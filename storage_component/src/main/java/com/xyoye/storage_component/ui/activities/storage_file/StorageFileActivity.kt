@@ -20,7 +20,7 @@ import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.extension.horizontal
 import com.xyoye.common_component.extension.setData
-import com.xyoye.common_component.services.ScreencastProvideService
+
 import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.StorageFactory
 import com.xyoye.common_component.storage.file.StorageFile
@@ -160,16 +160,6 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
                 .navigation()
         }
 
-        viewModel.castLiveData.observe(this) {
-            ARouter.getInstance()
-                .navigation(ScreencastProvideService::class.java)
-                .startService(this, it)
-        }
-
-        viewModel.selectDeviceLiveData.observe(this) {
-            showSelectDeviceDialog(it.first, it.second)
-        }
-
         if (storage is FtpStorage) {
             lifecycle.coroutineScope.launchWhenResumed {
                 withContext(Dispatchers.IO) {
@@ -301,22 +291,7 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         }
     }
 
-    private fun showSelectDeviceDialog(file: StorageFile, devices: List<MediaLibraryEntity>) {
-        val drawable = com.xyoye.common_component.R.drawable.ic_screencast_device
-        val actionData = devices.map {
-            SheetActionBean(it.id, it.displayName, drawable, it.url)
-        }
-        BottomActionDialog(
-            title = "选择投屏设备",
-            activity = this,
-            actionData = actionData
-        ) { action ->
-            devices.firstOrNull { it.id == action.actionId }?.let {
-                viewModel.castItem(file, it)
-            }
-            return@BottomActionDialog true
-        }.show()
-    }
+
 
     /**
      * 更新标题栏副标题
@@ -433,9 +408,5 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
 
     fun openFile(file: StorageFile) {
         viewModel.playItem(file)
-    }
-
-    fun castFile(file: StorageFile) {
-        viewModel.castItem(file)
     }
 }

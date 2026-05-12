@@ -14,7 +14,7 @@ import com.xyoye.storage_component.ui.dialog.AlistStorageEditDialog
 import com.xyoye.storage_component.ui.dialog.ExternalStorageEditDialog
 import com.xyoye.storage_component.ui.dialog.FTPStorageEditDialog
 import com.xyoye.storage_component.ui.dialog.RemoteStorageEditDialog
-import com.xyoye.storage_component.ui.dialog.ScreencastStorageEditDialog
+
 import com.xyoye.storage_component.ui.dialog.SmbStorageEditDialog
 import com.xyoye.storage_component.ui.dialog.StorageEditDialog
 import com.xyoye.storage_component.ui.dialog.WebDavStorageEditDialog
@@ -82,7 +82,6 @@ class StoragePlusActivity : BaseActivity<StoragePlusViewModel, ActivityStoragePl
             MediaType.FTP_SERVER -> FTPStorageEditDialog(this, editData)
             MediaType.WEBDAV_SERVER -> WebDavStorageEditDialog(this, editData)
             MediaType.SMB_SERVER -> SmbStorageEditDialog(this, editData)
-            MediaType.SCREEN_CAST -> ScreencastStorageEditDialog(this, editData)
             MediaType.ALSIT_STORAGE -> AlistStorageEditDialog(this, editData)
             else -> {
                 finish()

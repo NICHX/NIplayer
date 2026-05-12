@@ -4,7 +4,6 @@ import androidx.core.view.isVisible
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import com.xyoye.common_component.base.BaseFragment
-import com.xyoye.common_component.bridge.ServiceLifecycleBridge
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.user_component.BR
 import com.xyoye.user_component.R
@@ -26,10 +25,6 @@ class PersonalFragment : BaseFragment<PersonalFragmentViewModel, FragmentPersona
 
     override fun initView() {
         initClick()
-
-        ServiceLifecycleBridge.getScreencastReceiveObserver().observe(this) {
-            dataBinding.screencastStatusTv.isVisible = it
-        }
     }
 
     private fun initClick() {
@@ -65,11 +60,7 @@ class PersonalFragment : BaseFragment<PersonalFragmentViewModel, FragmentPersona
                 .navigation()
         }
 
-        dataBinding.screencastReceiverLl.setOnClickListener {
-            ARouter.getInstance()
-                .build(RouteTable.Stream.ScreencastReceiver)
-                .navigation()
-        }
+
 
         dataBinding.appSettingLl.setOnClickListener {
             ARouter.getInstance()

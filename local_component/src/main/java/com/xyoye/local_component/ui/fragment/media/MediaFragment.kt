@@ -12,7 +12,6 @@ import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.extension.deletable
 import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.extension.vertical
-import com.xyoye.common_component.services.ScreencastProvideService
 import com.xyoye.common_component.weight.BottomActionDialog
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.common_component.weight.dialog.CommonDialog
@@ -30,9 +29,6 @@ import com.xyoye.local_component.databinding.ItemMediaLibraryBinding
 
 @Route(path = RouteTable.Local.MediaFragment)
 class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
-
-    @Autowired
-    lateinit var provideService: ScreencastProvideService
 
     override fun initViewModel() = ViewModelInit(
         BR.viewModel,
@@ -69,11 +65,7 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
                             libraryUrlTv.text = data.disPlayDescribe
                             libraryCoverIv.setImageResource(data.mediaType.cover)
 
-                            screencastStatusTv.isVisible =
-                                data.mediaType == MediaType.SCREEN_CAST && data.running
-                            screencastStatusTv.setOnClickListener {
-                                showStopServiceDialog()
-                            }
+
 
                             itemLayout.setOnClickListener {
                                 DanDanPlay.permission.storage.request(this@MediaFragment) {
@@ -107,9 +99,7 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
                     .navigation()
             }
 
-            MediaType.SCREEN_CAST -> {
-                viewModel.checkScreenDeviceRunning(data)
-            }
+
 
             MediaType.LOCAL_STORAGE,
             MediaType.FTP_SERVER,
@@ -177,18 +167,7 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
             }.build().show()
     }
 
-    private fun showStopServiceDialog() {
-        CommonDialog.Builder(requireActivity())
-            .apply {
-                content = "确认停止投屏投送服务？"
-                positiveText = "确认"
-                addPositive { dialog ->
-                    dialog.dismiss()
-                    provideService.stopService(requireActivity())
-                }
-                addNegative()
-            }.build().show()
-    }
+
 
     private enum class ManageStorage(val title: String, val icon: Int) {
         Edit("编辑媒体库", R.drawable.ic_edit_storage),

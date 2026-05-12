@@ -5,7 +5,7 @@ import com.xyoye.common_component.storage.impl.DocumentFileStorage
 import com.xyoye.common_component.storage.impl.FtpStorage
 import com.xyoye.common_component.storage.impl.LinkStorage
 import com.xyoye.common_component.storage.impl.RemoteStorage
-import com.xyoye.common_component.storage.impl.ScreencastStorage
+
 import com.xyoye.common_component.storage.impl.SmbStorage
 import com.xyoye.common_component.storage.impl.TorrentStorage
 import com.xyoye.common_component.storage.impl.VideoStorage
@@ -30,7 +30,6 @@ object StorageFactory {
             MediaType.MAGNET_LINK -> TorrentStorage(library)
             MediaType.STREAM_LINK -> LinkStorage(library)
             MediaType.OTHER_STORAGE -> LinkStorage(library)
-            MediaType.SCREEN_CAST -> ScreencastStorage(library)
             MediaType.ALSIT_STORAGE -> AlistStorage(library)
             else -> null
         }
