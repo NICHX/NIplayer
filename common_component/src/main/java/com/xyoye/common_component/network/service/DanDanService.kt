@@ -1,6 +1,5 @@
 package com.xyoye.common_component.network.service
 
-import com.xyoye.common_component.network.helper.DeveloperCertificateInterceptor
 import com.xyoye.common_component.network.request.RequestParams
 import com.xyoye.data_component.data.AnimeDetailData
 import com.xyoye.data_component.data.AnimeTagData
@@ -119,11 +118,4 @@ interface DanDanService {
 
     @POST("/api/v2/playhistory")
     suspend fun addPlayHistory(@Body body: RequestBody): CommonJsonData
-
-    @GET("api/v2/login/renew")
-    suspend fun checkAuthenticate(
-        @Header(DeveloperCertificateInterceptor.HEADER_APP_ID) appId: String,
-        @Header(DeveloperCertificateInterceptor.HEADER_APP_SECRET) appSecret: String,
-        @Header("X-Auth") authMode: Int
-    ): Response<ResponseBody>
 }
