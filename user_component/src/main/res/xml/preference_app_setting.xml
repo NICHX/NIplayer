@@ -2,36 +2,14 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <PreferenceCategory android:title="应用">
-        <Preference
-            android:key="app_version"
-            android:title="当前版本"
-            app:icon="@drawable/ic_app_setting_app_version" />
-    </PreferenceCategory>
+
 
     <PreferenceCategory android:title="设置">
-
-        <SwitchPreference
-            android:key="backup_domain_enable"
-            android:summary="无法使用弹弹网络相关服务时，可尝试打开此配置"
-            android:title="备用服务器"
-            app:icon="@drawable/ic_language" />
-
-        <EditTextPreference
-            android:key="backup_domain_address"
-            android:title="备用服务器地址"
-            app:icon="@drawable/ic_domain_url" />
-
         <SwitchPreference
             android:key="hide_file"
             android:summary="在选择文件时，显示系统隐藏文件"
             android:title="显示隐藏文件"
             app:icon="@drawable/ic_app_setting_hide_file" />
-
-        <SwitchPreference
-            android:key="splash_page"
-            android:title="展示APP启动页"
-            app:icon="@drawable/ic_app_setting_splash" />
 
         <Preference
             android:key="dark_mode"
@@ -45,9 +23,5 @@
             android:key="license"
             android:title="开源许可协议"
             app:icon="@drawable/ic_app_setting_license" />
-        <Preference
-            android:key="about_us"
-            android:title="关于我们"
-            app:icon="@drawable/ic_app_setting_about_us" />
     </PreferenceCategory>
 </PreferenceScreen>
