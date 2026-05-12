@@ -13,7 +13,6 @@ import com.xyoye.common_component.BuildConfig
 import com.xyoye.common_component.notification.Notifications
 import com.xyoye.common_component.utils.ActivityHelper
 import com.xyoye.common_component.utils.SecurityHelper
-import com.xyoye.common_component.utils.aliyun.EMASHelper
 import com.xyoye.open_cc.OpenCCFile
 
 /**
@@ -54,7 +53,6 @@ open class BaseApplication : Application(), ImageLoaderFactory {
         )
         Notifications.setupNotificationChannels(this)
         ActivityHelper.instance.init(this)
-        EMASHelper.init(this)
         OpenCCFile.init(this)
     }
 
