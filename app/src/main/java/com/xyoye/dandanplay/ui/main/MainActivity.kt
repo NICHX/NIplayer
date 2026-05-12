@@ -21,7 +21,6 @@ import com.xyoye.dandanplay.BR
 import com.xyoye.dandanplay.R
 import com.xyoye.dandanplay.databinding.ActivityMainBinding
 import com.xyoye.data_component.data.LoginData
-import com.xyoye.user_component.ui.weight.DeveloperMenus
 import kotlin.random.Random
 import kotlin.system.exitProcess
 
@@ -40,9 +39,6 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>(),
 
     private var fragmentTag = ""
     private var touchTime = 0L
-
-    // 标题栏菜单管理器
-    private lateinit var mMenus: DeveloperMenus
 
     override fun initViewModel() =
         ViewModelInit(
@@ -110,15 +106,7 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>(),
         return super.onKeyDown(keyCode, event)
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        mMenus = DeveloperMenus.inflater(this, menu)
-        return super.onCreateOptionsMenu(menu)
-    }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        mMenus.onOptionsItemSelected(item)
-        return super.onOptionsItemSelected(item)
-    }
 
     override fun getLoginLiveData(): MutableLiveData<LoginData> {
         return viewModel.reLoginLiveData
