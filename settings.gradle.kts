@@ -2,7 +2,6 @@ rootProject.name="DanDanPlayForAndroid"
 
 include(":app")
 include(":local_component")
-include(":anime_component")
 include(":user_component")
 include(":storage_component")
 include(":player_component")

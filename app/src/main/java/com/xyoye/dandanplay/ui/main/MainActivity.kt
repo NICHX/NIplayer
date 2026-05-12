@@ -31,12 +31,10 @@ import kotlin.system.exitProcess
 class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>(),
     LoginObserver {
     companion object {
-        private const val TAG_FRAGMENT_HOME = "tag_fragment_home"
         private const val TAG_FRAGMENT_MEDIA = "tag_fragment_media"
         private const val TAG_FRAGMENT_PERSONAL = "tag_fragment_personal"
     }
 
-    private lateinit var homeFragment: Fragment
     private lateinit var mediaFragment: Fragment
     private lateinit var personalFragment: Fragment
     private lateinit var previousFragment: Fragment
@@ -74,7 +72,6 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>(),
         title = "媒体库"
         //移除所有已添加的fragment，防止如旋转屏幕后导致的屏幕错乱
         supportFragmentManager.findAndRemoveFragment(
-            TAG_FRAGMENT_HOME,
             TAG_FRAGMENT_MEDIA,
             TAG_FRAGMENT_PERSONAL
         )
@@ -88,11 +85,6 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>(),
         //设置底部导航栏事件
         dataBinding.navigationView.setOnItemSelectedListener {
             when (it.itemId) {
-                R.id.navigation_home -> {
-                    title = "弹弹play"
-                    switchFragment(TAG_FRAGMENT_HOME)
-                }
-
                 R.id.navigation_media -> {
                     title = "媒体库"
                     switchFragment(TAG_FRAGMENT_MEDIA)
@@ -157,26 +149,6 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>(),
         }
 
         when (tag) {
-            TAG_FRAGMENT_HOME -> {
-                //根据TAG寻找页面
-                val fragment = supportFragmentManager.findFragmentByTag(TAG_FRAGMENT_HOME)
-                if (fragment == null) {
-                    //根据TAG无法找到页面，通过路由寻找页面，找到页面则添加
-                    getFragment(RouteTable.Anime.HomeFragment)?.also {
-                        addFragment(it, TAG_FRAGMENT_HOME)
-                        homeFragment = it
-                        previousFragment = it
-                        fragmentTag = tag
-                    }
-                } else {
-                    //根据TAG找到页面，显示
-                    supportFragmentManager.showFragment(fragment)
-                    homeFragment = fragment
-                    previousFragment = fragment
-                    fragmentTag = tag
-                }
-            }
-
             TAG_FRAGMENT_MEDIA -> {
                 val fragment = supportFragmentManager.findFragmentByTag(TAG_FRAGMENT_MEDIA)
                 if (fragment == null) {
