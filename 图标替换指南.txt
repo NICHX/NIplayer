@@ -1,0 +1,59 @@
+========================================
+NIplayer 应用图标替换指南
+========================================
+
+您提供的图标：粉色"N"字母设计
+
+========================================
+方法一：使用在线工具（推荐）
+========================================
+
+步骤：
+
+1. 保存您的粉色"N"图标图片到电脑
+
+2. 访问在线图标生成工具：
+   https://romannurik.github.io/AndroidAssetStudio/icons-launcher.html
+
+3. 点击 "Image" 标签，上传您的图标图片
+
+4. 配置选项：
+   - Name: ic_launcher
+   - Trim: Yes (自动裁剪多余空白)
+   - Shape: None (保持原始形状) 或 Circle (圆形)
+   - Effect: None
+   - Background Color: Transparent (透明背景)
+
+5. 在预览区域确认效果满意后，点击 "Download ZIP" 下载图标包
+
+6. 解压下载的 ZIP 文件
+
+7. 将解压后的 mipmap-* 文件夹中的所有文件复制并替换到项目的：
+   d:\project\NIplayer\app\src\main\res\
+
+   需要替换的文件：
+   - mipmap-mdpi/ic_launcher.png
+   - mipmap-mdpi/ic_launcher_round.png
+   - mipmap-hdpi/ic_launcher.png
+   - mipmap-hdpi/ic_launcher_round.png
+   - mipmap-xhdpi/ic_launcher.png
+   - mipmap-xhdpi/ic_launcher_round.png
+   - mipmap-xxhdpi/ic_launcher.png
+   - mipmap-xxhdpi/ic_launcher_round.png
+   - mipmap-xxxhdpi/ic_launcher.png
+   - mipmap-xxxhdpi/ic_launcher_round.png
+
+8. 重新编译并安装应用即可看到新图标
+
+========================================
+方法二：如果您希望我直接处理
+========================================
+
+请将您的粉色"N"图标图片保存到项目根目录，并告诉我文件名，我可以帮您完成后续操作。
+
+========================================
+提示
+========================================
+- 建议使用正方形的图片作为源图标
+- 图片尺寸建议至少 512x512 像素以保证高清效果
+- 保持简单的设计，避免过多细节在小尺寸下看不清
