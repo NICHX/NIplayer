@@ -18,264 +18,205 @@
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="10dp">
+            android:padding="8dp">
 
-            <androidx.legacy.widget.Space
-                android:id="@+id/left_space"
+            <androidx.constraintlayout.widget.Guideline
+                android:id="@+id/guideline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                app:layout_constraintGuide_percent="0.666" />
+
+            <LinearLayout
                 android:layout_width="0dp"
-                android:layout_height="0dp"
-                app:layout_constraintEnd_toStartOf="@id/right_space"
-                app:layout_constraintHorizontal_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                app:layout_constraintEnd_toStartOf="@+id/guideline"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
+                app:layout_constraintTop_toTopOf="parent">
 
-            <androidx.legacy.widget.Space
-                android:id="@+id/right_space"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintHorizontal_weight="2"
-                app:layout_constraintStart_toEndOf="@id/left_space"
-                app:layout_constraintTop_toTopOf="parent" />
-
-            <LinearLayout
-                android:id="@+id/player_setting_ll"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:background="@drawable/background_item_press_corner"
-                android:gravity="center"
-                android:orientation="vertical"
-                app:layout_constraintDimensionRatio="2:1"
-                app:layout_constraintEnd_toStartOf="@+id/scan_manager_ll"
-                app:layout_constraintStart_toStartOf="@id/right_space"
-                app:layout_constraintTop_toTopOf="@id/right_space">
-
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/ic_video_player_setting" />
-
-                <TextView
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/action_player_setting"
-                    android:textColor="@color/text_black"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+                    android:orientation="horizontal">
 
-            <LinearLayout
-                android:id="@+id/scan_manager_ll"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_marginStart="10dp"
-                android:background="@drawable/background_item_press_corner"
-                android:gravity="center"
-                android:orientation="vertical"
-                app:layout_constraintBottom_toBottomOf="@id/player_setting_ll"
-                app:layout_constraintEnd_toStartOf="@+id/cache_manager_ll"
-                app:layout_constraintStart_toEndOf="@id/player_setting_ll"
-                app:layout_constraintTop_toTopOf="@id/player_setting_ll">
+                    <LinearLayout
+                        android:id="@+id/player_setting_ll"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="4dp"
+                        android:background="@drawable/background_item_press_corner"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="8dp">
 
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/ic_scan_manager" />
+                        <ImageView
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:scaleType="centerCrop"
+                            android:src="@drawable/ic_video_player_setting" />
 
-                <TextView
-                    android:layout_width="wrap_content"
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/action_player_setting"
+                            android:textColor="@color/text_black"
+                            android:textSize="12sp"
+                            android:gravity="center"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/scan_manager_ll"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginEnd="4dp"
+                        android:background="@drawable/background_item_press_corner"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="8dp">
+
+                        <ImageView
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:scaleType="centerCrop"
+                            android:src="@drawable/ic_scan_manager" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/action_scan_manager"
+                            android:textColor="@color/text_black"
+                            android:textSize="12sp"
+                            android:gravity="center"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/cache_manager_ll"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:background="@drawable/background_item_press_corner"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="8dp">
+
+                        <ImageView
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:scaleType="centerCrop"
+                            android:src="@drawable/ic_cache_manager" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/action_cache_manager"
+                            android:textColor="@color/text_black"
+                            android:textSize="12sp"
+                            android:gravity="center"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/action_scan_manager"
-                    android:textColor="@color/text_black"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp">
 
-            <LinearLayout
-                android:id="@+id/cache_manager_ll"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_marginStart="10dp"
-                android:background="@drawable/background_item_press_corner"
-                android:gravity="center"
-                android:orientation="vertical"
-                app:layout_constraintBottom_toBottomOf="@id/scan_manager_ll"
-                app:layout_constraintEnd_toStartOf="@+id/commonly_manager_ll"
-                app:layout_constraintStart_toEndOf="@id/scan_manager_ll"
-                app:layout_constraintTop_toTopOf="@id/scan_manager_ll">
+                    <LinearLayout
+                        android:id="@+id/commonly_manager_ll"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="4dp"
+                        android:background="@drawable/background_item_press_corner"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="8dp">
 
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/ic_cache_manager" />
+                        <ImageView
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:scaleType="centerCrop"
+                            android:src="@drawable/ic_commonly_manager" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/action_cache_manager"
-                    android:textColor="@color/text_black"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/action_commonly_folder_manager"
+                            android:textColor="@color/text_black"
+                            android:textSize="12sp"
+                            android:gravity="center"
+                            android:textStyle="bold" />
+                    </LinearLayout>
 
-            <LinearLayout
-                android:id="@+id/commonly_manager_ll"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_marginStart="10dp"
-                android:background="@drawable/background_item_press_corner"
-                android:gravity="center"
-                android:orientation="vertical"
-                app:layout_constraintBottom_toBottomOf="@id/cache_manager_ll"
-                app:layout_constraintEnd_toEndOf="@id/right_space"
-                app:layout_constraintStart_toEndOf="@id/cache_manager_ll"
-                app:layout_constraintTop_toTopOf="@id/cache_manager_ll">
+                    <LinearLayout
+                        android:id="@+id/shooter_subtitle_ll"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginEnd="4dp"
+                        android:background="@drawable/background_item_press_corner"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="8dp">
 
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/ic_commonly_manager" />
+                        <ImageView
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:scaleType="centerCrop"
+                            android:src="@drawable/ic_shooter_subtitle_download" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/action_commonly_folder_manager"
-                    android:textColor="@color/text_black"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/action_shooter_subtitle_download"
+                            android:textColor="@color/text_black"
+                            android:textSize="12sp"
+                            android:gravity="center"
+                            android:textStyle="bold" />
+                    </LinearLayout>
 
-            <LinearLayout
-                android:id="@+id/bilibili_danmu_ll"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_marginTop="15dp"
-                android:background="@drawable/background_item_press_corner"
-                android:gravity="center"
-                android:orientation="vertical"
-                app:layout_constraintDimensionRatio="2:1"
-                app:layout_constraintEnd_toEndOf="@+id/player_setting_ll"
-                app:layout_constraintStart_toStartOf="@id/player_setting_ll"
-                app:layout_constraintTop_toBottomOf="@id/player_setting_ll">
+                    <LinearLayout
+                        android:id="@+id/app_setting_ll"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:background="@drawable/background_item_press_corner"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="8dp">
 
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/ic_bilibili_danmu_download" />
+                        <ImageView
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:scaleType="centerCrop"
+                            android:src="@drawable/ic_app_setting" />
 
-                <com.xyoye.common_component.weight.MarqueeTextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="10dp"
-                    android:layout_marginTop="10dp"
-                    android:ellipsize="marquee"
-                    android:singleLine="true"
-                    android:text="@string/action_bilibili_danmu_download"
-                    android:textColor="@color/text_black"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/shooter_subtitle_ll"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_marginTop="15dp"
-                android:background="@drawable/background_item_press_corner"
-                android:gravity="center"
-                android:orientation="vertical"
-                app:layout_constraintBottom_toBottomOf="@id/bilibili_danmu_ll"
-                app:layout_constraintEnd_toEndOf="@+id/scan_manager_ll"
-                app:layout_constraintStart_toStartOf="@id/scan_manager_ll"
-                app:layout_constraintTop_toTopOf="@id/bilibili_danmu_ll">
-
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/ic_shooter_subtitle_download" />
-
-                <com.xyoye.common_component.weight.MarqueeTextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="10dp"
-                    android:layout_marginTop="10dp"
-                    android:ellipsize="marquee"
-                    android:singleLine="true"
-                    android:text="@string/action_shooter_subtitle_download"
-                    android:textColor="@color/text_black"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-
-
-            <LinearLayout
-                android:id="@+id/feedback_ll"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_marginTop="15dp"
-                android:background="@drawable/background_item_press_corner"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:visibility="gone"
-                app:layout_constraintBottom_toBottomOf="@id/bilibili_danmu_ll"
-                app:layout_constraintEnd_toEndOf="@+id/commonly_manager_ll"
-                app:layout_constraintStart_toStartOf="@id/commonly_manager_ll"
-                app:layout_constraintTop_toTopOf="@id/bilibili_danmu_ll">
-
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/ic_feedback" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/action_feedback"
-                    android:textColor="@color/text_black"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/app_setting_ll"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_marginTop="15dp"
-                android:background="@drawable/background_item_press_corner"
-                android:gravity="center"
-                android:orientation="vertical"
-                app:layout_constraintBottom_toBottomOf="@id/bilibili_danmu_ll"
-                app:layout_constraintEnd_toEndOf="@+id/commonly_manager_ll"
-                app:layout_constraintStart_toStartOf="@id/commonly_manager_ll"
-                app:layout_constraintTop_toTopOf="@id/bilibili_danmu_ll">
-
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/ic_app_setting" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/action_app_setting"
-                    android:textColor="@color/text_black"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/action_app_setting"
+                            android:textColor="@color/text_black"
+                            android:textSize="12sp"
+                            android:gravity="center"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
             </LinearLayout>
 
         </androidx.constraintlayout.widget.ConstraintLayout>
