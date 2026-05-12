@@ -2,7 +2,7 @@ package com.xyoye.common_component.network.service
 
 import com.xyoye.common_component.network.config.Api
 import com.xyoye.common_component.network.request.RequestParams
-import com.xyoye.data_component.data.BiliBiliCidData
+
 import com.xyoye.data_component.data.SubtitleShooterData
 import com.xyoye.data_component.data.SubtitleSubData
 import com.xyoye.data_component.data.SubtitleThunderData
@@ -42,9 +42,7 @@ interface ExtendedService {
         @HeaderMap headers: Map<String, String>
     ): ResponseBody
 
-    @GET("${Api.BILI_BILI_API}x/web-interface/view")
-    @Streaming
-    suspend fun getCidInfo(@QueryMap params: RequestParams): BiliBiliCidData
+
 
     @POST("${Api.HAN_LP}/api/parse")
     suspend fun segmentWords(@Body body: RequestBody): retrofit2.Response<ResponseBody>

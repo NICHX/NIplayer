@@ -5,9 +5,7 @@
         <activity
             android:name=".ui.activities.play_history.PlayHistoryActivity"
             android:configChanges="orientation|screenSize" />
-        <activity
-            android:name=".ui.activities.bilibili_danmu.BilibiliDanmuActivity"
-            android:configChanges="orientation|screenSize" />
+
         <activity
             android:name=".ui.activities.shooter_subtitle.ShooterSubtitleActivity"
             android:configChanges="orientation|screenSize" />
