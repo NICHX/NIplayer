@@ -43,7 +43,6 @@ class PlayHistoryAdapter(
 ) {
 
     private enum class EditHistory(val title: String, val icon: Int) {
-        REMOVE_DANMU("移除弹幕绑定", R.drawable.ic_unbind_danmu),
         REMOVE_SUBTITLE("移除字幕绑定", R.drawable.ic_unbind_subtitle),
         COPY_URL("复制播放链接", R.drawable.ic_copy_url),
         DELETE_HISTORY("删除播放记录", R.drawable.ic_delete_history);
@@ -141,9 +140,6 @@ class PlayHistoryAdapter(
 
     private fun generateVideoTags(data: PlayHistoryEntity): List<VideoTagBean> {
         val tagList = mutableListOf<VideoTagBean>()
-        if (data.danmuPath?.isNotEmpty() == true) {
-            tagList.add(VideoTagBean("弹幕", R.color.theme.toResColor()))
-        }
         if (data.subtitlePath?.isNotEmpty() == true) {
             tagList.add(VideoTagBean("字幕", R.color.orange.toResColor()))
         }
@@ -200,9 +196,6 @@ class PlayHistoryAdapter(
 
     private fun showEditDialog(history: PlayHistoryEntity) {
         val actions = mutableListOf<SheetActionBean>()
-        if (history.danmuPath.isNullOrEmpty().not()) {
-            actions.add(EditHistory.REMOVE_DANMU.toAction())
-        }
         if (history.subtitlePath.isNullOrEmpty().not()) {
             actions.add(EditHistory.REMOVE_SUBTITLE.toAction())
         }
@@ -210,7 +203,6 @@ class PlayHistoryAdapter(
         actions.add(EditHistory.DELETE_HISTORY.toAction())
         BottomActionDialog(activity, actions) {
             when (it.actionId) {
-                EditHistory.REMOVE_DANMU -> viewModel.unbindDanmu(history)
                 EditHistory.REMOVE_SUBTITLE -> viewModel.unbindSubtitle(history)
                 EditHistory.DELETE_HISTORY -> viewModel.removeHistory(history)
                 EditHistory.COPY_URL -> {

@@ -27,18 +27,12 @@ object RouteTable {
 
     object User {
         const val PersonalFragment = "/user/personal_fragment"
-        const val UserLogin = "/user/login"
-        const val UserRegister = "/user/register"
-        const val UserForgot = "/user/forgot"
-        const val UserInfo = "/user/info"
         const val SettingPlayer = "/user/setting_player"
         const val SettingApp = "/user/setting_app"
         const val WebView = "/user/web_view"
         const val ScanManager = "/user/scan_manager"
         const val CacheManager = "/user/cache_manager"
         const val CommonManager = "/user/common_manager"
-        const val Feedback = "/user/feedback"
-        const val AboutUs = "/user/about_us"
         const val License = "/user/license"
         const val SwitchTheme = "/user/switch_theme"
     }

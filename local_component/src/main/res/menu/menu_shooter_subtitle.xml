@@ -8,7 +8,7 @@
         app:showAsAction="ifRoom" />
     <item
         android:id="@+id/item_search_subtitle"
-        android:icon="@drawable/ic_danmu_search"
+        android:icon="@drawable/ic_search"
         android:title="@string/text_search_subtitle"
         app:showAsAction="ifRoom" />
 </menu>

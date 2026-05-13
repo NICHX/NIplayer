@@ -72,7 +72,7 @@
                     android:layout_centerVertical="true"
                     android:background="@null"
                     android:gravity="center_vertical"
-                    android:hint="@string/tips_search_danmu"
+                    android:hint="@string/tips_search_subtitle"
                     android:imeOptions="actionSearch"
                     android:inputType="text"
                     android:minLines="1"

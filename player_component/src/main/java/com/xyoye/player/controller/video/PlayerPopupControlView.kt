@@ -43,11 +43,6 @@ class PlayerPopupControlView(
             mExitPlayerBlock?.invoke()
         }
 
-        viewBinding.ivDanmuControl.setOnClickListener {
-            mControlWrapper.toggleDanmuVisible()
-            viewBinding.ivDanmuControl.isSelected = !viewBinding.ivDanmuControl.isSelected
-        }
-
         viewBinding.ivExpand.setOnClickListener {
             mExitPopupModeBlock?.invoke()
         }

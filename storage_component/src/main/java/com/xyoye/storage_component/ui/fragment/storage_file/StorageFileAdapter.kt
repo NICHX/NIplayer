@@ -30,7 +30,6 @@ import com.xyoye.common_component.extension.toResColor
 import com.xyoye.common_component.extension.toResDrawable
 import com.xyoye.common_component.extension.toResString
 import com.xyoye.common_component.storage.file.StorageFile
-import com.xyoye.common_component.storage.file.danmu
 import com.xyoye.common_component.storage.file.subtitle
 import com.xyoye.common_component.utils.PlayHistoryUtils
 import com.xyoye.common_component.utils.formatDuration
@@ -56,10 +55,8 @@ class StorageFileAdapter(
 ) {
 
     private enum class ManageAction(val title: String, val icon: Int) {
-        BIND_DANMU("手动查找弹幕", com.xyoye.common_component.R.drawable.ic_bind_danmu_manual),
         BIND_SUBTITLE("手动查找字幕", com.xyoye.common_component.R.drawable.ic_bind_subtitle),
         BIND_AUDIO("添加音频文件", com.xyoye.common_component.R.drawable.ic_bind_audio),
-        UNBIND_DANMU("移除弹幕绑定", com.xyoye.common_component.R.drawable.ic_unbind_danmu),
         UNBIND_SUBTITLE("移除字幕绑定", com.xyoye.common_component.R.drawable.ic_unbind_subtitle),
         UNBIND_AUDIO("移除音频绑定", com.xyoye.common_component.R.drawable.ic_unbind_subtitle);
 
@@ -178,9 +175,6 @@ class StorageFileAdapter(
 
     private fun generateVideoTags(data: StorageFile): List<VideoTagBean> {
         val tagList = mutableListOf<VideoTagBean>()
-        if (isShowDanmu(data)) {
-            tagList.add(VideoTagBean("弹幕", R.color.theme.toResColor()))
-        }
         if (isShowSubtitle(data)) {
             tagList.add(VideoTagBean("字幕", R.color.orange.toResColor()))
         }
@@ -244,10 +238,6 @@ class StorageFileAdapter(
         } ?: ""
     }
 
-    private fun isShowDanmu(file: StorageFile): Boolean {
-        return file.playHistory?.danmuPath?.isNotEmpty() == true
-    }
-
     private fun isShowSubtitle(file: StorageFile): Boolean {
         return file.playHistory?.subtitlePath?.isNotEmpty() == true
     }
@@ -259,10 +249,8 @@ class StorageFileAdapter(
     private fun showMoreAction(file: StorageFile, options: ActivityOptionsCompat) {
         BottomActionDialog(activity, getMoreActions(file)) {
             when (it.actionId) {
-                ManageAction.BIND_DANMU -> bindExtraSource(file, true, options)
-                ManageAction.BIND_SUBTITLE -> bindExtraSource(file, false, options)
+                ManageAction.BIND_SUBTITLE -> bindExtraSource(file, options)
                 ManageAction.BIND_AUDIO -> bindAudioSource(file)
-                ManageAction.UNBIND_DANMU -> viewModel.unbindExtraSource(file, TrackType.DANMU)
                 ManageAction.UNBIND_SUBTITLE -> viewModel.unbindExtraSource(file, TrackType.SUBTITLE)
                 ManageAction.UNBIND_AUDIO -> viewModel.unbindExtraSource(file, TrackType.AUDIO)
             }
@@ -273,12 +261,8 @@ class StorageFileAdapter(
 
     private fun getMoreActions(file: StorageFile) =
         mutableListOf<SheetActionBean>().apply {
-            add(ManageAction.BIND_DANMU.toAction())
             add(ManageAction.BIND_SUBTITLE.toAction())
             add(ManageAction.BIND_AUDIO.toAction())
-            if (file.danmu != null) {
-                add(ManageAction.UNBIND_DANMU.toAction())
-            }
             if (file.subtitle != null) {
                 add(ManageAction.UNBIND_SUBTITLE.toAction())
             }
@@ -289,13 +273,11 @@ class StorageFileAdapter(
 
     private fun bindExtraSource(
         file: StorageFile,
-        bindDanmu: Boolean,
         options: ActivityOptionsCompat
     ) {
         activity.shareStorageFile = file
         ARouter.getInstance()
             .build(RouteTable.Local.BindExtraSource)
-            .withBoolean("isSearchDanmu", bindDanmu)
             .withOptionsCompat(options)
             .navigation(activity)
     }

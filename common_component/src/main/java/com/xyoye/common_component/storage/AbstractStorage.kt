@@ -2,14 +2,9 @@ package com.xyoye.common_component.storage
 
 import android.net.Uri
 import com.xyoye.common_component.storage.file.StorageFile
-import com.xyoye.common_component.utils.danmu.DanmuFinder
-import com.xyoye.common_component.utils.getFileNameNoExtension
 import com.xyoye.common_component.utils.getParentFolderName
-import com.xyoye.common_component.utils.isDanmuFile
 import com.xyoye.common_component.utils.subtitle.SubtitleFinder
 import com.xyoye.common_component.utils.subtitle.SubtitleUtils
-import com.xyoye.data_component.bean.LocalDanmuBean
-import com.xyoye.data_component.data.DanmuEpisodeData
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import java.io.File
@@ -56,23 +51,6 @@ abstract class AbstractStorage(
     }
 
     abstract suspend fun listFiles(file: StorageFile): List<StorageFile>
-
-    override suspend fun cacheDanmu(file: StorageFile): LocalDanmuBean? {
-        val danmuName = getFileNameNoExtension(file.fileName())
-        val danmuFileName = "$danmuName.xml"
-        val danmuFile = directoryFiles.find {
-            it.isFile() && isDanmuFile(it.fileName()) && it.fileName() == danmuFileName
-        } ?: return null
-
-        val inputStream = openFile(danmuFile) ?: return null
-        val directoryName = getParentFolderName(danmuFile.filePath())
-        val episode = DanmuEpisodeData(
-            animeTitle = directoryName,
-            episodeTitle = getFileNameNoExtension(file.fileName())
-        )
-
-        return DanmuFinder.instance.saveStream(episode, inputStream)
-    }
 
     override suspend fun cacheSubtitle(file: StorageFile): String? {
         val subtitleFile = directoryFiles

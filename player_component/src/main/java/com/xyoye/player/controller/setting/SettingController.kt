@@ -2,9 +2,6 @@ package com.xyoye.player.controller.setting
 
 import android.content.Context
 import android.view.KeyEvent
-import androidx.lifecycle.LiveData
-import com.xyoye.data_component.data.DanmuEpisodeData
-import com.xyoye.data_component.entity.DanmuBlockEntity
 import com.xyoye.data_component.enums.SettingViewType
 import com.xyoye.data_component.enums.TrackType
 import com.xyoye.player.wrapper.InterSettingController
@@ -20,13 +17,9 @@ class SettingController(
 
     private lateinit var playerSettingView: PlayerSettingView
     private lateinit var switchVideoSourceView: SwitchVideoSourceView
-    private lateinit var keywordBlockView: KeywordBlockView
     private lateinit var screenShotView: ScreenShotView
-    private lateinit var settingDanmuStyleView: SettingDanmuStyleView
-    private lateinit var searchDanmuView: SearchDanmuView
     private lateinit var videoSpeedView: SettingVideoSpeedView
     private lateinit var videoAspectView: SettingVideoAspectView
-    private lateinit var danmuConfigureView: SettingDanmuConfigureView
     private lateinit var offsetTimeView: SettingOffsetTimeView
     private lateinit var subtitleStyleView: SettingSubtitleStyleView
 
@@ -85,24 +78,6 @@ class SettingController(
 
     }
 
-    fun setDatabaseBlock(
-        add: ((keyword: String, isRegex: Boolean) -> Unit),
-        remove: ((id: Int) -> Unit),
-        queryAll: () -> LiveData<MutableList<DanmuBlockEntity>>
-    ) {
-        (getSettingView(SettingViewType.KEYWORD_BLOCK) as KeywordBlockView)
-            .setDatabaseBlock(add, remove, queryAll)
-    }
-
-    fun setDanmuSearch(
-        search: (String) -> Unit,
-        download: (DanmuEpisodeData) -> Unit,
-        searchResult: () -> LiveData<List<DanmuEpisodeData>>
-    ) {
-        (getSettingView(SettingViewType.SEARCH_DANMU) as SearchDanmuView)
-            .setDanmuSearch(search, download, searchResult)
-    }
-
     fun setSwitchVideoSourceBlock(block: (Int) -> Unit) {
         (getSettingView(SettingViewType.SWITCH_VIDEO_SOURCE) as SwitchVideoSourceView)
             .setSwitchVideoSourceBlock(block)
@@ -120,7 +95,7 @@ class SettingController(
 
             SettingViewType.SWITCH_SOURCE -> {
                 return switchSourceView.apply {
-                    setTrackType((extra as? TrackType) ?: TrackType.DANMU)
+                    setTrackType((extra as? TrackType) ?: TrackType.SUBTITLE)
                 }
             }
 
@@ -132,28 +107,12 @@ class SettingController(
                 return switchVideoSourceView
             }
 
-            SettingViewType.KEYWORD_BLOCK -> {
-                if (this::keywordBlockView.isInitialized.not()) {
-                    keywordBlockView = KeywordBlockView(context)
-                    addView.invoke(keywordBlockView)
-                }
-                return keywordBlockView
-            }
-
             SettingViewType.SCREEN_SHOT -> {
                 if (this::screenShotView.isInitialized.not()) {
                     screenShotView = ScreenShotView(context)
                     addView.invoke(screenShotView)
                 }
                 return screenShotView
-            }
-
-            SettingViewType.SEARCH_DANMU -> {
-                if (this::searchDanmuView.isInitialized.not()) {
-                    searchDanmuView = SearchDanmuView(context)
-                    addView.invoke(searchDanmuView)
-                }
-                return searchDanmuView
             }
 
             SettingViewType.VIDEO_SPEED -> {
@@ -172,23 +131,7 @@ class SettingController(
                 return videoAspectView
             }
 
-            SettingViewType.DANMU_STYLE -> {
-                if (this::settingDanmuStyleView.isInitialized.not()) {
-                    settingDanmuStyleView = SettingDanmuStyleView(context)
-                    addView.invoke(settingDanmuStyleView)
-                }
-                return settingDanmuStyleView
-            }
-
-            SettingViewType.DANMU_CONFIGURE -> {
-                if (this::danmuConfigureView.isInitialized.not()) {
-                    danmuConfigureView = SettingDanmuConfigureView(context)
-                    addView.invoke(danmuConfigureView)
-                }
-                return danmuConfigureView
-            }
-
-            SettingViewType.DANMU_OFFSET_TIME, SettingViewType.SUBTITLE_OFFSET_TIME -> {
+            SettingViewType.SUBTITLE_OFFSET_TIME -> {
                 if (this::offsetTimeView.isInitialized.not()) {
                     offsetTimeView = SettingOffsetTimeView(context)
                     addView.invoke(offsetTimeView)
@@ -207,8 +150,12 @@ class SettingController(
 
             SettingViewType.TRACKS -> {
                 return settingTracksView.apply {
-                    setTrackType((extra as? TrackType) ?: TrackType.DANMU)
+                    setTrackType((extra as? TrackType) ?: TrackType.SUBTITLE)
                 }
+            }
+
+            else -> {
+                throw IllegalArgumentException("Unsupported setting view type: $type")
             }
         }
     }

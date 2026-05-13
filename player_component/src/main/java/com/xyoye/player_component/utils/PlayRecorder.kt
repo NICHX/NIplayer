@@ -59,8 +59,8 @@ object PlayRecorder {
                 position,
                 duration,
                 Date(),
-                source.getDanmu()?.danmuPath,
-                source.getDanmu()?.episodeId,
+                null,
+                null,
                 source.getSubtitlePath(),
                 torrentPath,
                 torrentIndex,
@@ -224,16 +224,7 @@ object PlayRecorder {
      * 上报剧集播放记录到云端
      */
     private suspend fun recordToCloud(videoSource: BaseVideoSource) {
-        val episodeId = videoSource.getDanmu()?.episodeId
-        if (episodeId.isNullOrEmpty()) {
-            return
-        }
-
-        if (UserConfig.isUserLoggedIn().not()) {
-            return
-        }
-
-        AnimeRepository.addEpisodePlayHistory(listOf(episodeId))
+        // 弹幕功能已移除，云端上报功能也已移除
     }
 
 

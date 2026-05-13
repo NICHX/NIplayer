@@ -33,21 +33,21 @@ class SettingTracksView @JvmOverloads constructor(
     context, attrs, defStyleAttr
 ) {
 
-    private var mTrackType = TrackType.DANMU
+    private var mTrackType = TrackType.SUBTITLE
     private val tracks = mutableListOf<VideoTrackBean>()
 
     private val title
         get() = when (mTrackType) {
             TrackType.AUDIO -> "音轨"
-            TrackType.DANMU -> "弹幕轨"
             TrackType.SUBTITLE -> "字幕轨"
+            else -> "轨道"
         }
 
     private val actionText
         get() = when (mTrackType) {
             TrackType.AUDIO -> "添加音轨"
-            TrackType.DANMU -> "添加弹幕轨"
             TrackType.SUBTITLE -> "添加字幕轨"
+            else -> "添加轨道"
         }
 
     init {

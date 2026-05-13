@@ -2,9 +2,7 @@ package com.xyoye.player.wrapper
 
 import android.graphics.PointF
 import android.view.KeyEvent
-import com.xyoye.data_component.bean.SendDanmuBean
 import com.xyoye.data_component.bean.VideoTrackBean
-import com.xyoye.data_component.enums.DanmakuLanguage
 import com.xyoye.data_component.enums.SettingViewType
 import com.xyoye.data_component.enums.TrackType
 import com.xyoye.data_component.enums.VideoScreenScale
@@ -22,12 +20,10 @@ import com.xyoye.subtitle.MixedSubtitle
 class ControlWrapper(
     private val mVideoPlayer: InterVideoPlayer,
     private val mController: InterVideoController,
-    private val mDanmuController: InterDanmuController,
     private val mSubtitleController: InterSubtitleController,
     private val mSettingController: InterSettingController
 ) : InterVideoPlayer,
     InterVideoController,
-    InterDanmuController,
     InterSubtitleController,
     InterSettingController {
 
@@ -52,8 +48,6 @@ class ControlWrapper(
     override fun seekTo(timeMs: Long) {
         //播放器
         mVideoPlayer.seekTo(timeMs)
-        //弹幕
-        seekTo(timeMs, isPlaying())
         //视图
         if (isPlaying()) {
             startProgress()
@@ -84,7 +78,6 @@ class ControlWrapper(
 
     override fun setSpeed(speed: Float) {
         mVideoPlayer.setSpeed(speed)
-        mDanmuController.setSpeed(speed)
     }
 
     override fun getSpeed() = mVideoPlayer.getSpeed()
@@ -115,8 +108,6 @@ class ControlWrapper(
             mVideoPlayer.addTrack(track)
         } else if (mSubtitleController.supportAddTrack(trackType)) {
             mSubtitleController.addTrack(track)
-        } else if (mDanmuController.supportAddTrack(trackType)) {
-            mDanmuController.addTrack(track)
         } else {
             false
         }
@@ -140,8 +131,6 @@ class ControlWrapper(
         val tracks = mVideoPlayer.getTracks(type).toMutableList()
         if (type == TrackType.SUBTITLE) {
             tracks.addAll(mSubtitleController.getTracks(type))
-        } else if (type == TrackType.DANMU) {
-            tracks.addAll(mDanmuController.getTracks(type))
         }
         return tracks
     }
@@ -153,13 +142,9 @@ class ControlWrapper(
         if (track.internal || mVideoPlayer.supportAddTrack(trackType)) {
             mVideoPlayer.selectTrack(track)
             mSubtitleController.deselectTrack(trackType)
-            mDanmuController.deselectTrack(trackType)
         } else if (mSubtitleController.supportAddTrack(trackType)) {
             mVideoPlayer.deselectTrack(trackType)
             mSubtitleController.selectTrack(track)
-        } else if (mDanmuController.supportAddTrack(trackType)) {
-            mVideoPlayer.deselectTrack(trackType)
-            mDanmuController.selectTrack(track)
         }
         mController.setTrackUpdated(trackType)
     }
@@ -167,7 +152,6 @@ class ControlWrapper(
     override fun deselectTrack(type: TrackType) {
         mVideoPlayer.deselectTrack(type)
         mSubtitleController.deselectTrack(type)
-        mDanmuController.deselectTrack(type)
         mController.setTrackUpdated(type)
     }
 
@@ -231,83 +215,6 @@ class ControlWrapper(
 
     override fun destroy() {
         mController.destroy()
-    }
-
-    /**
-     * ------------------Danmu Controller----------------------
-     */
-
-    override fun updateDanmuSize() {
-        mDanmuController.updateDanmuSize()
-    }
-
-    override fun updateDanmuSpeed() {
-        mDanmuController.updateDanmuSpeed()
-    }
-
-    override fun updateDanmuAlpha() {
-        mDanmuController.updateDanmuAlpha()
-    }
-
-    override fun updateDanmuStoke() {
-        mDanmuController.updateDanmuStoke()
-    }
-
-    override fun updateDanmuOffsetTime() {
-        mDanmuController.updateDanmuOffsetTime()
-    }
-
-    override fun danmuRelease() {
-        mDanmuController.danmuRelease()
-    }
-
-    override fun updateMobileDanmuState() {
-        mDanmuController.updateMobileDanmuState()
-    }
-
-    override fun updateTopDanmuState() {
-        mDanmuController.updateTopDanmuState()
-    }
-
-    override fun updateBottomDanmuState() {
-        mDanmuController.updateBottomDanmuState()
-    }
-
-    override fun updateMaxLine() {
-        mDanmuController.updateMaxLine()
-    }
-
-    override fun updateMaxScreenNum() {
-        mDanmuController.updateMaxScreenNum()
-    }
-
-    override fun toggleDanmuVisible() {
-        mDanmuController.toggleDanmuVisible()
-    }
-
-    override fun allowSendDanmu(): Boolean {
-        return mDanmuController.allowSendDanmu()
-    }
-
-    override fun addDanmuToView(danmuBean: SendDanmuBean) {
-        mDanmuController.addDanmuToView(danmuBean)
-    }
-
-    override fun addBlackList(isRegex: Boolean, vararg keyword: String) {
-        mDanmuController.addBlackList(isRegex, *keyword)
-    }
-
-    override fun removeBlackList(isRegex: Boolean, keyword: String) {
-        mDanmuController.removeBlackList(isRegex, keyword)
-    }
-
-    override fun seekTo(timeMs: Long, isPlaying: Boolean) {
-        mDanmuController.seekTo(timeMs, isPlaying)
-    }
-
-    override fun setLanguage(language: DanmakuLanguage) {
-        mDanmuController.setLanguage(language)
-        mDanmuController.seekTo(getCurrentPosition(), isPlaying())
     }
 
     /**

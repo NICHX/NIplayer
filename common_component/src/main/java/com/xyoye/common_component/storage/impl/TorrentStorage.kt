@@ -9,7 +9,6 @@ import com.xyoye.common_component.storage.file.helper.TorrentBean
 import com.xyoye.common_component.storage.file.impl.TorrentStorageFile
 import com.xyoye.common_component.utils.thunder.ThunderManager
 import com.xyoye.common_component.weight.ToastCenter
-import com.xyoye.data_component.bean.LocalDanmuBean
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import java.io.InputStream
@@ -82,10 +81,6 @@ class TorrentStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             return null
         }
         return ThunderManager.getInstance().generatePlayUrl(torrent, fileIndex)
-    }
-
-    override suspend fun cacheDanmu(file: StorageFile): LocalDanmuBean? {
-        return null
     }
 
     override suspend fun cacheSubtitle(file: StorageFile): String? {

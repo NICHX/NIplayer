@@ -28,7 +28,6 @@
     <string name="tips_login">登录帐号</string>
     <string name="action_player_setting">播放器设置</string>
     <string name="action_scan_manager">扫描目录管理</string>
-    <string name="action_bilibili_danmu_download">BiliBili弹幕下载</string>
     <string name="action_shooter_subtitle_download">射手(伪)字幕下载</string>
     <string name="action_screencast_receiver">投屏接收端</string>
     <string name="action_app_setting">应用设置</string>

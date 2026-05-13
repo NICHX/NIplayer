@@ -7,11 +7,8 @@ import com.xyoye.common_component.storage.AbstractStorage
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.file.helper.RemoteFileHelper
 import com.xyoye.common_component.storage.file.impl.RemoteStorageFile
-import com.xyoye.common_component.utils.danmu.DanmuFinder
 import com.xyoye.common_component.utils.subtitle.SubtitleUtils
 import com.xyoye.common_component.weight.ToastCenter
-import com.xyoye.data_component.bean.LocalDanmuBean
-import com.xyoye.data_component.data.DanmuEpisodeData
 import com.xyoye.data_component.data.remote.RemoteVideoData
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
@@ -66,17 +63,6 @@ class RemoteStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             .appendQueryParameter("token", token)
             .build()
             .toString()
-    }
-
-    override suspend fun cacheDanmu(file: StorageFile): LocalDanmuBean? {
-        val videoData = (file as RemoteStorageFile).getRealFile()
-        val episode = DanmuEpisodeData(
-            episodeId = videoData.Id,
-            episodeTitle = videoData.EpisodeTitle,
-            animeId = videoData.AnimeId,
-            animeTitle = videoData.AnimeTitle
-        )
-        return DanmuFinder.instance.downloadEpisode(episode)
     }
 
     override suspend fun cacheSubtitle(file: StorageFile): String? {

@@ -5,27 +5,21 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentTransaction
-import androidx.lifecycle.MutableLiveData
 import com.alibaba.android.arouter.facade.annotation.Autowired
 import com.alibaba.android.arouter.launcher.ARouter
 import com.xyoye.common_component.base.BaseActivity
-import com.xyoye.common_component.bridge.LoginObserver
 import com.xyoye.common_component.config.RouteTable
-import com.xyoye.common_component.config.UserConfig
 import com.xyoye.common_component.extension.findAndRemoveFragment
 import com.xyoye.common_component.extension.hideFragment
 import com.xyoye.common_component.extension.showFragment
 import com.xyoye.common_component.weight.ToastCenter
-import com.xyoye.common_component.weight.dialog.CommonDialog
 import com.xyoye.dandanplay.BR
 import com.xyoye.dandanplay.R
 import com.xyoye.dandanplay.databinding.ActivityMainBinding
-import com.xyoye.data_component.data.LoginData
 import kotlin.random.Random
 import kotlin.system.exitProcess
 
-class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>(),
-    LoginObserver {
+class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>() {
     companion object {
         private const val TAG_FRAGMENT_MEDIA = "tag_fragment_media"
         private const val TAG_FRAGMENT_PERSONAL = "tag_fragment_personal"
@@ -88,11 +82,6 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>(),
         }
 
         viewModel.initDatabase()
-        viewModel.initCloudBlockData()
-
-        if (UserConfig.isUserLoggedIn()) {
-            viewModel.reLogin()
-        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -104,12 +93,6 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>(),
             }
         }
         return super.onKeyDown(keyCode, event)
-    }
-
-
-
-    override fun getLoginLiveData(): MutableLiveData<LoginData> {
-        return viewModel.reLoginLiveData
     }
 
     private fun switchFragment(tag: String) {

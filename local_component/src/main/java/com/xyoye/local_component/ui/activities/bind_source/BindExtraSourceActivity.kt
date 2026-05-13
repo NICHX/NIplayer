@@ -21,7 +21,6 @@ import com.xyoye.local_component.BR
 import com.xyoye.local_component.R
 import com.xyoye.local_component.databinding.ActivityBindExtraSourceBinding
 import com.xyoye.local_component.ui.dialog.SegmentWordDialog
-import com.xyoye.local_component.ui.fragment.bind_danmu.BindDanmuSourceFragment
 import com.xyoye.local_component.ui.fragment.bind_subtitle.BindSubtitleSourceFragment
 
 
@@ -35,10 +34,6 @@ class BindExtraSourceActivity :
 
     @Autowired
     lateinit var storageFileProvider: StorageFileProvider
-
-    @Autowired
-    @JvmField
-    var isSearchDanmu: Boolean = true
 
     lateinit var storageFile: StorageFile
 
@@ -68,8 +63,6 @@ class BindExtraSourceActivity :
         }.attach()
 
         initListener()
-
-        initChildFragment()
     }
 
     private fun initListener() {
@@ -115,16 +108,6 @@ class BindExtraSourceActivity :
             viewModel.segmentTitle(storageFile)
         }
 
-        dataBinding.viewpager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                dataBinding.searchEt.hint = when (position) {
-                    0 -> getString(R.string.tips_search_danmu)
-                    1 -> getString(R.string.tips_search_subtitle)
-                    else -> ""
-                }
-            }
-        })
-
         viewModel.storageFileFlow.collectAtStarted(this) {
             VideoItemLayout.initVideoLayout(dataBinding, it)
         }
@@ -146,16 +129,8 @@ class BindExtraSourceActivity :
         }
     }
 
-    private fun initChildFragment() {
-        if (isSearchDanmu.not()) {
-            dataBinding.viewpager.post {
-                dataBinding.viewpager.currentItem = 1
-            }
-        }
-    }
-
     inner class BindSourcePageAdapter : FragmentStateAdapter(this) {
-        private var titles = arrayOf("搜弹幕", "搜字幕")
+        private var titles = arrayOf("搜字幕")
 
         override fun getItemCount(): Int {
             return titles.size
@@ -163,9 +138,8 @@ class BindExtraSourceActivity :
 
         override fun createFragment(position: Int): Fragment {
             return when (position) {
-                0 -> BindDanmuSourceFragment.newInstance()
-                1 -> BindSubtitleSourceFragment.newInstance()
-                else -> throw IndexOutOfBoundsException("only 2 fragment, but position : $position")
+                0 -> BindSubtitleSourceFragment.newInstance()
+                else -> throw IndexOutOfBoundsException("only 1 fragment, but position : $position")
             }
         }
 

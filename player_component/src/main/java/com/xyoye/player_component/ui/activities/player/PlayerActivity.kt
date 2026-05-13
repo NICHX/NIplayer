@@ -1,39 +1,31 @@
 package com.xyoye.player_component.ui.activities.player
 
 import android.app.ActivityManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
 import android.view.KeyEvent
 import androidx.appcompat.app.AlertDialog
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import com.gyf.immersionbar.BarHide
 import com.gyf.immersionbar.ImmersionBar
 import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.bridge.PlayTaskBridge
-import com.xyoye.common_component.config.DanmuConfig
 import com.xyoye.common_component.config.PlayerConfig
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.config.SubtitleConfig
 import com.xyoye.common_component.receiver.HeadsetBroadcastReceiver
 import com.xyoye.common_component.receiver.PlayerReceiverListener
 import com.xyoye.common_component.receiver.ScreenBroadcastReceiver
-import com.xyoye.player_component.receiver.PlayerDanmuConfigReceiver
 import com.xyoye.common_component.source.VideoSourceManager
 import com.xyoye.common_component.source.base.BaseVideoSource
 import com.xyoye.common_component.source.media.StorageVideoSource
-
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.common_component.weight.dialog.CommonDialog
 import com.xyoye.data_component.bean.VideoTrackBean
-
-import com.xyoye.data_component.enums.DanmakuLanguage
 import com.xyoye.data_component.enums.MediaType
 import com.xyoye.data_component.enums.PixelFormat
 import com.xyoye.data_component.enums.PlayerType
@@ -53,18 +45,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import kotlin.math.roundToInt
 
 @Route(path = RouteTable.Player.PlayerCenter)
 class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
     PlayerReceiverListener {
-
-    private val danmuViewModel: PlayerDanmuViewModel by lazy {
-        ViewModelProvider(
-            viewModelStore,
-            ViewModelProvider.AndroidViewModelFactory(application)
-        )[PlayerDanmuViewModel::class.java]
-    }
 
     private val videoController: VideoController by lazy {
         VideoController(this)
@@ -90,9 +74,6 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
     //电量管理
     private var batteryHelper = BatteryHelper()
 
-    //弹幕配置广播（延迟初始化，避免过早创建 VideoController 导致的潜在崩溃）
-    private lateinit var danmuConfigReceiver: PlayerDanmuConfigReceiver
-
     override fun initViewModel() =
         ViewModelInit(
             BR.viewModel,
@@ -117,26 +98,15 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
 
         initPlayer()
 
-        initListener()
-
         danDanPlayer.setController(videoController)
         dataBinding.playerContainer.removeAllViews()
         dataBinding.playerContainer.addView(danDanPlayer)
-
-        // 在控制器完成初始化并与播放器绑定后，再创建弹幕配置接收器
-        danmuConfigReceiver = PlayerDanmuConfigReceiver(videoController)
 
         applyPlaySource(VideoSourceManager.getInstance().getSource())
     }
 
     override fun onResume() {
         super.onResume()
-
-        val intentFilter = IntentFilter("com.xyoye.dandanplay.ACTION_DANMU_CONFIG_UPDATED")
-        if (this::danmuConfigReceiver.isInitialized) {
-            LocalBroadcastManager.getInstance(this).registerReceiver(danmuConfigReceiver, intentFilter)
-        }
-
         exitPopupMode()
     }
 
@@ -147,10 +117,6 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
             danDanPlayer.pause()
         }
         danDanPlayer.recordPlayInfo()
-        
-        if (this::danmuConfigReceiver.isInitialized) {
-            LocalBroadcastManager.getInstance(this).unregisterReceiver(danmuConfigReceiver)
-        }
         super.onPause()
     }
 
@@ -199,29 +165,6 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
         return true
     }
 
-    private fun initListener() {
-        danmuViewModel.loadDanmuLiveData.observe(this) { (videoUrl, matchDanmu) ->
-            val curVideoSource = danDanPlayer.getVideoSource()
-            val curVideoUrl = curVideoSource.getVideoUrl()
-            if (curVideoUrl != videoUrl) {
-                return@observe
-            }
-
-            videoController.showMessage("匹配弹幕成功")
-            videoController.addExtendTrack(VideoTrackBean.danmu(matchDanmu))
-        }
-
-        danmuViewModel.downloadDanmuLiveData.observe(this) { searchDanmu ->
-            if (searchDanmu == null) {
-                videoController.showMessage("下载弹幕失败")
-                return@observe
-            }
-
-            videoController.showMessage("下载弹幕成功")
-            videoController.addExtendTrack(VideoTrackBean.danmu(searchDanmu))
-        }
-    }
-
     private fun initPlayer() {
         videoController.apply {
             setBatteryHelper(batteryHelper)
@@ -238,19 +181,6 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
                 popupManager.dismiss()
                 finish()
             }
-            //弹幕屏蔽
-            observerDanmuBlock(
-                cloudBlock = viewModel.cloudDanmuBlockLiveData,
-                add = { keyword, isRegex -> viewModel.addDanmuBlock(keyword, isRegex) },
-                remove = { id -> viewModel.removeDanmuBlock(id) },
-                queryAll = { viewModel.localDanmuBlockLiveData }
-            )
-            //弹幕搜索
-            observerDanmuSearch(
-                search = { danmuViewModel.searchDanmu(it) },
-                download = { danmuViewModel.downloadDanmu(it) },
-                searchResult = { danmuViewModel.danmuSearchLiveData }
-            )
             //进入悬浮窗模式
             observerEnterPopupMode {
                 enterPopupMode()
@@ -306,23 +236,11 @@ private fun updatePlayer(source: BaseVideoSource) {
     private fun afterInitPlayer() {
         val source = videoSource ?: return
 
-        //设置本地视频文件的父文件夹，用于选取弹、字幕
+        //设置本地视频文件的父文件夹，用于选取字幕
         if (source.getMediaType() == MediaType.LOCAL_STORAGE) {
             File(source.getVideoUrl()).parentFile?.absolutePath?.let {
                 PlayerInitializer.selectSourceDirectory = it
             }
-        }
-
-        // 视频已绑定弹幕，直接加载，否则尝试匹配弹幕
-        val historyDanmu = source.getDanmu()
-        if (historyDanmu != null) {
-            videoController.addExtendTrack(VideoTrackBean.danmu(historyDanmu))
-        } else if (
-            DanmuConfig.isAutoMatchDanmu()
-            && source.getMediaType() != MediaType.FTP_SERVER
-            && popupManager.isShowing().not()
-        ) {
-            danmuViewModel.matchDanmu(source)
         }
 
         // 视频已绑定字幕，直接加载
@@ -385,22 +303,6 @@ private fun updatePlayer(source: BaseVideoSource) {
             VLCHWDecode.valueOf(PlayerConfig.getUseVLCHWDecoder())
         PlayerInitializer.Player.vlcAudioOutput =
             VLCAudioOutput.valueOf(PlayerConfig.getUseVLCAudioOutput())
-
-        //弹幕配置
-        PlayerInitializer.Danmu.size = DanmuConfig.getDanmuSize()
-        PlayerInitializer.Danmu.speed = DanmuConfig.getDanmuSpeed()
-        PlayerInitializer.Danmu.alpha = DanmuConfig.getDanmuAlpha()
-        PlayerInitializer.Danmu.stoke = DanmuConfig.getDanmuStoke()
-        PlayerInitializer.Danmu.topDanmu = DanmuConfig.isShowTopDanmu()
-        PlayerInitializer.Danmu.mobileDanmu = DanmuConfig.isShowMobileDanmu()
-        PlayerInitializer.Danmu.bottomDanmu = DanmuConfig.isShowBottomDanmu()
-        PlayerInitializer.Danmu.maxScrollLine = DanmuConfig.getDanmuScrollMaxLine()
-        PlayerInitializer.Danmu.maxTopLine = DanmuConfig.getDanmuTopMaxLine()
-        PlayerInitializer.Danmu.maxBottomLine = DanmuConfig.getDanmuBottomMaxLine()
-        PlayerInitializer.Danmu.maxNum = DanmuConfig.getDanmuMaxCount()
-        PlayerInitializer.Danmu.cloudBlock = DanmuConfig.isCloudDanmuBlock()
-        PlayerInitializer.Danmu.updateInChoreographer = DanmuConfig.isDanmuUpdateInChoreographer()
-        PlayerInitializer.Danmu.language = DanmakuLanguage.formValue(DanmuConfig.getDanmuLanguage())
 
         //字幕配置
         PlayerInitializer.Subtitle.textSize = SubtitleConfig.getTextSize()
