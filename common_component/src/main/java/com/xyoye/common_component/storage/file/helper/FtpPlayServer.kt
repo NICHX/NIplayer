@@ -8,18 +8,12 @@ import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
-
-/**
- * Created by XYJ on 2023/1/17.
- */
 
 class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(port) {
 
-    private var mStorageFile: FtpStorageFile? = null
-    private var mStorage: FtpStorage? = null
-    private var mContentType: String = "video/*"
+    private val urlFileMap = ConcurrentHashMap<String, Pair<FtpStorage, FtpStorageFile>>()
 
     private val resourceNotFound by lazy {
         resourceNotFoundResponse()
@@ -34,7 +28,6 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
 
     companion object {
 
-        //随机端口
         private fun randomPort() = Random.nextInt(20000, 30000)
 
         @JvmStatic
@@ -51,23 +44,26 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
     }
 
     override fun serve(session: IHTTPSession): Response {
-        val storage = mStorage ?: return resourceNotFound
-        val storageFile = mStorageFile ?: return resourceNotFound
+        val uri = session.uri
+        val entry = urlFileMap[uri]
+        if (entry == null) {
+            return resourceNotFound
+        }
+        val (storage, storageFile) = entry
 
-        //关闭之前打开的数据流
         storage.completePending()
 
-        //解析Range
         val rangeText = session.headers["range"]
         val rangeArray = rangeText?.run {
             RangeUtils.getRange(this, storageFile.fileLength())
         }
 
-        //存在range，且文件长度非0
+        val contentType = resolveContentType(storageFile.filePath())
+
         return if (rangeArray != null && rangeArray[2] != 0L) {
-            getPartialResponse(storage, storageFile, rangeArray, storageFile.fileLength())
+            getPartialResponse(storage, storageFile, rangeArray, storageFile.fileLength(), contentType)
         } else {
-            getOKResponse(storage, storageFile)
+            getOKResponse(storage, storageFile, contentType)
         }
     }
 
@@ -83,20 +79,18 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         storage: FtpStorage,
         storageFile: FtpStorageFile,
         rangeArray: Array<Long>,
-        sourceLength: Long
+        sourceLength: Long,
+        contentType: String
     ): Response {
         val inputStream = getInputStream(storage, storageFile, rangeArray[0])
             ?: return resourceOpenFailed
-        //计算range内容长度
         val rangeLength = rangeArray[1] - rangeArray[0] + 1
-        //响应内容
         val response = newFixedLengthResponse(
             Response.Status.PARTIAL_CONTENT,
-            mContentType,
+            contentType,
             inputStream,
             rangeLength
         )
-        //添加响应头
         val contentRange = "bytes ${rangeArray[0]}-${rangeArray[1]}/$sourceLength"
         response.addHeader("Accept-Ranges", "bytes")
         response.addHeader("Content-Range", contentRange)
@@ -106,13 +100,14 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
 
     private fun getOKResponse(
         storage: FtpStorage,
-        storageFile: FtpStorageFile
+        storageFile: FtpStorageFile,
+        contentType: String
     ): Response {
         val inputStream = getInputStream(storage, storageFile)
             ?: return resourceOpenFailed
         return newChunkedResponse(
             Response.Status.OK,
-            mContentType,
+            contentType,
             inputStream
         )
     }
@@ -133,12 +128,20 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         )
     }
 
-    private fun getContentType(filePath: String): String {
+    private fun resolveContentType(filePath: String): String {
         if (filePath.isEmpty()) {
             return "video/*"
         }
         val extension = getFileExtension(filePath)
-        return "video/$extension"
+        return when (extension.lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "bmp" -> "image/bmp"
+            "webp" -> "image/webp"
+            "heif", "heic" -> "image/heic"
+            else -> "video/$extension"
+        }
     }
 
     suspend fun startSync(timeoutMs: Long = 5000): Boolean {
@@ -173,10 +176,8 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         storage: FtpStorage,
         storageFile: FtpStorageFile
     ): String {
-        mStorage = storage
-        mStorageFile = storageFile
-        mContentType = getContentType(storageFile.filePath())
-        val encodeFileName = URLEncoder.encode(storageFile.fileName(), "utf-8")
-        return "http://127.0.0.1:$listeningPort/$encodeFileName"
+        val urlPath = "/" + storageFile.uniqueKey()
+        urlFileMap[urlPath] = storage to storageFile
+        return "http://127.0.0.1:$listeningPort$urlPath"
     }
 }

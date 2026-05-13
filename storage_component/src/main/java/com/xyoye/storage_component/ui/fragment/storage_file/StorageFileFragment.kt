@@ -51,6 +51,8 @@ class StorageFileFragment :
     
     // 保存当前文件列表引用
     private var currentFileList: List<StorageFile> = emptyList()
+
+    fun getCurrentFileList(): List<StorageFile> = currentFileList
     
     // 文件唯一键到列表位置的映射，用于O(1)查找
     private val fileIndexMap = HashMap<String, Int>()
