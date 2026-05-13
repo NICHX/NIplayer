@@ -27,10 +27,12 @@ import java.util.concurrent.LinkedBlockingQueue
  * 用于为网络存储的视频和图片文件生成缩略图并缓存
  */
 object ThumbnailGeneratorManager {
+    // 缩略图最大宽度
+    private const val THUMBNAIL_MAX_WIDTH = 320
     // 单次处理的文件数量
-    private const val BATCH_SIZE = 3
+    private const val BATCH_SIZE = 6
     // 文件处理之间的延迟（毫秒）
-    private const val PROCESS_DELAY_MS = 100L
+    private const val PROCESS_DELAY_MS = 50L
     
     // 协程作用域
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -224,21 +226,20 @@ object ThumbnailGeneratorManager {
                 mediaRetriever.setDataSource(playUrl)
             }
 
-            // 获取视频时长
-            val durationStr = mediaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            val duration = durationStr?.toLongOrNull() ?: 0L
-            
-            // 在视频 10% 位置获取帧
-            val frameTime = if (duration > 0) (duration * 0.1).toLong() * 1000 else 0L
-
-            // 获取视频帧
+            // 获取视频第一个关键帧作为缩略图
             val bitmap = mediaRetriever.getFrameAtTime(
-                frameTime,
+                0,
                 MediaMetadataRetriever.OPTION_CLOSEST_SYNC
             ) ?: return@withContext false
 
+            // 缩放到固定宽度，减少存储和后续加载开销
+            val scaledBitmap = resizeBitmap(bitmap, THUMBNAIL_MAX_WIDTH)
+            if (scaledBitmap != bitmap) {
+                bitmap.recycle()
+            }
+
             // 保存缩略图
-            success = saveBitmapToFile(bitmap, coverFile)
+            success = saveBitmapToFile(scaledBitmap, coverFile)
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "视频缩略图生成失败: ${file.fileName()}", e)
         } finally {
@@ -312,6 +313,18 @@ object ThumbnailGeneratorManager {
     }
 
     /**
+     * 将 Bitmap 等比缩放到指定宽度
+     */
+    private fun resizeBitmap(bitmap: Bitmap, maxWidth: Int): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width <= maxWidth) return bitmap
+        val scale = maxWidth.toFloat() / width
+        val newHeight = (height * scale).toInt()
+        return Bitmap.createScaledBitmap(bitmap, maxWidth, newHeight, true)
+    }
+
+    /**
      * 将 Bitmap 保存到文件
      */
     private fun saveBitmapToFile(bitmap: Bitmap, file: File): Boolean {
@@ -322,7 +335,7 @@ object ThumbnailGeneratorManager {
             file.parentFile?.mkdirs()
 
             fos = FileOutputStream(file)
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, fos)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 60, fos)
             fos.flush()
             success = true
         } catch (e: Exception) {

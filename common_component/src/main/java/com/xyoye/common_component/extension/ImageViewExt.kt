@@ -44,7 +44,7 @@ fun ImageView.loadVideoCover(image: File) {
         transformations(RoundedCornersTransformation(5f.dp()))
         diskCachePolicy(CachePolicy.DISABLED)
         memoryCachePolicy(CachePolicy.DISABLED)
-        videoFramePercent(0.1)
+        videoFramePercent(0.0)
     }
 }
 
@@ -52,10 +52,16 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
     val source = file.fileCover()
     val resourceType = source.resourceType()
 
-    // 根据是否有缓存缩略图来决定缓存策略
-    // 如果是我们自己生成的缩略图文件，启用缓存；否则按原逻辑
+    // 根据是否有缓存缩略图来决定显示模式和缓存策略
     val hasCachedThumbnail = source != null && File(source).exists() && File(source).length() > 0
-    
+
+    // 有真实缩略图时使用centerCrop填满容器，否则使用fitCenter防止默认图标溢出
+    scaleType = if (hasCachedThumbnail) {
+        ImageView.ScaleType.CENTER_CROP
+    } else {
+        ImageView.ScaleType.FIT_CENTER
+    }
+
     val diskCachePolicy = if (hasCachedThumbnail) {
         CachePolicy.ENABLED
     } else if (resourceType == ResourceType.File) {
@@ -63,7 +69,7 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
     } else {
         CachePolicy.ENABLED
     }
-    
+
     val memoryCachePolicy = if (hasCachedThumbnail) {
         CachePolicy.ENABLED
     } else if (resourceType == ResourceType.File) {
@@ -90,8 +96,8 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
         memoryCachePolicy(memoryCachePolicy)
         // 限制加载尺寸，减少内存占用
         size(Size.ORIGINAL)
-        // 统一使用视频10%位置作为缩略图，避免黑屏
-        videoFramePercent(0.1)
+        // 统一使用视频第一个关键帧作为缩略图
+        videoFramePercent(0.0)
         // 允许硬件位图
         allowHardware(true)
         // 允许R硬件配置
