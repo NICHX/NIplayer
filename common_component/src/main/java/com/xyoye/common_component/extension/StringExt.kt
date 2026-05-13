@@ -29,6 +29,12 @@ fun String?.toCoverFile(): File? {
     return File(PathHelper.getVideoCoverDirectory(), this)
 }
 
+fun String?.toQuickCoverFile(): File? {
+    if (this.isNullOrEmpty())
+        return null
+    return File(PathHelper.getVideoCoverDirectory(), "${this}_quick")
+}
+
 fun String.addToClipboard() {
     val clipboard = BaseApplication.getAppContext()
         .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

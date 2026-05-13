@@ -108,8 +108,7 @@ class FtpStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             return null
         }
         val playServer = FtpPlayServer.getInstance()
-        val serverStarted = playServer.startSync()
-        if (serverStarted.not()) {
+        if (!playServer.startSync()) {
             return null
         }
         return playServer.generatePlayUrl(this, file)
