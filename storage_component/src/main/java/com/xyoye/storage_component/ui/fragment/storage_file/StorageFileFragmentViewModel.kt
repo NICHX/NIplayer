@@ -63,7 +63,7 @@ class StorageFileFragmentViewModel : BaseViewModel() {
                 .apply { _fileLiveData.postValue(this) }
                 .also { filesSnapshot = it }
             
-            // 启动缩略图生成
+            // 立即启动缩略图生成，不等待UI布局
             ThumbnailGeneratorManager.startGenerateThumbnails(fileList, storage)
         }
     }

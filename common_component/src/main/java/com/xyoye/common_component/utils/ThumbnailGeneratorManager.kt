@@ -32,7 +32,7 @@ object ThumbnailGeneratorManager {
     // 单次处理的文件数量
     private const val BATCH_SIZE = 6
     // 文件处理之间的延迟（毫秒）
-    private const val PROCESS_DELAY_MS = 50L
+    private const val PROCESS_DELAY_MS = 10L
     
     // 协程作用域
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -79,8 +79,9 @@ object ThumbnailGeneratorManager {
      * 开始为文件列表生成缩略图
      * @param files 文件列表
      * @param storage 所属存储
+     * @param priorityKeys 优先处理的文件唯一键集合（当前屏幕可见项）
      */
-    fun startGenerateThumbnails(files: List<StorageFile>, storage: Storage) {
+    fun startGenerateThumbnails(files: List<StorageFile>, storage: Storage, priorityKeys: Set<String> = emptySet()) {
         if (!isNetworkStorage(storage)) {
             return
         }
@@ -88,9 +89,13 @@ object ThumbnailGeneratorManager {
         // 清空队列并添加新文件
         synchronized(pendingFiles) {
             pendingFiles.clear()
-            files.filter { 
+            val filteredFiles = files.filter { 
                 (it.isVideoFile() || it.isImageFile()) && !hasCachedThumbnail(it) 
-            }.forEach { pendingFiles.offer(it) }
+            }
+            // 优先处理屏幕可见项
+            val (priority, others) = filteredFiles.partition { it.uniqueKey() in priorityKeys }
+            priority.forEach { pendingFiles.offer(it) }
+            others.forEach { pendingFiles.offer(it) }
         }
 
         // 开始处理
@@ -108,6 +113,22 @@ object ThumbnailGeneratorManager {
         // 只有队列还有文件时才继续处理
         if (pendingFiles.isNotEmpty()) {
             processNextBatch()
+        }
+    }
+
+    /**
+     * 重新排列待处理队列，将指定文件移到队首优先处理
+     * @param priorityKeys 需要优先处理的文件唯一键集合
+     */
+    fun reprioritize(priorityKeys: Set<String>) {
+        if (priorityKeys.isEmpty()) return
+        synchronized(pendingFiles) {
+            if (pendingFiles.isEmpty()) return
+            val remaining = mutableListOf<StorageFile>()
+            pendingFiles.drainTo(remaining)
+            val (priority, others) = remaining.partition { it.uniqueKey() in priorityKeys }
+            priority.forEach { pendingFiles.offer(it) }
+            others.forEach { pendingFiles.offer(it) }
         }
     }
 
@@ -335,7 +356,7 @@ object ThumbnailGeneratorManager {
             file.parentFile?.mkdirs()
 
             fos = FileOutputStream(file)
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 60, fos)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 40, fos)
             fos.flush()
             success = true
         } catch (e: Exception) {

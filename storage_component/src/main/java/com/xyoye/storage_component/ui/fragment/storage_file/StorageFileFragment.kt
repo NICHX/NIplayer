@@ -83,6 +83,11 @@ class StorageFileFragment :
             dataBinding.refreshLayout.isRefreshing = false
             ownerActivity.onDirectoryOpened(it)
             dataBinding.storageFileRv.setData(it)
+            // 布局完成后，将可见项移到队列前面优先处理
+            dataBinding.storageFileRv.post {
+                val visibleKeys = getVisibleFileKeys()
+                ThumbnailGeneratorManager.reprioritize(visibleKeys)
+            }
             //延迟500毫秒，等待列表加载完成后，再请求焦点
             dataBinding.storageFileRv.postDelayed({ requestFocus() }, 500)
         }
@@ -138,7 +143,9 @@ class StorageFileFragment :
                     when (newState) {
                         RecyclerView.SCROLL_STATE_IDLE -> {
                             isScrolling = false
-                            // 当滚动停止时，继续生成缩略图
+                            // 当滚动停止时，优先生成当前可见项的缩略图
+                            val visibleKeys = getVisibleFileKeys()
+                            ThumbnailGeneratorManager.reprioritize(visibleKeys)
                             ThumbnailGeneratorManager.continueGenerateThumbnails(0)
                             // 显示所有待处理的缩略图
                             displayPendingThumbnails()
@@ -184,6 +191,24 @@ class StorageFileFragment :
         }
         val targetIndex = if (reversed) dataBinding.storageFileRv.childCount - 1 else 0
         dataBinding.storageFileRv.getChildAt(targetIndex)?.requestFocus()
+    }
+
+    /**
+     * 获取当前屏幕可见文件的唯一键集合，用于优先生成缩略图
+     */
+    private fun getVisibleFileKeys(): Set<String> {
+        val layoutManager = dataBinding.storageFileRv.layoutManager ?: return emptySet()
+        if (layoutManager !is androidx.recyclerview.widget.LinearLayoutManager) {
+            return emptySet()
+        }
+        val firstVisible = layoutManager.findFirstVisibleItemPosition()
+        val lastVisible = layoutManager.findLastVisibleItemPosition()
+        if (firstVisible < 0 || lastVisible < 0) {
+            return emptySet()
+        }
+        return (firstVisible..lastVisible)
+            .mapNotNull { index -> currentFileList.getOrNull(index)?.uniqueKey() }
+            .toSet()
     }
 
     /**
