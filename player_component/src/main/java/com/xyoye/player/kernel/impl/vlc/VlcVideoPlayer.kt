@@ -324,7 +324,7 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
         if (headers?.isNotEmpty() == true) {
             val proxyServer = VlcProxyServer.getInstance()
             if (!proxyServer.isAlive) {
-                proxyServer.start()
+                proxyServer.safeStart()
             }
             val proxyUrl = proxyServer.getInputStreamUrl(path, headers)
             return Media(libVlc, Uri.parse(proxyUrl))

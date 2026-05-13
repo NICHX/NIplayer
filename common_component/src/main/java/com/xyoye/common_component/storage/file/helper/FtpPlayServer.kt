@@ -15,7 +15,7 @@ import kotlin.random.Random
  * Created by XYJ on 2023/1/17.
  */
 
-class FtpPlayServer private constructor() : NanoHTTPD(randomPort()) {
+class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(port) {
     //FTP暂时无法处理range
     private val skipEnable = false
 
@@ -41,6 +41,15 @@ class FtpPlayServer private constructor() : NanoHTTPD(randomPort()) {
 
         @JvmStatic
         fun getInstance() = Holder.instance
+    }
+
+    private fun updatePort(newPort: Int) {
+        try {
+            val portField = NanoHTTPD::class.java.getDeclaredField("myPort")
+            portField.isAccessible = true
+            portField.setInt(this, newPort)
+        } catch (ignored: Exception) {
+        }
     }
 
     override fun serve(session: IHTTPSession): Response {
@@ -136,16 +145,28 @@ class FtpPlayServer private constructor() : NanoHTTPD(randomPort()) {
         if (wasStarted()) {
             return true
         }
-        return withTimeout(timeoutMs) {
-            start()
-            while (isActive) {
-                if (wasStarted()) {
-                    return@withTimeout true
+        var lastError: Exception? = null
+        for (attempt in 0..5) {
+            try {
+                return withTimeout(timeoutMs) {
+                    start()
+                    while (isActive) {
+                        if (wasStarted()) {
+                            return@withTimeout true
+                        }
+                    }
+                    stop()
+                    return@withTimeout false
                 }
+            } catch (e: java.io.IOException) {
+                lastError = e
+                stop()
+                val newPort = Random.nextInt(20000, 30000)
+                updatePort(newPort)
             }
-            stop()
-            return@withTimeout false
         }
+        lastError?.printStackTrace()
+        return false
     }
 
     fun generatePlayUrl(

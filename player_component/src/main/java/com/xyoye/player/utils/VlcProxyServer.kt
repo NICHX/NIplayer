@@ -12,7 +12,7 @@ import kotlin.random.Random
  * Created by xyoye on 2021/5/2.
  */
 
-class VlcProxyServer private constructor() : NanoHTTPD(randomPort()) {
+class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(port) {
     private lateinit var url: String
     private lateinit var headers: Map<String, String>
 
@@ -26,6 +26,29 @@ class VlcProxyServer private constructor() : NanoHTTPD(randomPort()) {
 
         @JvmStatic
         fun getInstance() = Holder.instance
+    }
+
+    private fun updatePort(newPort: Int) {
+        try {
+            val portField = NanoHTTPD::class.java.getDeclaredField("myPort")
+            portField.isAccessible = true
+            portField.setInt(this, newPort)
+        } catch (ignored: Exception) {
+        }
+    }
+
+    fun safeStart() {
+        if (isAlive) return
+        for (attempt in 0..5) {
+            try {
+                start()
+                return
+            } catch (e: java.io.IOException) {
+                stop()
+                val newPort = Random.nextInt(30000, 40000)
+                updatePort(newPort)
+            }
+        }
     }
 
     override fun serve(session: IHTTPSession?): Response {

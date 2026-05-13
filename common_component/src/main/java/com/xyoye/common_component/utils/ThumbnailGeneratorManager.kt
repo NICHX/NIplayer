@@ -20,6 +20,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Collections
+import java.util.LinkedList
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
 
@@ -32,12 +33,17 @@ object ThumbnailGeneratorManager {
     private const val THUMBNAIL_MAX_WIDTH = 320
     // 单次处理的文件数量
     private const val BATCH_SIZE = 6
+    // 最大重试次数
+    private const val MAX_RETRY_COUNT = 2
     
     // 协程作用域
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // 当前正在生成缩略图的任务（确保同时只有一个任务）
     private val currentTasks = ConcurrentHashMap.newKeySet<String>()
+    
+    // 文件生成失败的重试次数
+    private val retryCountMap = ConcurrentHashMap<String, Int>()
     
     // 是否正在处理缩略图生成
     private val _isGenerating = MutableStateFlow(false)
@@ -48,6 +54,46 @@ object ThumbnailGeneratorManager {
     
     // 处理中的标志
     private var isProcessing = false
+
+    // Bitmap 复用池，减少GC压力
+    private val bitmapPool = LinkedList<Bitmap>()
+    private const val BITMAP_POOL_MAX_SIZE = 8
+
+    private fun obtainReusableBitmap(width: Int, height: Int): Bitmap? {
+        synchronized(bitmapPool) {
+            val iterator = bitmapPool.iterator()
+            while (iterator.hasNext()) {
+                val candidate = iterator.next()
+                if (candidate.isRecycled) {
+                    iterator.remove()
+                    continue
+                }
+                if (candidate.width >= width && candidate.height >= height) {
+                    iterator.remove()
+                    return candidate
+                }
+            }
+            return null
+        }
+    }
+
+    private fun recycleBitmapToPool(bitmap: Bitmap) {
+        if (bitmap.isRecycled || bitmap.isMutable.not()) return
+        synchronized(bitmapPool) {
+            if (bitmapPool.size < BITMAP_POOL_MAX_SIZE) {
+                bitmapPool.addLast(bitmap)
+            } else {
+                bitmap.recycle()
+            }
+        }
+    }
+
+    private fun clearBitmapPool() {
+        synchronized(bitmapPool) {
+            bitmapPool.forEach { it.recycle() }
+            bitmapPool.clear()
+        }
+    }
 
     // 缩略图生成完成回调
     interface ThumbnailCallback {
@@ -88,6 +134,7 @@ object ThumbnailGeneratorManager {
         // 清空队列并添加新文件
         synchronized(pendingFiles) {
             pendingFiles.clear()
+            retryCountMap.clear()
             val filteredFiles = files.filter { 
                 (it.isVideoFile() || it.isImageFile()) && !hasCachedThumbnail(it) 
             }
@@ -165,12 +212,28 @@ object ThumbnailGeneratorManager {
         _isGenerating.value = true
 
         scope.launch {
-            filesToProcess.map { file ->
+            val results = filesToProcess.map { file ->
                 async {
-                    if (hasCachedThumbnail(file)) return@async
+                    if (hasCachedThumbnail(file)) return@async true
                     generateThumbnailForFile(file)
                 }
             }.awaitAll()
+
+            results.forEachIndexed { index, success ->
+                if (!success) {
+                    val file = filesToProcess[index]
+                    val retryCount = retryCountMap.merge(file.uniqueKey(), 1) { old, _ -> old + 1 } ?: 1
+                    if (retryCount <= MAX_RETRY_COUNT) {
+                        synchronized(pendingFiles) {
+                            pendingFiles.offer(file)
+                        }
+                    } else {
+                        retryCountMap.remove(file.uniqueKey())
+                        DDLog.e("ThumbnailGenerator", "缩略图生成已重试${MAX_RETRY_COUNT}次，放弃: ${file.fileName()}")
+                    }
+                }
+            }
+
             isProcessing = false
             processNextBatch()
         }
@@ -179,23 +242,21 @@ object ThumbnailGeneratorManager {
     /**
      * 为单个文件生成缩略图
      */
-    private suspend fun generateThumbnailForFile(file: StorageFile) {
+    private suspend fun generateThumbnailForFile(file: StorageFile): Boolean {
         val uniqueKey = file.uniqueKey()
 
-        // 避免重复处理
         if (currentTasks.contains(uniqueKey)) {
-            return
+            return false
         }
 
         currentTasks.add(uniqueKey)
         var thumbnailGenerated = false
 
         try {
-            val coverFile = uniqueKey.toCoverFile() ?: return
+            val coverFile = uniqueKey.toCoverFile() ?: return false
 
-            // 再次检查是否有缓存
             if (coverFile.exists() && coverFile.length() > 0) {
-                return
+                return false
             }
 
             if (file.isVideoFile()) {
@@ -207,13 +268,14 @@ object ThumbnailGeneratorManager {
             DDLog.e("ThumbnailGenerator", "生成缩略图失败: ${file.fileName()}", e)
         } finally {
             currentTasks.remove(uniqueKey)
-            // 如果缩略图生成成功，通知回调
             if (thumbnailGenerated) {
+                retryCountMap.remove(uniqueKey)
                 withContext(Dispatchers.Main) {
                     thumbnailCallback?.onThumbnailGenerated(file)
                 }
             }
         }
+        return thumbnailGenerated
     }
 
     /**
@@ -249,6 +311,7 @@ object ThumbnailGeneratorManager {
 
             // 保存缩略图
             success = saveBitmapToFile(scaledBitmap, coverFile)
+            recycleBitmapToPool(scaledBitmap)
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "视频缩略图生成失败: ${file.fileName()}", e)
         } finally {
@@ -290,9 +353,18 @@ object ThumbnailGeneratorManager {
             options.inSampleSize = calculateInSampleSize(options, 400, 400)
             options.inJustDecodeBounds = false
 
+            val reusable = obtainReusableBitmap(
+                options.outWidth / options.inSampleSize,
+                options.outHeight / options.inSampleSize
+            )
+            if (reusable != null) {
+                options.inBitmap = reusable
+            }
+
             val bitmap = BitmapFactory.decodeStream(decodeStream, null, options) ?: return@withContext false
 
             success = saveBitmapToFile(bitmap, coverFile)
+            recycleBitmapToPool(bitmap)
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "图片缩略图生成失败: ${file.fileName()}", e)
         } finally {
@@ -368,6 +440,8 @@ object ThumbnailGeneratorManager {
             pendingFiles.clear()
         }
         currentTasks.clear()
+        retryCountMap.clear()
+        clearBitmapPool()
         isProcessing = false
         _isGenerating.value = false
     }

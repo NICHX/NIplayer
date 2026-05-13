@@ -156,9 +156,13 @@ class StorageFileFragment :
                             // 显示所有待处理的缩略图
                             displayPendingThumbnails()
                         }
-                        RecyclerView.SCROLL_STATE_DRAGGING,
+                        RecyclerView.SCROLL_STATE_DRAGGING -> {
+                            isScrolling = true
+                        }
                         RecyclerView.SCROLL_STATE_SETTLING -> {
                             isScrolling = true
+                            val visibleKeys = getVisibleFileKeys()
+                            ThumbnailGeneratorManager.reprioritize(visibleKeys)
                         }
                     }
                 }

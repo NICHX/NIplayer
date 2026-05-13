@@ -51,10 +51,8 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
     val source = file.fileCover()
     val resourceType = source.resourceType()
 
-    // 根据是否有缓存缩略图来决定显示模式和缓存策略
-    val hasCachedThumbnail = source != null && File(source).exists() && File(source).length() > 0
+    val hasCachedThumbnail = resourceType == ResourceType.File
 
-    // 有真实缩略图时使用centerCrop填满容器，否则使用fitCenter防止默认图标溢出
     scaleType = if (hasCachedThumbnail) {
         ImageView.ScaleType.CENTER_CROP
     } else {
@@ -77,7 +75,6 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
         CachePolicy.ENABLED
     }
 
-    // 根据文件类型选择不同的默认图标
     val defaultIcon = when {
         file.isVideoFile() -> R.drawable.ic_video_cover
         file.isAudioFile() -> R.drawable.ic_audio_cover
@@ -87,17 +84,13 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
 
     load(source ?: defaultIcon) {
         scale(Scale.FILL)
-        // 禁用淡入效果，加快加载速度
         crossfade(false)
         error(defaultIcon)
         transformations(RoundedCornersTransformation(5f.dp()))
         diskCachePolicy(diskCachePolicy)
         memoryCachePolicy(memoryCachePolicy)
-        // 统一使用视频第一个关键帧作为缩略图
         videoFramePercent(0.0)
-        // 允许硬件位图
         allowHardware(true)
-        // 允许R硬件配置
         allowRgb565(true)
     }
 }
