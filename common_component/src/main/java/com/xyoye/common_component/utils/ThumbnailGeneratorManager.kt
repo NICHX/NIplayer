@@ -3,8 +3,11 @@ package com.xyoye.common_component.utils
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
+import android.net.Uri
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.xyoye.common_component.base.app.BaseApplication
 import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.storage.Storage
@@ -26,7 +29,7 @@ import java.util.concurrent.LinkedBlockingQueue
 
 /**
  * 缩略图生成管理器
- * 用于为网络存储的视频和图片文件生成缩略图并缓存
+ * 用于为所有存储类型（本地、SMB、FTP、WebDav 等）的视图片文件生成缩略图并缓存
  */
 object ThumbnailGeneratorManager {
     // 缩略图最大宽度
@@ -54,6 +57,10 @@ object ThumbnailGeneratorManager {
     
     // 处理中的标志
     private var isProcessing = false
+
+    // 用于序列化 SMB 和 FTP 缩略图生成的互斥锁（按媒体库ID隔离），
+    // 防止并发访问单例的 SmbPlayServer / FtpPlayServer 导致状态冲突
+    private val storageMutexMap = ConcurrentHashMap<String, Mutex>()
 
     // Bitmap 复用池，减少GC压力
     private val bitmapPool = LinkedList<Bitmap>()
@@ -107,30 +114,12 @@ object ThumbnailGeneratorManager {
     }
 
     /**
-     * 判断是否为网络存储类型
-     */
-    private fun isNetworkStorage(storage: Storage): Boolean {
-        return when (storage.library.mediaType) {
-            MediaType.FTP_SERVER,
-            MediaType.WEBDAV_SERVER,
-            MediaType.SMB_SERVER,
-            MediaType.REMOTE_STORAGE,
-            MediaType.ALSIT_STORAGE -> true
-            else -> false
-        }
-    }
-
-    /**
      * 开始为文件列表生成缩略图
      * @param files 文件列表
      * @param storage 所属存储
      * @param priorityKeys 优先处理的文件唯一键集合（当前屏幕可见项）
      */
     fun startGenerateThumbnails(files: List<StorageFile>, storage: Storage, priorityKeys: Set<String> = emptySet()) {
-        if (!isNetworkStorage(storage)) {
-            return
-        }
-
         // 清空队列并添加新文件
         synchronized(pendingFiles) {
             pendingFiles.clear()
@@ -260,7 +249,17 @@ object ThumbnailGeneratorManager {
             }
 
             if (file.isVideoFile()) {
-                thumbnailGenerated = generateVideoThumbnail(file, coverFile)
+                // SMB/FTP 使用单例服务器，需要序列化访问，防止并发冲突
+                val mediaType = file.storage.library.mediaType
+                if (mediaType == MediaType.SMB_SERVER || mediaType == MediaType.FTP_SERVER) {
+                    val libraryId = file.storage.library.id.toString()
+                    val mutex = storageMutexMap.getOrPut(libraryId) { Mutex() }
+                    thumbnailGenerated = mutex.withLock {
+                        generateVideoThumbnail(file, coverFile)
+                    }
+                } else {
+                    thumbnailGenerated = generateVideoThumbnail(file, coverFile)
+                }
             } else if (file.isImageFile()) {
                 thumbnailGenerated = generateImageThumbnail(file, coverFile)
             }
@@ -289,12 +288,17 @@ object ThumbnailGeneratorManager {
             // 获取播放URL
             val playUrl = file.storage.createPlayUrl(file) ?: return@withContext false
 
-            // 设置数据源
-            val headers = file.storage.getNetworkHeaders()
-            if (headers != null) {
-                mediaRetriever.setDataSource(playUrl, headers)
+            // 设置数据源，支持 content:// URI
+            val playUri = Uri.parse(playUrl)
+            if (playUri.scheme == "content") {
+                mediaRetriever.setDataSource(BaseApplication.getAppContext(), playUri)
             } else {
-                mediaRetriever.setDataSource(playUrl)
+                val headers = file.storage.getNetworkHeaders()
+                if (headers != null) {
+                    mediaRetriever.setDataSource(playUrl, headers)
+                } else {
+                    mediaRetriever.setDataSource(playUrl)
+                }
             }
 
             // 获取视频第一个关键帧作为缩略图
@@ -449,6 +453,7 @@ object ThumbnailGeneratorManager {
         }
         currentTasks.clear()
         retryCountMap.clear()
+        storageMutexMap.clear()
         clearBitmapPool()
         ThumbnailMemoryCache.clear()
         isProcessing = false

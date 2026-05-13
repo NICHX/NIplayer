@@ -16,8 +16,6 @@ import kotlin.random.Random
  */
 
 class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(port) {
-    //FTP暂时无法处理range
-    private val skipEnable = false
 
     private var mStorageFile: FtpStorageFile? = null
     private var mStorage: FtpStorage? = null
@@ -65,8 +63,8 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
             RangeUtils.getRange(this, storageFile.fileLength())
         }
 
-        //存在range，且contentLength != 0
-        return if (skipEnable && rangeArray != null && rangeArray[2] != 0L) {
+        //存在range，且文件长度非0
+        return if (rangeArray != null && rangeArray[2] != 0L) {
             getPartialResponse(storage, storageFile, rangeArray, storageFile.fileLength())
         } else {
             getOKResponse(storage, storageFile)
@@ -89,18 +87,20 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
     ): Response {
         val inputStream = getInputStream(storage, storageFile, rangeArray[0])
             ?: return resourceOpenFailed
+        //计算range内容长度
+        val rangeLength = rangeArray[1] - rangeArray[0] + 1
         //响应内容
         val response = newFixedLengthResponse(
             Response.Status.PARTIAL_CONTENT,
             mContentType,
             inputStream,
-            sourceLength
+            rangeLength
         )
         //添加响应头
         val contentRange = "bytes ${rangeArray[0]}-${rangeArray[1]}/$sourceLength"
         response.addHeader("Accept-Ranges", "bytes")
         response.addHeader("Content-Range", contentRange)
-        response.addHeader("Content-Length", rangeArray[2].toString())
+        response.addHeader("Content-Length", rangeLength.toString())
         return response
     }
 

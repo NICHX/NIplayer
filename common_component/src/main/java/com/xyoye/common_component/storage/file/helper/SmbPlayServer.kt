@@ -91,24 +91,33 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         rangeArray: Array<Long>,
         sourceLength: Long
     ): Response {
+        //计算range内容长度
+        val rangeLength = rangeArray[1] - rangeArray[0] + 1
+
+        //可靠跳过指定字节数（InputStream.skip()不保证跳过全部请求的字节数）
         try {
-            //设置Offset
-            inputStream.skip(rangeArray[0])
+            var remaining = rangeArray[0]
+            while (remaining > 0) {
+                val skipped = inputStream.skip(remaining)
+                if (skipped <= 0) break
+                remaining -= skipped
+            }
         } catch (e: IOException) {
             e.printStackTrace()
         }
+
         //响应内容
         val response = newFixedLengthResponse(
             Response.Status.PARTIAL_CONTENT,
             mContentType,
             inputStream,
-            sourceLength
+            rangeLength
         )
         //添加响应头
         val contentRange = "bytes ${rangeArray[0]}-${rangeArray[1]}/$sourceLength"
         response.addHeader("Accept-Ranges", "bytes")
         response.addHeader("Content-Range", contentRange)
-        response.addHeader("Content-Length", rangeArray[2].toString())
+        response.addHeader("Content-Length", rangeLength.toString())
         return response
     }
 
