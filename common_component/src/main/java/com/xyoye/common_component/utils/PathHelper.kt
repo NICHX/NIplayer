@@ -24,7 +24,9 @@ object PathHelper {
      * 获取保存弹幕的文件夹
      */
     fun getDanmuDirectory(): File {
-        return getCacheDirectory(CacheType.DANMU_CACHE)
+        return File(getCachePath(), "danmu").apply {
+            checkDirectory(this)
+        }
     }
 
     /**

@@ -88,7 +88,7 @@ class CacheManagerActivity : BaseActivity<CacheManagerViewModel, ActivityCacheMa
             "清除${cacheType?.displayName ?: "其它文件"}缓存"
         }
         val message = cacheType?.clearTips ?: "确认清除其它缓存？"
-        val delay = cacheType == CacheType.DANMU_CACHE || cacheType == CacheType.SUBTITLE_CACHE
+        val delay = cacheType == CacheType.SUBTITLE_CACHE
 
         CommonDialog.Builder(this).run {
             tips = title

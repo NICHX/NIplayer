@@ -35,9 +35,7 @@ class CacheManagerViewModel : BaseViewModel() {
         val cacheDirs = mutableListOf<CacheBean>()
         CacheType.values().forEach {
             var fileCount = 0
-            if (it == CacheType.DANMU_CACHE) {
-                fileCount = getDanmuFileCount(PathHelper.getDanmuDirectory())
-            } else if (it == CacheType.SUBTITLE_CACHE) {
+            if (it == CacheType.SUBTITLE_CACHE) {
                 fileCount = getSubtitleFileCount(PathHelper.getSubtitleDirectory())
             }
             val cacheBean = CacheBean(it, fileCount, getCacheSize(it))
@@ -112,27 +110,6 @@ class CacheManagerViewModel : BaseViewModel() {
             }
         }
 
-    }
-
-    /**
-     * 获取文件夹内弹幕文件数量
-     */
-    private fun getDanmuFileCount(danmuDirectory: File): Int {
-        if (!danmuDirectory.exists())
-            return 0
-        if (danmuDirectory.isFile && isDanmuFile(danmuDirectory.absolutePath))
-            return 1
-
-        var totalCount = 0
-        danmuDirectory.listFiles()?.forEach {
-            if (it.isDirectory) {
-                totalCount += getDanmuFileCount(it)
-            } else if (isDanmuFile(it.absolutePath)) {
-                totalCount += 1
-            }
-        }
-
-        return totalCount
     }
 
     /**
