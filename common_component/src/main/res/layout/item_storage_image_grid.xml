@@ -15,7 +15,7 @@
             android:layout_height="0dp"
             android:background="@drawable/background_item_press"
             app:layout_constraintBottom_toTopOf="@id/title_tv"
-            app:layout_constraintDimensionRatio="3:4"
+            app:layout_constraintDimensionRatio="1:1"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
@@ -23,25 +23,8 @@
                 android:id="@+id/cover_iv"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="@drawable/background_video_cover"
-                tools:src="@drawable/ic_video" />
-
-            <androidx.appcompat.widget.AppCompatTextView
-                android:id="@+id/duration_tv"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentEnd="true"
-                android:layout_alignParentBottom="true"
-                android:background="@drawable/background_duration"
-                android:gravity="center"
-                android:maxLines="1"
-                android:paddingStart="3dp"
-                android:paddingEnd="3dp"
-                android:textColor="@color/text_white_immutable"
-                android:textSize="10sp"
-                android:visibility="gone"
-                tools:text="00:00"
-                tools:visibility="visible" />
+                android:background="@drawable/background_image_cover"
+                tools:src="@drawable/ic_image_placeholder" />
 
         </FrameLayout>
 
@@ -49,7 +32,7 @@
             android:id="@+id/title_tv"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="4dp"
             android:ellipsize="end"
             android:gravity="center"
             android:maxLines="2"
@@ -58,18 +41,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/main_action_fl"
-            tools:text="视频标题" />
-
-        <ImageView
-            android:id="@+id/more_action_iv"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:padding="4dp"
-            android:background="@drawable/background_item_press"
-            android:src="@drawable/ic_more_video_action"
-            android:visibility="gone"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="@id/title_tv" />
+            tools:text="图片文件名.png" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

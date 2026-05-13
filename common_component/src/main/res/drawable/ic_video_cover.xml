@@ -1,0 +1,19 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/video_cover_bg" />
+            <corners android:radius="5dp" />
+        </shape>
+    </item>
+    <item android:gravity="center">
+        <vector
+            android:width="32dp"
+            android:height="32dp"
+            android:viewportWidth="32"
+            android:viewportHeight="32">
+            <path
+                android:fillColor="@color/video_icon_color"
+                android:pathData="M4,4h24c1.1,0 2,0.9 2,2v16c0,1.1 -0.9,2 -2,2H4c-1.1,0 -2,-0.9 -2,-2V6c0,-1.1 0.9,-2 2,-2zM12,20l8,-5 -8,-5v10z"/>
+        </vector>
+    </item>
+</layer-list>

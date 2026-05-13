@@ -55,10 +55,18 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
     else
         CachePolicy.ENABLED
 
-    load(source ?: R.drawable.ic_dandanplay) {
+    // 根据文件类型选择不同的默认图标
+    val defaultIcon = when {
+        file.isVideoFile() -> R.drawable.ic_video_cover
+        file.isAudioFile() -> R.drawable.ic_audio_cover
+        file.isImageFile() -> R.drawable.ic_image_cover
+        else -> R.drawable.ic_dandanplay
+    }
+
+    load(source ?: defaultIcon) {
         scale(Scale.FILL)
         crossfade(true)
-        error(R.drawable.ic_dandanplay)
+        error(defaultIcon)
         transformations(RoundedCornersTransformation(5f.dp()))
         diskCachePolicy(cachePolicy)
         memoryCachePolicy(cachePolicy)

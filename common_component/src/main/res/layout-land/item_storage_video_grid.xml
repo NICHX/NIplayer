@@ -23,8 +23,8 @@
                 android:id="@+id/cover_iv"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="@drawable/background_media_cover_placeholder"
-                tools:src="@drawable/ic_dandanplay" />
+                android:background="@drawable/background_video_cover"
+                tools:src="@drawable/ic_video" />
 
             <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/duration_tv"

@@ -96,6 +96,16 @@ interface StorageFile {
     fun isVideoFile(): Boolean
 
     /**
+     * 是否为音频文件
+     */
+    fun isAudioFile(): Boolean
+
+    /**
+     * 是否为图片文件
+     */
+    fun isImageFile(): Boolean
+
+    /**
      * 是否为媒体库路径的父级路径
      */
     fun isStoragePathParent(childPath: String): Boolean

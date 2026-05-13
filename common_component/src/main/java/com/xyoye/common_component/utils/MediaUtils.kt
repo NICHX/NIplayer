@@ -30,7 +30,12 @@ val supportSubtitleExtension = arrayOf(
 
 val supportAudioExtension = arrayOf(
     "mp3", "wav", "pcm", "flac",
-    "ogg", "m4s"
+    "ogg", "m4s", "aac", "ape", "wma", "ac3"
+)
+
+val supportImageExtension = arrayOf(
+    "jpg", "jpeg", "png", "gif",
+    "bmp", "webp", "heif", "heic"
 )
 
 fun isVideoFile(filePath: String): Boolean {
@@ -56,6 +61,11 @@ fun isTorrentFile(filePath: String): Boolean {
 fun isAudioFile(filePath: String): Boolean {
     val extension = getFileExtension(filePath)
     return supportAudioExtension.contains(extension.lowercase(Locale.ROOT))
+}
+
+fun isImageFile(filePath: String): Boolean {
+    val extension = getFileExtension(filePath)
+    return supportImageExtension.contains(extension.lowercase(Locale.ROOT))
 }
 
 object MediaUtils {

@@ -1,0 +1,43 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/image_cover_bg" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    <item android:gravity="center">
+        <vector
+            android:width="40dp"
+            android:height="40dp"
+            android:viewportWidth="40"
+            android:viewportHeight="40">
+            <path
+                android:strokeWidth="2"
+                android:strokeColor="@color/image_icon_color"
+                android:fillColor="@null"
+                android:pathData="M6,8h28c2.2,0 4,1.8 4,4v20c0,2.2 -1.8,4 -4,4H6c-2.2,0 -4,-1.8 -4,-4V12c0,-2.2 1.8,-4 4,-4z"/>
+            <circle
+                cx="12"
+                cy="14"
+                r="4"
+                android:strokeWidth="2"
+                android:strokeColor="@color/image_icon_color"
+                android:fillColor="@null"/>
+            <path
+                android:strokeWidth="2"
+                android:strokeColor="@color/image_icon_color"
+                android:fillColor="@null"
+                android:pathData="M6,28c4,0 8,-2 10,-5"/>
+            <path
+                android:strokeWidth="2"
+                android:strokeColor="@color/image_icon_color"
+                android:fillColor="@null"
+                android:pathData="M16,23c6,-3 14,-3 18,2"/>
+            <path
+                android:strokeWidth="2"
+                android:strokeColor="@color/image_icon_color"
+                android:fillColor="@null"
+                android:pathData="M10,28v10"/>
+        </vector>
+    </item>
+</layer-list>

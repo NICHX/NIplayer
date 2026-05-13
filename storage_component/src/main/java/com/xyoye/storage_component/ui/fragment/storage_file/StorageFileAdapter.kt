@@ -17,8 +17,12 @@ import com.xyoye.common_component.adapter.buildAdapter
 import com.xyoye.common_component.adapter.setupDiffUtil
 import com.xyoye.common_component.adapter.setupVerticalAnimation
 import com.xyoye.common_component.config.RouteTable
+import com.xyoye.common_component.databinding.ItemStorageAudioBinding
+import com.xyoye.common_component.databinding.ItemStorageAudioGridBinding
 import com.xyoye.common_component.databinding.ItemStorageFolderBinding
 import com.xyoye.common_component.databinding.ItemStorageFolderGridBinding
+import com.xyoye.common_component.databinding.ItemStorageImageBinding
+import com.xyoye.common_component.databinding.ItemStorageImageGridBinding
 import com.xyoye.common_component.databinding.ItemStorageVideoBinding
 import com.xyoye.common_component.databinding.ItemStorageVideoGridBinding
 import com.xyoye.common_component.databinding.ItemStorageVideoTagBinding
@@ -100,6 +104,14 @@ class StorageFileAdapter(
                 checkType { data -> isVideoItem(data) }
                 initView(videoListItem())
             }
+            addItem<StorageFile, ItemStorageAudioBinding>(R.layout.item_storage_audio) {
+                checkType { data -> isAudioItem(data) }
+                initView(audioListItem())
+            }
+            addItem<StorageFile, ItemStorageImageBinding>(R.layout.item_storage_image) {
+                checkType { data -> isImageItem(data) }
+                initView(imageListItem())
+            }
         }
     }
 
@@ -127,6 +139,14 @@ class StorageFileAdapter(
                 checkType { data -> isVideoItem(data) }
                 initView(videoGridItem())
             }
+            addItem<StorageFile, ItemStorageAudioGridBinding>(R.layout.item_storage_audio_grid) {
+                checkType { data -> isAudioItem(data) }
+                initView(audioGridItem())
+            }
+            addItem<StorageFile, ItemStorageImageGridBinding>(R.layout.item_storage_image_grid) {
+                checkType { data -> isImageItem(data) }
+                initView(imageGridItem())
+            }
         }
     }
 
@@ -146,7 +166,11 @@ class StorageFileAdapter(
 
     private fun isDirectoryItem(data: Any) = data is StorageFile && data.isDirectory()
 
-    private fun isVideoItem(data: Any) = data is StorageFile && data.isFile()
+    private fun isVideoItem(data: Any) = data is StorageFile && data.isFile() && data.isVideoFile()
+
+    private fun isAudioItem(data: Any) = data is StorageFile && data.isFile() && data.isAudioFile()
+
+    private fun isImageItem(data: Any) = data is StorageFile && data.isFile() && data.isImageFile()
 
     private fun BaseViewHolderCreator<ItemStorageFolderBinding>.directoryListItem() =
         { data: StorageFile ->
@@ -224,6 +248,58 @@ class StorageFileAdapter(
             mainActionFl.setOnLongClickListener {
                 showMoreAction(data, createShareOptions(itemLayout))
                 return@setOnLongClickListener true
+            }
+        }
+    }
+
+    private fun BaseViewHolderCreator<ItemStorageAudioBinding>.audioListItem() = { data: StorageFile ->
+        itemBinding.run {
+            coverIv.loadStorageFileCover(data)
+
+            titleTv.text = data.fileName()
+            titleTv.setTextColor(getTitleColor(data))
+
+            mainActionFl.setOnClickListener {
+                activity.openFile(data)
+            }
+        }
+    }
+
+    private fun BaseViewHolderCreator<ItemStorageAudioGridBinding>.audioGridItem() = { data: StorageFile ->
+        itemBinding.run {
+            coverIv.loadStorageFileCover(data)
+
+            titleTv.text = data.fileName()
+            titleTv.setTextColor(getTitleColor(data))
+
+            mainActionFl.setOnClickListener {
+                activity.openFile(data)
+            }
+        }
+    }
+
+    private fun BaseViewHolderCreator<ItemStorageImageBinding>.imageListItem() = { data: StorageFile ->
+        itemBinding.run {
+            coverIv.loadStorageFileCover(data)
+
+            titleTv.text = data.fileName()
+            titleTv.setTextColor(getTitleColor(data))
+
+            mainActionFl.setOnClickListener {
+                activity.openFile(data)
+            }
+        }
+    }
+
+    private fun BaseViewHolderCreator<ItemStorageImageGridBinding>.imageGridItem() = { data: StorageFile ->
+        itemBinding.run {
+            coverIv.loadStorageFileCover(data)
+
+            titleTv.text = data.fileName()
+            titleTv.setTextColor(getTitleColor(data))
+
+            mainActionFl.setOnClickListener {
+                activity.openFile(data)
             }
         }
     }

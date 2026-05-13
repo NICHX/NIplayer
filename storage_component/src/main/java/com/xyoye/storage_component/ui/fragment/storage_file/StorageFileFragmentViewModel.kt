@@ -235,7 +235,18 @@ class StorageFileFragmentViewModel : BaseViewModel() {
             return true
         }
         //视频文件，展示
-        return storageFile.isVideoFile()
+        if (storageFile.isVideoFile()) {
+            return true
+        }
+        //音频文件，展示
+        if (storageFile.isAudioFile()) {
+            return true
+        }
+        //图片文件，展示
+        if (storageFile.isImageFile()) {
+            return true
+        }
+        return false
     }
 
     private suspend fun getStorageFileHistory(storageFile: StorageFile): PlayHistoryEntity {

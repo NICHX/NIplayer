@@ -70,6 +70,16 @@
     <color name="anime_cover_placeholder">#1F888888</color>
     <color name="anime_title_background">#AA000000</color>
 
+    <!-- 文件封面背景色 -->
+    <color name="video_cover_bg">#424242</color>
+    <color name="audio_cover_bg">#2095f4</color>
+    <color name="image_cover_bg">#616161</color>
+
+    <!-- 文件图标颜色 -->
+    <color name="video_icon_color">#ffffff</color>
+    <color name="audio_icon_color">#ffffff</color>
+    <color name="image_icon_color">#ffffff</color>
+
     <color name="gray_10">#F5F5F5</color>
     <color name="gray_20">#EEEEEE</color>
     <color name="gray_30">#E0E0E0</color>
