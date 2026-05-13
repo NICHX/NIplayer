@@ -5,6 +5,7 @@ import coil.load
 import coil.request.CachePolicy
 import coil.request.videoFramePercent
 import coil.size.Scale
+import coil.size.Size
 import coil.transform.RoundedCornersTransformation
 import com.xyoye.common_component.R
 import com.xyoye.common_component.storage.file.StorageFile
@@ -28,7 +29,8 @@ fun ImageView.loadImage(
     load(source) {
         scale(Scale.FILL)
         error(errorRes)
-        crossfade(true)
+        // 禁用淡入效果，加快加载速度
+        crossfade(false)
         transformation?.let { transformations(it) }
     }
 }
@@ -36,7 +38,8 @@ fun ImageView.loadImage(
 fun ImageView.loadVideoCover(image: File) {
     load(image) {
         scale(Scale.FILL)
-        crossfade(true)
+        // 禁用淡入效果，加快加载速度
+        crossfade(false)
         error(R.drawable.ic_dandanplay)
         transformations(RoundedCornersTransformation(5f.dp()))
         diskCachePolicy(CachePolicy.DISABLED)
@@ -49,11 +52,25 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
     val source = file.fileCover()
     val resourceType = source.resourceType()
 
-    // 文件类型的封面，不开启缓存，因为播放进度图会频繁变更
-    val cachePolicy = if (resourceType == ResourceType.File)
-        CachePolicy.DISABLED
-    else
+    // 根据是否有缓存缩略图来决定缓存策略
+    // 如果是我们自己生成的缩略图文件，启用缓存；否则按原逻辑
+    val hasCachedThumbnail = source != null && File(source).exists() && File(source).length() > 0
+    
+    val diskCachePolicy = if (hasCachedThumbnail) {
         CachePolicy.ENABLED
+    } else if (resourceType == ResourceType.File) {
+        CachePolicy.DISABLED
+    } else {
+        CachePolicy.ENABLED
+    }
+    
+    val memoryCachePolicy = if (hasCachedThumbnail) {
+        CachePolicy.ENABLED
+    } else if (resourceType == ResourceType.File) {
+        CachePolicy.DISABLED
+    } else {
+        CachePolicy.ENABLED
+    }
 
     // 根据文件类型选择不同的默认图标
     val defaultIcon = when {
@@ -65,11 +82,19 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
 
     load(source ?: defaultIcon) {
         scale(Scale.FILL)
-        crossfade(true)
+        // 禁用淡入效果，加快加载速度
+        crossfade(false)
         error(defaultIcon)
         transformations(RoundedCornersTransformation(5f.dp()))
-        diskCachePolicy(cachePolicy)
-        memoryCachePolicy(cachePolicy)
+        diskCachePolicy(diskCachePolicy)
+        memoryCachePolicy(memoryCachePolicy)
+        // 限制加载尺寸，减少内存占用
+        size(Size.ORIGINAL)
+        // 统一使用视频10%位置作为缩略图，避免黑屏
         videoFramePercent(0.1)
+        // 允许硬件位图
+        allowHardware(true)
+        // 允许R硬件配置
+        allowRgb565(true)
     }
 }

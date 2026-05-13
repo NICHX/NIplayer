@@ -10,6 +10,7 @@ import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.StorageSortOption
 import com.xyoye.common_component.storage.file.StorageFile
+import com.xyoye.common_component.utils.ThumbnailGeneratorManager
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import com.xyoye.data_component.enums.MediaType
 import com.xyoye.data_component.enums.TrackType
@@ -55,12 +56,15 @@ class StorageFileFragmentViewModel : BaseViewModel() {
             }
 
             refreshStorageLastPlay()
-            storage.openDirectory(target, refresh)
+            val fileList = storage.openDirectory(target, refresh)
                 .filter { isDisplayFile(it) }
                 .sortedWith(StorageSortOption.comparator())
                 .map { updateStorageFileHistory(it, getHistory(it)) }
                 .apply { _fileLiveData.postValue(this) }
                 .also { filesSnapshot = it }
+            
+            // 启动缩略图生成
+            ThumbnailGeneratorManager.startGenerateThumbnails(fileList, storage)
         }
     }
 
