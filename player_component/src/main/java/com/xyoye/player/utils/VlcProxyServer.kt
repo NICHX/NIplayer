@@ -16,38 +16,47 @@ class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(p
     private lateinit var url: String
     private lateinit var headers: Map<String, String>
 
-    private object Holder {
-        val instance = VlcProxyServer()
-    }
-
     companion object {
-        //随机端口
         private fun randomPort() = Random.nextInt(30000, 40000)
 
+        @Volatile
+        private var instance: VlcProxyServer? = null
+
         @JvmStatic
-        fun getInstance() = Holder.instance
+        fun getInstance(): VlcProxyServer {
+            return instance ?: synchronized(this) {
+                instance ?: VlcProxyServer().also { instance = it }
+            }
+        }
+
+        @JvmStatic
+        fun safeStart() {
+            val server = getInstance()
+            for (attempt in 0..5) {
+                try {
+                    // 预先绑定探测端口是否可用（同步检测，异常可被捕获）
+                    val probeSocket = java.net.ServerSocket()
+                    probeSocket.reuseAddress = true
+                    probeSocket.bind(java.net.InetSocketAddress(server.listeningPort), 1)
+                    probeSocket.close()
+
+                    // 端口已确认可用，启动 NanoHTTPD
+                    server.start()
+                    return
+                } catch (e: Exception) {
+                    server.stop()
+                    server.changePort(Random.nextInt(30000, 40000))
+                }
+            }
+        }
     }
 
-    private fun updatePort(newPort: Int) {
+    private fun changePort(newPort: Int) {
         try {
             val portField = NanoHTTPD::class.java.getDeclaredField("myPort")
             portField.isAccessible = true
             portField.setInt(this, newPort)
         } catch (ignored: Exception) {
-        }
-    }
-
-    fun safeStart() {
-        if (isAlive) return
-        for (attempt in 0..5) {
-            try {
-                start()
-                return
-            } catch (e: java.io.IOException) {
-                stop()
-                val newPort = Random.nextInt(30000, 40000)
-                updatePort(newPort)
-            }
         }
     }
 

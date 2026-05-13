@@ -311,7 +311,11 @@ object ThumbnailGeneratorManager {
 
             // 保存缩略图
             success = saveBitmapToFile(scaledBitmap, coverFile)
-            recycleBitmapToPool(scaledBitmap)
+            if (success) {
+                ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
+            } else {
+                recycleBitmapToPool(scaledBitmap)
+            }
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "视频缩略图生成失败: ${file.fileName()}", e)
         } finally {
@@ -364,7 +368,11 @@ object ThumbnailGeneratorManager {
             val bitmap = BitmapFactory.decodeStream(decodeStream, null, options) ?: return@withContext false
 
             success = saveBitmapToFile(bitmap, coverFile)
-            recycleBitmapToPool(bitmap)
+            if (success) {
+                ThumbnailMemoryCache.put(file.uniqueKey(), bitmap)
+            } else {
+                recycleBitmapToPool(bitmap)
+            }
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "图片缩略图生成失败: ${file.fileName()}", e)
         } finally {
@@ -442,6 +450,7 @@ object ThumbnailGeneratorManager {
         currentTasks.clear()
         retryCountMap.clear()
         clearBitmapPool()
+        ThumbnailMemoryCache.clear()
         isProcessing = false
         _isGenerating.value = false
     }

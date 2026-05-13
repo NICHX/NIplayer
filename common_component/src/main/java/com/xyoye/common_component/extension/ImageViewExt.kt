@@ -8,6 +8,7 @@ import coil.size.Scale
 import coil.transform.RoundedCornersTransformation
 import com.xyoye.common_component.R
 import com.xyoye.common_component.storage.file.StorageFile
+import com.xyoye.common_component.utils.ThumbnailMemoryCache
 import com.xyoye.data_component.enums.ResourceType
 import java.io.File
 
@@ -48,6 +49,15 @@ fun ImageView.loadVideoCover(image: File) {
 }
 
 fun ImageView.loadStorageFileCover(file: StorageFile) {
+    val uniqueKey = file.uniqueKey()
+    if (uniqueKey.isNotEmpty()) {
+        ThumbnailMemoryCache.get(uniqueKey)?.let { bitmap ->
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageBitmap(bitmap)
+            return
+        }
+    }
+
     val source = file.fileCover()
     val resourceType = source.resourceType()
 

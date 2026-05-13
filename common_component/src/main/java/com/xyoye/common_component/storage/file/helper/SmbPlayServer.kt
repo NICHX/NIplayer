@@ -34,20 +34,21 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         resourceOpenFailedResponse()
     }
 
-    private object Holder {
-        val instance = SmbPlayServer()
-    }
-
     companion object {
-
-        //随机端口
         private fun randomPort() = Random.nextInt(20000, 30000)
 
+        @Volatile
+        private var instance: SmbPlayServer? = null
+
         @JvmStatic
-        fun getInstance() = Holder.instance
+        fun getInstance(): SmbPlayServer {
+            return instance ?: synchronized(this) {
+                instance ?: SmbPlayServer().also { instance = it }
+            }
+        }
     }
 
-    private fun updatePort(newPort: Int) {
+    private fun changePort(newPort: Int) {
         try {
             val portField = NanoHTTPD::class.java.getDeclaredField("myPort")
             portField.isAccessible = true
@@ -151,6 +152,11 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         var lastError: Exception? = null
         for (attempt in 0..5) {
             try {
+                val probeSocket = java.net.ServerSocket()
+                probeSocket.reuseAddress = true
+                probeSocket.bind(java.net.InetSocketAddress(listeningPort), 1)
+                probeSocket.close()
+
                 return withTimeout(timeoutMs) {
                     start()
                     while (isActive) {
@@ -161,11 +167,10 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
                     stop()
                     return@withTimeout false
                 }
-            } catch (e: java.io.IOException) {
+            } catch (e: Exception) {
                 lastError = e
                 stop()
-                val newPort = Random.nextInt(20000, 30000)
-                updatePort(newPort)
+                changePort(Random.nextInt(20000, 30000))
             }
         }
         lastError?.printStackTrace()
