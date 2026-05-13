@@ -6,14 +6,14 @@
         </shape>
     </item>
     <item android:gravity="center">
-        <vector
+        <vector xmlns:android="http://schemas.android.com/apk/res/android"
             android:width="32dp"
             android:height="32dp"
-            android:viewportWidth="32"
-            android:viewportHeight="32">
+            android:viewportWidth="1024"
+            android:viewportHeight="1024">
             <path
                 android:fillColor="@color/video_icon_color"
-                android:pathData="M4,4h24c1.1,0 2,0.9 2,2v16c0,1.1 -0.9,2 -2,2H4c-1.1,0 -2,-0.9 -2,-2V6c0,-1.1 0.9,-2 2,-2zM12,20l8,-5 -8,-5v10z"/>
+                android:pathData="M960,192 L931.616,192 C914.816,192,898.688,198.624,886.688,210.432 L800,295.936 L800,256 A96,96,0,0,0,704,160 L96,160 C43.072,160,0,203.04,0,256 L0,768 A96,96,0,0,0,96,864 L704,864 C756.992,864,800,820.992,800,768 L800,728.928 L886.688,814.432 C898.688,826.24,914.816,832.864,931.616,832.864 L960,832.864 A64,64,0,0,0,1024,768.864 L1024,256 A64,64,0,0,0,960,192 Z M96,800 C78.336,800,64,785.632,64,768 L64,256 A32,32,0,0,1,96,224 L704,224 C721.632,224,736,238.336,736,256 L736,768 C736,785.632,721.632,800,704,800 L96,800 Z M960,768.864 L928,768.864 L800,640.864 L800,640 L768,608 L768,416 L928,256 L960,256 L960,768.864 Z" />
         </vector>
     </item>
 </layer-list>

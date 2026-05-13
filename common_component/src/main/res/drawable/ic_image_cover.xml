@@ -6,38 +6,17 @@
         </shape>
     </item>
     <item android:gravity="center">
-        <vector
-            android:width="40dp"
-            android:height="40dp"
-            android:viewportWidth="40"
-            android:viewportHeight="40">
+        <vector xmlns:android="http://schemas.android.com/apk/res/android"
+            android:width="32dp"
+            android:height="32dp"
+            android:viewportWidth="1024"
+            android:viewportHeight="1024">
             <path
-                android:strokeWidth="2"
-                android:strokeColor="@color/image_icon_color"
-                android:fillColor="@null"
-                android:pathData="M6,8h28c2.2,0 4,1.8 4,4v20c0,2.2 -1.8,4 -4,4H6c-2.2,0 -4,-1.8 -4,-4V12c0,-2.2 1.8,-4 4,-4z"/>
-            <circle
-                cx="12"
-                cy="14"
-                r="4"
-                android:strokeWidth="2"
-                android:strokeColor="@color/image_icon_color"
-                android:fillColor="@null"/>
+                android:fillColor="@color/image_icon_color"
+                android:pathData="M841.713,65.29 L182.286,65.29 C117.774,65.29,65.29,117.774,65.29,182.286 L65.29,841.713 C65.29,906.225,117.774,958.709,182.286,958.709 L841.714,958.709 C906.225,958.709,958.71,906.225,958.71,841.713 L958.709,182.286 C958.709,117.774,906.226,65.29,841.713,65.29 Z M182.286,107.834 L841.713,107.834 C882.765,107.834,916.165,141.233,916.165,182.286 L916.165,318.843 C766.071,324.105,625.795,384.927,519.187,491.535 C469.226,541.497,429.346,598.867,400.493,661.16 C316.996,590.325,196.12,585.783,107.835,647.543 L107.834,182.286 C107.834,141.233,141.233,107.834,182.286,107.834 Z M107.834,841.713 L107.834,702.628 C184.376,628.316,306.667,628.393,383.106,702.872 C358.802,768.17,346.08,837.984,346.08,909.783 C346.08,912.007,346.424,914.149,347.057,916.164 L182.286,916.165 C141.233,916.165,107.834,882.766,107.834,841.713 Z M841.713,916.165 L387.647,916.165 C388.28,914.15,388.624,912.007,388.624,909.784 C388.624,763.066,445.677,625.212,549.272,521.617 C647.843,423.046,777.439,366.654,916.166,361.412 L916.166,841.713 C916.165,882.766,882.766,916.165,841.713,916.165 Z" />
             <path
-                android:strokeWidth="2"
-                android:strokeColor="@color/image_icon_color"
-                android:fillColor="@null"
-                android:pathData="M6,28c4,0 8,-2 10,-5"/>
-            <path
-                android:strokeWidth="2"
-                android:strokeColor="@color/image_icon_color"
-                android:fillColor="@null"
-                android:pathData="M16,23c6,-3 14,-3 18,2"/>
-            <path
-                android:strokeWidth="2"
-                android:strokeColor="@color/image_icon_color"
-                android:fillColor="@null"
-                android:pathData="M10,28v10"/>
+                android:fillColor="@color/image_icon_color"
+                android:pathData="M312.398,413.459 C373.236,413.459,422.731,363.964,422.731,303.126 S373.237,192.793,312.398,192.793 S202.065,242.287,202.065,303.126 S251.559,413.459,312.398,413.459 Z M312.398,235.338 C349.776,235.338,380.187,265.748,380.187,303.127 S349.777,370.916,312.398,370.916 S244.609,340.506,244.609,303.127 S275.019,235.338,312.398,235.338 Z" />
         </vector>
     </item>
 </layer-list>
