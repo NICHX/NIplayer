@@ -29,8 +29,6 @@ kapt {
 }
 
 dependencies {
-    debugImplementation(Dependencies.Square.leakcanary)
-
     api(project(":data_component"))
     api(project(":repository:seven_zip"))
     api(project(":repository:immersion_bar"))

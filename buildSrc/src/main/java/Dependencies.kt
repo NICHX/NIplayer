@@ -98,7 +98,6 @@ object Dependencies {
     }
 
     object Square {
-        const val leakcanary = "com.squareup.leakcanary:leakcanary-android:2.10"
         const val retrofit = "com.squareup.retrofit2:retrofit:${Versions.retrofit}"
         const val retrofit_moshi = "com.squareup.retrofit2:converter-moshi:${Versions.retrofit}"
         const val moshi = "com.squareup.moshi:moshi:${Versions.moshi}"
