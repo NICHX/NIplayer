@@ -5,11 +5,6 @@ package com.xyoye.data_component.enums
  */
 
 enum class CacheType(val dirName: String, val displayName: String, val clearTips: String) {
-    DANMU_CACHE(
-        "danmu",
-        "弹幕文件",
-        "弹幕缓存包括所有匹配、绑定、下载的弹幕，清除后将移除绑定并需要重新下载弹幕，确认清除？"
-    ),
     SUBTITLE_CACHE(
         "subtitle",
         "字幕文件",
