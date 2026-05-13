@@ -301,9 +301,11 @@ object ThumbnailGeneratorManager {
                 }
             }
 
-            // 获取视频第一个关键帧作为缩略图
+            // 获取视频时长，取10%时间点附近的帧作为缩略图（更易识别视频内容）
+            val durationMs = mediaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            val targetTimeUs = if (durationMs > 0) durationMs * 100 else 0L
             val bitmap = mediaRetriever.getFrameAtTime(
-                0,
+                targetTimeUs,
                 MediaMetadataRetriever.OPTION_CLOSEST_SYNC
             ) ?: return@withContext false
 

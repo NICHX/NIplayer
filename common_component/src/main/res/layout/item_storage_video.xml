@@ -59,6 +59,17 @@
             tools:visibility="visible"
             tools:ignore="SmallSp" />
 
+        <ImageView
+            android:id="@+id/play_overlay_iv"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_video_play_overlay"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@+id/cover_iv"
+            app:layout_constraintEnd_toEndOf="@+id/cover_iv"
+            app:layout_constraintStart_toStartOf="@+id/cover_iv"
+            app:layout_constraintTop_toTopOf="@+id/cover_iv" />
+
         <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/title_tv"
             android:layout_width="0dp"

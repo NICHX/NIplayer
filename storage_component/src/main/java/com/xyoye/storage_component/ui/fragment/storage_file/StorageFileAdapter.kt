@@ -106,6 +106,7 @@ class StorageFileAdapter(
                 initViewForPayload { data, _, payloads ->
                     if (payloads.contains("thumbnail_updated")) {
                         itemBinding.coverIv.loadStorageFileCover(data)
+                        itemBinding.playOverlayIv.isVisible = data.fileCover() != null
                     }
                 }
             }
@@ -156,6 +157,7 @@ class StorageFileAdapter(
                 initViewForPayload { data, _, payloads ->
                     if (payloads.contains("thumbnail_updated")) {
                         itemBinding.coverIv.loadStorageFileCover(data)
+                        itemBinding.playOverlayIv.isVisible = data.fileCover() != null
                     }
                 }
             }
@@ -235,6 +237,7 @@ class StorageFileAdapter(
     private fun BaseViewHolderCreator<ItemStorageVideoBinding>.videoListItem() = { data: StorageFile ->
         itemBinding.run {
             coverIv.loadStorageFileCover(data)
+            playOverlayIv.isVisible = data.fileCover() != null
 
             titleTv.text = data.fileName()
             titleTv.setTextColor(getTitleColor(data))
@@ -263,6 +266,7 @@ class StorageFileAdapter(
     private fun BaseViewHolderCreator<ItemStorageVideoGridBinding>.videoGridItem() = { data: StorageFile ->
         itemBinding.run {
             coverIv.loadStorageFileCover(data)
+            playOverlayIv.isVisible = data.fileCover() != null
 
             titleTv.text = data.fileName()
             titleTv.setTextColor(getTitleColor(data))
