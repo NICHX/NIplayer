@@ -27,6 +27,7 @@ import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.impl.FtpStorage
 import com.xyoye.common_component.utils.SupervisorScope
 import com.xyoye.common_component.weight.BottomActionDialog
+import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.bean.SheetActionBean
 import com.xyoye.data_component.bean.StorageFilePath
 import com.xyoye.data_component.entity.MediaLibraryEntity
@@ -40,6 +41,8 @@ import com.xyoye.storage_component.utils.storage.StorageFileStyleHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.ArrayList
 
 @Route(path = RouteTable.Stream.StorageFile)
 class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFileBinding>() {
@@ -375,6 +378,115 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     }
 
     fun openFile(file: StorageFile) {
-        viewModel.playItem(file)
+        when {
+            file.isVideoFile() -> {
+                viewModel.playItem(file)
+            }
+            file.isAudioFile() -> {
+                viewModel.playItem(file)
+            }
+            file.isImageFile() -> {
+                openImageFile(file)
+            }
+            else -> {
+                viewModel.playItem(file)
+            }
+        }
+    }
+
+    private fun openImageFile(file: StorageFile) {
+        lifecycle.coroutineScope.launch(Dispatchers.IO) {
+            try {
+                // 检查是否是本地文件系统
+                val filePath = file.filePath()
+                val localFile = File(filePath)
+                
+                if (filePath.isNotEmpty() && localFile.exists() && localFile.parentFile != null) {
+                    // 本地存储 - 获取当前目录所有图片
+                    val imageUrls = ArrayList<String>()
+                    var currentPosition = 0
+                    
+                    val parentDir = localFile.parentFile
+                    val files = parentDir?.listFiles() ?: emptyArray()
+                    
+                    files.filter { it.isFile && isImageFile(it.name) }
+                        .sortedBy { it.name }
+                        .forEachIndexed { index, f ->
+                            imageUrls.add(f.absolutePath)
+                            if (f.absolutePath == localFile.absolutePath) {
+                                currentPosition = index
+                            }
+                        }
+                    
+                    if (imageUrls.isNotEmpty()) {
+                        withContext(Dispatchers.Main) {
+                            ARouter.getInstance()
+                                .build(RouteTable.ImageViewer.Viewer)
+                                .withStringArrayList(
+                                    com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_IMAGE_URIS,
+                                    imageUrls
+                                )
+                                .withInt(
+                                    com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_CURRENT_POSITION,
+                                    currentPosition
+                                )
+                                .navigation()
+                        }
+                    }
+                } else {
+                    // 设备存储库或网络存储 - 只支持单张图片
+                    val imageUrl = getImageUrl(file)
+                    if (imageUrl.isNotEmpty()) {
+                        withContext(Dispatchers.Main) {
+                            ARouter.getInstance()
+                                .build(RouteTable.ImageViewer.Viewer)
+                                .withString(
+                                    com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_IMAGE_URI,
+                                    imageUrl
+                                )
+                                .navigation()
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            ToastCenter.showError("无法获取图片地址")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    ToastCenter.showError("打开图片失败: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private suspend fun getImageUrl(file: StorageFile): String {
+        // 优先尝试本地文件路径
+        val filePath = file.filePath()
+        val localFile = File(filePath)
+        if (filePath.isNotEmpty() && localFile.exists()) {
+            return filePath
+        }
+        
+        // 尝试使用 createPlayUrl 获取可访问的 HTTP URL
+        val playUrl = file.storage.createPlayUrl(file)
+        if (playUrl != null && playUrl.isNotEmpty()) {
+            return playUrl
+        }
+        
+        // 最后尝试 fileUrl() - 这个可能是 Content URI
+        val fileUrl = file.fileUrl()
+        if (fileUrl.isNotEmpty()) {
+            return fileUrl
+        }
+        
+        return ""
+    }
+
+    private fun isImageFile(fileName: String): Boolean {
+        val extension = fileName.substringAfterLast('.', "").lowercase()
+        val imageExtensions = arrayOf("jpg", "jpeg", "png", "gif", "bmp", "webp", "heif", "heic")
+        return imageExtensions.contains(extension)
     }
 }

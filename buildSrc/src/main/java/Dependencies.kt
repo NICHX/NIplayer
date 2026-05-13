@@ -112,4 +112,8 @@ object Dependencies {
     object VLC {
         const val vlc = "org.videolan.android:libvlc-all:4.0.0-eap9"
     }
+
+    object PhotoView {
+        const val photo_view = "com.github.chrisbanes:PhotoView:2.3.0"
+    }
 }

@@ -92,7 +92,7 @@ class StorageFileAdapter(
 
             addEmptyView(R.layout.layout_empty) {
                 initEmptyView {
-                    itemBinding.emptyTv.text = R.string.text_empty_video.toResString()
+                    itemBinding.emptyTv.text = "空文件夹"
                 }
             }
 
@@ -127,7 +127,7 @@ class StorageFileAdapter(
 
             addEmptyView(R.layout.layout_empty) {
                 initEmptyView {
-                    itemBinding.emptyTv.text = R.string.text_empty_video.toResString()
+                    itemBinding.emptyTv.text = "空文件夹"
                 }
             }
 
