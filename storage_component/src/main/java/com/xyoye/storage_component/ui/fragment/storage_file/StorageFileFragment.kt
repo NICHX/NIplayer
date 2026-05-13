@@ -8,7 +8,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.xyoye.common_component.base.BaseFragment
 import com.xyoye.common_component.extension.grid
 import com.xyoye.common_component.extension.gridEmpty
-import com.xyoye.common_component.extension.loadStorageFileCover
 import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.extension.vertical
 import com.xyoye.common_component.storage.file.StorageFile
@@ -53,6 +52,9 @@ class StorageFileFragment :
     // 保存当前文件列表引用
     private var currentFileList: List<StorageFile> = emptyList()
     
+    // 文件唯一键到列表位置的映射，用于O(1)查找
+    private val fileIndexMap = HashMap<String, Int>()
+    
     // 跟踪滚动状态
     private var isScrolling = false
     
@@ -78,6 +80,10 @@ class StorageFileFragment :
 
         viewModel.fileLiveData.observe(this) {
             currentFileList = it
+            fileIndexMap.clear()
+            it.forEachIndexed { index, file ->
+                fileIndexMap[file.uniqueKey()] = index
+            }
             dataBinding.loading.isVisible = false
             dataBinding.refreshLayout.isVisible = true
             dataBinding.refreshLayout.isRefreshing = false
@@ -259,24 +265,13 @@ class StorageFileFragment :
      * 显示单个文件的缩略图
      */
     private fun displayThumbnailForFile(file: StorageFile) {
-        // 找到该文件在列表中的位置
-        val position = currentFileList.indexOfFirst { 
-            it.uniqueKey() == file.uniqueKey() 
-        }
-        
-        if (position >= 0) {
-            // 检查该位置是否在可见范围内
-            val layoutManager = dataBinding.storageFileRv.layoutManager
-            if (layoutManager is androidx.recyclerview.widget.LinearLayoutManager) {
-                val firstVisible = layoutManager.findFirstVisibleItemPosition()
-                val lastVisible = layoutManager.findLastVisibleItemPosition()
-                
-                if (position in firstVisible..lastVisible) {
-                    // 在可见范围内，直接获取ViewHolder并更新
-                    dataBinding.storageFileRv.findViewHolderForAdapterPosition(position)?.let { viewHolder ->
-                        updateViewHolderCover(viewHolder, file)
-                    }
-                }
+        val position = fileIndexMap[file.uniqueKey()] ?: return
+        val layoutManager = dataBinding.storageFileRv.layoutManager
+        if (layoutManager is androidx.recyclerview.widget.LinearLayoutManager) {
+            val firstVisible = layoutManager.findFirstVisibleItemPosition()
+            val lastVisible = layoutManager.findLastVisibleItemPosition()
+            if (position in firstVisible..lastVisible) {
+                dataBinding.storageFileRv.adapter?.notifyItemChanged(position, "thumbnail_updated")
             }
         }
     }
@@ -289,46 +284,21 @@ class StorageFileFragment :
             return
         }
         
-        // 创建待处理文件的副本，避免并发修改问题
         val filesToDisplay = pendingThumbnailFiles.toList()
         pendingThumbnailFiles.clear()
         
-        filesToDisplay.forEach { uniqueKey ->
-            currentFileList.find { it.uniqueKey() == uniqueKey }?.let { file ->
-                displayThumbnailForFile(file)
-            }
+        val layoutManager = dataBinding.storageFileRv.layoutManager
+        if (layoutManager !is androidx.recyclerview.widget.LinearLayoutManager) {
+            return
         }
-    }
-    
-    /**
-     * 直接更新ViewHolder的封面ImageView
-     */
-    private fun updateViewHolderCover(
-        viewHolder: RecyclerView.ViewHolder,
-        file: StorageFile
-    ) {
-        try {
-            // 通过反射获取不同binding类型的coverIv
-            val bindingField = viewHolder.javaClass.getDeclaredField("itemBinding")
-            bindingField.isAccessible = true
-            val binding = bindingField.get(viewHolder)
-            
-            // 尝试获取coverIv字段
-            val coverIvField = binding?.javaClass?.getDeclaredField("coverIv")
-            coverIvField?.isAccessible = true
-            val coverIv = coverIvField?.get(binding) as? android.widget.ImageView
-            
-            // 直接加载缩略图
-            coverIv?.loadStorageFileCover(file)
-        } catch (e: Exception) {
-            // 如果直接更新失败，回退到刷新整个item
-            val position = viewHolder.adapterPosition
-            if (position >= 0) {
-                dataBinding.storageFileRv.adapter?.let { adapter ->
-                    if (adapter is com.xyoye.common_component.adapter.BaseAdapter) {
-                        adapter.notifyItemChanged(position)
-                    }
-                }
+        val firstVisible = layoutManager.findFirstVisibleItemPosition()
+        val lastVisible = layoutManager.findLastVisibleItemPosition()
+        if (firstVisible < 0 || lastVisible < 0) return
+        
+        filesToDisplay.forEach { uniqueKey ->
+            val position = fileIndexMap[uniqueKey] ?: return@forEach
+            if (position in firstVisible..lastVisible) {
+                dataBinding.storageFileRv.adapter?.notifyItemChanged(position, "thumbnail_updated")
             }
         }
     }

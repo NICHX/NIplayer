@@ -103,14 +103,29 @@ class StorageFileAdapter(
             addItem<StorageFile, ItemStorageVideoBinding>(R.layout.item_storage_video) {
                 checkType { data -> isVideoItem(data) }
                 initView(videoListItem())
+                initViewForPayload { data, _, payloads ->
+                    if (payloads.contains("thumbnail_updated")) {
+                        itemBinding.coverIv.loadStorageFileCover(data)
+                    }
+                }
             }
             addItem<StorageFile, ItemStorageAudioBinding>(R.layout.item_storage_audio) {
                 checkType { data -> isAudioItem(data) }
                 initView(audioListItem())
+                initViewForPayload { data, _, payloads ->
+                    if (payloads.contains("thumbnail_updated")) {
+                        itemBinding.coverIv.loadStorageFileCover(data)
+                    }
+                }
             }
             addItem<StorageFile, ItemStorageImageBinding>(R.layout.item_storage_image) {
                 checkType { data -> isImageItem(data) }
                 initView(imageListItem())
+                initViewForPayload { data, _, payloads ->
+                    if (payloads.contains("thumbnail_updated")) {
+                        itemBinding.coverIv.loadStorageFileCover(data)
+                    }
+                }
             }
         }
     }
@@ -138,14 +153,29 @@ class StorageFileAdapter(
             addItem<StorageFile, ItemStorageVideoGridBinding>(R.layout.item_storage_video_grid) {
                 checkType { data -> isVideoItem(data) }
                 initView(videoGridItem())
+                initViewForPayload { data, _, payloads ->
+                    if (payloads.contains("thumbnail_updated")) {
+                        itemBinding.coverIv.loadStorageFileCover(data)
+                    }
+                }
             }
             addItem<StorageFile, ItemStorageAudioGridBinding>(R.layout.item_storage_audio_grid) {
                 checkType { data -> isAudioItem(data) }
                 initView(audioGridItem())
+                initViewForPayload { data, _, payloads ->
+                    if (payloads.contains("thumbnail_updated")) {
+                        itemBinding.coverIv.loadStorageFileCover(data)
+                    }
+                }
             }
             addItem<StorageFile, ItemStorageImageGridBinding>(R.layout.item_storage_image_grid) {
                 checkType { data -> isImageItem(data) }
                 initView(imageGridItem())
+                initViewForPayload { data, _, payloads ->
+                    if (payloads.contains("thumbnail_updated")) {
+                        itemBinding.coverIv.loadStorageFileCover(data)
+                    }
+                }
             }
         }
     }

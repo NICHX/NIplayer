@@ -22,6 +22,8 @@ class BaseViewHolderDSL<T : Any, V : ViewDataBinding>(
 
     private var emptyViewHolder: (() -> Unit)? = null
 
+    private var payloadHandler: ((data: T, position: Int, payloads: MutableList<Any>) -> Unit)? = null
+
     override fun isForViewType(data: Any?, position: Int): Boolean {
         if (data == null)
             return false
@@ -58,7 +60,28 @@ class BaseViewHolderDSL<T : Any, V : ViewDataBinding>(
         this.emptyViewHolder = holder
     }
 
+    fun initViewForPayload(handler: (data: T, position: Int, payloads: MutableList<Any>) -> Unit) {
+        this.payloadHandler = handler
+    }
+
     override fun getResourceId() = resourceId
+
+    override fun onBindViewHolderWithPayloads(
+        data: Any?,
+        position: Int,
+        creator: BaseViewHolderCreator<out ViewDataBinding>,
+        payloads: MutableList<Any>
+    ) {
+        if (data == null || data == BaseAdapter.EMPTY_ITEM) {
+            super.onBindViewHolderWithPayloads(data, position, creator, payloads)
+            return
+        }
+        if (payloadHandler != null) {
+            payloadHandler?.invoke(data as T, position, payloads)
+        } else {
+            super.onBindViewHolderWithPayloads(data, position, creator, payloads)
+        }
+    }
 
     override fun onBindViewHolder(
         data: Any?,

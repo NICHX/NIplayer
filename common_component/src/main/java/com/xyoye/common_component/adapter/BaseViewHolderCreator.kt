@@ -19,6 +19,15 @@ abstract class BaseViewHolderCreator<V : ViewDataBinding> {
         creator: BaseViewHolderCreator<out ViewDataBinding>
     )
 
+    open fun onBindViewHolderWithPayloads(
+        data: Any?,
+        position: Int,
+        creator: BaseViewHolderCreator<out ViewDataBinding>,
+        payloads: MutableList<Any>
+    ) {
+        onBindViewHolder(data, position, creator)
+    }
+
     lateinit var itemBinding: V
 
     fun initItemBinding(itemView: View) {

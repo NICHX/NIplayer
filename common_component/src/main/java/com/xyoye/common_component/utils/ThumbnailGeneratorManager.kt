@@ -3,6 +3,8 @@ package com.xyoye.common_component.utils
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import com.xyoye.common_component.base.app.BaseApplication
 import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.storage.Storage
@@ -11,7 +13,6 @@ import com.xyoye.data_component.enums.MediaType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -31,8 +32,6 @@ object ThumbnailGeneratorManager {
     private const val THUMBNAIL_MAX_WIDTH = 320
     // 单次处理的文件数量
     private const val BATCH_SIZE = 6
-    // 文件处理之间的延迟（毫秒）
-    private const val PROCESS_DELAY_MS = 10L
     
     // 协程作用域
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -166,25 +165,14 @@ object ThumbnailGeneratorManager {
         _isGenerating.value = true
 
         scope.launch {
-            filesToProcess.forEachIndexed { index, file ->
-                // 快速失败检查：如果已经有缓存了，跳过
-                if (hasCachedThumbnail(file)) {
-                    return@forEachIndexed
+            filesToProcess.map { file ->
+                async {
+                    if (hasCachedThumbnail(file)) return@async
+                    generateThumbnailForFile(file)
                 }
-                
-                // 如果不是第一个文件，添加延迟防止卡顿
-                if (index > 0) {
-                    delay(PROCESS_DELAY_MS)
-                }
-                
-                generateThumbnailForFile(file)
-                
-                // 如果还有文件，继续处理下一批
-                if (index == filesToProcess.size - 1) {
-                    isProcessing = false
-                    processNextBatch()
-                }
-            }
+            }.awaitAll()
+            isProcessing = false
+            processNextBatch()
         }
     }
 
@@ -281,28 +269,29 @@ object ThumbnailGeneratorManager {
         var inputStream: java.io.InputStream? = null
 
         try {
-            // 获取图片的输入流
             inputStream = file.storage.openFile(file) ?: return@withContext false
+            val buffered = java.io.BufferedInputStream(inputStream)
+            buffered.mark(256 * 1024)
 
-            // 先解码原尺寸获取图片信息
             val options = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
             }
-            BitmapFactory.decodeStream(inputStream, null, options)
-            // 关闭流并重新打开
-            IOUtils.closeIO(inputStream)
-            inputStream = file.storage.openFile(file) ?: return@withContext false
+            BitmapFactory.decodeStream(buffered, null, options)
 
-            // 计算缩放比例
-            val reqWidth = 400
-            val reqHeight = 400
-            options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
+            var decodeStream: java.io.InputStream = buffered
+            try {
+                buffered.reset()
+            } catch (e: java.io.IOException) {
+                IOUtils.closeIO(inputStream)
+                inputStream = file.storage.openFile(file) ?: return@withContext false
+                decodeStream = inputStream
+            }
+
+            options.inSampleSize = calculateInSampleSize(options, 400, 400)
             options.inJustDecodeBounds = false
 
-            // 解码缩略图
-            val bitmap = BitmapFactory.decodeStream(inputStream, null, options) ?: return@withContext false
+            val bitmap = BitmapFactory.decodeStream(decodeStream, null, options) ?: return@withContext false
 
-            // 保存缩略图
             success = saveBitmapToFile(bitmap, coverFile)
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "图片缩略图生成失败: ${file.fileName()}", e)

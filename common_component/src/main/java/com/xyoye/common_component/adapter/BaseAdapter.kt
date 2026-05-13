@@ -61,7 +61,11 @@ class BaseAdapter : AnimatedAdapter<RecyclerView.ViewHolder>() {
         bindViewHolderAnimation(viewHolder)
         getHolderCreator(viewHolder.itemViewType).apply {
             initItemBinding(viewHolder.itemView)
-            onBindViewHolder(items[position], position, this)
+            if (payloads.isEmpty()) {
+                onBindViewHolder(items[position], position, this)
+            } else {
+                onBindViewHolderWithPayloads(items[position], position, this, payloads)
+            }
         }
     }
 

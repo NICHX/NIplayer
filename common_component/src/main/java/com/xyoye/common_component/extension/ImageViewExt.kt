@@ -5,7 +5,6 @@ import coil.load
 import coil.request.CachePolicy
 import coil.request.videoFramePercent
 import coil.size.Scale
-import coil.size.Size
 import coil.transform.RoundedCornersTransformation
 import com.xyoye.common_component.R
 import com.xyoye.common_component.storage.file.StorageFile
@@ -94,8 +93,6 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
         transformations(RoundedCornersTransformation(5f.dp()))
         diskCachePolicy(diskCachePolicy)
         memoryCachePolicy(memoryCachePolicy)
-        // 限制加载尺寸，减少内存占用
-        size(Size.ORIGINAL)
         // 统一使用视频第一个关键帧作为缩略图
         videoFramePercent(0.0)
         // 允许硬件位图
