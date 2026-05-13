@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/item_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="4dp">
+
+        <ImageView
+            android:id="@+id/folder_iv"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_gravity="center"
+            android:padding="3dp"
+            android:src="@drawable/ic_folder"
+            android:background="@drawable/background_item_press"
+            app:layout_constraintBottom_toTopOf="@id/folder_tv"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <androidx.appcompat.widget.AppCompatTextView
+            android:id="@+id/folder_tv"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="2"
+            android:textColor="@color/text_black"
+            android:textSize="16sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/folder_iv"
+            tools:text="文件夹名称" />
+
+        <TextView
+            android:id="@+id/file_count_tv"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:gravity="center"
+            android:maxLines="1"
+            android:textColor="@color/text_gray"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toEndOf="@+id/folder_tv"
+            app:layout_constraintStart_toStartOf="@+id/folder_tv"
+            app:layout_constraintTop_toBottomOf="@+id/folder_tv"
+            tools:text="10文件" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</layout>

@@ -30,8 +30,19 @@ class StorageFileFragment :
     private val isGridView: Boolean
         get() = ownerActivity.isGridView
 
+    private val isTablet: Boolean
+        get() = resources.configuration.smallestScreenWidthDp >= 600
+
     private val gridSpanCount: Int
-        get() = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 5 else 3
+        get() {
+            return if (isTablet) {
+                // 平板：竖屏4列，横屏6列
+                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 4
+            } else {
+                // 手机：竖屏3列，横屏4列
+                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 4 else 3
+            }
+        }
 
     override fun initViewModel() =
         ViewModelInit(
@@ -72,6 +83,17 @@ class StorageFileFragment :
         super.onResume()
         viewModel.updateHistory()
         setRecyclerViewItemFocusAble(true)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (isGridView) {
+            dataBinding.storageFileRv.apply {
+                layoutManager = grid(gridSpanCount)
+                adapter = StorageFileAdapter(ownerActivity, viewModel, true).create()
+                viewModel.fileLiveData.value?.let { setData(it) }
+            }
+        }
     }
 
     override fun onPause() {
