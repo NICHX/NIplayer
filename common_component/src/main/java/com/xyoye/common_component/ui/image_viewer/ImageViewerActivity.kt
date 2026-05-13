@@ -166,8 +166,12 @@ class ImageViewerActivity : BaseAppCompatActivity<ActivityImageViewerBinding>() 
     }
 
     private fun initViewPager(imageList: List<String>, startPosition: Int) {
-        dataBinding.viewPager.adapter = ImageViewerAdapter(imageList)
+        val adapter = ImageViewerAdapter(imageList)
+        dataBinding.viewPager.adapter = adapter
         dataBinding.viewPager.setCurrentItem(startPosition, false)
+        
+        // 预加载当前页相邻图片
+        adapter.preload(startPosition)
         
         // 如果有多张图片，显示页码
         if (imageList.size > 1) {
@@ -178,6 +182,8 @@ class ImageViewerActivity : BaseAppCompatActivity<ActivityImageViewerBinding>() 
                 override fun onPageSelected(position: Int) {
                     super.onPageSelected(position)
                     updatePageIndicator(position, imageList.size)
+                    adapter.preload(position)
+                    adapter.trimCache(position)
                 }
             })
         }
