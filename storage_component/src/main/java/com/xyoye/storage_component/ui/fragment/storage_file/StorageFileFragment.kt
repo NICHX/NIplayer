@@ -5,6 +5,7 @@ import androidx.core.view.children
 import androidx.core.view.isVisible
 import com.xyoye.common_component.base.BaseFragment
 import com.xyoye.common_component.extension.grid
+import com.xyoye.common_component.extension.gridEmpty
 import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.extension.vertical
 import com.xyoye.common_component.storage.file.StorageFile
@@ -89,7 +90,7 @@ class StorageFileFragment :
         super.onConfigurationChanged(newConfig)
         if (isGridView) {
             dataBinding.storageFileRv.apply {
-                layoutManager = grid(gridSpanCount)
+                layoutManager = gridEmpty(gridSpanCount)
                 adapter = StorageFileAdapter(ownerActivity, viewModel, true).create()
                 viewModel.fileLiveData.value?.let { setData(it) }
             }
@@ -109,7 +110,7 @@ class StorageFileFragment :
 
     private fun initRecyclerView() {
         dataBinding.storageFileRv.apply {
-            layoutManager = if (isGridView) grid(gridSpanCount) else vertical()
+            layoutManager = if (isGridView) gridEmpty(gridSpanCount) else vertical()
             adapter = StorageFileAdapter(ownerActivity, viewModel, isGridView).create()
         }
         updateToggleButtonIcon()
@@ -125,7 +126,7 @@ class StorageFileFragment :
         ownerActivity.isGridView = !ownerActivity.isGridView
         dataBinding.storageFileRv.apply {
             if (ownerActivity.isGridView) {
-                layoutManager = grid(gridSpanCount)
+                layoutManager = gridEmpty(gridSpanCount)
                 adapter = StorageFileAdapter(ownerActivity, viewModel, true).create()
                 dataBinding.viewToggleBt.setImageResource(R.drawable.ic_view_list)
             } else {

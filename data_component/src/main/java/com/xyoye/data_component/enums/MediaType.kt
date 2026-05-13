@@ -14,7 +14,7 @@ enum class MediaType(
 ) {
     LOCAL_STORAGE(
         "local_storage",
-        "本地媒体库",
+        "本地视频库",
         cover = R.drawable.ic_local_storage
     ),
 

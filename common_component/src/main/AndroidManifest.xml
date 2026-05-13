@@ -18,6 +18,11 @@
             android:name=".receiver.NotificationReceiver"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.image_viewer.ImageViewerActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@style/AppTheme" />
+
         <provider
             android:name="com.taobao.update.provider.UpdateProvider"
             android:authorities="${applicationId}.update.provider"
@@ -26,6 +31,16 @@
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/alicloud_update_paths" />
+        </provider>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
         </provider>
     </application>
 </manifest>

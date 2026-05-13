@@ -72,6 +72,8 @@ dependencies {
     api(Dependencies.Github.smbj)
     api(Dependencies.Github.dcerpc)
 
+    api(Dependencies.PhotoView.photo_view)
+
     api(Dependencies.Alibaba.alicloud_update)
     api(Dependencies.Alibaba.alicloud_feedback)
     implementation(Dependencies.Alibaba.alicloud_analysis)
