@@ -15,9 +15,9 @@ import com.alibaba.android.arouter.facade.annotation.Autowired
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import com.google.android.material.appbar.AppBarLayout
-import com.google.android.material.shape.ShapeAppearanceModel
 import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.config.RouteTable
+import com.tencent.mmkv.MMKV
 import com.xyoye.common_component.extension.horizontal
 import com.xyoye.common_component.extension.setData
 
@@ -54,6 +54,14 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     // 当前所处文件夹
     var directory: StorageFile? = null
         private set
+
+    // 当前布局模式：true为网格视图，false为列表视图
+    private val gridViewKey = "storage_file_grid_view"
+    var isGridView: Boolean
+        get() = MMKV.defaultMMKV().decodeBool(gridViewKey, false)
+        set(value) {
+            MMKV.defaultMMKV().encode(gridViewKey, value)
+        }
 
     // 标题栏菜单管理器
     private var mMenus: StorageFileMenus? = null
@@ -101,7 +109,6 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
 
         initPathRv()
         initListener()
-        updateFloatingButtonStyle()
         openDirectory(null)
     }
 
@@ -122,37 +129,12 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
             }
         }
 
-        dataBinding.quicklyPlayBt.setOnClickListener {
-            viewModel.quicklyPlay(storage)
-        }
-
-        dataBinding.quicklyPlayBt.setOnFocusChangeListener { _, _ ->
-            updateFloatingButtonStyle()
-        }
-
         dataBinding.pathRv.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
                 // 将RecyclerView焦点转移到子View
                 currentFocus?.requestFocus(View.FOCUS_UP)
             }
         }
-
-        // 系统无法正确分发快速播放按钮的焦点，需要手动分发
-        dataBinding.quicklyPlayBt.setOnKeyListener(object : View.OnKeyListener {
-            override fun onKey(v: View?, keyCode: Int, event: KeyEvent?): Boolean {
-                if (event?.action != KeyEvent.ACTION_DOWN || v?.isFocused != true) {
-                    return false
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    dispatchFocus(reversed = true)
-                    return true
-                } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    dispatchFocus()
-                    return true
-                }
-                return false
-            }
-        })
 
         viewModel.playLiveData.observe(this) {
             ARouter.getInstance()
@@ -328,20 +310,6 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
      */
     private fun onSortOptionChanged() {
         mRouteFragmentMap.values.onEach { it.sort() }
-    }
-
-    /**
-     * 根据焦点状态修改悬浮按钮样式
-     */
-    private fun updateFloatingButtonStyle() {
-        val floatingButton = dataBinding.quicklyPlayBt
-        val shapeAppearanceRes = if (floatingButton.isFocused)
-            R.style.ShapeAppearance_DanDanPlay_FloatingButton_Focused
-        else
-            R.style.ShapeAppearance_DanDanPlay_FloatingButton
-        floatingButton.shapeAppearanceModel = ShapeAppearanceModel.builder(
-            this, 0, shapeAppearanceRes
-        ).build()
     }
 
     /**

@@ -10,6 +10,8 @@ import com.xyoye.common_component.application.DanDanPlay
 import com.xyoye.common_component.base.BaseFragment
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.extension.deletable
+import com.tencent.mmkv.MMKV
+import com.xyoye.common_component.extension.grid
 import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.extension.vertical
 import com.xyoye.common_component.weight.BottomActionDialog
@@ -22,6 +24,7 @@ import com.xyoye.local_component.BR
 import com.xyoye.local_component.R
 import com.xyoye.local_component.databinding.FragmentMediaBinding
 import com.xyoye.local_component.databinding.ItemMediaLibraryBinding
+import com.xyoye.local_component.databinding.ItemMediaLibraryGridBinding
 
 /**
  * Created by xyoye on 2020/7/27.
@@ -29,6 +32,14 @@ import com.xyoye.local_component.databinding.ItemMediaLibraryBinding
 
 @Route(path = RouteTable.Local.MediaFragment)
 class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
+
+    private val gridViewKey = "media_library_grid_view"
+
+    private var isGridView: Boolean
+        get() = MMKV.defaultMMKV().decodeBool(gridViewKey, false)
+        set(value) {
+            MMKV.defaultMMKV().encode(gridViewKey, value)
+        }
 
     override fun initViewModel() = ViewModelInit(
         BR.viewModel,
@@ -48,6 +59,10 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
             showAddStorageDialog()
         }
 
+        dataBinding.viewToggleBt.setOnClickListener {
+            toggleViewMode()
+        }
+
         viewModel.mediaLibWithStatusLiveData.observe(this) {
             dataBinding.mediaLibRv.setData(it)
         }
@@ -56,37 +71,82 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
     private fun initRv() {
         dataBinding.mediaLibRv.apply {
             layoutManager = vertical()
+            adapter = createListAdapter()
+        }
+    }
 
-            adapter = buildAdapter {
-                addItem<MediaLibraryEntity, ItemMediaLibraryBinding>(R.layout.item_media_library) {
-                    initView { data, _, _ ->
-                        itemBinding.apply {
-                            libraryNameTv.text = data.displayName
-                            libraryUrlTv.text = data.disPlayDescribe
-                            libraryCoverIv.setImageResource(data.mediaType.cover)
+    private fun createListAdapter() = buildAdapter {
+        addItem<MediaLibraryEntity, ItemMediaLibraryBinding>(R.layout.item_media_library) {
+            initView { data, _, _ ->
+                itemBinding.apply {
+                    libraryNameTv.text = data.displayName
+                    libraryUrlTv.text = data.disPlayDescribe
+                    libraryCoverIv.setImageResource(data.mediaType.cover)
 
-
-
-                            itemLayout.setOnClickListener {
-                                DanDanPlay.permission.storage.request(this@MediaFragment) {
-                                    onGranted {
-                                        launchMediaStorage(data)
-                                    }
-                                    onDenied {
-                                        ToastCenter.showError("获取文件读取权限失败，无法打开媒体库")
-                                    }
-                                }
+                    itemLayout.setOnClickListener {
+                        DanDanPlay.permission.storage.request(this@MediaFragment) {
+                            onGranted {
+                                launchMediaStorage(data)
                             }
-                            itemLayout.setOnLongClickListener {
-                                if (data.mediaType.deletable) {
-                                    showManageStorageDialog(data)
-                                }
-                                true
+                            onDenied {
+                                ToastCenter.showError("获取文件读取权限失败，无法打开媒体库")
                             }
                         }
                     }
+                    itemLayout.setOnLongClickListener {
+                        if (data.mediaType.deletable) {
+                            showManageStorageDialog(data)
+                        }
+                        true
+                    }
                 }
             }
+        }
+    }
+
+    private fun createGridAdapter() = buildAdapter {
+        addItem<MediaLibraryEntity, ItemMediaLibraryGridBinding>(R.layout.item_media_library_grid) {
+            initView { data, _, _ ->
+                itemBinding.apply {
+                    libraryNameTv.text = data.displayName
+                    libraryCoverIv.setImageResource(data.mediaType.cover)
+
+                    itemLayout.setOnClickListener {
+                        DanDanPlay.permission.storage.request(this@MediaFragment) {
+                            onGranted {
+                                launchMediaStorage(data)
+                            }
+                            onDenied {
+                                ToastCenter.showError("获取文件读取权限失败，无法打开媒体库")
+                            }
+                        }
+                    }
+                    itemLayout.setOnLongClickListener {
+                        if (data.mediaType.deletable) {
+                            showManageStorageDialog(data)
+                        }
+                        true
+                    }
+                }
+            }
+        }
+    }
+
+    private fun toggleViewMode() {
+        isGridView = !isGridView
+        dataBinding.mediaLibRv.apply {
+            if (isGridView) {
+                layoutManager = grid(3)
+                adapter = createGridAdapter()
+                dataBinding.viewToggleBt.setImageResource(R.drawable.ic_view_list)
+            } else {
+                layoutManager = vertical()
+                adapter = createListAdapter()
+                dataBinding.viewToggleBt.setImageResource(R.drawable.ic_view_grid)
+            }
+        }
+        viewModel.mediaLibWithStatusLiveData.value?.let {
+            dataBinding.mediaLibRv.setData(it)
         }
     }
 

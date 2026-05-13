@@ -1,8 +1,10 @@
 package com.xyoye.storage_component.ui.fragment.storage_file
 
+import android.content.res.Configuration
 import androidx.core.view.children
 import androidx.core.view.isVisible
 import com.xyoye.common_component.base.BaseFragment
+import com.xyoye.common_component.extension.grid
 import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.extension.vertical
 import com.xyoye.common_component.storage.file.StorageFile
@@ -25,6 +27,12 @@ class StorageFileFragment :
         requireActivity() as StorageFileActivity
     }
 
+    private val isGridView: Boolean
+        get() = ownerActivity.isGridView
+
+    private val gridSpanCount: Int
+        get() = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 5 else 3
+
     override fun initViewModel() =
         ViewModelInit(
             BR.viewModel,
@@ -37,6 +45,10 @@ class StorageFileFragment :
         initRecyclerView()
 
         viewModel.storage = ownerActivity.storage
+
+        dataBinding.viewToggleBt.setOnClickListener {
+            toggleViewMode()
+        }
 
         viewModel.fileLiveData.observe(this) {
             dataBinding.loading.isVisible = false
@@ -75,9 +87,33 @@ class StorageFileFragment :
 
     private fun initRecyclerView() {
         dataBinding.storageFileRv.apply {
-            layoutManager = vertical()
+            layoutManager = if (isGridView) grid(gridSpanCount) else vertical()
+            adapter = StorageFileAdapter(ownerActivity, viewModel, isGridView).create()
+        }
+        updateToggleButtonIcon()
+    }
 
-            adapter = StorageFileAdapter(ownerActivity, viewModel).create()
+    private fun updateToggleButtonIcon() {
+        dataBinding.viewToggleBt.setImageResource(
+            if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid
+        )
+    }
+
+    private fun toggleViewMode() {
+        ownerActivity.isGridView = !ownerActivity.isGridView
+        dataBinding.storageFileRv.apply {
+            if (ownerActivity.isGridView) {
+                layoutManager = grid(gridSpanCount)
+                adapter = StorageFileAdapter(ownerActivity, viewModel, true).create()
+                dataBinding.viewToggleBt.setImageResource(R.drawable.ic_view_list)
+            } else {
+                layoutManager = vertical()
+                adapter = StorageFileAdapter(ownerActivity, viewModel, false).create()
+                dataBinding.viewToggleBt.setImageResource(R.drawable.ic_view_grid)
+            }
+        }
+        viewModel.fileLiveData.value?.let {
+            dataBinding.storageFileRv.setData(it)
         }
     }
 
