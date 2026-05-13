@@ -81,7 +81,7 @@ fun AppExtension.setupOutputApk() = apply {
         outputs.filter { it is ApkVariantOutput }
             .map { it as ApkVariantOutput }
             .onEach {
-                it.outputFileName = "dandanplay_v${Versions.versionName}_${it.name}.apk"
+                it.outputFileName = "NIplayer_v${Versions.versionName}_${it.name}.apk"
             }
     }
 }
