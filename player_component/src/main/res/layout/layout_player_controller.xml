@@ -36,7 +36,7 @@
             android:nextFocusLeft="@+id/player_lock_iv"
             android:nextFocusUp="@+id/player_settings_iv"
             android:nextFocusRight="@+id/player_lock_iv"
-            android:nextFocusDown="@+id/danmu_control_iv"
+            android:nextFocusDown="@+id/play_iv"
             android:padding="12dp"
             android:src="@mipmap/ic_video_screenshot"
             android:translationX="60dp"

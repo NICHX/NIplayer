@@ -110,7 +110,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:layout_marginStart="10dp"
-            android:background="@drawable/background_send_danmu_bt"
+            android:background="@drawable/background_video_action_item"
             android:drawablePadding="3dp"
             android:focusable="true"
             android:gravity="center"

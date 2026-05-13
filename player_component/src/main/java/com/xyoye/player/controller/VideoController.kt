@@ -2,14 +2,10 @@ package com.xyoye.player.controller
 
 import android.content.Context
 import android.util.AttributeSet
-import androidx.lifecycle.LiveData
 import com.xyoye.common_component.utils.formatDuration
 import com.xyoye.data_component.bean.VideoTrackBean
-import com.xyoye.data_component.data.DanmuEpisodeData
-import com.xyoye.data_component.entity.DanmuBlockEntity
 import com.xyoye.data_component.enums.PlayState
 import com.xyoye.player.controller.base.GestureVideoController
-import com.xyoye.player.controller.danmu.DanmuController
 import com.xyoye.player.controller.setting.SettingController
 import com.xyoye.player.controller.subtitle.SubtitleController
 import com.xyoye.player.controller.video.LoadingView
@@ -32,9 +28,6 @@ class VideoController(
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : GestureVideoController(context, attrs, defStyleAttr) {
-    //弹幕视图控制器
-    private val mDanmuController = DanmuController(context)
-
     //字幕视图控制器
     private val mSubtitleController = SubtitleController(context)
 
@@ -58,7 +51,6 @@ class VideoController(
     private var trackAddedBlock: ((VideoTrackBean) -> Unit)? = null
 
     init {
-        addControlComponent(mDanmuController.getView())
         addControlComponent(*mSubtitleController.getViews())
         addControlComponent(gestureView)
         addControlComponent(playerTopView)
@@ -66,8 +58,6 @@ class VideoController(
         addControlComponent(loadingView)
         addControlComponent(playerControlView)
     }
-
-    override fun getDanmuController() = mDanmuController
 
     override fun getSubtitleController() = mSubtitleController
 
@@ -224,30 +214,6 @@ class VideoController(
         this.switchVideoSourceBlock = block
         playerBotView.setSwitchVideoSourceBlock(block)
         mSettingController.setSwitchVideoSourceBlock(block)
-    }
-
-    /**
-     * 弹幕屏蔽回调
-     */
-    fun observerDanmuBlock(
-        cloudBlock: LiveData<MutableList<DanmuBlockEntity>>? = null,
-        add: ((keyword: String, isRegex: Boolean) -> Unit),
-        remove: ((id: Int) -> Unit),
-        queryAll: () -> LiveData<MutableList<DanmuBlockEntity>>
-    ) {
-        mDanmuController.setCloudBlockLiveData(cloudBlock)
-        mSettingController.setDatabaseBlock(add, remove, queryAll)
-    }
-
-    /**
-     * 弹幕搜索
-     */
-    fun observerDanmuSearch(
-        search: (String) -> Unit,
-        download: (DanmuEpisodeData) -> Unit,
-        searchResult: () -> LiveData<List<DanmuEpisodeData>>
-    ) {
-        mSettingController.setDanmuSearch(search, download, searchResult)
     }
 
     /**

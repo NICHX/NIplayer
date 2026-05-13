@@ -29,7 +29,7 @@ class SettingOffsetTimeView(
 
     private val layoutHeight = dp2px(100).toFloat()
     private val actionViews = mutableListOf<TextView>()
-    private var mSettingType = SettingViewType.DANMU_OFFSET_TIME
+    private var mSettingType = SettingViewType.SUBTITLE_OFFSET_TIME
 
     init {
         initView()
@@ -37,7 +37,7 @@ class SettingOffsetTimeView(
 
     override fun getLayoutId() = R.layout.layout_setting_offset_time
 
-    override fun getSettingViewType() = SettingViewType.DANMU_OFFSET_TIME
+    override fun getSettingViewType() = SettingViewType.SUBTITLE_OFFSET_TIME
 
     override fun onSettingVisibilityChanged(isVisible: Boolean) {
         if (isVisible) {
@@ -121,11 +121,7 @@ class SettingOffsetTimeView(
     }
 
     private fun changeTime(time: Float, reset: Boolean = false, dispatch: Boolean = true) {
-        val offsetTime = if (mSettingType == SettingViewType.SUBTITLE_OFFSET_TIME) {
-            PlayerInitializer.Subtitle.offsetPosition
-        } else {
-            PlayerInitializer.Danmu.offsetPosition
-        }
+        val offsetTime = PlayerInitializer.Subtitle.offsetPosition
         val currentOffset = time * 1000
         var newOffset = offsetTime + currentOffset
 
@@ -134,13 +130,8 @@ class SettingOffsetTimeView(
         }
 
         if (dispatch) {
-            if (mSettingType == SettingViewType.SUBTITLE_OFFSET_TIME) {
-                PlayerInitializer.Subtitle.offsetPosition = newOffset.toLong()
-                mControlWrapper.updateSubtitleOffsetTime()
-            } else {
-                PlayerInitializer.Danmu.offsetPosition = newOffset.toLong()
-                mControlWrapper.updateDanmuOffsetTime()
-            }
+            PlayerInitializer.Subtitle.offsetPosition = newOffset.toLong()
+            mControlWrapper.updateSubtitleOffsetTime()
         }
 
         val display = "${numberFormat(abs(newOffset / 1000))}秒"

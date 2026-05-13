@@ -35,15 +35,6 @@
             app:layout_constraintTop_toTopOf="parent" />
 
         <ImageView
-            android:id="@+id/iv_danmu_control"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:padding="2dp"
-            android:src="@drawable/ic_danmaku_control"
-            app:layout_constraintEnd_toStartOf="@id/iv_expand"
-            app:layout_constraintTop_toTopOf="@id/iv_expand" />
-
-        <ImageView
             android:id="@+id/iv_play"
             android:layout_width="36dp"
             android:layout_height="36dp"

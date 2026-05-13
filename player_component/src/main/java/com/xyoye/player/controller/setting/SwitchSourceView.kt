@@ -31,13 +31,11 @@ import com.xyoye.common_component.utils.dp2px
 import com.xyoye.common_component.utils.getFileName
 import com.xyoye.common_component.utils.getFolderName
 import com.xyoye.common_component.utils.isAudioFile
-import com.xyoye.common_component.utils.isDanmuFile
 import com.xyoye.common_component.utils.isSubtitleFile
 import com.xyoye.common_component.utils.view.FilePathItemDecoration
 import com.xyoye.common_component.utils.view.ItemDecorationOrientation
 import com.xyoye.data_component.bean.FileManagerBean
 import com.xyoye.data_component.bean.FilePathBean
-import com.xyoye.data_component.bean.LocalDanmuBean
 import com.xyoye.data_component.bean.VideoTrackBean
 import com.xyoye.data_component.enums.SettingViewType
 import com.xyoye.data_component.enums.TrackType
@@ -64,31 +62,26 @@ class SwitchSourceView(
     private val mCommonDirectoryData = mutableListOf<FilePathBean>()
     private val mFileData = mutableListOf<FileManagerBean>()
 
-    private var mTrackType = TrackType.DANMU
+    private var mTrackType = TrackType.SUBTITLE
 
     // 标题
     private val title
         get() = when (mTrackType) {
             TrackType.AUDIO -> "选择音轨文件"
-            TrackType.DANMU -> "选择弹幕轨文件"
             TrackType.SUBTITLE -> "选择字幕轨文件"
+            else -> "选择文件"
         }
-
-    // 是否显示搜索网络弹幕按钮
-    private val sourceSearchAble get() = mTrackType == TrackType.DANMU
 
     // 文件图标
     private val sourceFileIcon
         get() = when (mTrackType) {
             TrackType.AUDIO -> R.drawable.ic_file_audio
-            TrackType.DANMU -> R.drawable.ic_file_xml
             TrackType.SUBTITLE -> R.drawable.ic_file_subtitle
+            else -> R.drawable.ic_file_subtitle
         }
 
     init {
         initView()
-
-        initListener()
     }
 
     override fun getLayoutId() = R.layout.layout_switch_source
@@ -104,8 +97,6 @@ class SwitchSourceView(
         mCommonDirectoryData.clear()
         mCommonDirectoryData.addAll(getCommonDirectoryList())
         viewBinding.rvCommonFolder.setData(mCommonDirectoryData)
-
-        viewBinding.tvSearchNetworkDanmu.isVisible = sourceSearchAble
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -126,11 +117,7 @@ class SwitchSourceView(
         if (mFileData.size > 0) {
             viewBinding.rvFile.requestIndexChildFocus(0)
         } else {
-            if (viewBinding.tvSearchNetworkDanmu.isVisible) {
-                viewBinding.tvSearchNetworkDanmu.requestFocus()
-            } else {
-                viewBinding.rvCommonFolder.requestIndexChildFocus(0)
-            }
+            viewBinding.rvCommonFolder.requestIndexChildFocus(0)
         }
         return true
     }
@@ -229,13 +216,6 @@ class SwitchSourceView(
         }
     }
 
-    private fun initListener() {
-        viewBinding.tvSearchNetworkDanmu.setOnClickListener {
-            mControlWrapper.showSettingView(SettingViewType.SEARCH_DANMU)
-            onSettingVisibilityChanged(false)
-        }
-    }
-
     /**
      * 选中目标文件
      */
@@ -251,12 +231,11 @@ class SwitchSourceView(
                 mControlWrapper.addTrack(VideoTrackBean.audio(data.filePath))
             }
 
-            TrackType.DANMU -> {
-                mControlWrapper.addTrack(VideoTrackBean.danmu(LocalDanmuBean(data.filePath)))
-            }
-
             TrackType.SUBTITLE -> {
                 mControlWrapper.addTrack(VideoTrackBean.subtitle(data.filePath))
+            }
+
+            else -> {
             }
         }
     }
@@ -349,8 +328,8 @@ class SwitchSourceView(
     private fun isTargetFile(filePath: String): Boolean {
         return when (mTrackType) {
             TrackType.AUDIO -> isAudioFile(filePath)
-            TrackType.DANMU -> isDanmuFile(filePath)
             TrackType.SUBTITLE -> isSubtitleFile(filePath)
+            else -> false
         }
     }
 
@@ -398,8 +377,8 @@ class SwitchSourceView(
     private fun getDefaultOpenDirectory(): String {
         val addedSourcePath = when (mTrackType) {
             TrackType.AUDIO -> mControlWrapper.getVideoSource().getAudioPath()
-            TrackType.DANMU -> mControlWrapper.getVideoSource().getDanmu()?.danmuPath
             TrackType.SUBTITLE -> mControlWrapper.getVideoSource().getSubtitlePath()
+            else -> null
         }
         if (addedSourcePath.isNullOrEmpty()) {
             return PathHelper.getCachePath()
@@ -422,16 +401,6 @@ class SwitchSourceView(
             return handleKeyCodeVertical(keyCode)
         }
 
-        //网络弹幕按钮的焦点处理
-        if (viewBinding.tvSearchNetworkDanmu.hasFocus()) {
-            when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    viewBinding.tvSearchNetworkDanmu.requestFocus()
-                }
-            }
-            return true
-        }
-
         if (handleKeyCodeInCommonRv(keyCode)) {
             return true
         }
@@ -448,26 +417,9 @@ class SwitchSourceView(
             else -> return false
         }
 
-        if (viewBinding.tvSearchNetworkDanmu.hasFocus()) {
-            if (isKeyUp) {
-                if (mFileData.size > 0) {
-                    viewBinding.rvFile.requestIndexChildFocus(mFileData.size - 1)
-                } else if (mPathData.size > 0) {
-                    viewBinding.rvPath.requestIndexChildFocus(mPathData.size - 1)
-                } else {
-                    viewBinding.rvCommonFolder.requestIndexChildFocus(0)
-                }
-            } else {
-                viewBinding.rvCommonFolder.requestIndexChildFocus(0)
-            }
-            return true
-        }
-
         if (viewBinding.rvCommonFolder.focusedChild != null) {
             if (isKeyUp) {
-                if (viewBinding.tvSearchNetworkDanmu.isVisible) {
-                    viewBinding.tvSearchNetworkDanmu.requestFocus()
-                } else if (mFileData.size > 0) {
+                if (mFileData.size > 0) {
                     viewBinding.rvFile.requestIndexChildFocus(mFileData.size - 1)
                 }
             } else {
@@ -486,8 +438,6 @@ class SwitchSourceView(
             } else {
                 if (mFileData.size > 0) {
                     viewBinding.rvFile.requestIndexChildFocus(0)
-                } else if (viewBinding.tvSearchNetworkDanmu.isVisible) {
-                    viewBinding.tvSearchNetworkDanmu.requestFocus()
                 }
             }
             return true
@@ -594,11 +544,7 @@ class SwitchSourceView(
                 return true
             }
 
-            if (viewBinding.tvSearchNetworkDanmu.isVisible) {
-                viewBinding.tvSearchNetworkDanmu.requestFocus()
-            } else {
-                viewBinding.rvCommonFolder.requestIndexChildFocus(0)
-            }
+            viewBinding.rvCommonFolder.requestIndexChildFocus(0)
             return true
         }
 

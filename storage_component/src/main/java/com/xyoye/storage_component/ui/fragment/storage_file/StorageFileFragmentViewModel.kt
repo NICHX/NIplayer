@@ -129,12 +129,6 @@ class StorageFileFragmentViewModel : BaseViewModel() {
     fun unbindExtraSource(file: StorageFile, resource: TrackType) {
         viewModelScope.launch(Dispatchers.IO) {
             when (resource) {
-                TrackType.DANMU -> {
-                    DatabaseManager.instance.getPlayHistoryDao().updateDanmu(
-                        file.uniqueKey(), storage.library.id, null, null
-                    )
-                }
-
                 TrackType.SUBTITLE -> {
                     DatabaseManager.instance.getPlayHistoryDao().updateSubtitle(
                         file.uniqueKey(), storage.library.id, null
@@ -145,6 +139,10 @@ class StorageFileFragmentViewModel : BaseViewModel() {
                     DatabaseManager.instance.getPlayHistoryDao().updateAudio(
                         file.uniqueKey(), file.storage.library.id, null
                     )
+                }
+
+                else -> {
+                    // DANMU track type is no longer supported
                 }
             }
             updateHistory()

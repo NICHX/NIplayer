@@ -21,15 +21,6 @@ object PathHelper {
     fun getCachePath() = AppConfig.getCachePath() ?: DefaultConfig.DEFAULT_CACHE_PATH
 
     /**
-     * 获取保存弹幕的文件夹
-     */
-    fun getDanmuDirectory(): File {
-        return File(getCachePath(), "danmu").apply {
-            checkDirectory(this)
-        }
-    }
-
-    /**
      * 获取保存字幕的文件夹
      */
     fun getSubtitleDirectory(): File {

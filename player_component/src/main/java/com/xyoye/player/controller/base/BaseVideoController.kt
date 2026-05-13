@@ -18,7 +18,6 @@ import com.xyoye.player.controller.video.PlayerControlView
 import com.xyoye.player.info.PlayerInitializer
 import com.xyoye.player.utils.OrientationHelper
 import com.xyoye.player.wrapper.ControlWrapper
-import com.xyoye.player.wrapper.InterDanmuController
 import com.xyoye.player.wrapper.InterSettingController
 import com.xyoye.player.wrapper.InterSubtitleController
 import com.xyoye.player.wrapper.InterVideoController
@@ -74,14 +73,12 @@ abstract class BaseVideoController(
     @CallSuper
     fun setMediaPlayer(mediaPlayer: InterVideoPlayer) {
         val videoController = this
-        val danmuController = getDanmuController()
         val subtitleController = getSubtitleController()
         val settingController = getSettingController()
 
         mControlWrapper = ControlWrapper(
             mediaPlayer,
             videoController,
-            danmuController,
             subtitleController,
             settingController
         )
@@ -277,7 +274,6 @@ abstract class BaseVideoController(
     open fun isWrapperInitialized() = ::mControlWrapper.isInitialized
 
     open fun release() {
-        getDanmuController().danmuRelease()
         getSettingController().settingRelease()
     }
 
@@ -324,8 +320,6 @@ abstract class BaseVideoController(
         }
         onProgressChanged(duration, position)
     }
-
-    abstract fun getDanmuController(): InterDanmuController
 
     abstract fun getSubtitleController(): InterSubtitleController
 
