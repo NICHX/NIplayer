@@ -9,7 +9,6 @@ import com.xyoye.common_component.config.RouteTable
 import com.xyoye.user_component.BR
 import com.xyoye.user_component.R
 import com.xyoye.user_component.databinding.ActivitySettingPlayerBinding
-import com.xyoye.user_component.ui.fragment.DanmuSettingFragment
 import com.xyoye.user_component.ui.fragment.PlayerSettingFragment
 import com.xyoye.user_component.ui.fragment.SubtitleSettingFragment
 
@@ -40,13 +39,12 @@ class SettingPlayerActivity :
     inner class SettingFragmentAdapter(fragmentManager: FragmentManager) :
         FragmentPagerAdapter(fragmentManager, BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) {
 
-        private var titles = arrayOf("视频", "弹幕", "字幕")
+        private var titles = arrayOf("视频", "字幕")
 
         override fun getItem(position: Int): Fragment {
             return when (position) {
                 0 -> PlayerSettingFragment.newInstance()
-                1 -> DanmuSettingFragment.newInstance( )
-                2 -> SubtitleSettingFragment.newInstance()
+                1 -> SubtitleSettingFragment.newInstance()
                 else -> throw IllegalArgumentException()
             }
         }

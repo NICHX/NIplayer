@@ -11,14 +11,6 @@ enum class SettingAction(val type: SettingActionType, val display: String, val i
 
     BACKGROUND_PLAY(SettingActionType.VIDEO, "后台播放", R.drawable.ic_setting_background_play),
 
-    DANMU_TRACK(SettingActionType.DANMU, "弹幕轨", R.drawable.ic_setting_danmu_track),
-
-    DANMU_CONFIG(SettingActionType.DANMU, "配置", R.drawable.ic_setting_danmu_block),
-
-    DANMU_STYLE(SettingActionType.DANMU, "样式", R.drawable.ic_setting_style),
-
-    DANMU_TIME(SettingActionType.DANMU, "时间", R.drawable.ic_setting_time),
-
     SUBTITLE_TRACK(SettingActionType.SUBTITLE, "字幕轨", R.drawable.ic_setting_subtitle_track),
 
     SUBTITLE_STYLE(SettingActionType.SUBTITLE, "样式", R.drawable.ic_setting_style),

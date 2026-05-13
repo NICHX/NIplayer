@@ -226,22 +226,6 @@ class PlayerSettingView(
                 selected = PlayerConfig.isBackgroundPlay()
             }
 
-            SettingAction.DANMU_TRACK -> {
-                selected = mControlWrapper.getVideoSource().getDanmu() != null
-            }
-
-            SettingAction.DANMU_STYLE -> {
-                selected = PlayerInitializer.Danmu.size != PlayerInitializer.Danmu.DEFAULT_SIZE
-                    || PlayerInitializer.Danmu.alpha != PlayerInitializer.Danmu.DEFAULT_ALPHA
-                    || PlayerInitializer.Danmu.stoke != PlayerInitializer.Danmu.DEFAULT_STOKE
-                    || PlayerInitializer.Danmu.speed != PlayerInitializer.Danmu.DEFAULT_SPEED
-            }
-
-            SettingAction.DANMU_TIME -> {
-                selected =
-                    PlayerInitializer.Danmu.offsetPosition != PlayerInitializer.Danmu.DEFAULT_POSITION
-            }
-
             SettingAction.SUBTITLE_TRACK -> {
                 selected = mControlWrapper.getVideoSource().getSubtitlePath() != null
             }
@@ -306,26 +290,6 @@ class PlayerSettingView(
 
             SettingAction.AUDIO_TRACK -> {
                 mControlWrapper.showSettingView(SettingViewType.TRACKS, TrackType.AUDIO)
-                onSettingVisibilityChanged(false)
-            }
-
-            SettingAction.DANMU_TRACK -> {
-                mControlWrapper.showSettingView(SettingViewType.TRACKS, TrackType.DANMU)
-                onSettingVisibilityChanged(false)
-            }
-
-            SettingAction.DANMU_CONFIG -> {
-                mControlWrapper.showSettingView(SettingViewType.DANMU_CONFIGURE)
-                onSettingVisibilityChanged(false)
-            }
-
-            SettingAction.DANMU_STYLE -> {
-                mControlWrapper.showSettingView(SettingViewType.DANMU_STYLE)
-                onSettingVisibilityChanged(false)
-            }
-
-            SettingAction.DANMU_TIME -> {
-                mControlWrapper.showSettingView(SettingViewType.DANMU_OFFSET_TIME)
                 onSettingVisibilityChanged(false)
             }
 

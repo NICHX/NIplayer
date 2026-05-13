@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.AttributeSet
 import androidx.lifecycle.LiveData
 import com.xyoye.common_component.utils.formatDuration
-import com.xyoye.data_component.bean.SendDanmuBean
 import com.xyoye.data_component.bean.VideoTrackBean
 import com.xyoye.data_component.data.DanmuEpisodeData
 import com.xyoye.data_component.entity.DanmuBlockEntity
@@ -216,13 +215,6 @@ class VideoController(
      */
     fun observerTrackAdded(block: (VideoTrackBean) -> Unit) {
         trackAddedBlock = block
-    }
-
-    /**
-     * 发送弹幕回调
-     */
-    fun observerSendDanmu(block: (danmuData: SendDanmuBean) -> Unit) {
-        playerBotView.setSendDanmuBlock(block)
     }
 
     /**

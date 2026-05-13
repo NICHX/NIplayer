@@ -297,10 +297,6 @@ private fun updatePlayer(source: BaseVideoSource) {
             setVideoSource(source)
             start()
         }
-        //发送弹幕
-        videoController.observerSendDanmu {
-            viewModel.sendDanmu(source.getDanmu(), it)
-        }
 
         videoController.setSwitchVideoSourceBlock {
             switchVideoSource(it)
