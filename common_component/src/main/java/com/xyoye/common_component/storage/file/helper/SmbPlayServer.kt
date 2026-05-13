@@ -13,18 +13,12 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.io.IOException
 import java.io.InputStream
-import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
-
-/**
- * Created by xyoye on 2023/1/15.
- */
 
 class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(port) {
 
-    private var mStorageFile: SmbStorageFile? = null
-    private var mStorage: SmbStorage? = null
-    private var mContentType: String = "video/*"
+    private val urlFileMap = ConcurrentHashMap<String, Pair<SmbStorage, SmbStorageFile>>()
     private var mInputStream: InputStream? = null
 
     private val resourceNotFound by lazy {
@@ -40,7 +34,6 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
 
     companion object {
 
-        //随机端口
         private fun randomPort() = Random.nextInt(20000, 30000)
 
         @JvmStatic
@@ -57,28 +50,30 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
     }
 
     override fun serve(session: IHTTPSession): Response {
-        val storage = mStorage ?: return resourceNotFound
-        val storageFile = mStorageFile ?: return resourceNotFound
+        val uri = session.uri
+        val entry = urlFileMap[uri]
+        if (entry == null) {
+            return resourceNotFound
+        }
+        val (storage, storageFile) = entry
 
-        //关闭之前打开的数据流
         IOUtils.closeIO(mInputStream)
 
-        //重新打开数据流，重要，否则无法设置offset
         val inputStream = getInputStream(storage, storageFile)
             ?: return resourceOpenFailed
         mInputStream = inputStream
 
-        //解析Range
         val rangeText = session.headers["range"]
         val rangeArray = rangeText?.run {
             RangeUtils.getRange(this, storageFile.fileLength())
         }
 
-        //存在range，且contentLength != 0
+        val contentType = resolveContentType(storageFile.filePath())
+
         return if (rangeArray != null && rangeArray[2] != 0L) {
-            getPartialResponse(inputStream, rangeArray, storageFile.fileLength())
+            getPartialResponse(inputStream, rangeArray, storageFile.fileLength(), contentType)
         } else {
-            getOKResponse(inputStream)
+            getOKResponse(inputStream, contentType)
         }
     }
 
@@ -89,12 +84,11 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
     private fun getPartialResponse(
         inputStream: InputStream,
         rangeArray: Array<Long>,
-        sourceLength: Long
+        sourceLength: Long,
+        contentType: String
     ): Response {
-        //计算range内容长度
         val rangeLength = rangeArray[1] - rangeArray[0] + 1
 
-        //可靠跳过指定字节数（InputStream.skip()不保证跳过全部请求的字节数）
         try {
             var remaining = rangeArray[0]
             while (remaining > 0) {
@@ -106,14 +100,12 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
             e.printStackTrace()
         }
 
-        //响应内容
         val response = newFixedLengthResponse(
             Response.Status.PARTIAL_CONTENT,
-            mContentType,
+            contentType,
             inputStream,
             rangeLength
         )
-        //添加响应头
         val contentRange = "bytes ${rangeArray[0]}-${rangeArray[1]}/$sourceLength"
         response.addHeader("Accept-Ranges", "bytes")
         response.addHeader("Content-Range", contentRange)
@@ -121,10 +113,10 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         return response
     }
 
-    private fun getOKResponse(inputStream: InputStream): Response {
+    private fun getOKResponse(inputStream: InputStream, contentType: String): Response {
         return newChunkedResponse(
             Response.Status.OK,
-            mContentType,
+            contentType,
             inputStream
         )
     }
@@ -145,17 +137,25 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         )
     }
 
-    private fun getContentType(filePath: String): String {
+    private fun resolveContentType(filePath: String): String {
         if (filePath.isEmpty()) {
             return "video/*"
         }
         val extension = getFileExtension(filePath)
-        return "video/$extension"
+        return when (extension.lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "bmp" -> "image/bmp"
+            "webp" -> "image/webp"
+            "heif", "heic" -> "image/heic"
+            else -> "video/$extension"
+        }
     }
 
     suspend fun startSync(timeoutMs: Long = 5000): Boolean {
         if (wasStarted()) {
-            release()
+            return true
         }
         var lastError: Exception? = null
         for (attempt in 0..5) {
@@ -185,15 +185,15 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         storage: SmbStorage,
         storageFile: SmbStorageFile
     ): String {
-        mStorage = storage
-        mStorageFile = storageFile
-        mContentType = getContentType(storageFile.filePath())
-        val encodeFileName = URLEncoder.encode(storageFile.fileName(), "utf-8")
-        return "http://127.0.0.1:$listeningPort/$encodeFileName"
+        val urlPath = "/" + storageFile.uniqueKey()
+        urlFileMap[urlPath] = storage to storageFile
+        return "http://127.0.0.1:$listeningPort$urlPath"
     }
 
     fun release() {
         IOUtils.closeIO(mInputStream)
+        mInputStream = null
+        urlFileMap.clear()
         this@SmbPlayServer.stop()
     }
 }

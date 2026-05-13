@@ -434,21 +434,55 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
                         }
                     }
                 } else {
-                    // 设备存储库或网络存储 - 只支持单张图片
-                    val imageUrl = getImageUrl(file)
-                    if (imageUrl.isNotEmpty()) {
+                    // 设备存储库或网络存储 - 从当前文件列表中获取所有图片，支持左右滑动切换
+                    val currentFragment = mRouteFragmentMap.values.lastOrNull()
+                    val allFiles = currentFragment?.getCurrentFileList() ?: emptyList()
+
+                    val imageUrls = ArrayList<String>()
+                    var currentPosition = 0
+
+                    val imageFiles = allFiles.filter { it.isFile() && it.isImageFile() }
+                    imageFiles.forEachIndexed { index, imageFile ->
+                        val imageUrl = getImageUrl(imageFile)
+                        if (imageUrl.isNotEmpty()) {
+                            if (imageFile.uniqueKey() == file.uniqueKey()) {
+                                currentPosition = imageUrls.size
+                            }
+                            imageUrls.add(imageUrl)
+                        }
+                    }
+
+                    if (imageUrls.isNotEmpty()) {
                         withContext(Dispatchers.Main) {
                             ARouter.getInstance()
                                 .build(RouteTable.ImageViewer.Viewer)
-                                .withString(
-                                    com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_IMAGE_URI,
-                                    imageUrl
+                                .withStringArrayList(
+                                    com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_IMAGE_URIS,
+                                    imageUrls
+                                )
+                                .withInt(
+                                    com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_CURRENT_POSITION,
+                                    currentPosition
                                 )
                                 .navigation()
                         }
                     } else {
-                        withContext(Dispatchers.Main) {
-                            ToastCenter.showError("无法获取图片地址")
+                        // 回退：单张图片
+                        val imageUrl = getImageUrl(file)
+                        if (imageUrl.isNotEmpty()) {
+                            withContext(Dispatchers.Main) {
+                                ARouter.getInstance()
+                                    .build(RouteTable.ImageViewer.Viewer)
+                                    .withString(
+                                        com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_IMAGE_URI,
+                                        imageUrl
+                                    )
+                                    .navigation()
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                ToastCenter.showError("无法获取图片地址")
+                            }
                         }
                     }
                 }
