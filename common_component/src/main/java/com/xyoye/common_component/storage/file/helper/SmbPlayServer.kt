@@ -34,21 +34,20 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         resourceOpenFailedResponse()
     }
 
-    companion object {
-        private fun randomPort() = Random.nextInt(20000, 30000)
-
-        @Volatile
-        private var instance: SmbPlayServer? = null
-
-        @JvmStatic
-        fun getInstance(): SmbPlayServer {
-            return instance ?: synchronized(this) {
-                instance ?: SmbPlayServer().also { instance = it }
-            }
-        }
+    private object Holder {
+        val instance = SmbPlayServer()
     }
 
-    private fun changePort(newPort: Int) {
+    companion object {
+
+        //随机端口
+        private fun randomPort() = Random.nextInt(20000, 30000)
+
+        @JvmStatic
+        fun getInstance() = Holder.instance
+    }
+
+    private fun updatePort(newPort: Int) {
         try {
             val portField = NanoHTTPD::class.java.getDeclaredField("myPort")
             portField.isAccessible = true
@@ -152,11 +151,6 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         var lastError: Exception? = null
         for (attempt in 0..5) {
             try {
-                val probeSocket = java.net.ServerSocket()
-                probeSocket.reuseAddress = true
-                probeSocket.bind(java.net.InetSocketAddress(listeningPort), 1)
-                probeSocket.close()
-
                 return withTimeout(timeoutMs) {
                     start()
                     while (isActive) {
@@ -167,10 +161,11 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
                     stop()
                     return@withTimeout false
                 }
-            } catch (e: Exception) {
+            } catch (e: java.io.IOException) {
                 lastError = e
                 stop()
-                changePort(Random.nextInt(20000, 30000))
+                val newPort = Random.nextInt(20000, 30000)
+                updatePort(newPort)
             }
         }
         lastError?.printStackTrace()

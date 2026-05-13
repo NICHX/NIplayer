@@ -151,8 +151,7 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             return null
         }
         val playServer = SmbPlayServer.getInstance()
-        val serverStarted = playServer.startSync()
-        if (serverStarted.not()) {
+        if (!playServer.startSync()) {
             return null
         }
         return playServer.generatePlayUrl(this, file)
