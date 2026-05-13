@@ -20,4 +20,12 @@ object UserConfigTable {
     //用户头像索引
     @MMKVFiled
     const val userCoverIndex = -1
+
+    //存储文件页面是否使用网格视图
+    @MMKVFiled
+    const val storageFileGridView = false
+
+    //媒体库页面是否使用网格视图
+    @MMKVFiled
+    const val mediaLibraryGridView = false
 }

@@ -18,7 +18,9 @@ import com.xyoye.common_component.adapter.setupDiffUtil
 import com.xyoye.common_component.adapter.setupVerticalAnimation
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.databinding.ItemStorageFolderBinding
+import com.xyoye.common_component.databinding.ItemStorageFolderGridBinding
 import com.xyoye.common_component.databinding.ItemStorageVideoBinding
+import com.xyoye.common_component.databinding.ItemStorageVideoGridBinding
 import com.xyoye.common_component.databinding.ItemStorageVideoTagBinding
 import com.xyoye.common_component.extension.dp
 import com.xyoye.common_component.extension.horizontal
@@ -51,7 +53,8 @@ import com.xyoye.storage_component.ui.activities.storage_file.StorageFileActivit
 
 class StorageFileAdapter(
     private val activity: StorageFileActivity,
-    private val viewModel: StorageFileFragmentViewModel
+    private val viewModel: StorageFileFragmentViewModel,
+    private val isGridView: Boolean = false
 ) {
 
     private enum class ManageAction(val title: String, val icon: Int) {
@@ -66,6 +69,14 @@ class StorageFileAdapter(
     private val tagDecoration = ItemDecorationOrientation(5.dp(), 0, RecyclerView.HORIZONTAL)
 
     fun create(): BaseAdapter {
+        return if (isGridView) {
+            createGridAdapter()
+        } else {
+            createListAdapter()
+        }
+    }
+
+    private fun createListAdapter(): BaseAdapter {
         return buildAdapter {
             setupVerticalAnimation()
 
@@ -81,13 +92,40 @@ class StorageFileAdapter(
                 }
             }
 
-            addItem(R.layout.item_storage_folder) {
+            addItem<StorageFile, ItemStorageFolderBinding>(R.layout.item_storage_folder) {
                 checkType { data -> isDirectoryItem(data) }
-                initView(directoryItem())
+                initView(directoryListItem())
             }
-            addItem(R.layout.item_storage_video) {
+            addItem<StorageFile, ItemStorageVideoBinding>(R.layout.item_storage_video) {
                 checkType { data -> isVideoItem(data) }
-                initView(videoItem())
+                initView(videoListItem())
+            }
+        }
+    }
+
+    private fun createGridAdapter(): BaseAdapter {
+        return buildAdapter {
+            setupVerticalAnimation()
+
+            setupDiffUtil {
+                newDataInstance { it }
+                areItemsTheSame(isSameStorageFileItem())
+                areContentsTheSame(isSameStorageFileContent())
+            }
+
+            addEmptyView(R.layout.layout_empty) {
+                initEmptyView {
+                    itemBinding.emptyTv.text = R.string.text_empty_video.toResString()
+                }
+            }
+
+            addItem<StorageFile, ItemStorageFolderGridBinding>(R.layout.item_storage_folder_grid) {
+                checkType { data -> isDirectoryItem(data) }
+                initView(directoryGridItem())
+            }
+            addItem<StorageFile, ItemStorageVideoGridBinding>(R.layout.item_storage_video_grid) {
+                checkType { data -> isVideoItem(data) }
+                initView(videoGridItem())
             }
         }
     }
@@ -110,7 +148,7 @@ class StorageFileAdapter(
 
     private fun isVideoItem(data: Any) = data is StorageFile && data.isFile()
 
-    private fun BaseViewHolderCreator<ItemStorageFolderBinding>.directoryItem() =
+    private fun BaseViewHolderCreator<ItemStorageFolderBinding>.directoryListItem() =
         { data: StorageFile ->
             val childFileCount = data.childFileCount()
             val fileCount = if (childFileCount > 0)
@@ -125,7 +163,22 @@ class StorageFileAdapter(
             }
         }
 
-    private fun BaseViewHolderCreator<ItemStorageVideoBinding>.videoItem() = { data: StorageFile ->
+    private fun BaseViewHolderCreator<ItemStorageFolderGridBinding>.directoryGridItem() =
+        { data: StorageFile ->
+            val childFileCount = data.childFileCount()
+            val fileCount = if (childFileCount > 0)
+                "${childFileCount}文件"
+            else
+                "目录"
+            itemBinding.folderTv.text = getRecognizableFileName(data)
+            itemBinding.folderTv.setTextColor(getTitleColor(data))
+            itemBinding.fileCountTv.text = fileCount
+            itemBinding.itemLayout.setOnClickListener {
+                activity.openDirectory(data)
+            }
+        }
+
+    private fun BaseViewHolderCreator<ItemStorageVideoBinding>.videoListItem() = { data: StorageFile ->
         itemBinding.run {
             coverIv.loadStorageFileCover(data)
 
@@ -144,6 +197,28 @@ class StorageFileAdapter(
 
             moreActionIv.setOnClickListener {
                 showMoreAction(data, createShareOptions(itemLayout))
+            }
+
+            mainActionFl.setOnLongClickListener {
+                showMoreAction(data, createShareOptions(itemLayout))
+                return@setOnLongClickListener true
+            }
+        }
+    }
+
+    private fun BaseViewHolderCreator<ItemStorageVideoGridBinding>.videoGridItem() = { data: StorageFile ->
+        itemBinding.run {
+            coverIv.loadStorageFileCover(data)
+
+            titleTv.text = data.fileName()
+            titleTv.setTextColor(getTitleColor(data))
+
+            val duration = getDuration(data)
+            durationTv.text = duration
+            durationTv.isVisible = duration.isNotEmpty()
+
+            mainActionFl.setOnClickListener {
+                activity.openFile(data)
             }
 
             mainActionFl.setOnLongClickListener {
