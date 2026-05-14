@@ -8,9 +8,6 @@
 2）[ijkplayer](https://github.com/bilibili/ijkplayer)
 视频播放（video player）
 
-3）[DanmakuFlameMaster](https://github.com/bilibili/DanmakuFlameMaster)
-弹幕播放（danmu player）
-
 ## 2、网络（Network） ##
 1）[okhttp](https://github.com/square/okhttp)
 
@@ -21,10 +18,7 @@
 4）[jlibtorrent](https://github.com/frostwire/frostwire-jlibtorrent)
 种子下载（download torrent）
 
-5）[jsoup](https://github.com/jhy/jsoup)
-哔哩哔哩弹幕下载（download bilibili danmu file）
-
-6）[jcifs-ng](https://github.com/AgNO3/jcifs-ng)
+5）[jcifs-ng](https://github.com/AgNO3/jcifs-ng)
 局域网连接（connect to local area network）
 
 ## 3、工具（Tools） ##
@@ -40,7 +34,7 @@
 4）[BaseRecyclerViewAdapterHelper](https://github.com/CymChad/BaseRecyclerViewAdapterHelper)	
 recycler adapter
 
-5).[butterknife](https://github.com/JakeWharton/butterknife)
+5）[butterknife](https://github.com/JakeWharton/butterknife)
 视图绑定（Bind Android views ）
 
 6）[Fragmentation](https://github.com/YoKeyword/Fragmentation)
