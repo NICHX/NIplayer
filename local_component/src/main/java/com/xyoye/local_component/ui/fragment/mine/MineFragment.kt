@@ -1,4 +1,4 @@
-package com.xyoye.local_component.ui.fragment.media
+package com.xyoye.local_component.ui.fragment.mine
 
 import android.transition.Fade
 import android.transition.Slide
@@ -7,7 +7,6 @@ import android.transition.TransitionSet
 import android.view.Gravity
 import android.view.View
 import androidx.core.view.isVisible
-import com.alibaba.android.arouter.facade.annotation.Autowired
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import com.xyoye.common_component.adapter.addItem
@@ -16,7 +15,6 @@ import com.xyoye.common_component.application.DanDanPlay
 import com.xyoye.common_component.base.BaseFragment
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.extension.deletable
-import com.tencent.mmkv.MMKV
 import com.xyoye.common_component.extension.grid
 import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.extension.vertical
@@ -28,18 +26,15 @@ import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.enums.MediaType
 import com.xyoye.local_component.BR
 import com.xyoye.local_component.R
-import com.xyoye.local_component.databinding.FragmentMediaBinding
+import com.xyoye.local_component.databinding.FragmentMineBinding
 import com.xyoye.local_component.databinding.ItemMediaLibraryBinding
 import com.xyoye.local_component.databinding.ItemMediaLibraryGridBinding
+import com.tencent.mmkv.MMKV
 
-/**
- * Created by xyoye on 2020/7/27.
- */
+@Route(path = RouteTable.Local.MineFragment)
+class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() {
 
-@Route(path = RouteTable.Local.MediaFragment)
-class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
-
-    private val gridViewKey = "media_library_grid_view"
+    private val gridViewKey = "mine_fragment_grid_view"
     private var isMenuExpanded = false
 
     private var isGridView: Boolean
@@ -50,32 +45,25 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
 
     override fun initViewModel() = ViewModelInit(
         BR.viewModel,
-        MediaViewModel::class.java
+        MineFragmentViewModel::class.java
     )
 
-    override fun getLayoutId() = R.layout.fragment_media
+    override fun getLayoutId() = R.layout.fragment_mine
 
     override fun initView() {
-        ARouter.getInstance().inject(this)
-
         viewModel.initLocalStorage()
-
         initRv()
-
         dataBinding.moreMenuBt.setOnClickListener {
             toggleMenu()
         }
-
         dataBinding.viewToggleBt.setOnClickListener {
             collapseMenu()
             dataBinding.mediaLibRv.post { toggleViewMode() }
         }
-
         dataBinding.addMediaStorageBt.setOnClickListener {
             showAddStorageDialog()
             collapseMenu()
         }
-
         viewModel.mediaLibWithStatusLiveData.observe(this) {
             dataBinding.mediaLibRv.setData(it)
         }
@@ -102,9 +90,8 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
                     libraryNameTv.text = data.displayName
                     libraryUrlTv.text = data.disPlayDescribe
                     libraryCoverIv.setImageResource(data.mediaType.cover)
-
                     itemLayout.setOnClickListener {
-                        DanDanPlay.permission.storage.request(this@MediaFragment) {
+                        DanDanPlay.permission.storage.request(this@MineFragment) {
                             onGranted {
                                 launchMediaStorage(data)
                             }
@@ -130,9 +117,8 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
                 itemBinding.apply {
                     libraryNameTv.text = data.displayName
                     libraryCoverIv.setImageResource(data.mediaType.cover)
-
                     itemLayout.setOnClickListener {
-                        DanDanPlay.permission.storage.request(this@MediaFragment) {
+                        DanDanPlay.permission.storage.request(this@MineFragment) {
                             onGranted {
                                 launchMediaStorage(data)
                             }
@@ -163,11 +149,9 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
     private fun expandMenu() {
         isMenuExpanded = true
         dataBinding.moreMenuBt.setImageResource(R.drawable.ic_close_white)
-
         val transition = TransitionSet()
             .addTransition(Slide(Gravity.BOTTOM).setDuration(300))
             .addTransition(Fade().setDuration(300))
-
         TransitionManager.beginDelayedTransition(dataBinding.fabContainer, transition)
         dataBinding.viewToggleBt.visibility = View.VISIBLE
         dataBinding.addMediaStorageBt.visibility = View.VISIBLE
@@ -177,11 +161,9 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
         if (!isMenuExpanded) return
         isMenuExpanded = false
         dataBinding.moreMenuBt.setImageResource(R.drawable.ic_more_vert_white)
-
         val transition = TransitionSet()
             .addTransition(Slide(Gravity.BOTTOM).setDuration(200))
             .addTransition(Fade().setDuration(200))
-
         TransitionManager.beginDelayedTransition(dataBinding.fabContainer, transition)
         dataBinding.viewToggleBt.visibility = View.GONE
         dataBinding.addMediaStorageBt.visibility = View.GONE
@@ -212,9 +194,6 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
                     .withSerializable("typeValue", data.mediaType.value)
                     .navigation()
             }
-
-
-
             MediaType.LOCAL_STORAGE,
             MediaType.FTP_SERVER,
             MediaType.SMB_SERVER,
@@ -231,18 +210,13 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
     }
 
     private fun showAddStorageDialog() {
-        val actionList = MediaType.values()
-            .filter { 
-                (it.deletable && it != MediaType.EXTERNAL_STORAGE) 
-                || it == MediaType.STREAM_LINK 
-                || it == MediaType.MAGNET_LINK
-            }
+        val actionList = listOf(MediaType.EXTERNAL_STORAGE)
             .map { it.toAction() }
 
         BottomActionDialog(
             requireActivity(),
             actionList,
-            "新增"
+            "新增设备存储库"
         ) {
             val mediaType = it.actionId as MediaType
             ARouter.getInstance()
@@ -257,7 +231,6 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
         val actions = mutableListOf<SheetActionBean>()
         actions.add(ManageStorage.Edit.toAction())
         actions.add(ManageStorage.Delete.toAction())
-
         BottomActionDialog(requireActivity(), actions) {
             if (it.actionId == ManageStorage.Edit) {
                 ARouter.getInstance()
@@ -284,8 +257,6 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
                 addNegative()
             }.build().show()
     }
-
-
 
     private enum class ManageStorage(val title: String, val icon: Int) {
         Edit("编辑媒体库", R.drawable.ic_edit_storage),

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <data>
+
+        <import type="com.xyoye.local_component.ui.fragment.mine.MineFragmentViewModel" />
+
+        <variable
+            name="viewModel"
+            type="com.xyoye.local_component.ui.fragment.mine.MineFragmentViewModel" />
+    </data>
+
+    <androidx.coordinatorlayout.widget.CoordinatorLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/item_bg_color">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/media_lib_rv"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:descendantFocusability="afterDescendants"
+            app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+
+        <LinearLayout
+            android:id="@+id/fab_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end|bottom"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="40dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            app:layout_behavior="@string/hide_bottom_view_on_scroll_behavior">
+
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/add_media_storage_bt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:contentDescription="新增媒体库"
+                android:focusable="true"
+                android:src="@drawable/ic_add_white"
+                android:visibility="gone"
+                app:backgroundTint="@color/float_button_bg_color"
+                app:borderWidth="0dp"
+                app:elevation="0dp"
+                app:fabCustomSize="52dp"
+                app:maxImageSize="26dp"
+                app:rippleColor="@color/float_button_ripple_color" />
+
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/view_toggle_bt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:contentDescription="切换视图"
+                android:focusable="true"
+                android:src="@drawable/ic_view_list"
+                android:visibility="gone"
+                app:backgroundTint="@color/float_button_bg_color"
+                app:borderWidth="0dp"
+                app:elevation="0dp"
+                app:fabCustomSize="52dp"
+                app:maxImageSize="26dp"
+                app:rippleColor="@color/float_button_ripple_color" />
+
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/more_menu_bt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="更多操作"
+                android:focusable="true"
+                android:src="@drawable/ic_more_vert_white"
+                app:backgroundTint="@color/float_button_bg_color"
+                app:borderWidth="0dp"
+                app:elevation="0dp"
+                app:fabCustomSize="52dp"
+                app:maxImageSize="26dp"
+                app:rippleColor="@color/float_button_ripple_color" />
+
+        </LinearLayout>
+
+    </androidx.coordinatorlayout.widget.CoordinatorLayout>
+</layout>
