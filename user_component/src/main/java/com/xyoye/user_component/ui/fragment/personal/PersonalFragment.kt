@@ -60,7 +60,11 @@ class PersonalFragment : BaseFragment<PersonalFragmentViewModel, FragmentPersona
                 .navigation()
         }
 
-
+        dataBinding.thumbnailSettingLl?.setOnClickListener {
+            ARouter.getInstance()
+                .build(RouteTable.User.ThumbnailSetting)
+                .navigation()
+        }
 
         dataBinding.appSettingLl.setOnClickListener {
             ARouter.getInstance()
