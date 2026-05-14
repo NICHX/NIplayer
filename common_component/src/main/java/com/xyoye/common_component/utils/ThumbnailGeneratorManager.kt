@@ -179,7 +179,8 @@ object ThumbnailGeneratorManager {
 
             val filteredFiles = files.filter { file ->
                 val isTargetType = (file.isVideoFile() && ThumbnailConfig.isGenerateForVideo()) ||
-                        (file.isImageFile() && ThumbnailConfig.isGenerateForImage())
+                        (file.isImageFile() && ThumbnailConfig.isGenerateForImage()) ||
+                        (file.isAudioFile() && ThumbnailConfig.isGenerateForAudio())
                 isTargetType && !hasCachedThumbnail(file)
             }
             val (priority, others) = filteredFiles.partition { it.uniqueKey() in priorityKeys }
@@ -306,6 +307,7 @@ object ThumbnailGeneratorManager {
         try {
             if (file.isVideoFile() && !ThumbnailConfig.isGenerateForVideo()) return false
             if (file.isImageFile() && !ThumbnailConfig.isGenerateForImage()) return false
+            if (file.isAudioFile() && !ThumbnailConfig.isGenerateForAudio()) return false
 
             val coverFile = uniqueKey.toCoverFile() ?: return false
 
@@ -327,6 +329,8 @@ object ThumbnailGeneratorManager {
                 }
             } else if (file.isImageFile()) {
                 thumbnailGenerated = generateImageThumbnail(file, coverFile)
+            } else if (file.isAudioFile()) {
+                thumbnailGenerated = generateAudioThumbnail(file, coverFile)
             }
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "生成缩略图失败: ${file.fileName()}", e)
@@ -529,6 +533,53 @@ object ThumbnailGeneratorManager {
         return@withContext success
     }
     
+    /**
+     * 为音频文件生成缩略图（读取内嵌封面图）
+     */
+    private suspend fun generateAudioThumbnail(file: StorageFile, coverFile: File): Boolean = withContext(Dispatchers.IO) {
+        val mediaRetriever = MediaMetadataRetriever()
+        var success = false
+
+        try {
+            val playUrl = file.storage.createPlayUrl(file) ?: return@withContext false
+            val playUri = Uri.parse(playUrl)
+            if (playUri.scheme == "content") {
+                mediaRetriever.setDataSource(BaseApplication.getAppContext(), playUri)
+            } else {
+                val headers = file.storage.getNetworkHeaders()
+                if (headers != null) {
+                    mediaRetriever.setDataSource(playUrl, headers)
+                } else {
+                    mediaRetriever.setDataSource(playUrl)
+                }
+            }
+
+            val picture = mediaRetriever.embeddedPicture ?: return@withContext false
+            val bitmap = BitmapFactory.decodeByteArray(picture, 0, picture.size) ?: return@withContext false
+
+            val scaledBitmap = resizeBitmap(bitmap, THUMBNAIL_MAX_WIDTH)
+            if (scaledBitmap != bitmap) {
+                bitmap.recycle()
+            }
+
+            success = saveBitmapToFile(scaledBitmap, coverFile)
+            if (success) {
+                ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
+            } else {
+                recycleBitmapToPool(scaledBitmap)
+            }
+        } catch (e: Exception) {
+            DDLog.e("ThumbnailGenerator", "音频封面提取失败: ${file.fileName()}", e)
+        } finally {
+            try {
+                mediaRetriever.release()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+        return@withContext success
+    }
+
     /**
      * 计算 Bitmap 缩放比例
      */
