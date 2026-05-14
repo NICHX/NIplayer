@@ -190,6 +190,11 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         return "http://127.0.0.1:$listeningPort$urlPath"
     }
 
+    fun releaseStorage(storage: SmbStorage) {
+        val storageId = storage.library.id
+        urlFileMap.entries.removeAll { it.value.first.library.id == storageId }
+    }
+
     fun release() {
         IOUtils.closeIO(mInputStream)
         mInputStream = null

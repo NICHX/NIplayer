@@ -167,8 +167,7 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
 
     override fun close() {
         closeDiskShare()
-        // 彻底关闭时释放整个连接
-        SmbPlayServer.getInstance().release()
+        SmbPlayServer.getInstance().releaseStorage(this)
         IOUtils.closeIO(mSmbClient)
     }
 
