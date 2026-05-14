@@ -234,6 +234,10 @@ class StorageFileFragmentViewModel : BaseViewModel() {
         if (hidePointFile && storageFile.fileName().startsWith(".")) {
             return false
         }
+        //以-thumb.jpg结尾的文件，隐藏（自定义缩略图文件）
+        if (storageFile.fileName().endsWith("-thumb.jpg")) {
+            return false
+        }
         //文件夹，展示
         if (storageFile.isDirectory()) {
             return true

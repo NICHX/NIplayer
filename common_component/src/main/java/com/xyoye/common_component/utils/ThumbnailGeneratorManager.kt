@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import java.io.BufferedInputStream
+import java.io.FileInputStream
+import java.io.InputStream
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.Mutex
@@ -281,6 +284,10 @@ object ThumbnailGeneratorManager {
      * 为视频文件生成缩略图
      */
     private suspend fun generateVideoThumbnail(file: StorageFile, coverFile: File): Boolean = withContext(Dispatchers.IO) {
+        if (tryCustomThumbnail(file, coverFile)) {
+            return@withContext true
+        }
+
         val mediaRetriever = MediaMetadataRetriever()
         var success = false
 
@@ -332,6 +339,64 @@ object ThumbnailGeneratorManager {
             }
         }
         return@withContext success
+    }
+
+    /**
+     * 尝试使用同目录下的自定义缩略图文件 {视频文件名}-thumb.jpg
+     * 优先通过 Storage API 查找，失败后尝试直接访问本地文件系统
+     */
+    private suspend fun tryCustomThumbnail(file: StorageFile, coverFile: File): Boolean {
+        val thumbPath = buildCustomThumbPath(file) ?: return false
+
+        // 方式一：通过 Storage API（兼容 SMB/FTP/WebDav 等网络存储）
+        try {
+            val thumbFile = file.storage.pathFile(thumbPath, isDirectory = false)
+            if (thumbFile != null) {
+                file.storage.openFile(thumbFile)?.use { inputStream ->
+                    return decodeAndSaveThumbnail(inputStream, file, coverFile)
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 方式二：直接访问本地文件系统（兼容 VideoStorage 等本地存储）
+        try {
+            val localFile = File(thumbPath)
+            if (localFile.exists() && localFile.isFile) {
+                FileInputStream(localFile).use { inputStream ->
+                    return decodeAndSaveThumbnail(inputStream, file, coverFile)
+                }
+            }
+        } catch (_: Exception) {}
+
+        return false
+    }
+
+    /**
+     * 构建自定义缩略图文件路径
+     * 使用 storagePath() 以确保 SMB 等存储包含共享名等必要信息
+     */
+    private fun buildCustomThumbPath(file: StorageFile): String? {
+        val fileName = getFileNameNoExtension(file.fileName()).takeIf { it.isNotEmpty() } ?: return null
+        val dirPath = getDirPath(file.storagePath()).takeIf { it.isNotEmpty() } ?: return null
+        return "$dirPath/$fileName-thumb.jpg"
+    }
+
+    /**
+     * 解码并保存自定义缩略图
+     */
+    private fun decodeAndSaveThumbnail(inputStream: InputStream, file: StorageFile, coverFile: File): Boolean {
+        val bitmap = BitmapFactory.decodeStream(BufferedInputStream(inputStream)) ?: return false
+        val scaledBitmap = resizeBitmap(bitmap, THUMBNAIL_MAX_WIDTH)
+        if (scaledBitmap != bitmap) {
+            bitmap.recycle()
+        }
+        val success = saveBitmapToFile(scaledBitmap, coverFile)
+        if (success) {
+            ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
+            return true
+        }
+        recycleBitmapToPool(scaledBitmap)
+        return false
     }
 
     /**
