@@ -10,3 +10,4 @@
 *.jks
 dadanplay.jks
 keystore.properties
+/app
