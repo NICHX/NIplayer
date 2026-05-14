@@ -61,7 +61,7 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     // 当前布局模式：true为网格视图，false为列表视图
     private val gridViewKey = "storage_file_grid_view"
     var isGridView: Boolean
-        get() = MMKV.defaultMMKV().decodeBool(gridViewKey, false)
+        get() = MMKV.defaultMMKV().decodeBool(gridViewKey, true)
         set(value) {
             MMKV.defaultMMKV().encode(gridViewKey, value)
         }
