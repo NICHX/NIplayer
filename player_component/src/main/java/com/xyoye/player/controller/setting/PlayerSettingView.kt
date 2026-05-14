@@ -1,8 +1,12 @@
 package com.xyoye.player.controller.setting
 
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.util.AttributeSet
 import android.view.KeyEvent
+import android.view.Surface
+import android.view.WindowManager
+import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.GridLayoutManager
 import com.xyoye.common_component.adapter.addItem
 import com.xyoye.common_component.adapter.buildAdapter
@@ -262,6 +266,16 @@ class PlayerSettingView(
                 val newStatus = !PlayerInitializer.isOrientationEnabled
                 PlayerInitializer.isOrientationEnabled = newStatus
                 PlayerConfig.putAllowOrientationChange(newStatus)
+                if (!newStatus && context is AppCompatActivity) {
+                    val rotation = (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
+                    (context as AppCompatActivity).requestedOrientation = when (rotation) {
+                        Surface.ROTATION_0 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        Surface.ROTATION_90 -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                        Surface.ROTATION_180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                        Surface.ROTATION_270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                        else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+                    }
+                }
                 updateItemStatus(item.action, newStatus)
             }
 
