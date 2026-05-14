@@ -207,10 +207,19 @@ abstract class BaseVideoController(
             return
 
         val attachActivity = (context as AppCompatActivity)
-        if (orientation in 60..120) {
-            attachActivity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-        } else if (orientation in 240..300) {
-            attachActivity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        when {
+            orientation in 60..120 -> {
+                attachActivity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+            }
+            orientation in 240..300 -> {
+                attachActivity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            }
+            orientation in 0..30 || orientation in 330..360 -> {
+                attachActivity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+            orientation in 150..210 -> {
+                attachActivity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            }
         }
     }
 

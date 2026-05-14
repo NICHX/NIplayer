@@ -1138,7 +1138,8 @@
 
         <activity
             android:name=".ui.activities.player.PlayerActivity"
-            android:screenOrientation="landscape" />
+            android:screenOrientation="sensor"
+            android:configChanges="orientation|screenSize|screenLayout" />
     </application>
 
 </manifest>
