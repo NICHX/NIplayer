@@ -15,5 +15,8 @@ object ThumbnailConfigTable {
     const val generateForVideo = true
 
     @MMKVFiled
+    const val generateForAudio = true
+
+    @MMKVFiled
     const val saveInSameDir = false
 }
