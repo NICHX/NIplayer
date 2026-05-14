@@ -6,64 +6,85 @@
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/item_layout"
         android:layout_width="match_parent"
-        android:layout_height="72dp"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp">
+        android:layout_height="86dp"
+        android:transitionName="audio_item_layout">
 
         <FrameLayout
             android:id="@+id/main_action_fl"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:layout_marginTop="8dp"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
             android:background="@drawable/background_item_press"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/more_action_iv"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent">
+            app:layout_constraintTop_toTopOf="parent" />
 
-            <ImageView
-                android:id="@+id/cover_iv"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent" />
-
-        </FrameLayout>
+        <ImageView
+            android:id="@+id/cover_iv"
+            android:layout_width="88dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/background_video_cover"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintDimensionRatio="16:9"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:src="@drawable/ic_audio_cover" />
 
         <androidx.appcompat.widget.AppCompatTextView
             android:id="@+id/title_tv"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_marginTop="16dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="10dp"
             android:ellipsize="end"
-            android:maxLines="1"
+            android:gravity="top"
+            android:includeFontPadding="false"
+            android:maxLines="2"
             android:textColor="@color/text_black"
-            android:textSize="15sp"
-            app:layout_constraintEnd_toStartOf="@id/more_action_iv"
-            app:layout_constraintStart_toEndOf="@id/main_action_fl"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@+id/more_action_iv"
+            app:layout_constraintStart_toEndOf="@+id/cover_iv"
             app:layout_constraintTop_toTopOf="parent"
-            tools:text="音频文件名.mp3" />
+            tools:text="测试音频文件.mp3" />
 
         <TextView
             android:id="@+id/duration_tv"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
+            android:layout_marginStart="10dp"
             android:layout_marginTop="4dp"
             android:textColor="@color/text_gray"
             android:textSize="12sp"
             app:layout_constraintEnd_toStartOf="@id/more_action_iv"
-            app:layout_constraintStart_toEndOf="@id/main_action_fl"
+            app:layout_constraintStart_toEndOf="@id/cover_iv"
             app:layout_constraintTop_toBottomOf="@id/title_tv"
             tools:text="音频" />
 
         <ImageView
             android:id="@+id/more_action_iv"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:padding="6dp"
+            android:layout_width="30dp"
+            android:layout_height="0dp"
+            android:paddingHorizontal="3dp"
             android:background="@drawable/background_item_press"
             android:src="@drawable/ic_more_video_action"
-            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
+
+        <View
+            android:id="@+id/divider_view"
+            style="@style/DividerStyle"
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_marginStart="10dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/cover_iv" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
