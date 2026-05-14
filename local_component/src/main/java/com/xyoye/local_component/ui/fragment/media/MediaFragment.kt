@@ -1,5 +1,11 @@
 package com.xyoye.local_component.ui.fragment.media
 
+import android.transition.Fade
+import android.transition.Slide
+import android.transition.TransitionManager
+import android.transition.TransitionSet
+import android.view.Gravity
+import android.view.View
 import androidx.core.view.isVisible
 import com.alibaba.android.arouter.facade.annotation.Autowired
 import com.alibaba.android.arouter.facade.annotation.Route
@@ -34,9 +40,10 @@ import com.xyoye.local_component.databinding.ItemMediaLibraryGridBinding
 class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
 
     private val gridViewKey = "media_library_grid_view"
+    private var isMenuExpanded = false
 
     private var isGridView: Boolean
-        get() = MMKV.defaultMMKV().decodeBool(gridViewKey, false)
+        get() = MMKV.defaultMMKV().decodeBool(gridViewKey, true)
         set(value) {
             MMKV.defaultMMKV().encode(gridViewKey, value)
         }
@@ -55,12 +62,18 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
 
         initRv()
 
-        dataBinding.addMediaStorageBt.setOnClickListener {
-            showAddStorageDialog()
+        dataBinding.moreMenuBt.setOnClickListener {
+            toggleMenu()
         }
 
         dataBinding.viewToggleBt.setOnClickListener {
-            toggleViewMode()
+            collapseMenu()
+            dataBinding.mediaLibRv.post { toggleViewMode() }
+        }
+
+        dataBinding.addMediaStorageBt.setOnClickListener {
+            showAddStorageDialog()
+            collapseMenu()
         }
 
         viewModel.mediaLibWithStatusLiveData.observe(this) {
@@ -70,9 +83,16 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
 
     private fun initRv() {
         dataBinding.mediaLibRv.apply {
-            layoutManager = vertical()
-            adapter = createListAdapter()
+            layoutManager = if (isGridView) grid(3) else vertical()
+            adapter = if (isGridView) createGridAdapter() else createListAdapter()
         }
+        updateToggleButtonIcon()
+    }
+
+    private fun updateToggleButtonIcon() {
+        dataBinding.viewToggleBt.setImageResource(
+            if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid
+        )
     }
 
     private fun createListAdapter() = buildAdapter {
@@ -132,19 +152,53 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
         }
     }
 
+    private fun toggleMenu() {
+        if (isMenuExpanded) {
+            collapseMenu()
+        } else {
+            expandMenu()
+        }
+    }
+
+    private fun expandMenu() {
+        isMenuExpanded = true
+        dataBinding.moreMenuBt.setImageResource(R.drawable.ic_close_white)
+
+        val transition = TransitionSet()
+            .addTransition(Slide(Gravity.BOTTOM).setDuration(300))
+            .addTransition(Fade().setDuration(300))
+
+        TransitionManager.beginDelayedTransition(dataBinding.fabContainer, transition)
+        dataBinding.viewToggleBt.visibility = View.VISIBLE
+        dataBinding.addMediaStorageBt.visibility = View.VISIBLE
+    }
+
+    private fun collapseMenu() {
+        if (!isMenuExpanded) return
+        isMenuExpanded = false
+        dataBinding.moreMenuBt.setImageResource(R.drawable.ic_more_vert_white)
+
+        val transition = TransitionSet()
+            .addTransition(Slide(Gravity.BOTTOM).setDuration(200))
+            .addTransition(Fade().setDuration(200))
+
+        TransitionManager.beginDelayedTransition(dataBinding.fabContainer, transition)
+        dataBinding.viewToggleBt.visibility = View.GONE
+        dataBinding.addMediaStorageBt.visibility = View.GONE
+    }
+
     private fun toggleViewMode() {
         isGridView = !isGridView
         dataBinding.mediaLibRv.apply {
             if (isGridView) {
                 layoutManager = grid(3)
                 adapter = createGridAdapter()
-                dataBinding.viewToggleBt.setImageResource(R.drawable.ic_view_list)
             } else {
                 layoutManager = vertical()
                 adapter = createListAdapter()
-                dataBinding.viewToggleBt.setImageResource(R.drawable.ic_view_grid)
             }
         }
+        updateToggleButtonIcon()
         viewModel.mediaLibWithStatusLiveData.value?.let {
             dataBinding.mediaLibRv.setData(it)
         }
