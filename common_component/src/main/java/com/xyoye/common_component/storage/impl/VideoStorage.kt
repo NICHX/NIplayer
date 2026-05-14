@@ -16,7 +16,9 @@ import com.xyoye.data_component.entity.PlayHistoryEntity
 import com.xyoye.data_component.entity.VideoEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.InputStream
 
 /**
@@ -50,6 +52,20 @@ class VideoStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
     override suspend fun openFile(file: StorageFile): InputStream {
         return withContext(Dispatchers.IO) {
             FileInputStream(file.filePath())
+        }
+    }
+
+    override suspend fun saveFile(path: String, data: ByteArray): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val file = File(path)
+                file.parentFile?.mkdirs()
+                FileOutputStream(file).use { it.write(data) }
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
         }
     }
 

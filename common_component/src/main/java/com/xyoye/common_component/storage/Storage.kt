@@ -43,6 +43,14 @@ interface Storage {
     suspend fun openFile(file: StorageFile): InputStream?
 
     /**
+     * 保存数据到文件（在目标存储上创建或覆盖文件）
+     * @param path 文件路径（相对于存储根目录）
+     * @param data 要写入的数据
+     * @return 是否成功
+     */
+    suspend fun saveFile(path: String, data: ByteArray): Boolean
+
+    /**
      * 打开文件夹
      */
     suspend fun openDirectory(file: StorageFile, refresh: Boolean): List<StorageFile>

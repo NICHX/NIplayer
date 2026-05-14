@@ -13,6 +13,9 @@ import com.xyoye.sardine.DavResource
 import com.xyoye.sardine.impl.OkHttpSardine
 import com.xyoye.sardine.util.SardineConfig
 import okhttp3.Credentials
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.InputStream
 import java.net.URI
 import java.util.Date
@@ -74,6 +77,27 @@ class WebDavStorage(
 
     override suspend fun createPlayUrl(file: StorageFile): String {
         return file.fileUrl()
+    }
+
+    override suspend fun saveFile(path: String, data: ByteArray): Boolean {
+        val targetUrl = rootUri.buildUpon().path(path).toString()
+        val headers = getNetworkHeaders()
+        return try {
+            val requestBuilder = Request.Builder()
+                .url(targetUrl)
+                .put(data.toRequestBody("image/jpeg".toMediaType()))
+            headers?.forEach { (key, value) ->
+                requestBuilder.addHeader(key, value)
+            }
+            val response = UnsafeOkHttpClient.client.newCall(requestBuilder.build()).execute()
+            response.isSuccessful.also {
+                response.close()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            ToastCenter.showError("保存文件失败: ${e.message}")
+            false
+        }
     }
 
     override fun getNetworkHeaders(): Map<String, String>? {

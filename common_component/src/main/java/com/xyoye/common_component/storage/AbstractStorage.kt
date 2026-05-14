@@ -25,6 +25,8 @@ abstract class AbstractStorage(
 
     override var rootUri: Uri = Uri.parse(libraryEntity.url)
 
+    override suspend fun saveFile(path: String, data: ByteArray): Boolean = false
+
     override suspend fun openDirectory(file: StorageFile, refresh: Boolean): List<StorageFile> {
         this.directory = file
         this.directoryFiles = listFiles(file)

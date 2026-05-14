@@ -1,7 +1,11 @@
 package com.xyoye.common_component.storage.impl
 
 import android.net.Uri
+import com.hierynomus.msdtyp.AccessMask
 import com.hierynomus.msfscc.FileAttributes
+import com.hierynomus.mssmb2.SMB2CreateDisposition
+import com.hierynomus.mssmb2.SMB2CreateOptions
+import com.hierynomus.mssmb2.SMB2ShareAccess
 import com.hierynomus.smbj.SMBClient
 import com.hierynomus.smbj.SmbConfig
 import com.hierynomus.smbj.auth.AuthenticationContext
@@ -22,6 +26,7 @@ import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import java.io.InputStream
+import java.util.EnumSet
 
 /**
  * Created by xyoye on 2023/1/14.
@@ -155,6 +160,39 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             return null
         }
         return playServer.generatePlayUrl(this, file)
+    }
+
+    override suspend fun saveFile(path: String, data: ByteArray): Boolean {
+        if (checkConnection().not()) {
+            return false
+        }
+        val pathSegments = Uri.parse("/$path").pathSegments
+        val targetShare = pathSegments.firstOrNull() ?: return false
+        if (switchShareDisk(targetShare).not()) {
+            return false
+        }
+        val filePath = pathSegments.takeLast(pathSegments.size - 1).joinToString(separator = "/")
+        return try {
+            val smbFile = mDiskShare?.openFile(
+                filePath,
+                EnumSet.of(AccessMask.GENERIC_WRITE),
+                setOf(FileAttributes.FILE_ATTRIBUTE_NORMAL),
+                setOf(SMB2ShareAccess.FILE_SHARE_WRITE),
+                SMB2CreateDisposition.FILE_OVERWRITE_IF,
+                setOf(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE)
+            )
+            if (smbFile != null) {
+                smbFile.write(data, 0L)
+                smbFile.close()
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            showErrorToast("保存文件失败", e)
+            false
+        }
     }
 
     override suspend fun test(): Boolean {

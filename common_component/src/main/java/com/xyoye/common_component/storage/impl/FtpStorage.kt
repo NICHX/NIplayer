@@ -12,6 +12,7 @@ import com.xyoye.data_component.entity.PlayHistoryEntity
 import org.apache.commons.net.ftp.FTP
 import org.apache.commons.net.ftp.FTPClient
 import org.apache.commons.net.ftp.FTPFile
+import java.io.ByteArrayInputStream
 import java.io.InputStream
 
 /**
@@ -112,6 +113,21 @@ class FtpStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             return null
         }
         return playServer.generatePlayUrl(this, file)
+    }
+
+    override suspend fun saveFile(path: String, data: ByteArray): Boolean {
+        if (checkConnection().not()) {
+            return false
+        }
+        return try {
+            checkWorkDirectory()
+            ByteArrayInputStream(data).use { inputStream ->
+                mFtpClient.storeFile(path, inputStream)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
     }
 
     /**

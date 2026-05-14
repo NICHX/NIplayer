@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
 import java.io.InputStream
 import kotlinx.coroutines.async
@@ -383,14 +384,21 @@ object ThumbnailGeneratorManager {
                 bitmap.recycle()
             }
 
-            val targetFile = if (ThumbnailConfig.isSaveInSameDir() && file.isVideoFile()) {
+            val thumbBytes = toJpegBytes(scaledBitmap)
+
+            if (ThumbnailConfig.isSaveInSameDir() && file.isVideoFile()) {
                 val sameDirPath = buildCustomThumbPath(file)
-                if (sameDirPath != null) File(sameDirPath) else coverFile
-            } else {
-                coverFile
+                if (sameDirPath != null) {
+                    val remoteSaved = file.storage.saveFile(sameDirPath, thumbBytes)
+                    if (!remoteSaved) {
+                        val fallbackFile = File(sameDirPath)
+                        success = saveBitmapToFile(scaledBitmap, fallbackFile) || saveBitmapToFile(scaledBitmap, coverFile)
+                    } else {
+                        success = true
+                    }
+                }
             }
-            success = saveBitmapToFile(scaledBitmap, targetFile)
-            if (!success && targetFile != coverFile) {
+            if (!success) {
                 success = saveBitmapToFile(scaledBitmap, coverFile)
             }
             if (success) {
@@ -578,6 +586,13 @@ object ThumbnailGeneratorManager {
             IOUtils.closeIO(fos)
         }
         return success
+    }
+
+    private fun toJpegBytes(bitmap: Bitmap): ByteArray {
+        ByteArrayOutputStream().use { bos ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 40, bos)
+            return bos.toByteArray()
+        }
     }
 
     /**
