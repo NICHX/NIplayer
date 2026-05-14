@@ -20,6 +20,7 @@ object RouteTable {
 
     object Local {
         const val MediaFragment = "/local/media_fragment"
+        const val MineFragment = "/local/mine_fragment"
         const val BindExtraSource = "/local/bind_extra_source"
         const val PlayHistory = "/local/play_history"
         const val ShooterSubtitle = "/local/shooter_subtitle"

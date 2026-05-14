@@ -22,14 +22,14 @@ import kotlin.system.exitProcess
 class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>() {
     companion object {
         private const val TAG_FRAGMENT_MEDIA = "tag_fragment_media"
+        private const val TAG_FRAGMENT_MINE = "tag_fragment_mine"
         private const val TAG_FRAGMENT_PERSONAL = "tag_fragment_personal"
     }
 
     private lateinit var mediaFragment: Fragment
+    private lateinit var mineFragment: Fragment
     private lateinit var personalFragment: Fragment
     private lateinit var previousFragment: Fragment
-
-
 
     private var fragmentTag = ""
     private var touchTime = 0L
@@ -44,37 +44,36 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>() {
 
     override fun initView() {
         ARouter.getInstance().inject(this)
-        //隐藏返回按钮
         supportActionBar?.apply {
             setDisplayHomeAsUpEnabled(false)
             setDisplayShowTitleEnabled(true)
         }
 
-        //默认显示媒体库页面
-        //标题
-        title = "媒体库"
-        //移除所有已添加的fragment，防止如旋转屏幕后导致的屏幕错乱
+        title = "服务器"
         supportFragmentManager.findAndRemoveFragment(
             TAG_FRAGMENT_MEDIA,
+            TAG_FRAGMENT_MINE,
             TAG_FRAGMENT_PERSONAL
         )
-        //切换到媒体库页面
         switchFragment(TAG_FRAGMENT_MEDIA)
-        //底部导航栏设置选中
         dataBinding.navigationView.post {
             dataBinding.navigationView.selectedItemId = R.id.navigation_media
         }
 
-        //设置底部导航栏事件
         dataBinding.navigationView.setOnItemSelectedListener {
             when (it.itemId) {
                 R.id.navigation_media -> {
-                    title = "媒体库"
+                    title = "服务器"
                     switchFragment(TAG_FRAGMENT_MEDIA)
                 }
 
+                R.id.navigation_mine -> {
+                    title = "本地"
+                    switchFragment(TAG_FRAGMENT_MINE)
+                }
+
                 R.id.navigation_personal -> {
-                    title = "个人中心"
+                    title = "设置"
                     switchFragment(TAG_FRAGMENT_PERSONAL)
                 }
             }
@@ -96,12 +95,10 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>() {
     }
 
     private fun switchFragment(tag: String) {
-        //重复打开当前页面，不进行任何操作
         if (tag == fragmentTag) {
             return
         }
 
-        //隐藏上一个布局，fragmentTag不为空代表上一个布局已存在
         if (fragmentTag.isNotEmpty()) {
             supportFragmentManager.hideFragment(previousFragment)
         }
@@ -119,6 +116,23 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>() {
                 } else {
                     supportFragmentManager.showFragment(fragment)
                     mediaFragment = fragment
+                    previousFragment = fragment
+                    fragmentTag = tag
+                }
+            }
+
+            TAG_FRAGMENT_MINE -> {
+                val fragment = supportFragmentManager.findFragmentByTag(TAG_FRAGMENT_MINE)
+                if (fragment == null) {
+                    getFragment(RouteTable.Local.MineFragment)?.also {
+                        addFragment(it, TAG_FRAGMENT_MINE)
+                        mineFragment = it
+                        previousFragment = it
+                        fragmentTag = tag
+                    }
+                } else {
+                    supportFragmentManager.showFragment(fragment)
+                    mineFragment = fragment
                     previousFragment = fragment
                     fragmentTag = tag
                 }
@@ -159,6 +173,5 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>() {
         ARouter.getInstance()
             .build(path)
             .navigation() as Fragment?
-
 
 }
