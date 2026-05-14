@@ -29,6 +29,7 @@ object RouteTable {
         const val PersonalFragment = "/user/personal_fragment"
         const val SettingPlayer = "/user/setting_player"
         const val SettingApp = "/user/setting_app"
+        const val ThumbnailSetting = "/user/thumbnail_setting"
         const val WebView = "/user/web_view"
         const val ScanManager = "/user/scan_manager"
         const val CacheManager = "/user/cache_manager"

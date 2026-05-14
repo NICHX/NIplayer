@@ -6,6 +6,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.xyoye.common_component.base.BaseViewModel
 import com.xyoye.common_component.config.AppConfig
+import com.xyoye.common_component.config.ThumbnailConfig
 import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.StorageSortOption
@@ -56,15 +57,17 @@ class StorageFileFragmentViewModel : BaseViewModel() {
             }
 
             refreshStorageLastPlay()
-            val fileList = storage.openDirectory(target, refresh)
+            val originalFileList = storage.openDirectory(target, refresh)
+            val fileList = originalFileList
                 .filter { isDisplayFile(it) }
                 .sortedWith(StorageSortOption.comparator())
                 .map { updateStorageFileHistory(it, getHistory(it)) }
-                .apply { _fileLiveData.postValue(this) }
                 .also { filesSnapshot = it }
-            
-            // 立即启动缩略图生成，不等待UI布局
-            ThumbnailGeneratorManager.startGenerateThumbnails(fileList, storage)
+
+            ThumbnailGeneratorManager.preloadExistingThumbs(originalFileList, storage)
+
+            _fileLiveData.postValue(fileList)
+            ThumbnailGeneratorManager.startGenerateThumbnails(fileList, storage, allFiles = originalFileList)
         }
     }
 
@@ -234,9 +237,11 @@ class StorageFileFragmentViewModel : BaseViewModel() {
         if (hidePointFile && storageFile.fileName().startsWith(".")) {
             return false
         }
-        //以-thumb.jpg结尾的文件，隐藏（自定义缩略图文件）
+        //以-thumb.jpg结尾的文件，仅在为视频生成缩略图时隐藏
         if (storageFile.fileName().endsWith("-thumb.jpg")) {
-            return false
+            if (ThumbnailConfig.isGenerateThumbnail() && ThumbnailConfig.isGenerateForVideo()) {
+                return false
+            }
         }
         //文件夹，展示
         if (storageFile.isDirectory()) {

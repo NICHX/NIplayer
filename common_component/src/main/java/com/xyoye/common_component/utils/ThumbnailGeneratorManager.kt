@@ -12,6 +12,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.xyoye.common_component.base.app.BaseApplication
+import com.xyoye.common_component.config.ThumbnailConfig
 import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.file.StorageFile
@@ -19,6 +20,7 @@ import com.xyoye.data_component.enums.MediaType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -67,6 +69,9 @@ object ThumbnailGeneratorManager {
 
     // Bitmap 复用池，减少GC压力
     private val bitmapPool = LinkedList<Bitmap>()
+
+    // 同目录下已存在的 -thumb.jpg 文件查找表，key 为视频名（不含扩展名）
+    private val thumbFileLookup = mutableMapOf<String, StorageFile>()
     private const val BITMAP_POOL_MAX_SIZE = 8
 
     private fun obtainReusableBitmap(width: Int, height: Int): Bitmap? {
@@ -117,26 +122,70 @@ object ThumbnailGeneratorManager {
     }
 
     /**
+     * 预加载现有缩略图到本地缓存
+     * 将目录中已存在的 -thumb.jpg 文件复制到缓存目录
+     * 确保 fileCover() 能立即找到缓存，避免显示默认图标
+     */
+    suspend fun preloadExistingThumbs(allFiles: List<StorageFile>, storage: Storage) {
+        coroutineScope {
+            allFiles
+                .filter { it.fileName().endsWith("-thumb.jpg") }
+                .forEach { thumbFile ->
+                    launch {
+                        val videoName = thumbFile.fileName().removeSuffix("-thumb.jpg")
+                        if (videoName.isEmpty()) return@launch
+                        val videoFile = allFiles.find {
+                            getFileNameNoExtension(it.fileName()) == videoName
+                        } ?: return@launch
+                        val coverFile = videoFile.uniqueKey().toCoverFile() ?: return@launch
+                        if (coverFile.exists() && coverFile.length() > 0) return@launch
+                        try {
+                            storage.openFile(thumbFile)?.use { input ->
+                                coverFile.parentFile?.mkdirs()
+                                FileOutputStream(coverFile).use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+        }
+    }
+
+    /**
      * 开始为文件列表生成缩略图
      * @param files 文件列表
      * @param storage 所属存储
      * @param priorityKeys 优先处理的文件唯一键集合（当前屏幕可见项）
      */
-    fun startGenerateThumbnails(files: List<StorageFile>, storage: Storage, priorityKeys: Set<String> = emptySet()) {
-        // 清空队列并添加新文件
+    fun startGenerateThumbnails(files: List<StorageFile>, storage: Storage, priorityKeys: Set<String> = emptySet(), allFiles: List<StorageFile>? = null) {
+        if (!ThumbnailConfig.isGenerateThumbnail()) return
+
         synchronized(pendingFiles) {
             pendingFiles.clear()
             retryCountMap.clear()
-            val filteredFiles = files.filter { 
-                (it.isVideoFile() || it.isImageFile()) && !hasCachedThumbnail(it) 
+
+            thumbFileLookup.clear()
+            if (allFiles != null) {
+                for (f in allFiles) {
+                    val name = f.fileName()
+                    if (name.endsWith("-thumb.jpg")) {
+                        val videoName = name.removeSuffix("-thumb.jpg")
+                        thumbFileLookup[videoName] = f
+                    }
+                }
             }
-            // 优先处理屏幕可见项
+
+            val filteredFiles = files.filter { file ->
+                val isTargetType = (file.isVideoFile() && ThumbnailConfig.isGenerateForVideo()) ||
+                        (file.isImageFile() && ThumbnailConfig.isGenerateForImage())
+                isTargetType && !hasCachedThumbnail(file)
+            }
             val (priority, others) = filteredFiles.partition { it.uniqueKey() in priorityKeys }
             priority.forEach { pendingFiles.offer(it) }
             others.forEach { pendingFiles.offer(it) }
         }
 
-        // 开始处理
         processNextBatch()
     }
 
@@ -170,12 +219,21 @@ object ThumbnailGeneratorManager {
         }
     }
 
-    /**
-     * 检查文件是否已经有缓存的缩略图
-     */
     private fun hasCachedThumbnail(file: StorageFile): Boolean {
         val coverFile = file.uniqueKey().toCoverFile()
-        return coverFile != null && coverFile.exists() && coverFile.length() > 0
+        if (coverFile != null && coverFile.exists() && coverFile.length() > 0) {
+            return true
+        }
+        if (file.isVideoFile()) {
+            val videoName = getFileNameNoExtension(file.fileName())
+            if (videoName.isNotEmpty() && videoName in thumbFileLookup) {
+                return true
+            }
+            val thumbPath = buildCustomThumbPath(file) ?: return false
+            val sameDirFile = File(thumbPath)
+            return sameDirFile.exists() && sameDirFile.isFile && sameDirFile.length() > 0
+        }
+        return false
     }
 
     /**
@@ -245,6 +303,9 @@ object ThumbnailGeneratorManager {
         var thumbnailGenerated = false
 
         try {
+            if (file.isVideoFile() && !ThumbnailConfig.isGenerateForVideo()) return false
+            if (file.isImageFile() && !ThumbnailConfig.isGenerateForImage()) return false
+
             val coverFile = uniqueKey.toCoverFile() ?: return false
 
             if (coverFile.exists() && coverFile.length() > 0) {
@@ -322,8 +383,16 @@ object ThumbnailGeneratorManager {
                 bitmap.recycle()
             }
 
-            // 保存缩略图
-            success = saveBitmapToFile(scaledBitmap, coverFile)
+            val targetFile = if (ThumbnailConfig.isSaveInSameDir() && file.isVideoFile()) {
+                val sameDirPath = buildCustomThumbPath(file)
+                if (sameDirPath != null) File(sameDirPath) else coverFile
+            } else {
+                coverFile
+            }
+            success = saveBitmapToFile(scaledBitmap, targetFile)
+            if (!success && targetFile != coverFile) {
+                success = saveBitmapToFile(scaledBitmap, coverFile)
+            }
             if (success) {
                 ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
             } else {
@@ -341,24 +410,24 @@ object ThumbnailGeneratorManager {
         return@withContext success
     }
 
-    /**
-     * 尝试使用同目录下的自定义缩略图文件 {视频文件名}-thumb.jpg
-     * 优先通过 Storage API 查找，失败后尝试直接访问本地文件系统
-     */
     private suspend fun tryCustomThumbnail(file: StorageFile, coverFile: File): Boolean {
+        if (!file.isVideoFile()) return false
+
+        val videoName = getFileNameNoExtension(file.fileName())
+
+        if (videoName.isNotEmpty()) {
+            val thumbFile = thumbFileLookup[videoName]
+            if (thumbFile != null) {
+                try {
+                    file.storage.openFile(thumbFile)?.use { inputStream ->
+                        return decodeAndSaveThumbnail(inputStream, file, coverFile)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
         val thumbPath = buildCustomThumbPath(file) ?: return false
 
-        // 方式一：通过 Storage API（兼容 SMB/FTP/WebDav 等网络存储）
-        try {
-            val thumbFile = file.storage.pathFile(thumbPath, isDirectory = false)
-            if (thumbFile != null) {
-                file.storage.openFile(thumbFile)?.use { inputStream ->
-                    return decodeAndSaveThumbnail(inputStream, file, coverFile)
-                }
-            }
-        } catch (_: Exception) {}
-
-        // 方式二：直接访问本地文件系统（兼容 VideoStorage 等本地存储）
         try {
             val localFile = File(thumbPath)
             if (localFile.exists() && localFile.isFile) {

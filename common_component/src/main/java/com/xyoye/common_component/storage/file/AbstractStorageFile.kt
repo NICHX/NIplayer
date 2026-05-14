@@ -5,7 +5,10 @@ import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.extension.toMd5String
 import com.xyoye.common_component.storage.AbstractStorage
 import com.xyoye.common_component.storage.Storage
+import com.xyoye.common_component.utils.getDirPath
+import com.xyoye.common_component.utils.getFileNameNoExtension
 import com.xyoye.data_component.entity.PlayHistoryEntity
+import java.io.File
 
 /**
  * Created by xyoye on 2022/12/29
@@ -30,11 +33,18 @@ abstract class AbstractStorageFile(
             return null
         }
         val cachedCoverFile = uniqueKey().toCoverFile()
-            ?: return null
-        if (cachedCoverFile.isInvalid()) {
-            return null
+        if (cachedCoverFile != null && cachedCoverFile.isInvalid().not()) {
+            return cachedCoverFile.absolutePath
         }
-        return cachedCoverFile.absolutePath
+        if (isVideoFile()) {
+            val fileName = getFileNameNoExtension(fileName()).takeIf { it.isNotEmpty() } ?: return null
+            val dirPath = getDirPath(storagePath()).takeIf { it.isNotEmpty() } ?: return null
+            val sameDirFile = File("$dirPath/$fileName-thumb.jpg")
+            if (sameDirFile.exists() && sameDirFile.isFile && sameDirFile.length() > 0) {
+                return sameDirFile.absolutePath
+            }
+        }
+        return null
     }
 
     override fun storagePath(): String {
