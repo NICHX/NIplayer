@@ -14,16 +14,34 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Collections
 
 class ImageViewerAdapter(
-    private val imagePaths: List<String>
+    private val imagePaths: List<String>,
+    private val context: Context
 ) : RecyclerView.Adapter<ImageViewerAdapter.ImageViewHolder>() {
 
     private val bitmapCache = LruCache<Int, Bitmap>(imagePaths.size.coerceAtMost(10))
+    private val loadingSet = Collections.synchronizedSet(mutableSetOf<Int>())
+    private var onPreloadListener: ((Int) -> Unit)? = null
+
+    private val screenWidth: Int
+    private val screenHeight: Int
+
+    init {
+        val displayMetrics = context.resources.displayMetrics
+        screenWidth = displayMetrics.widthPixels
+        screenHeight = displayMetrics.heightPixels
+    }
+
+    fun setOnPreloadListener(listener: (Int) -> Unit) {
+        onPreloadListener = listener
+    }
 
     inner class ImageViewHolder(private val binding: ItemImageViewerBinding) :
         RecyclerView.ViewHolder(binding.root) {
@@ -40,18 +58,21 @@ class ImageViewerAdapter(
                 return
             }
 
+            loadingSet.add(position)
             GlobalScope.launch(Dispatchers.IO) {
                 try {
-                    val bitmap = loadImage(imagePath, binding.root.context)
+                    val bitmap = loadImage(imagePath, context.samplingSize())
                     if (bitmap != null) {
                         bitmapCache.put(position, bitmap)
                     }
+                    loadingSet.remove(position)
                     withContext(Dispatchers.Main) {
                         if (bitmap != null) {
                             binding.photoView.setImageBitmap(bitmap)
                         }
                     }
                 } catch (e: Exception) {
+                    loadingSet.remove(position)
                     e.printStackTrace()
                 }
             }
@@ -65,14 +86,19 @@ class ImageViewerAdapter(
 
         for (pos in preloadPositions) {
             if (bitmapCache.get(pos) != null) continue
+            if (loadingSet.contains(pos)) continue
+            loadingSet.add(pos)
             GlobalScope.launch(Dispatchers.IO) {
                 try {
-                    val bitmap = loadImage(imagePaths[pos], null)
+                    val bitmap = loadImage(imagePaths[pos], context.samplingSize())
                     if (bitmap != null) {
                         bitmapCache.put(pos, bitmap)
+                        onPreloadListener?.invoke(pos)
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
+                } finally {
+                    loadingSet.remove(pos)
                 }
             }
         }
@@ -93,55 +119,96 @@ class ImageViewerAdapter(
         }
     }
 
-    private suspend fun loadImage(path: String, context: Context?): Bitmap? {
+    private fun Context.samplingSize(): Int {
+        val maxDimension = maxOf(screenWidth, screenHeight)
+        return if (maxDimension > 0) maxDimension else 1920
+    }
+
+    private suspend fun loadImage(path: String, maxSize: Int): Bitmap? {
         return when {
             path.startsWith("http://") || path.startsWith("https://") -> {
-                loadNetworkImage(path)
+                loadNetworkImage(path, maxSize)
             }
             path.startsWith("content://") -> {
-                loadContentUri(path, context)
+                loadContentUri(path, maxSize)
             }
             else -> {
-                loadLocalFile(path)
+                loadLocalFile(path, maxSize)
             }
         }
     }
 
-    private fun loadLocalFile(path: String): Bitmap? {
-        val file = File(path)
-        if (file.exists()) {
-            try {
-                return BitmapFactory.decodeFile(path)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        return null
-    }
-
-    private fun loadContentUri(path: String, context: Context?): Bitmap? {
-        if (context == null) return null
-        var inputStream: InputStream? = null
+    private fun decodeSampledBitmap(source: () -> InputStream?, maxSize: Int): Bitmap? {
         try {
-            val uri = Uri.parse(path)
-            inputStream = context.contentResolver.openInputStream(uri)
-            return BitmapFactory.decodeStream(inputStream)
+            val inputStream = source()
+                ?: return null
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeStream(inputStream, null, options)
+            inputStream.close()
+
+            options.inSampleSize = calculateInSampleSize(options, maxSize, maxSize)
+            options.inJustDecodeBounds = false
+
+            val secondStream = source()
+                ?: return null
+            return BitmapFactory.decodeStream(secondStream, null, options)
         } catch (e: Exception) {
             e.printStackTrace()
             return null
-        } finally {
-            try {
-                inputStream?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
         }
     }
 
-    private suspend fun loadNetworkImage(urlStr: String): Bitmap? {
-        var inputStream: InputStream? = null
-        var connection: HttpURLConnection? = null
+    private fun decodeSampledFile(path: String, maxSize: Int): Bitmap? {
+        val file = File(path)
+        if (!file.exists()) return null
+        try {
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeFile(path, options)
+            options.inSampleSize = calculateInSampleSize(options, maxSize, maxSize)
+            options.inJustDecodeBounds = false
+            return BitmapFactory.decodeFile(path, options)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
 
+    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+        val height = options.outHeight
+        val width = options.outWidth
+        var inSampleSize = 1
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight = height / 2
+            val halfWidth = width / 2
+            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        return inSampleSize
+    }
+
+    private fun loadLocalFile(path: String, maxSize: Int): Bitmap? {
+        return decodeSampledFile(path, maxSize)
+    }
+
+    private fun loadContentUri(path: String, maxSize: Int): Bitmap? {
+        return decodeSampledBitmap({
+            try {
+                val uri = Uri.parse(path)
+                context.contentResolver.openInputStream(uri)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }, maxSize)
+    }
+
+    private suspend fun loadNetworkImage(urlStr: String, maxSize: Int): Bitmap? {
+        var connection: HttpURLConnection? = null
         try {
             val url = URL(urlStr)
             connection = url.openConnection() as HttpURLConnection
@@ -149,18 +216,30 @@ class ImageViewerAdapter(
             connection.readTimeout = 10000
             connection.connect()
 
-            inputStream = connection.inputStream
-            return BitmapFactory.decodeStream(inputStream)
+            val inputStream = connection.inputStream
+            val outputStream = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var bytesRead: Int
+            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                outputStream.write(buffer, 0, bytesRead)
+            }
+            inputStream.close()
+            connection.disconnect()
+            connection = null
+
+            val imageData = outputStream.toByteArray()
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeByteArray(imageData, 0, imageData.size, options)
+            options.inSampleSize = calculateInSampleSize(options, maxSize, maxSize)
+            options.inJustDecodeBounds = false
+            return BitmapFactory.decodeByteArray(imageData, 0, imageData.size, options)
         } catch (e: Exception) {
             e.printStackTrace()
             return null
         } finally {
-            try {
-                inputStream?.close()
-                connection?.disconnect()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            connection?.disconnect()
         }
     }
 

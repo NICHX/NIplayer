@@ -166,10 +166,16 @@ class ImageViewerActivity : BaseAppCompatActivity<ActivityImageViewerBinding>() 
     }
 
     private fun initViewPager(imageList: List<String>, startPosition: Int) {
-        val adapter = ImageViewerAdapter(imageList)
+        val adapter = ImageViewerAdapter(imageList, this)
         dataBinding.viewPager.adapter = adapter
         dataBinding.viewPager.setCurrentItem(startPosition, false)
-        
+
+        adapter.setOnPreloadListener { position ->
+            dataBinding.viewPager.post {
+                dataBinding.viewPager.adapter?.notifyItemChanged(position)
+            }
+        }
+
         // 预加载当前页相邻图片
         adapter.preload(startPosition)
         
