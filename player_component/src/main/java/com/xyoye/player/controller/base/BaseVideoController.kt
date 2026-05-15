@@ -206,6 +206,9 @@ abstract class BaseVideoController(
         if (orientation == OrientationEventListener.ORIENTATION_UNKNOWN)
             return
 
+        if (!isSystemAutoRotateEnabled())
+            return
+
         val attachActivity = (context as AppCompatActivity)
         when {
             orientation in 60..120 -> {
@@ -220,6 +223,18 @@ abstract class BaseVideoController(
             orientation in 150..210 -> {
                 attachActivity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
             }
+        }
+    }
+
+    private fun isSystemAutoRotateEnabled(): Boolean {
+        return try {
+            android.provider.Settings.System.getInt(
+                context.contentResolver,
+                android.provider.Settings.System.ACCELEROMETER_ROTATION,
+                0
+            ) == 1
+        } catch (e: Exception) {
+            true
         }
     }
 

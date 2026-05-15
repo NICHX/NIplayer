@@ -1138,7 +1138,7 @@
 
         <activity
             android:name=".ui.activities.player.PlayerActivity"
-            android:screenOrientation="sensor"
+            android:screenOrientation="fullUser"
             android:configChanges="orientation|screenSize|screenLayout" />
     </application>
 

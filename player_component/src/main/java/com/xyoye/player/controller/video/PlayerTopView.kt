@@ -1,6 +1,9 @@
 package com.xyoye.player.controller.video
 
+import android.app.Activity
 import android.content.Context
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.Point
 import android.util.AttributeSet
 import android.view.LayoutInflater
@@ -60,6 +63,16 @@ class PlayerTopView(
                 return@setOnClickListener
             }
             enterPopupModeBlock?.invoke()
+        }
+
+        viewBinding.ivRotateScreen.setOnClickListener {
+            val activity = context as? Activity ?: return@setOnClickListener
+            val currentOrientation = context.resources.configuration.orientation
+            activity.requestedOrientation = if (currentOrientation == Configuration.ORIENTATION_LANDSCAPE) {
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            }
         }
 
         // 将初始焦点置于标题，而不是返回按钮
