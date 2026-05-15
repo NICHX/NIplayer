@@ -27,7 +27,14 @@ class RenderTextureView(context: Context) : TextureView(context), InterSurfaceVi
 
         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
 
-        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture) = false
+        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+            if (this@RenderTextureView::mVideoPlayer.isInitialized) {
+                mVideoPlayer.setSurface(null)
+            }
+            mSurface = null
+            mSurfaceTexture = null
+            return true
+        }
 
         override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
             mSurfaceTexture = surface
@@ -74,8 +81,13 @@ class RenderTextureView(context: Context) : TextureView(context), InterSurfaceVi
     }
 
     override fun release() {
+        if (this::mVideoPlayer.isInitialized) {
+            mVideoPlayer.setSurface(null)
+        }
         mSurface?.release()
+        mSurface = null
         mSurfaceTexture?.release()
+        mSurfaceTexture = null
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

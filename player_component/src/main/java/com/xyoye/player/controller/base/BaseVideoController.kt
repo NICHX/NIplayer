@@ -167,6 +167,17 @@ abstract class BaseVideoController(
     override fun setLocked(locked: Boolean) {
         mIsLocked = locked
         handleLockStateChanged(locked)
+        if (locked) {
+            hideController()
+        } else {
+            onConfigChangedLocked()
+        }
+    }
+
+    private fun onConfigChangedLocked() {
+        mIsShowing = true
+        startFadeOut()
+        handleVisibilityChanged(true)
     }
 
     override fun isLocked() = mIsLocked
@@ -315,9 +326,11 @@ abstract class BaseVideoController(
 
     private fun handleVisibilityChanged(isVisible: Boolean) {
         for (entry in mControlComponents.entries) {
-            if (entry.key is PlayerControlView) {
-                entry.key.onVisibilityChanged(isVisible)
-            } else if (mIsLocked.not()) {
+            if (mIsLocked && isVisible) {
+                if (entry.key is PlayerControlView) {
+                    entry.key.onVisibilityChanged(true)
+                }
+            } else {
                 entry.key.onVisibilityChanged(isVisible)
             }
         }

@@ -33,7 +33,6 @@ import com.google.android.exoplayer2.util.Clock
 import com.google.android.exoplayer2.util.EventLogger
 import com.google.android.exoplayer2.video.VideoSize
 import com.xyoye.common_component.extension.mapByLength
-import com.xyoye.common_component.utils.SupervisorScope
 import com.xyoye.data_component.bean.VideoTrackBean
 import com.xyoye.data_component.enums.TrackType
 import com.xyoye.player.info.PlayerInitializer
@@ -41,8 +40,6 @@ import com.xyoye.player.kernel.inter.AbstractVideoPlayer
 import com.xyoye.player.utils.PlayerConstant
 import com.xyoye.subtitle.MixedSubtitle
 import com.xyoye.subtitle.SubtitleType
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 /**
  * Created by xyoye on 2020/10/29.
@@ -103,7 +100,7 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
         mMediaSource = ExoMediaSourceHelper.getMediaSource(path, headers)
     }
 
-    override fun setSurface(surface: Surface) {
+    override fun setSurface(surface: Surface?) {
         exoplayer.setVideoSurface(surface)
     }
 
@@ -145,9 +142,8 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
     override fun release() {
         exoplayer.apply {
             removeListener(this@ExoVideoPlayer)
-            SupervisorScope.IO.launch(Dispatchers.Main) {
-                release()
-            }
+            stop()
+            release()
         }
 
         mIsPreparing = false

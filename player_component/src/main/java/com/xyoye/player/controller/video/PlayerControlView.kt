@@ -40,6 +40,8 @@ class PlayerControlView(context: Context): InterControllerView {
 
     private var enterPopupModeBlock: (() -> Unit)? = null
 
+    private var mIsLocked = false
+
     private var currentScaleIndex = 0
 
     private val scaleTypes = listOf(
@@ -112,6 +114,7 @@ class PlayerControlView(context: Context): InterControllerView {
     }
 
     override fun onLockStateChanged(isLocked: Boolean) {
+        mIsLocked = isLocked
         viewBinding.playerLockIv.isSelected = isLocked
     }
 
@@ -136,7 +139,20 @@ class PlayerControlView(context: Context): InterControllerView {
     }
 
     private fun updateLockVisible(isVisible: Boolean) {
-        if (isVisible) {
+        val translateX = dp2px(200).toFloat()
+        if (isVisible && mIsLocked) {
+            viewBinding.playerLockIv.isVisible = true
+            ViewCompat.animate(viewBinding.playerLockIv)
+                .translationX(0f)
+                .setDuration(300)
+                .start()
+            viewBinding.playerRightActionLl.isVisible = false
+            viewBinding.playerRightActionLl.translationX = translateX
+            viewBinding.playerTopRightActionLl.isVisible = false
+            viewBinding.playerTopRightActionLl.translationX = translateX
+            viewBinding.playerTopLeftActionLl.isVisible = false
+            viewBinding.playerTopLeftActionLl.translationX = -translateX
+        } else if (isVisible) {
             viewBinding.playerLockIv.isVisible = true
             ViewCompat.animate(viewBinding.playerLockIv)
                 .translationX(0f)
@@ -158,7 +174,6 @@ class PlayerControlView(context: Context): InterControllerView {
                 .setDuration(300)
                 .start()
         } else {
-            val translateX = dp2px(200).toFloat()
             ViewCompat.animate(viewBinding.playerLockIv)
                 .translationX(-translateX)
                 .setDuration(300)

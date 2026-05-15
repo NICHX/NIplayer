@@ -6,7 +6,6 @@ import android.graphics.Point
 import android.media.AudioManager
 import android.net.Uri
 import android.view.Surface
-import com.xyoye.common_component.utils.SupervisorScope
 import com.xyoye.data_component.bean.VideoTrackBean
 import com.xyoye.data_component.enums.PixelFormat
 import com.xyoye.data_component.enums.TrackType
@@ -15,7 +14,6 @@ import com.xyoye.player.kernel.inter.AbstractVideoPlayer
 import com.xyoye.player.utils.PlayerConstant
 import com.xyoye.player.utils.VideoLog
 import com.xyoye.subtitle.MixedSubtitle
-import kotlinx.coroutines.launch
 import tv.danmaku.ijk.media.player.IjkMediaPlayer
 import tv.danmaku.ijk.media.player.misc.IjkTrackInfo
 
@@ -65,7 +63,7 @@ class IjkVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
         }
     }
 
-    override fun setSurface(surface: Surface) {
+    override fun setSurface(surface: Surface?) {
         mMediaPlayer.setSurface(surface)
     }
 
@@ -113,10 +111,7 @@ class IjkVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
         mMediaPlayer.setOnBufferingUpdateListener(null)
         mMediaPlayer.setOnPreparedListener(null)
         mMediaPlayer.setOnVideoSizeChangedListener(null)
-
-        SupervisorScope.IO.launch {
-            mMediaPlayer.release()
-        }
+        mMediaPlayer.release()
     }
 
     override fun seekTo(timeMs: Long) {
