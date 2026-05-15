@@ -31,7 +31,7 @@ kapt {
 dependencies {
     api(project(":data_component"))
     api(project(":repository:seven_zip"))
-    api(project(":repository:immersion_bar"))
+    api("com.geyifeng.immersionbar:immersionbar:3.2.1")
     api(project(":repository:thunder"))
 
     api(files("libs/sardine-1.0.2.jar"))

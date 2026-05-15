@@ -8,7 +8,6 @@ include(":player_component")
 include(":common_component")
 include(":data_component")
 
-include(":repository:immersion_bar")
 include(":repository:panel_switch")
 include(":repository:seven_zip")
 include(":repository:thunder")

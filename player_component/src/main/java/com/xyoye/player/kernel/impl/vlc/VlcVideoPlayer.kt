@@ -8,7 +8,6 @@ import android.net.Uri
 import android.support.v4.media.session.PlaybackStateCompat
 import android.view.Surface
 import com.xyoye.common_component.utils.IOUtils
-import com.xyoye.common_component.utils.SupervisorScope
 import com.xyoye.data_component.bean.VideoTrackBean
 import com.xyoye.data_component.enums.SurfaceType
 import com.xyoye.data_component.enums.TrackType
@@ -18,7 +17,6 @@ import com.xyoye.player.kernel.inter.AbstractVideoPlayer
 import com.xyoye.player.utils.PlayerConstant
 import com.xyoye.player.utils.VideoLog
 import com.xyoye.player.utils.VlcProxyServer
-import kotlinx.coroutines.launch
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
@@ -50,6 +48,8 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
     private var seekable = true
     private var isBufferEnd = false
     private val mVideoSize = Point(0, 0)
+    private var consecutiveErrorCount = 0
+    private val maxConsecutiveErrors = 5
 
     override fun initPlayer() {
         setOptions()
@@ -85,7 +85,7 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
         mMedia.release()
     }
 
-    override fun setSurface(surface: Surface) {
+    override fun setSurface(surface: Surface?) {
 
     }
 
@@ -114,18 +114,26 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
     }
 
     override fun release() {
+        try {
+            if (this::mMediaPlayer.isInitialized && !mMediaPlayer.isReleased
+                && mMediaPlayer.vlcVout.areViewsAttached()) {
+                mMediaPlayer.vlcVout.detachViews()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        mMediaPlayer.setEventListener(null)
         stop()
         IOUtils.closeIO(videoSourceFd)
-        mMediaPlayer.setEventListener(null)
-        if (isVideoPlaying()) {
-            mMediaPlayer.vlcVout.detachViews()
-        }
         mMediaPlayer.media?.apply {
             setEventListener(null)
             release()
         }
-        SupervisorScope.IO.launch {
+        if (!mMediaPlayer.isReleased) {
             mMediaPlayer.release()
+        }
+        if (this::libVlc.isInitialized) {
+            libVlc.release()
         }
     }
 
@@ -150,7 +158,7 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
 
     override fun setOptions() {
         val options = arrayListOf<String>()
-        options.add("-vvv")
+        options.add("-v")
         options.add("--android-display-chroma")
         options.add(PlayerInitializer.Player.vlcPixelFormat.value)
         libVlc = LibVLC(mContext, options)
@@ -270,15 +278,22 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
                 MediaPlayer.Event.Opening -> {
                 }
                 //播放中
-                MediaPlayer.Event.Playing -> playbackState = PlaybackStateCompat.STATE_PLAYING
+                MediaPlayer.Event.Playing -> {
+                    consecutiveErrorCount = 0
+                    playbackState = PlaybackStateCompat.STATE_PLAYING
+                }
                 //已暂停
                 MediaPlayer.Event.Paused -> playbackState = PlaybackStateCompat.STATE_PAUSED
                 //是否可跳转
                 MediaPlayer.Event.SeekableChanged -> seekable = it.seekable
                 //播放错误
                 MediaPlayer.Event.EncounteredError -> {
+                    consecutiveErrorCount++
                     mPlayerEventListener.onError()
-                    VideoLog.d("$TAG--listener--onInfo--> onError")
+                    VideoLog.d("$TAG--listener--onInfo--> onError, consecutive: $consecutiveErrorCount")
+                    if (consecutiveErrorCount >= maxConsecutiveErrors) {
+                        stop()
+                    }
                 }
                 //时长输出
                 MediaPlayer.Event.LengthChanged -> {
@@ -289,8 +304,11 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
                     if (it.esChangedType == IMedia.Track.Type.Video) {
                         val track = mMediaPlayer.getSelectedTrack(IMedia.Track.Type.Video)
                         (track as? VideoTrack)?.let { videoTrack ->
-                            mVideoSize.x = videoTrack.width
-                            mVideoSize.y = videoTrack.height
+                            if (videoTrack.width > 0 && videoTrack.height > 0
+                                && videoTrack.width < 10000 && videoTrack.height < 10000) {
+                                mVideoSize.x = videoTrack.width
+                                mVideoSize.y = videoTrack.height
+                            }
                         }
                     }
                 }
@@ -353,7 +371,4 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
     }
 
     private fun isPlayerAvailable() = mMediaPlayer.hasMedia() && !mMediaPlayer.isReleased
-
-    private fun isVideoPlaying() =
-        !mMediaPlayer.isReleased && mMediaPlayer.vlcVout.areViewsAttached()
 }

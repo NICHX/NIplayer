@@ -87,7 +87,6 @@ class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(p
         session.headers.forEach {
             requestBuilder.header(it.key, it.value)
         }
-        //移除VLC到本地服务器的部分请求头，这部分会影响后续请求
         requestBuilder.apply {
             removeHeader("host")
             removeHeader("remote-addr")
@@ -99,4 +98,7 @@ class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(p
         return call.execute()
     }
 
+    fun release() {
+        stop()
+    }
 }

@@ -40,7 +40,7 @@ abstract class AbstractVideoPlayer : InterVideoTrack {
     /**
      *  设置视频载体
      */
-    abstract fun setSurface(surface: Surface)
+    abstract fun setSurface(surface: Surface?)
 
     /**
      *  异步准备播放

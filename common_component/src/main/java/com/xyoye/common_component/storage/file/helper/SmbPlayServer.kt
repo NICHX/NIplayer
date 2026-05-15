@@ -70,10 +70,18 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
 
         val contentType = resolveContentType(storageFile.filePath())
 
-        return if (rangeArray != null && rangeArray[2] != 0L) {
-            getPartialResponse(inputStream, rangeArray, storageFile.fileLength(), contentType)
-        } else {
-            getOKResponse(inputStream, contentType)
+        return try {
+            if (rangeArray != null && rangeArray[2] != 0L) {
+                getPartialResponse(inputStream, rangeArray, storageFile.fileLength(), contentType)
+            } else {
+                getOKResponse(inputStream, contentType)
+            }
+        } catch (e: NullPointerException) {
+            e.printStackTrace()
+            resourceOpenFailed
+        } catch (e: Exception) {
+            e.printStackTrace()
+            resourceOpenFailed
         }
     }
 

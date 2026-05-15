@@ -16,7 +16,6 @@ import com.xyoye.common_component.extension.toResColor
 import com.xyoye.common_component.extension.toResDrawable
 import com.xyoye.data_component.enums.PlayState
 import com.xyoye.data_component.enums.SettingViewType
-import com.xyoye.data_component.enums.TrackType
 import com.xyoye.player.utils.formatDuration
 import com.xyoye.player.wrapper.ControlWrapper
 import com.xyoye.player_component.R
@@ -149,8 +148,7 @@ class PlayerBottomView(
     }
 
     override fun onLockStateChanged(isLocked: Boolean) {
-        //显示状态与锁定状态相反
-        onVisibilityChanged(!isLocked)
+        // Lock state is handled by PlayerControlView
     }
 
     override fun onVideoSizeChanged(videoSize: Point) {
