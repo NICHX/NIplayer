@@ -68,6 +68,40 @@ class WebDavStorage(
         return WebDavStorageFile(davResource, this)
     }
 
+    override suspend fun fileExists(path: String): Boolean {
+        val targetUrl = rootUri.buildUpon().path(path).toString()
+        val headers = getNetworkHeaders()
+        return try {
+            val requestBuilder = Request.Builder()
+                .url(targetUrl)
+                .head()
+            headers?.forEach { (key, value) ->
+                requestBuilder.addHeader(key, value)
+            }
+            val response = UnsafeOkHttpClient.client.newCall(requestBuilder.build()).execute()
+            response.isSuccessful.also { response.close() }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override suspend fun createDirectory(path: String): Boolean {
+        val targetUrl = rootUri.buildUpon().path(path).toString()
+        val headers = getNetworkHeaders()
+        return try {
+            val requestBuilder = Request.Builder()
+                .url(targetUrl)
+                .method("MKCOL", null)
+            headers?.forEach { (key, value) ->
+                requestBuilder.addHeader(key, value)
+            }
+            val response = UnsafeOkHttpClient.client.newCall(requestBuilder.build()).execute()
+            response.isSuccessful.also { response.close() }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     override suspend fun historyFile(history: PlayHistoryEntity): StorageFile? {
         val storagePath = history.storagePath ?: return null
         return pathFile(storagePath, false).also {

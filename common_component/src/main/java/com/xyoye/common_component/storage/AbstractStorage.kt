@@ -27,6 +27,10 @@ abstract class AbstractStorage(
 
     override suspend fun saveFile(path: String, data: ByteArray): Boolean = false
 
+    override suspend fun fileExists(path: String): Boolean = false
+
+    override suspend fun createDirectory(path: String): Boolean = false
+
     override suspend fun openDirectory(file: StorageFile, refresh: Boolean): List<StorageFile> {
         this.directory = file
         this.directoryFiles = listFiles(file)

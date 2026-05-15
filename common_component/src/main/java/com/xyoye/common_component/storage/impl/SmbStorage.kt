@@ -193,6 +193,50 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         }
     }
 
+    override suspend fun fileExists(path: String): Boolean {
+        if (checkConnection().not()) {
+            return false
+        }
+        val pathSegments = Uri.parse("/$path").pathSegments
+        val targetShare = pathSegments.firstOrNull()
+            ?: return false
+        if (switchShareDisk(targetShare).not()) {
+            return false
+        }
+        val diskShare = mDiskShare ?: return false
+        if (diskShare.isConnected.not()) {
+            return false
+        }
+        val filePath = pathSegments.takeLast(pathSegments.size - 1).joinToString(separator = "/")
+        return try {
+            diskShare.open(filePath).use { true }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override suspend fun createDirectory(path: String): Boolean {
+        if (checkConnection().not()) {
+            return false
+        }
+        val pathSegments = Uri.parse("/$path").pathSegments
+        val targetShare = pathSegments.firstOrNull() ?: return false
+        if (switchShareDisk(targetShare).not()) {
+            return false
+        }
+        val diskShare = mDiskShare ?: return false
+        if (diskShare.isConnected.not()) {
+            return false
+        }
+        val dirPath = pathSegments.takeLast(pathSegments.size - 1).joinToString(separator = "/")
+        return try {
+            diskShare.mkdir(dirPath)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     override suspend fun historyFile(history: PlayHistoryEntity): StorageFile? {
         val storagePath = history.storagePath ?: return null
         return pathFile(storagePath, false)?.also {

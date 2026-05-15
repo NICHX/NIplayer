@@ -78,6 +78,8 @@ object ThumbnailGeneratorManager {
 
     // 同目录下已存在的 -thumb.jpg 文件查找表，key 为视频名（不含扩展名）
     private val thumbFileLookup = mutableMapOf<String, StorageFile>()
+    // 远程 .thumb/ 目录下已存在的缩略图文件 uniqueKey 集合
+    private val existingDotThumbKeys = ConcurrentHashMap.newKeySet<String>()
     private const val BITMAP_POOL_MAX_SIZE = 8
 
     private fun obtainReusableBitmap(width: Int, height: Int): Bitmap? {
@@ -155,6 +157,40 @@ object ThumbnailGeneratorManager {
                         } catch (_: Exception) {}
                     }
                 }
+
+            allFiles
+                .filter { it.isVideoFile() }
+                .forEach { videoFile ->
+                    launch {
+                        val dotThumbPath = buildDotThumbPath(videoFile) ?: return@launch
+                        val coverFile = videoFile.uniqueKey().toCoverFile() ?: return@launch
+                        if (coverFile.exists() && coverFile.length() > 0) return@launch
+
+                        try {
+                            if (isLocalStorage(videoFile)) {
+                                val localFile = File(dotThumbPath)
+                                if (localFile.exists() && localFile.isFile && localFile.length() > 0) {
+                                    coverFile.parentFile?.mkdirs()
+                                    FileInputStream(localFile).use { input ->
+                                        FileOutputStream(coverFile).use { output ->
+                                            input.copyTo(output)
+                                        }
+                                    }
+                                }
+                            } else if (storage.fileExists(dotThumbPath)) {
+                                val thumbFile = videoFile.storage.pathFile(dotThumbPath, false)
+                                if (thumbFile != null) {
+                                    videoFile.storage.openFile(thumbFile)?.use { input ->
+                                        coverFile.parentFile?.mkdirs()
+                                        FileOutputStream(coverFile).use { output ->
+                                            input.copyTo(output)
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
         }
     }
 
@@ -179,6 +215,23 @@ object ThumbnailGeneratorManager {
     }
 
     /**
+     * 预加载远程 .thumb/ 缩略图路径到内存集合
+     * 用于 hasCachedThumbnail 同步检查，避免每次触发远程 IO
+     */
+    private suspend fun preloadDotThumbExistence(allFiles: List<StorageFile>, storage: Storage) = withContext(Dispatchers.IO) {
+        for (file in allFiles) {
+            if (!file.isVideoFile()) continue
+            if (isLocalStorage(file)) continue
+            val dotThumbPath = buildDotThumbPath(file) ?: continue
+            try {
+                if (storage.fileExists(dotThumbPath)) {
+                    existingDotThumbKeys.add(file.uniqueKey())
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    /**
      * 开始为文件列表生成缩略图
      * @param files 文件列表
      * @param storage 所属存储
@@ -193,6 +246,7 @@ object ThumbnailGeneratorManager {
             clearCoverFileCache()
 
             thumbFileLookup.clear()
+            existingDotThumbKeys.clear()
             if (allFiles != null) {
                 for (f in allFiles) {
                     val name = f.fileName()
@@ -218,6 +272,7 @@ object ThumbnailGeneratorManager {
         if (allFiles != null) {
             scope.launch {
                 preloadCoverFileCache(allFiles)
+                preloadDotThumbExistence(allFiles, storage)
             }
         }
 
@@ -266,7 +321,12 @@ object ThumbnailGeneratorManager {
             }
             val thumbPath = buildCustomThumbPath(file) ?: return false
             val sameDirFile = File(thumbPath)
-            return sameDirFile.exists() && sameDirFile.isFile && sameDirFile.length() > 0
+            if (sameDirFile.exists() && sameDirFile.isFile && sameDirFile.length() > 0) {
+                return true
+            }
+            if (!isLocalStorage(file) && file.uniqueKey() in existingDotThumbKeys) {
+                return true
+            }
         }
         return false
     }
@@ -452,21 +512,17 @@ object ThumbnailGeneratorManager {
 
             val thumbBytes = toJpegBytes(scaledBitmap)
 
-            if (ThumbnailConfig.isSaveInSameDir() && file.isVideoFile()) {
-                val sameDirPath = buildCustomThumbPath(file)
-                if (sameDirPath != null) {
-                    val remoteSaved = file.storage.saveFile(sameDirPath, thumbBytes)
-                    if (!remoteSaved) {
-                        val fallbackFile = File(sameDirPath)
-                        success = saveBitmapToFile(scaledBitmap, fallbackFile, file.uniqueKey()) || saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
-                    } else {
-                        success = true
-                    }
+            success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
+
+            if (!isLocalStorage(file)) {
+                val dotThumbPath = buildDotThumbPath(file)
+                if (dotThumbPath != null) {
+                    val dotThumbDir = getDirPath(dotThumbPath)
+                    file.storage.createDirectory(dotThumbDir)
+                    file.storage.saveFile(dotThumbPath, thumbBytes)
                 }
             }
-            if (!success) {
-                success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
-            }
+
             if (success) {
                 ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
             } else {
@@ -501,6 +557,31 @@ object ThumbnailGeneratorManager {
             }
         }
 
+        val dotThumbPath = buildDotThumbPath(file)
+        if (dotThumbPath != null) {
+            if (isLocalStorage(file)) {
+                try {
+                    val localFile = File(dotThumbPath)
+                    if (localFile.exists() && localFile.isFile) {
+                        FileInputStream(localFile).use { inputStream ->
+                            return decodeAndSaveThumbnail(inputStream, file, coverFile)
+                        }
+                    }
+                } catch (_: Exception) {}
+            } else {
+                try {
+                    if (file.storage.fileExists(dotThumbPath)) {
+                        val thumbFile = file.storage.pathFile(dotThumbPath, false)
+                        if (thumbFile != null) {
+                            file.storage.openFile(thumbFile)?.use { inputStream ->
+                                return decodeAndSaveThumbnail(inputStream, file, coverFile)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
         val thumbPath = buildCustomThumbPath(file) ?: return false
 
         try {
@@ -516,13 +597,32 @@ object ThumbnailGeneratorManager {
     }
 
     /**
-     * 构建自定义缩略图文件路径
+     * 构建自定义缩略图文件路径（同级目录 -thumb.jpg）
      * 使用 storagePath() 以确保 SMB 等存储包含共享名等必要信息
      */
     private fun buildCustomThumbPath(file: StorageFile): String? {
         val fileName = getFileNameNoExtension(file.fileName()).takeIf { it.isNotEmpty() } ?: return null
         val dirPath = getDirPath(file.storagePath()).takeIf { it.isNotEmpty() } ?: return null
         return "$dirPath/$fileName-thumb.jpg"
+    }
+
+    /**
+     * 构建 .thumb/ 目录下的缩略图路径
+     */
+    private fun buildDotThumbPath(file: StorageFile): String? {
+        val fileName = getFileNameNoExtension(file.fileName()).takeIf { it.isNotEmpty() } ?: return null
+        val dirPath = getDirPath(file.storagePath()).takeIf { it.isNotEmpty() } ?: return null
+        return "$dirPath/.thumb/$fileName-thumb.jpg"
+    }
+
+    /**
+     * 判断是否为本地文件系统存储（可直接使用 File API）
+     */
+    private fun isLocalStorage(file: StorageFile): Boolean {
+        val mediaType = file.storage.library.mediaType
+        return mediaType == MediaType.LOCAL_STORAGE ||
+                mediaType == MediaType.OTHER_STORAGE ||
+                mediaType == MediaType.EXTERNAL_STORAGE
     }
 
     /**
@@ -769,6 +869,7 @@ object ThumbnailGeneratorManager {
         }
         currentTasks.clear()
         retryCountMap.clear()
+        existingDotThumbKeys.clear()
         storageMutexMap.clear()
         clearBitmapPool()
         ThumbnailMemoryCache.clear()
