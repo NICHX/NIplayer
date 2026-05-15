@@ -44,8 +44,8 @@ class StorageFileFragment :
                 // 平板：竖屏4列，横屏6列
                 if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 4
             } else {
-                // 手机：竖屏3列，横屏4列
-                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 4 else 3
+                // 手机：竖屏2列，横屏3列
+                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 3 else 2
             }
         }
     

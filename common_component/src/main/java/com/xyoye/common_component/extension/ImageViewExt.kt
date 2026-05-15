@@ -72,7 +72,7 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
     }
 
     val diskCachePolicy = if (hasCachedThumbnail) {
-        CachePolicy.ENABLED
+        CachePolicy.DISABLED
     } else if (resourceType == ResourceType.File) {
         CachePolicy.DISABLED
     } else {
@@ -80,7 +80,7 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
     }
 
     val memoryCachePolicy = if (hasCachedThumbnail) {
-        CachePolicy.ENABLED
+        CachePolicy.DISABLED
     } else if (resourceType == ResourceType.File) {
         CachePolicy.DISABLED
     } else {

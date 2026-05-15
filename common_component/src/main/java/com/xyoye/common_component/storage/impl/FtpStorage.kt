@@ -97,6 +97,30 @@ class FtpStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         return FtpStorageFile(this, parentPath, ftpFile)
     }
 
+    override suspend fun fileExists(path: String): Boolean {
+        if (checkConnection().not()) {
+            return false
+        }
+        return try {
+            checkWorkDirectory()
+            mFtpClient.listFiles(path).isNotEmpty()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override suspend fun createDirectory(path: String): Boolean {
+        if (checkConnection().not()) {
+            return false
+        }
+        return try {
+            checkWorkDirectory()
+            mFtpClient.makeDirectory(path)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     override suspend fun historyFile(history: PlayHistoryEntity): StorageFile? {
         val storagePath = history.storagePath ?: return null
         return pathFile(storagePath, false)?.also {

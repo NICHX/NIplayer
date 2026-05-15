@@ -11,10 +11,10 @@
 
         <ImageView
             android:id="@+id/folder_iv"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
             android:layout_gravity="center"
-            android:padding="3dp"
+            android:padding="5dp"
             android:src="@drawable/ic_folder"
             android:background="@drawable/background_item_press"
             app:layout_constraintBottom_toTopOf="@id/folder_tv"
@@ -26,7 +26,7 @@
             android:id="@+id/folder_tv"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="4dp"
             android:ellipsize="end"
             android:gravity="center"
             android:maxLines="2"

@@ -67,9 +67,23 @@ interface Storage {
     suspend fun saveFile(path: String, data: ByteArray): Boolean
 
     /**
+     * 静默检查文件是否存在（不弹 Toast，不抛异常）
+     * @param path 文件路径（相对于存储根目录）
+     * @return 文件是否存在
+     */
+    suspend fun fileExists(path: String): Boolean
+
+    /**
      * 打开文件夹
      */
     suspend fun openDirectory(file: StorageFile, refresh: Boolean): List<StorageFile>
+
+    /**
+     * 静默创建目录（不弹 Toast，不抛异常）
+     * @param path 目录路径（相对于存储根目录）
+     * @return 是否创建成功
+     */
+    suspend fun createDirectory(path: String): Boolean
 
     /**
      * 通过路径获取文件
