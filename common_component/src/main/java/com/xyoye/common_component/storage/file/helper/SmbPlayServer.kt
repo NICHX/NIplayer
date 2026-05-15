@@ -4,14 +4,12 @@ import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.file.impl.SmbStorageFile
 import com.xyoye.common_component.storage.impl.SmbStorage
-import com.xyoye.common_component.utils.IOUtils
 import com.xyoye.common_component.utils.RangeUtils
 import com.xyoye.common_component.utils.getFileExtension
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
@@ -19,7 +17,6 @@ import kotlin.random.Random
 class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(port) {
 
     private val urlFileMap = ConcurrentHashMap<String, Pair<SmbStorage, SmbStorageFile>>()
-    private var mInputStream: InputStream? = null
 
     private val resourceNotFound by lazy {
         resourceNotFoundResponse()
@@ -33,8 +30,9 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
     }
 
     companion object {
+        private const val RETRY_DELAY_MS = 200L
 
-        private fun randomPort() = Random.nextInt(20000, 30000)
+        private fun randomPort() = Random.nextInt(20000, 25000)
 
         @JvmStatic
         fun getInstance() = Holder.instance
@@ -57,12 +55,6 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         }
         val (storage, storageFile) = entry
 
-        IOUtils.closeIO(mInputStream)
-
-        val inputStream = getInputStream(storage, storageFile)
-            ?: return resourceOpenFailed
-        mInputStream = inputStream
-
         val rangeText = session.headers["range"]
         val rangeArray = rangeText?.run {
             RangeUtils.getRange(this, storageFile.fileLength())
@@ -72,9 +64,13 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
 
         return try {
             if (rangeArray != null && rangeArray[2] != 0L) {
+                val inputStream = getInputStreamWithRetry(storage, storageFile, rangeArray[0])
+                    ?: return resourceOpenFailed
                 getPartialResponse(inputStream, rangeArray, storageFile.fileLength(), contentType)
             } else {
-                getOKResponse(inputStream, contentType)
+                val inputStream = getInputStreamWithRetry(storage, storageFile)
+                    ?: return resourceOpenFailed
+                getOKResponse(inputStream, contentType, storageFile.fileLength())
             }
         } catch (e: NullPointerException) {
             e.printStackTrace()
@@ -85,8 +81,32 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         }
     }
 
+    private fun getInputStreamWithRetry(storage: Storage, file: StorageFile): InputStream? {
+        val inputStream = getInputStream(storage, file)
+        if (inputStream != null) return inputStream
+        try {
+            Thread.sleep(RETRY_DELAY_MS)
+        } catch (_: InterruptedException) {
+        }
+        return getInputStream(storage, file)
+    }
+
+    private fun getInputStreamWithRetry(storage: Storage, file: StorageFile, offset: Long): InputStream? {
+        val inputStream = getInputStream(storage, file, offset)
+        if (inputStream != null) return inputStream
+        try {
+            Thread.sleep(RETRY_DELAY_MS)
+        } catch (_: InterruptedException) {
+        }
+        return getInputStream(storage, file, offset)
+    }
+
     private fun getInputStream(storage: Storage, file: StorageFile) = runBlocking {
         storage.openFile(file)
+    }
+
+    private fun getInputStream(storage: Storage, file: StorageFile, offset: Long) = runBlocking {
+        storage.openFile(file, offset)
     }
 
     private fun getPartialResponse(
@@ -96,17 +116,6 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         contentType: String
     ): Response {
         val rangeLength = rangeArray[1] - rangeArray[0] + 1
-
-        try {
-            var remaining = rangeArray[0]
-            while (remaining > 0) {
-                val skipped = inputStream.skip(remaining)
-                if (skipped <= 0) break
-                remaining -= skipped
-            }
-        } catch (e: IOException) {
-            e.printStackTrace()
-        }
 
         val response = newFixedLengthResponse(
             Response.Status.PARTIAL_CONTENT,
@@ -121,11 +130,12 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         return response
     }
 
-    private fun getOKResponse(inputStream: InputStream, contentType: String): Response {
-        return newChunkedResponse(
+    private fun getOKResponse(inputStream: InputStream, contentType: String, fileLength: Long): Response {
+        return newFixedLengthResponse(
             Response.Status.OK,
             contentType,
-            inputStream
+            inputStream,
+            fileLength
         )
     }
 
@@ -178,10 +188,10 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
                     stop()
                     return@withTimeout false
                 }
-            } catch (e: java.io.IOException) {
+            } catch (e: Exception) {
                 lastError = e
                 stop()
-                val newPort = Random.nextInt(20000, 30000)
+                val newPort = Random.nextInt(20000, 25000)
                 updatePort(newPort)
             }
         }
@@ -198,14 +208,16 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         return "http://127.0.0.1:$listeningPort$urlPath"
     }
 
+    fun removePlayUrl(urlPath: String) {
+        urlFileMap.remove(urlPath)
+    }
+
     fun releaseStorage(storage: SmbStorage) {
         val storageId = storage.library.id
         urlFileMap.entries.removeAll { it.value.first.library.id == storageId }
     }
 
     fun release() {
-        IOUtils.closeIO(mInputStream)
-        mInputStream = null
         urlFileMap.clear()
         this@SmbPlayServer.stop()
     }

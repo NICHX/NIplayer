@@ -8,6 +8,7 @@ import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 
@@ -27,8 +28,9 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
     }
 
     companion object {
+        private const val RETRY_DELAY_MS = 200L
 
-        private fun randomPort() = Random.nextInt(20000, 30000)
+        private fun randomPort() = Random.nextInt(25001, 30000)
 
         @JvmStatic
         fun getInstance() = Holder.instance
@@ -75,6 +77,20 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         storage.openFile(file, offset)
     }
 
+    private fun getInputStreamWithRetry(
+        storage: FtpStorage,
+        file: FtpStorageFile,
+        offset: Long = -1
+    ): InputStream? {
+        val inputStream = getInputStream(storage, file, offset)
+        if (inputStream != null) return inputStream
+        try {
+            Thread.sleep(RETRY_DELAY_MS)
+        } catch (_: InterruptedException) {
+        }
+        return getInputStream(storage, file, offset)
+    }
+
     private fun getPartialResponse(
         storage: FtpStorage,
         storageFile: FtpStorageFile,
@@ -82,7 +98,7 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         sourceLength: Long,
         contentType: String
     ): Response {
-        val inputStream = getInputStream(storage, storageFile, rangeArray[0])
+        val inputStream = getInputStreamWithRetry(storage, storageFile, rangeArray[0])
             ?: return resourceOpenFailed
         val rangeLength = rangeArray[1] - rangeArray[0] + 1
         val response = newFixedLengthResponse(
@@ -103,12 +119,13 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         storageFile: FtpStorageFile,
         contentType: String
     ): Response {
-        val inputStream = getInputStream(storage, storageFile)
+        val inputStream = getInputStreamWithRetry(storage, storageFile)
             ?: return resourceOpenFailed
-        return newChunkedResponse(
+        return newFixedLengthResponse(
             Response.Status.OK,
             contentType,
-            inputStream
+            inputStream,
+            storageFile.fileLength()
         )
     }
 
@@ -161,10 +178,10 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
                     stop()
                     return@withTimeout false
                 }
-            } catch (e: java.io.IOException) {
+            } catch (e: Exception) {
                 lastError = e
                 stop()
-                val newPort = Random.nextInt(20000, 30000)
+                val newPort = Random.nextInt(25001, 30000)
                 updatePort(newPort)
             }
         }
@@ -179,5 +196,19 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         val urlPath = "/" + storageFile.uniqueKey()
         urlFileMap[urlPath] = storage to storageFile
         return "http://127.0.0.1:$listeningPort$urlPath"
+    }
+
+    fun releaseStorage(storage: FtpStorage) {
+        val storageId = storage.library.id
+        urlFileMap.entries.removeAll { it.value.first.library.id == storageId }
+    }
+
+    fun removePlayUrl(urlPath: String) {
+        urlFileMap.remove(urlPath)
+    }
+
+    fun release() {
+        urlFileMap.clear()
+        this@FtpPlayServer.stop()
     }
 }

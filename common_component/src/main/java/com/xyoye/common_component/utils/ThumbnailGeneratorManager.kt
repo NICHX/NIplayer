@@ -12,11 +12,16 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import com.xyoye.common_component.base.app.BaseApplication
 import com.xyoye.common_component.config.ThumbnailConfig
 import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.file.StorageFile
+import com.xyoye.common_component.storage.file.helper.FtpPlayServer
+import com.xyoye.common_component.storage.file.helper.SmbPlayServer
+import com.xyoye.common_component.storage.impl.FtpStorage
+import com.xyoye.common_component.storage.impl.SmbStorage
 import com.xyoye.data_component.enums.MediaType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -154,6 +159,26 @@ object ThumbnailGeneratorManager {
     }
 
     /**
+     * 预加载已有缩略图路径到内存缓存
+     * 在后台线程批量检查 coverFile 是否存在，避免滚动时逐个触发 File.exists() IO
+     */
+    private suspend fun preloadCoverFileCache(allFiles: List<StorageFile>) = withContext(Dispatchers.IO) {
+        for (file in allFiles) {
+            val uniqueKey = file.uniqueKey()
+            if (uniqueKey.isEmpty()) continue
+            if (ThumbnailMemoryCache.getCoverPath(uniqueKey) != null) continue
+            val coverFile = uniqueKey.toCoverFile() ?: continue
+            if (coverFile.exists() && coverFile.length() > 0) {
+                ThumbnailMemoryCache.putCoverPath(uniqueKey, coverFile.absolutePath)
+            }
+        }
+    }
+
+    private fun clearCoverFileCache() {
+        ThumbnailMemoryCache.clearCoverPathCache()
+    }
+
+    /**
      * 开始为文件列表生成缩略图
      * @param files 文件列表
      * @param storage 所属存储
@@ -165,6 +190,7 @@ object ThumbnailGeneratorManager {
         synchronized(pendingFiles) {
             pendingFiles.clear()
             retryCountMap.clear()
+            clearCoverFileCache()
 
             thumbFileLookup.clear()
             if (allFiles != null) {
@@ -186,6 +212,13 @@ object ThumbnailGeneratorManager {
             val (priority, others) = filteredFiles.partition { it.uniqueKey() in priorityKeys }
             priority.forEach { pendingFiles.offer(it) }
             others.forEach { pendingFiles.offer(it) }
+        }
+
+        // 预加载已有缩略图路径到内存缓存，避免首次绑定时执行 File.exists() IO
+        if (allFiles != null) {
+            scope.launch {
+                preloadCoverFileCache(allFiles)
+            }
         }
 
         processNextBatch()
@@ -266,8 +299,19 @@ object ThumbnailGeneratorManager {
         scope.launch {
             val results = filesToProcess.map { file ->
                 async {
-                    if (hasCachedThumbnail(file)) return@async true
-                    generateThumbnailForFile(file)
+                    try {
+                        val fileTimeout = when {
+                            file.isVideoFile() -> 30_000L
+                            else -> 15_000L
+                        }
+                        withTimeout(fileTimeout) {
+                            if (hasCachedThumbnail(file)) return@withTimeout true
+                            generateThumbnailForFile(file)
+                        }
+                    } catch (e: Exception) {
+                        DDLog.e("ThumbnailGenerator", "缩略图生成超时或失败: ${file.fileName()}")
+                        false
+                    }
                 }
             }.awaitAll()
 
@@ -328,9 +372,27 @@ object ThumbnailGeneratorManager {
                     thumbnailGenerated = generateVideoThumbnail(file, coverFile)
                 }
             } else if (file.isImageFile()) {
-                thumbnailGenerated = generateImageThumbnail(file, coverFile)
+                val mediaType = file.storage.library.mediaType
+                if (mediaType == MediaType.SMB_SERVER || mediaType == MediaType.FTP_SERVER) {
+                    val libraryId = file.storage.library.id.toString()
+                    val mutex = storageMutexMap.getOrPut(libraryId) { Mutex() }
+                    thumbnailGenerated = mutex.withLock {
+                        generateImageThumbnail(file, coverFile)
+                    }
+                } else {
+                    thumbnailGenerated = generateImageThumbnail(file, coverFile)
+                }
             } else if (file.isAudioFile()) {
-                thumbnailGenerated = generateAudioThumbnail(file, coverFile)
+                val mediaType = file.storage.library.mediaType
+                if (mediaType == MediaType.SMB_SERVER || mediaType == MediaType.FTP_SERVER) {
+                    val libraryId = file.storage.library.id.toString()
+                    val mutex = storageMutexMap.getOrPut(libraryId) { Mutex() }
+                    thumbnailGenerated = mutex.withLock {
+                        generateAudioThumbnail(file, coverFile)
+                    }
+                } else {
+                    thumbnailGenerated = generateAudioThumbnail(file, coverFile)
+                }
             }
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "生成缩略图失败: ${file.fileName()}", e)
@@ -396,14 +458,14 @@ object ThumbnailGeneratorManager {
                     val remoteSaved = file.storage.saveFile(sameDirPath, thumbBytes)
                     if (!remoteSaved) {
                         val fallbackFile = File(sameDirPath)
-                        success = saveBitmapToFile(scaledBitmap, fallbackFile) || saveBitmapToFile(scaledBitmap, coverFile)
+                        success = saveBitmapToFile(scaledBitmap, fallbackFile, file.uniqueKey()) || saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
                     } else {
                         success = true
                     }
                 }
             }
             if (!success) {
-                success = saveBitmapToFile(scaledBitmap, coverFile)
+                success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
             }
             if (success) {
                 ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
@@ -418,6 +480,7 @@ object ThumbnailGeneratorManager {
             } catch (e: Exception) {
                 // ignore
             }
+            cleanupPlayUrl(file)
         }
         return@withContext success
     }
@@ -471,7 +534,7 @@ object ThumbnailGeneratorManager {
         if (scaledBitmap != bitmap) {
             bitmap.recycle()
         }
-        val success = saveBitmapToFile(scaledBitmap, coverFile)
+        val success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
         if (success) {
             ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
             return true
@@ -488,42 +551,79 @@ object ThumbnailGeneratorManager {
         var inputStream: java.io.InputStream? = null
 
         try {
-            inputStream = file.storage.openFile(file) ?: return@withContext false
-            val buffered = java.io.BufferedInputStream(inputStream)
-            buffered.mark(256 * 1024)
+            val isNetworkStorage = file.storage.library.mediaType == MediaType.SMB_SERVER ||
+                    file.storage.library.mediaType == MediaType.FTP_SERVER
 
-            val options = BitmapFactory.Options().apply {
-                inJustDecodeBounds = true
-            }
-            BitmapFactory.decodeStream(buffered, null, options)
+            if (isNetworkStorage) {
+                withTimeout(10_000L) {
+                    val stream = file.storage.openFile(file) ?: return@withTimeout
+                    val imageBytes = stream.readBytes()
+                    IOUtils.closeIO(stream)
 
-            var decodeStream: java.io.InputStream = buffered
-            try {
-                buffered.reset()
-            } catch (e: java.io.IOException) {
-                IOUtils.closeIO(inputStream)
-                inputStream = file.storage.openFile(file) ?: return@withContext false
-                decodeStream = inputStream
-            }
+                    val options = BitmapFactory.Options().apply {
+                        inJustDecodeBounds = true
+                    }
+                    BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
 
-            options.inSampleSize = calculateInSampleSize(options, 400, 400)
-            options.inJustDecodeBounds = false
+                    options.inSampleSize = calculateInSampleSize(options, 400, 400)
+                    options.inJustDecodeBounds = false
 
-            val reusable = obtainReusableBitmap(
-                options.outWidth / options.inSampleSize,
-                options.outHeight / options.inSampleSize
-            )
-            if (reusable != null) {
-                options.inBitmap = reusable
-            }
+                    val reusable = obtainReusableBitmap(
+                        options.outWidth / options.inSampleSize,
+                        options.outHeight / options.inSampleSize
+                    )
+                    if (reusable != null) {
+                        options.inBitmap = reusable
+                    }
 
-            val bitmap = BitmapFactory.decodeStream(decodeStream, null, options) ?: return@withContext false
+                    val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
+                        ?: return@withTimeout
 
-            success = saveBitmapToFile(bitmap, coverFile)
-            if (success) {
-                ThumbnailMemoryCache.put(file.uniqueKey(), bitmap)
+                    success = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
+                    if (success) {
+                        ThumbnailMemoryCache.put(file.uniqueKey(), bitmap)
+                    } else {
+                        recycleBitmapToPool(bitmap)
+                    }
+                }
             } else {
-                recycleBitmapToPool(bitmap)
+                inputStream = file.storage.openFile(file) ?: return@withContext false
+                val buffered = java.io.BufferedInputStream(inputStream)
+                buffered.mark(256 * 1024)
+
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeStream(buffered, null, options)
+
+                var decodeStream: java.io.InputStream = buffered
+                try {
+                    buffered.reset()
+                } catch (e: java.io.IOException) {
+                    IOUtils.closeIO(inputStream)
+                    inputStream = file.storage.openFile(file) ?: return@withContext false
+                    decodeStream = inputStream
+                }
+
+                options.inSampleSize = calculateInSampleSize(options, 400, 400)
+                options.inJustDecodeBounds = false
+
+                val reusable = obtainReusableBitmap(
+                    options.outWidth / options.inSampleSize,
+                    options.outHeight / options.inSampleSize
+                )
+                if (reusable != null) {
+                    options.inBitmap = reusable
+                }
+
+                val bitmap = BitmapFactory.decodeStream(decodeStream, null, options) ?: return@withContext false
+
+                success = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
+                if (success) {
+                    ThumbnailMemoryCache.put(file.uniqueKey(), bitmap)
+                } else {
+                    recycleBitmapToPool(bitmap)
+                }
             }
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "图片缩略图生成失败: ${file.fileName()}", e)
@@ -562,7 +662,7 @@ object ThumbnailGeneratorManager {
                 bitmap.recycle()
             }
 
-            success = saveBitmapToFile(scaledBitmap, coverFile)
+            success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
             if (success) {
                 ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
             } else {
@@ -576,8 +676,21 @@ object ThumbnailGeneratorManager {
             } catch (e: Exception) {
                 // ignore
             }
+            cleanupPlayUrl(file)
         }
         return@withContext success
+    }
+
+    /**
+     * 清理缩略图生成中创建的 playUrl 映射，防止 urlFileMap 无限增长
+     */
+    private fun cleanupPlayUrl(file: StorageFile) {
+        val storage = file.storage
+        val urlPath = "/" + file.uniqueKey()
+        when (storage) {
+            is SmbStorage -> SmbPlayServer.getInstance().removePlayUrl(urlPath)
+            is FtpStorage -> FtpPlayServer.getInstance().removePlayUrl(urlPath)
+        }
     }
 
     /**
@@ -616,11 +729,10 @@ object ThumbnailGeneratorManager {
     /**
      * 将 Bitmap 保存到文件
      */
-    private fun saveBitmapToFile(bitmap: Bitmap, file: File): Boolean {
+    private fun saveBitmapToFile(bitmap: Bitmap, file: File, uniqueKey: String? = null): Boolean {
         var fos: FileOutputStream? = null
         var success = false
         try {
-            // 确保目录存在
             file.parentFile?.mkdirs()
 
             fos = FileOutputStream(file)
@@ -629,12 +741,14 @@ object ThumbnailGeneratorManager {
             success = true
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "保存缩略图失败", e)
-            // 如果保存失败，删除可能部分写入的文件
             if (file.exists()) {
                 file.delete()
             }
         } finally {
             IOUtils.closeIO(fos)
+        }
+        if (success && uniqueKey != null) {
+            ThumbnailMemoryCache.putCoverPath(uniqueKey, file.absolutePath)
         }
         return success
     }

@@ -141,6 +141,7 @@ class StorageFileFragment :
 
     private fun initRecyclerView() {
         dataBinding.storageFileRv.apply {
+            setHasFixedSize(true)
             layoutManager = if (isGridView) gridEmpty(gridSpanCount) else vertical()
             adapter = StorageFileAdapter(ownerActivity, viewModel, isGridView).create()
 
@@ -300,12 +301,26 @@ class StorageFileFragment :
         val firstVisible = layoutManager.findFirstVisibleItemPosition()
         val lastVisible = layoutManager.findLastVisibleItemPosition()
         if (firstVisible < 0 || lastVisible < 0) return
+
+        val positions = filesToDisplay.mapNotNull { uniqueKey ->
+            val position = fileIndexMap[uniqueKey] ?: return@mapNotNull null
+            if (position in firstVisible..lastVisible) position else null
+        }.sorted().distinct()
+
+        if (positions.isEmpty()) return
         
-        filesToDisplay.forEach { uniqueKey ->
-            val position = fileIndexMap[uniqueKey] ?: return@forEach
-            if (position in firstVisible..lastVisible) {
-                dataBinding.storageFileRv.adapter?.notifyItemChanged(position, "thumbnail_updated")
+        val adapter = dataBinding.storageFileRv.adapter ?: return
+        var rangeStart = positions[0]
+        var rangeEnd = positions[0]
+        for (i in 1 until positions.size) {
+            if (positions[i] == rangeEnd + 1) {
+                rangeEnd = positions[i]
+            } else {
+                adapter.notifyItemRangeChanged(rangeStart, rangeEnd - rangeStart + 1, "thumbnail_updated")
+                rangeStart = positions[i]
+                rangeEnd = positions[i]
             }
         }
+        adapter.notifyItemRangeChanged(rangeStart, rangeEnd - rangeStart + 1, "thumbnail_updated")
     }
 }

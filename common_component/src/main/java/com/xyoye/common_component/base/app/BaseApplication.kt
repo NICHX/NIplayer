@@ -48,7 +48,7 @@ open class BaseApplication : Application(), ImageLoaderFactory {
         ARouter.init(this)
         CrashReport.initCrashReport(
             this,
-            SecurityHelper.getInstance().buglyId,
+            BuildConfig.BUGLY_ID,
             BuildConfig.DEBUG
         )
         Notifications.setupNotificationChannels(this)

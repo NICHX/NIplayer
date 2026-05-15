@@ -18,6 +18,7 @@ android {
 
     defaultConfig {
         buildConfigField("String", "APPLICATION_ID", "\"${Versions.applicationId}\"")
+        buildConfigField("String", "BUGLY_ID", "\"981fe7dfc2\"")
     }
     namespace = "com.xyoye.common_component"
 }
