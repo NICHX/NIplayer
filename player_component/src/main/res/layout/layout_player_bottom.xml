@@ -8,7 +8,6 @@
         android:layout_width="match_parent"
         android:layout_height="69dp"
         android:layout_gravity="bottom"
-        android:background="@color/player_item_bg_color"
         android:translationY="69dp"
         tools:translationY="0dp">
 
@@ -54,78 +53,87 @@
             app:layout_constraintTop_toTopOf="@id/current_position_tv"
             tools:text="00:00" />
 
-        <ImageView
-            android:id="@+id/play_iv"
-            android:layout_width="60dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="44dp"
-            android:layout_gravity="center"
-            android:background="@drawable/background_video_action_item"
-            android:focusable="true"
-            android:nextFocusLeft="@+id/video_list_iv"
-            android:nextFocusRight="@+id/iv_previous_source"
-            android:nextFocusUp="@+id/player_lock_iv"
-            android:nextFocusDown="@+id/back_iv"
-            android:padding="2dp"
-            android:src="@drawable/ic_play_bt"
-            app:layout_constraintEnd_toStartOf="@id/play_seek_bar"
-            app:layout_constraintTop_toBottomOf="@id/current_position_tv" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/current_position_tv">
 
-        <ImageView
-            android:id="@+id/iv_previous_source"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_gravity="center"
-            android:background="@drawable/background_video_action_item"
-            android:focusable="true"
-            android:nextFocusLeft="@+id/play_iv"
-            android:nextFocusRight="@+id/iv_next_source"
-            android:nextFocusUp="@+id/player_lock_iv"
-            android:nextFocusDown="@+id/iv_next_source"
-            android:padding="10dp"
-            android:src="@drawable/ic_video_previous"
-            app:layout_constraintBottom_toBottomOf="@id/play_iv"
-            app:layout_constraintStart_toEndOf="@+id/play_iv"
-            app:layout_constraintTop_toTopOf="@id/play_iv" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical|start">
 
-        <ImageView
-            android:id="@+id/iv_next_source"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_gravity="center"
-            android:background="@drawable/background_video_action_item"
-            android:focusable="true"
-            android:nextFocusLeft="@+id/iv_previous_source"
-            android:nextFocusRight="@+id/video_list_iv"
-            android:nextFocusUp="@+id/player_lock_iv"
-            android:nextFocusDown="@+id/video_list_iv"
-            android:padding="10dp"
-            android:src="@drawable/ic_video_next"
-            app:layout_constraintBottom_toBottomOf="@id/play_iv"
-            app:layout_constraintStart_toEndOf="@id/iv_previous_source"
-            app:layout_constraintTop_toTopOf="@id/play_iv" />
+                <androidx.appcompat.widget.AppCompatTextView
+                    android:id="@+id/video_list_iv"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="20dp"
+                    android:background="@drawable/background_video_action_item"
+                    android:drawablePadding="3dp"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:padding="7dp"
+                    android:text="@string/select_video_source"
+                    android:textColor="@color/text_white_immutable"
+                    android:textSize="12sp"
+                    app:drawableStartCompat="@drawable/ic_video_list" />
+            </LinearLayout>
 
-        <androidx.appcompat.widget.AppCompatTextView
-            android:id="@+id/video_list_iv"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_marginStart="10dp"
-            android:background="@drawable/background_video_action_item"
-            android:drawablePadding="3dp"
-            android:focusable="true"
-            android:gravity="center"
-            android:nextFocusLeft="@+id/iv_next_source"
-            android:nextFocusRight="@+id/play_iv"
-            android:nextFocusUp="@+id/player_lock_iv"
-            android:nextFocusDown="@+id/play_iv"
-            android:padding="7dp"
-            android:text="@string/select_video_source"
-            android:textColor="@color/text_white_immutable"
-            android:textSize="12sp"
-            app:drawableStartCompat="@drawable/ic_video_list"
-            app:layout_constraintBottom_toBottomOf="@id/play_iv"
-            app:layout_constraintStart_toEndOf="@id/iv_next_source"
-            app:layout_constraintTop_toTopOf="@id/play_iv" />
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/iv_previous_source"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/background_video_action_item"
+                    android:focusable="true"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_video_previous" />
+
+                <ImageView
+                    android:id="@+id/play_iv"
+                    android:layout_width="60dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/background_video_action_item"
+                    android:focusable="true"
+                    android:padding="2dp"
+                    android:src="@drawable/ic_play_bt" />
+
+                <ImageView
+                    android:id="@+id/iv_next_source"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/background_video_action_item"
+                    android:focusable="true"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_video_next" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical|end">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:layout_marginEnd="20dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                </LinearLayout>
+            </LinearLayout>
+
+        </LinearLayout>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </layout>

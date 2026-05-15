@@ -253,6 +253,9 @@ class ControlWrapper(
 
     override fun hideSettingView() {
         mSettingController.hideSettingView()
+        if (!isLocked() && !isPopupMode()) {
+            showController()
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

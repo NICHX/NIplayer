@@ -1,9 +1,6 @@
 package com.xyoye.player.controller.video
 
-import android.app.Activity
 import android.content.Context
-import android.content.pm.ActivityInfo
-import android.content.res.Configuration
 import android.graphics.Point
 import android.util.AttributeSet
 import android.view.LayoutInflater
@@ -12,11 +9,9 @@ import androidx.core.view.ViewCompat
 import androidx.databinding.DataBindingUtil
 import com.xyoye.common_component.extension.toText
 import com.xyoye.data_component.enums.PlayState
-import com.xyoye.data_component.enums.SettingViewType
 import com.xyoye.player.wrapper.ControlWrapper
 import com.xyoye.player_component.R
 import com.xyoye.player_component.databinding.LayoutPlayerTopBinding
-import com.xyoye.player_component.ui.activities.overlay_permission.OverlayPermissionActivity
 import com.xyoye.player_component.utils.BatteryHelper
 import java.util.Date
 
@@ -39,8 +34,6 @@ class PlayerTopView(
 
     private var exitPlayerObserver: (() -> Unit)? = null
 
-    private var enterPopupModeBlock: (() -> Unit)? = null
-
     private lateinit var mControlWrapper: ControlWrapper
 
     init {
@@ -51,28 +44,6 @@ class PlayerTopView(
 
         viewBinding.backIv.setOnClickListener {
             exitPlayerObserver?.invoke()
-        }
-
-        viewBinding.playerSettingsIv.setOnClickListener {
-            mControlWrapper.showSettingView(SettingViewType.PLAYER_SETTING)
-        }
-
-        viewBinding.ivSwitchPopup.setOnClickListener {
-            if (OverlayPermissionActivity.hasOverlayPermission().not()) {
-                OverlayPermissionActivity.requestOverlayPermission(context)
-                return@setOnClickListener
-            }
-            enterPopupModeBlock?.invoke()
-        }
-
-        viewBinding.ivRotateScreen.setOnClickListener {
-            val activity = context as? Activity ?: return@setOnClickListener
-            val currentOrientation = context.resources.configuration.orientation
-            activity.requestedOrientation = if (currentOrientation == Configuration.ORIENTATION_LANDSCAPE) {
-                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            } else {
-                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            }
         }
 
         // 将初始焦点置于标题，而不是返回按钮
@@ -132,9 +103,5 @@ class PlayerTopView(
 
     fun setExitPlayerObserver(block: () -> Unit) {
         exitPlayerObserver = block
-    }
-
-    fun setEnterPopupModeObserver(block: () -> Unit) {
-        enterPopupModeBlock = block
     }
 }

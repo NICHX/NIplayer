@@ -16,6 +16,7 @@ import com.xyoye.common_component.extension.toResColor
 import com.xyoye.common_component.extension.toResDrawable
 import com.xyoye.data_component.enums.PlayState
 import com.xyoye.data_component.enums.SettingViewType
+import com.xyoye.data_component.enums.TrackType
 import com.xyoye.player.utils.formatDuration
 import com.xyoye.player.wrapper.ControlWrapper
 import com.xyoye.player_component.R
@@ -190,13 +191,15 @@ class PlayerBottomView(
 
     private fun updateSourceAction() {
         val videoSource = mControlWrapper.getVideoSource()
-        viewBinding.ivNextSource.isVisible = videoSource.hasNextSource()
-        viewBinding.ivPreviousSource.isVisible = videoSource.hasPreviousSource()
-        viewBinding.videoListIv.isVisible = videoSource.getGroupSize() > 1
+        viewBinding.ivNextSource.isVisible = true
+        viewBinding.ivPreviousSource.isVisible = true
+        viewBinding.videoListIv.isVisible = true
 
-        //下一个视频资源是否可用
         val hasNextSource = videoSource.hasNextSource()
+        val hasPreviousSource = videoSource.hasPreviousSource()
         viewBinding.ivNextSource.isEnabled = hasNextSource
+        viewBinding.ivPreviousSource.isEnabled = hasPreviousSource
+
         val nextIcon = R.drawable.ic_video_next.toResDrawable()
         if (hasNextSource.not() && nextIcon != null) {
             nextIcon.colorFilter = BlendModeColorFilterCompat.createBlendModeColorFilterCompat(
@@ -205,9 +208,6 @@ class PlayerBottomView(
         }
         viewBinding.ivNextSource.setImageDrawable(nextIcon)
 
-        //上一个视频资源是否可用
-        val hasPreviousSource = videoSource.hasPreviousSource()
-        viewBinding.ivPreviousSource.isEnabled = hasPreviousSource
         val previousIcon = R.drawable.ic_video_previous.toResDrawable()
         if (hasPreviousSource.not() && previousIcon != null) {
             previousIcon.colorFilter = BlendModeColorFilterCompat.createBlendModeColorFilterCompat(

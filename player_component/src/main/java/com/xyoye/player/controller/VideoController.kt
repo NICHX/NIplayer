@@ -190,7 +190,7 @@ class VideoController(
      * 进入悬浮窗模式回调
      */
     fun observerEnterPopupMode(block: () -> Unit) {
-        playerTopView.setEnterPopupModeObserver(block)
+        playerControlView.setEnterPopupModeObserver(block)
     }
 
     /**
