@@ -66,7 +66,7 @@ class FtpStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         return playingInputStream
     }
 
-    suspend fun openFile(file: StorageFile, offset: Long): InputStream? {
+    override suspend fun openFile(file: StorageFile, offset: Long): InputStream? {
         if (offset > 0) {
             mFtpClient.restartOffset = offset
         }
@@ -209,6 +209,8 @@ class FtpStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
     }
 
     override fun close() {
+        FtpPlayServer.getInstance().releaseStorage(this)
+
         if (playingInputStream != null) {
             IOUtils.closeIO(playingInputStream)
             playingInputStream = null

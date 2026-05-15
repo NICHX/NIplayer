@@ -58,9 +58,11 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
         }
     }
 
-    val source = file.fileCover()
-    val resourceType = source.resourceType()
+    val source = ThumbnailMemoryCache.getCoverPath(uniqueKey)
+        ?: file.fileCover()
+        ?.also { ThumbnailMemoryCache.putCoverPath(uniqueKey, it) }
 
+    val resourceType = source.resourceType()
     val hasCachedThumbnail = resourceType == ResourceType.File
 
     scaleType = if (hasCachedThumbnail) {

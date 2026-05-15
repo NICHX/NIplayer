@@ -11,6 +11,7 @@ import com.hierynomus.smbj.SmbConfig
 import com.hierynomus.smbj.auth.AuthenticationContext
 import com.hierynomus.smbj.session.Session
 import com.hierynomus.smbj.share.DiskShare
+import com.hierynomus.smbj.share.File
 import com.rapid7.client.dcerpc.mssrvs.ServerService
 import com.rapid7.client.dcerpc.transport.SMBTransportFactories
 import com.xyoye.common_component.extension.open
@@ -110,6 +111,54 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
                 e.printStackTrace()
                 null
             }
+        }
+    }
+
+    override suspend fun openFile(file: StorageFile, offset: Long): InputStream? {
+        if (offset <= 0) return openFile(file)
+
+        if (checkConnection().not()) return null
+
+        val shareName = (file as SmbStorageFile).getShareName() ?: return null
+        if (switchShareDisk(shareName).not()) return null
+
+        return try {
+            val smbFile = mDiskShare?.openFile(file.filePath()) ?: return null
+            OffsetSmbInputStream(smbFile, offset)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            closeDiskShare()
+            if (switchShareDisk(shareName).not()) return null
+            try {
+                val smbFile = mDiskShare?.openFile(file.filePath()) ?: return null
+                OffsetSmbInputStream(smbFile, offset)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }
+    }
+
+    private class OffsetSmbInputStream(
+        private val smbFile: File,
+        private val startOffset: Long
+    ) : InputStream() {
+        private var position = startOffset
+
+        override fun read(): Int {
+            val buf = ByteArray(1)
+            val bytesRead = smbFile.read(buf, position, 0, 1)
+            return if (bytesRead > 0) { position += bytesRead; buf[0].toInt() and 0xFF } else -1
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            val bytesRead = smbFile.read(b, position, off, len)
+            if (bytesRead > 0) position += bytesRead
+            return bytesRead
+        }
+
+        override fun close() {
+            smbFile.close()
         }
     }
 

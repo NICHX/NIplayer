@@ -85,6 +85,16 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
         mMedia.release()
     }
 
+    override fun setOptions() {
+        val options = arrayListOf<String>()
+        options.add("-v")
+        options.add("--android-display-chroma")
+        options.add(PlayerInitializer.Player.vlcPixelFormat.value)
+        options.add(":network-caching=3000")
+        options.add(":file-caching=3000")
+        libVlc = LibVLC(mContext, options)
+    }
+
     override fun setSurface(surface: Surface?) {
 
     }
@@ -154,14 +164,6 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
 
     override fun setLooping(isLooping: Boolean) {
 
-    }
-
-    override fun setOptions() {
-        val options = arrayListOf<String>()
-        options.add("-v")
-        options.add("--android-display-chroma")
-        options.add(PlayerInitializer.Player.vlcPixelFormat.value)
-        libVlc = LibVLC(mContext, options)
     }
 
     override fun setSubtitleOffset(offsetMs: Long) {

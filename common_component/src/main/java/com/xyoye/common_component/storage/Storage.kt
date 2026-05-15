@@ -43,6 +43,22 @@ interface Storage {
     suspend fun openFile(file: StorageFile): InputStream?
 
     /**
+     * 从指定偏移量打开文件
+     * 默认实现通过 skip 跳转到偏移位置，子类可覆盖以实现高效读取
+     */
+    suspend fun openFile(file: StorageFile, offset: Long): InputStream? {
+        val inputStream = openFile(file) ?: return null
+        if (offset <= 0) return inputStream
+        var remaining = offset
+        while (remaining > 0) {
+            val skipped = inputStream.skip(remaining)
+            if (skipped <= 0) break
+            remaining -= skipped
+        }
+        return inputStream
+    }
+
+    /**
      * 保存数据到文件（在目标存储上创建或覆盖文件）
      * @param path 文件路径（相对于存储根目录）
      * @param data 要写入的数据
