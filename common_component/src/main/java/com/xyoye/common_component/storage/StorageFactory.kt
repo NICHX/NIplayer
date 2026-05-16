@@ -3,7 +3,6 @@ package com.xyoye.common_component.storage
 import com.xyoye.common_component.storage.impl.AlistStorage
 import com.xyoye.common_component.storage.impl.DocumentFileStorage
 import com.xyoye.common_component.storage.impl.FtpStorage
-import com.xyoye.common_component.storage.impl.LinkStorage
 
 import com.xyoye.common_component.storage.impl.SmbStorage
 import com.xyoye.common_component.storage.impl.VideoStorage
@@ -24,8 +23,6 @@ object StorageFactory {
             MediaType.SMB_SERVER -> SmbStorage(library)
             MediaType.FTP_SERVER -> FtpStorage(library)
             MediaType.LOCAL_STORAGE -> VideoStorage(library)
-            MediaType.STREAM_LINK -> LinkStorage(library)
-            MediaType.OTHER_STORAGE -> LinkStorage(library)
             MediaType.ALSIT_STORAGE -> AlistStorage(library)
             else -> null
         }

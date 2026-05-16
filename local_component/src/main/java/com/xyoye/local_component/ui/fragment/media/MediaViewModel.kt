@@ -30,7 +30,6 @@ class MediaViewModel : BaseViewModel() {
             MediaType.SMB_SERVER,
             MediaType.WEBDAV_SERVER,
             MediaType.ALSIT_STORAGE,
-            MediaType.STREAM_LINK,
             MediaType.OTHER_STORAGE
         )
         return libraries.filter { serverTypes.contains(it.mediaType) }.toMutableList()
@@ -49,14 +48,8 @@ class MediaViewModel : BaseViewModel() {
                 MediaLibraryEntity.HISTORY.url = url
             }
 
-            //串流播放首条记录
-            DatabaseManager.instance.getPlayHistoryDao().gitLastPlay(MediaType.STREAM_LINK)?.apply {
-                MediaLibraryEntity.STREAM.describe = url
-            }
-
             DatabaseManager.instance.getMediaLibraryDao()
                 .insert(
-                    MediaLibraryEntity.STREAM,
                     MediaLibraryEntity.HISTORY
                 )
         }

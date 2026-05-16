@@ -8,8 +8,6 @@ import com.xyoye.data_component.enums.MediaType
 
 val MediaType.deletable: Boolean
     get() = when (this) {
-        MediaType.LOCAL_STORAGE,
-        MediaType.STREAM_LINK,
-        MediaType.OTHER_STORAGE -> false
+        MediaType.LOCAL_STORAGE -> false
         else -> true
     }
