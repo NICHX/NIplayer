@@ -15,6 +15,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import com.xyoye.common_component.base.app.BaseApplication
 import com.xyoye.common_component.config.ThumbnailConfig
+import com.xyoye.common_component.config.ThumbnailServerConfig
 import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.file.StorageFile
@@ -242,6 +243,8 @@ object ThumbnailGeneratorManager {
      */
     fun startGenerateThumbnails(files: List<StorageFile>, storage: Storage, priorityKeys: Set<String> = emptySet(), allFiles: List<StorageFile>? = null) {
         if (!ThumbnailConfig.isGenerateThumbnail()) return
+
+        if (storage.library.id > 0 && !ThumbnailServerConfig.isServerThumbnailEnabled(storage.library.id)) return
 
         synchronized(pendingFiles) {
             pendingFiles.clear()
