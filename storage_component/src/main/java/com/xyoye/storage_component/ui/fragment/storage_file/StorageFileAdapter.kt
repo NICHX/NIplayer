@@ -173,7 +173,7 @@ class StorageFileAdapter(
                 initView(imageGridItem())
                 initViewForPayload { data, _, payloads ->
                     if (payloads.contains("thumbnail_updated")) {
-                        itemBinding.coverIv.loadStorageFileCover(data)
+                        itemBinding.coverIv.loadStorageFileCover(data, 256)
                     }
                 }
             }
@@ -325,7 +325,7 @@ class StorageFileAdapter(
 
     private fun BaseViewHolderCreator<ItemStorageImageGridBinding>.imageGridItem() = { data: StorageFile ->
         itemBinding.run {
-            coverIv.loadStorageFileCover(data)
+            coverIv.loadStorageFileCover(data, 256)
 
             titleTv.text = data.fileName()
             titleTv.setTextColor(getTitleColor(data))

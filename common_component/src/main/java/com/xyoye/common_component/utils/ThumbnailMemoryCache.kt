@@ -55,4 +55,8 @@ object ThumbnailMemoryCache {
     fun clearCoverPathCache() {
         coverPathCache.clear()
     }
+
+    fun clearBitmapCache() {
+        cache.evictAll()
+    }
 }

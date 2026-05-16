@@ -37,9 +37,12 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
         @Volatile
         var playbackState = PlaybackStateCompat.STATE_NONE
             private set
+
+        private var cachedLibVlc: LibVLC? = null
+        private var cachedOptions: List<String>? = null
     }
 
-    private lateinit var libVlc: LibVLC
+    private var libVlc: LibVLC? = null
     private lateinit var mMediaPlayer: MediaPlayer
     private lateinit var mMedia: Media
     private var videoSourceFd: AssetFileDescriptor? = null
@@ -53,7 +56,7 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
 
     override fun initPlayer() {
         setOptions()
-        mMediaPlayer = MediaPlayer(libVlc)
+        mMediaPlayer = MediaPlayer(libVlc!!)
         mMediaPlayer.setAudioOutput(PlayerInitializer.Player.vlcAudioOutput.value)
         initVLCEventListener()
     }
@@ -86,13 +89,20 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
     }
 
     override fun setOptions() {
+        cachedLibVlc?.let {
+            libVlc = it
+            return
+        }
+
         val options = arrayListOf<String>()
         options.add("-v")
         options.add("--android-display-chroma")
         options.add(PlayerInitializer.Player.vlcPixelFormat.value)
         options.add(":network-caching=3000")
         options.add(":file-caching=10000")
-        libVlc = LibVLC(mContext, options)
+        libVlc = LibVLC(mContext.applicationContext, options)
+        cachedLibVlc = libVlc
+        cachedOptions = options
     }
 
     override fun setSurface(surface: Surface?) {
@@ -141,9 +151,6 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
         }
         if (!mMediaPlayer.isReleased) {
             mMediaPlayer.release()
-        }
-        if (this::libVlc.isInitialized) {
-            libVlc.release()
         }
     }
 
@@ -347,7 +354,7 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
                 proxyServer.safeStart()
             }
             val proxyUrl = proxyServer.getInputStreamUrl(path, headers)
-            return Media(libVlc, Uri.parse(proxyUrl))
+            return Media(libVlc!!, Uri.parse(proxyUrl))
         }
 
         val videoUri = if (path.startsWith("/")) {
@@ -366,9 +373,9 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
                 null
             }
 
-            videoSourceFd?.run { Media(libVlc, this) }
+            videoSourceFd?.run { Media(libVlc!!, this) }
         } else {
-            Media(libVlc, videoUri)
+            Media(libVlc!!, videoUri)
         }
     }
 

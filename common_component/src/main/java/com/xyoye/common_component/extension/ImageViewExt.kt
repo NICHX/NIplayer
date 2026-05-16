@@ -48,7 +48,7 @@ fun ImageView.loadVideoCover(image: File) {
     }
 }
 
-fun ImageView.loadStorageFileCover(file: StorageFile) {
+fun ImageView.loadStorageFileCover(file: StorageFile, scaleSize: Int? = null) {
     val uniqueKey = file.uniqueKey()
     if (uniqueKey.isNotEmpty()) {
         ThumbnailMemoryCache.get(uniqueKey)?.let { bitmap ->
@@ -77,6 +77,8 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
         CachePolicy.ENABLED
     }
 
+    val sizePx = scaleSize ?: if (isLocalFile) 512 else null
+
     val defaultIcon = when {
         file.isVideoFile() -> R.drawable.ic_video_cover
         file.isAudioFile() -> R.drawable.ic_audio_cover
@@ -94,8 +96,18 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
         videoFramePercent(0.0)
         allowHardware(true)
         allowRgb565(true)
-        if (isLocalFile) {
-            size(512)
+        if (sizePx != null) {
+            size(sizePx)
         }
+        listener(
+            onSuccess = { _, result ->
+                if (uniqueKey.isNotEmpty()) {
+                    val bitmap = (result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+                    if (bitmap != null && !bitmap.isRecycled) {
+                        ThumbnailMemoryCache.put(uniqueKey, bitmap)
+                    }
+                }
+            }
+        )
     }
 }
