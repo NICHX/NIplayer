@@ -16,8 +16,8 @@ import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import com.google.android.material.appbar.AppBarLayout
 import com.xyoye.common_component.base.BaseActivity
+import com.xyoye.common_component.config.AppConfig
 import com.xyoye.common_component.config.RouteTable
-import com.tencent.mmkv.MMKV
 import com.xyoye.common_component.extension.horizontal
 import com.xyoye.common_component.extension.setData
 
@@ -59,11 +59,10 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         private set
 
     // 当前布局模式：true为网格视图，false为列表视图
-    private val gridViewKey = "storage_file_grid_view"
     var isGridView: Boolean
-        get() = MMKV.defaultMMKV().decodeBool(gridViewKey, true)
+        get() = AppConfig.isGridView()
         set(value) {
-            MMKV.defaultMMKV().encode(gridViewKey, value)
+            AppConfig.putGridView(value)
         }
 
     // 标题栏菜单管理器

@@ -62,6 +62,21 @@ fun ImageView.loadStorageFileCover(file: StorageFile, scaleSize: Int? = null) {
         ?: file.fileCover()
         ?.also { ThumbnailMemoryCache.putCoverPath(uniqueKey, it) }
 
+    // No thumbnail path — show default icon directly, skip Coil entirely.
+    // This avoids Coil queue buildup when scrolling through many un-thumbnailed files,
+    // and prevents the default icon from being stretched by Coil's Scale.FILL.
+    if (source == null) {
+        val defaultIcon = when {
+            file.isVideoFile() -> R.drawable.ic_video_cover
+            file.isAudioFile() -> R.drawable.ic_audio_cover
+            file.isImageFile() -> R.drawable.ic_image_cover
+            else -> R.drawable.ic_dandanplay
+        }
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setImageResource(defaultIcon)
+        return
+    }
+
     val resourceType = source.resourceType()
     val isLocalFile = resourceType == ResourceType.File
 
@@ -79,17 +94,9 @@ fun ImageView.loadStorageFileCover(file: StorageFile, scaleSize: Int? = null) {
 
     val sizePx = scaleSize ?: if (isLocalFile) 512 else null
 
-    val defaultIcon = when {
-        file.isVideoFile() -> R.drawable.ic_video_cover
-        file.isAudioFile() -> R.drawable.ic_audio_cover
-        file.isImageFile() -> R.drawable.ic_image_cover
-        else -> R.drawable.ic_dandanplay
-    }
-
-    load(source ?: defaultIcon) {
+    load(source) {
         scale(Scale.FILL)
         crossfade(false)
-        error(defaultIcon)
         transformations(RoundedCornersTransformation(5f.dp()))
         diskCachePolicy(diskCachePolicy)
         memoryCachePolicy(CachePolicy.ENABLED)
@@ -107,6 +114,19 @@ fun ImageView.loadStorageFileCover(file: StorageFile, scaleSize: Int? = null) {
                         ThumbnailMemoryCache.put(uniqueKey, bitmap)
                     }
                 }
+            },
+            onError = { _, _ ->
+                if (uniqueKey.isNotEmpty()) {
+                    ThumbnailMemoryCache.removeCoverPath(uniqueKey)
+                }
+                val errorIcon = when {
+                    file.isVideoFile() -> R.drawable.ic_video_cover
+                    file.isAudioFile() -> R.drawable.ic_audio_cover
+                    file.isImageFile() -> R.drawable.ic_image_cover
+                    else -> R.drawable.ic_dandanplay
+                }
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setImageResource(errorIcon)
             }
         )
     }

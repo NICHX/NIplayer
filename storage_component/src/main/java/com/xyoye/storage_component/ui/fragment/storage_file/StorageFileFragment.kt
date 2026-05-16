@@ -1,12 +1,12 @@
 package com.xyoye.storage_component.ui.fragment.storage_file
 
 import android.content.res.Configuration
+import android.view.View
 import androidx.core.view.children
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.xyoye.common_component.base.BaseFragment
-import com.xyoye.common_component.extension.grid
 import com.xyoye.common_component.extension.gridEmpty
 import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.extension.vertical
@@ -41,29 +41,22 @@ class StorageFileFragment :
     private val gridSpanCount: Int
         get() {
             return if (isTablet) {
-                // 平板：竖屏4列，横屏6列
                 if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 4
             } else {
-                // 手机：竖屏2列，横屏3列
                 if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 3 else 2
             }
         }
     
-    // 保存当前文件列表引用
     private var currentFileList: List<StorageFile> = emptyList()
 
     fun getCurrentFileList(): List<StorageFile> = currentFileList
     
-    // 文件唯一键到列表位置的映射，用于O(1)查找
     private val fileIndexMap = HashMap<String, Int>()
     
-    // 跟踪滚动状态
     private var isScrolling = false
     
-    // 跟踪是否暂停缩略图生成
     private var isThumbnailPaused = false
     
-    // 缓存已生成但尚未显示的缩略图文件
     private val pendingThumbnailFiles = mutableSetOf<String>()
 
     override fun initViewModel() =
@@ -79,8 +72,8 @@ class StorageFileFragment :
 
         viewModel.storage = ownerActivity.storage
 
-        dataBinding.viewToggleBt.setOnClickListener {
-            toggleViewMode()
+        dataBinding.scrollToTopBt.setOnClickListener {
+            dataBinding.storageFileRv.smoothScrollToPosition(0)
         }
 
         viewModel.fileLiveData.observe(this) {
@@ -94,12 +87,10 @@ class StorageFileFragment :
             dataBinding.refreshLayout.isRefreshing = false
             ownerActivity.onDirectoryOpened(it)
             dataBinding.storageFileRv.setData(it)
-            // 布局完成后，将可见项移到队列前面优先处理
             dataBinding.storageFileRv.post {
                 val visibleKeys = getVisibleFileKeys()
                 ThumbnailGeneratorManager.reprioritize(visibleKeys)
             }
-            //延迟500毫秒，等待列表加载完成后，再请求焦点
             dataBinding.storageFileRv.postDelayed({ requestFocus() }, 500)
         }
 
@@ -108,7 +99,6 @@ class StorageFileFragment :
             viewModel.listFile(directory, refresh = true)
         }
 
-        // 设置缩略图生成回调
         ThumbnailGeneratorManager.setThumbnailCallback(this)
         
         viewModel.listFile(directory)
@@ -187,34 +177,17 @@ class StorageFileFragment :
                         val visibleKeys = getVisibleFileKeys()
                         ThumbnailGeneratorManager.reprioritize(visibleKeys)
                     }
+                    updateScrollToTopVisibility(recyclerView)
                 }
             })
         }
-        updateToggleButtonIcon()
     }
 
-    private fun updateToggleButtonIcon() {
-        dataBinding.viewToggleBt.setImageResource(
-            if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid
-        )
-    }
-
-    private fun toggleViewMode() {
-        ownerActivity.isGridView = !ownerActivity.isGridView
-        dataBinding.storageFileRv.apply {
-            if (ownerActivity.isGridView) {
-                layoutManager = gridEmpty(gridSpanCount)
-                adapter = StorageFileAdapter(ownerActivity, viewModel, true).create()
-                dataBinding.viewToggleBt.setImageResource(R.drawable.ic_view_list)
-            } else {
-                layoutManager = vertical()
-                adapter = StorageFileAdapter(ownerActivity, viewModel, false).create()
-                dataBinding.viewToggleBt.setImageResource(R.drawable.ic_view_grid)
-            }
-        }
-        viewModel.fileLiveData.value?.let {
-            dataBinding.storageFileRv.setData(it)
-        }
+    private fun updateScrollToTopVisibility(recyclerView: RecyclerView) {
+        val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
+        val firstVisible = layoutManager.findFirstCompletelyVisibleItemPosition()
+        dataBinding.scrollToTopBt.visibility =
+            if (firstVisible > 3) View.VISIBLE else View.GONE
     }
 
     fun requestFocus(reversed: Boolean = false) {
@@ -225,9 +198,6 @@ class StorageFileFragment :
         dataBinding.storageFileRv.getChildAt(targetIndex)?.requestFocus()
     }
 
-    /**
-     * 获取当前屏幕可见文件的唯一键集合，用于优先生成缩略图
-     */
     private fun getVisibleFileKeys(): Set<String> {
         val layoutManager = dataBinding.storageFileRv.layoutManager ?: return emptySet()
         if (layoutManager !is androidx.recyclerview.widget.LinearLayoutManager) {
@@ -243,53 +213,33 @@ class StorageFileFragment :
             .toSet()
     }
 
-    /**
-     * 搜索
-     */
     fun search(text: String) {
-        //存在搜索条件时，不允许下拉刷新
         dataBinding.refreshLayout.isEnabled = text.isEmpty()
         viewModel.searchByText(text)
     }
 
-    /**
-     * 修改文件排序
-     */
     fun sort() {
         viewModel.changeSortOption()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        // 清理待处理的缩略图任务和回调
         ThumbnailGeneratorManager.setThumbnailCallback(null)
         ThumbnailGeneratorManager.clearPendingTasks()
     }
     
-    /**
-     * 缩略图生成完成回调，直接更新可见的ViewHolder
-     */
-    /**
-     * 缩略图生成完成回调
-     * 滚动时只缓存，停止时才显示
-     */
     override fun onThumbnailGenerated(file: StorageFile) {
         if (isDestroyed()) {
             return
         }
         
         if (isScrolling) {
-            // 正在滚动，只缓存缩略图文件的唯一键
             pendingThumbnailFiles.add(file.uniqueKey())
         } else {
-            // 没有滚动，直接显示
             displayThumbnailForFile(file)
         }
     }
     
-    /**
-     * 显示单个文件的缩略图
-     */
     private fun displayThumbnailForFile(file: StorageFile) {
         val position = fileIndexMap[file.uniqueKey()] ?: return
         val layoutManager = dataBinding.storageFileRv.layoutManager
@@ -302,9 +252,6 @@ class StorageFileFragment :
         }
     }
     
-    /**
-     * 显示所有待处理的缩略图
-     */
     private fun displayPendingThumbnails() {
         if (pendingThumbnailFiles.isEmpty()) {
             return

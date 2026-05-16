@@ -91,6 +91,10 @@ object AppConfigTable {
     var supportVideoExtension: String = VideoExtension.supportText
 
     @MMKVFiled
+    //默认使用网格布局（否则为列表布局）
+    var gridView: Boolean = false
+
+    @MMKVFiled
     // Jsoup的User-Agent
     var jsoupUserAgent: String = DefaultConfig.DEFAULT_JSOUP_USER_AGENT
 }

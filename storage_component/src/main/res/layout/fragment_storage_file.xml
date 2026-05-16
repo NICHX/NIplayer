@@ -47,22 +47,22 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            app:layout_constraintGuide_percent="0.92" />
+            app:layout_constraintGuide_percent="0.88" />
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/view_toggle_bt"
+            android:id="@+id/scroll_to_top_bt"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:contentDescription="切换视图"
+            android:contentDescription="回到顶部"
             android:focusable="true"
-            android:src="@drawable/ic_view_grid"
+            android:src="@drawable/ic_arrow_up_white"
+            android:visibility="gone"
             app:backgroundTint="@color/float_button_bg_color"
             app:borderWidth="0dp"
             app:elevation="3dp"
             app:fabCustomSize="52dp"
             app:maxImageSize="26dp"
             app:rippleColor="@color/float_button_ripple_color"
-            app:layout_behavior="@string/hide_bottom_view_on_scroll_behavior"
             android:layout_marginEnd="16dp"
             app:layout_constraintBottom_toTopOf="@id/bottom_guide"
             app:layout_constraintEnd_toEndOf="parent" />

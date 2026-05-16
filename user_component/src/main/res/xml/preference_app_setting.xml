@@ -5,6 +5,14 @@
 
 
     <PreferenceCategory android:title="设置">
+
+        <ListPreference
+            android:key="view_mode"
+            android:title="默认视图模式"
+            android:summary="设置文件浏览页面的默认视图模式"
+            android:entries="@array/view_mode_entries"
+            android:entryValues="@array/view_mode_values" />
+
         <SwitchPreference
             android:key="hide_file"
             android:summary="在选择文件时，显示系统隐藏文件"
