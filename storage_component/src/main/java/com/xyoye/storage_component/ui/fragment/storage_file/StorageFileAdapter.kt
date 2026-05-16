@@ -57,9 +57,6 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * Created by xyoye on 2023/4/13
@@ -539,12 +536,6 @@ class StorageFileAdapter(
     }
 
     private fun showFileInfoDialog(info: StorageFileInfo) {
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        val lastModifiedStr = if (info.lastModified > 0) {
-            dateFormat.format(Date(info.lastModified))
-        } else {
-            "未知"
-        }
         val sizeStr = if (info.isDirectory) {
             "${info.childCount} 项"
         } else {
@@ -552,7 +543,11 @@ class StorageFileAdapter(
         }
         val message = buildString {
             append("名称: ${info.name}\n")
-            append("路径: ${info.path}\n")
+            val dirPath = if (info.isDirectory) info.path else {
+                val lastSlash = info.path.lastIndexOf('/')
+                if (lastSlash > 0) info.path.substring(0, lastSlash) else ""
+            }
+            append("路径: $dirPath\n")
             val typeLabel = when {
                 info.isDirectory -> "文件夹"
                 info.isVideo -> "视频文件"
@@ -562,7 +557,6 @@ class StorageFileAdapter(
             }
             append("类型: $typeLabel\n")
             append("大小: $sizeStr\n")
-            append("修改时间: $lastModifiedStr\n")
             if (info.isVideo) {
                 if (info.videoWidth > 0 && info.videoHeight > 0) {
                     append("分辨率: ${info.videoWidth}×${info.videoHeight}\n")
