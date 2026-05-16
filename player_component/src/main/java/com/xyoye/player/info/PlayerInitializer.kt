@@ -39,6 +39,8 @@ object PlayerInitializer {
         var pressVideoSpeed = DEFAULT_PRESS_SPEED
         var vlcAudioOutput = VLCAudioOutput.AUTO
         var isAutoPlayNext = true
+        var wifiCacheSize = 1024L
+        var mobileCacheSize = 100L
     }
 
     object Subtitle {

@@ -91,7 +91,7 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
         options.add("--android-display-chroma")
         options.add(PlayerInitializer.Player.vlcPixelFormat.value)
         options.add(":network-caching=3000")
-        options.add(":file-caching=3000")
+        options.add(":file-caching=10000")
         libVlc = LibVLC(mContext, options)
     }
 
