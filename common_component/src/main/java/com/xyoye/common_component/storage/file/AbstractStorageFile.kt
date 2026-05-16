@@ -80,15 +80,15 @@ abstract class AbstractStorageFile(
     }
 
     override fun isVideoFile(): Boolean {
-        return com.xyoye.common_component.utils.isVideoFile(fileName())
+        return isDirectory().not() && com.xyoye.common_component.utils.isVideoFile(fileName())
     }
 
     override fun isAudioFile(): Boolean {
-        return com.xyoye.common_component.utils.isAudioFile(fileName())
+        return isDirectory().not() && com.xyoye.common_component.utils.isAudioFile(fileName())
     }
 
     override fun isImageFile(): Boolean {
-        return com.xyoye.common_component.utils.isImageFile(fileName())
+        return isDirectory().not() && com.xyoye.common_component.utils.isImageFile(fileName())
     }
 
     override fun isStoragePathParent(childPath: String): Boolean {
