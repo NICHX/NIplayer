@@ -4,6 +4,7 @@ import com.xyoye.common_component.network.helper.UnsafeOkHttpClient
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoHTTPD.Response.Status
 import okhttp3.Request
+import java.io.BufferedInputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
@@ -18,10 +19,15 @@ class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(p
     }
 
     companion object {
+        private const val STREAM_BUFFER_SIZE = 256 * 1024
+
         private fun randomPort() = Random.nextInt(30001, 40000)
 
         @JvmStatic
         fun getInstance() = Holder.instance
+    }
+
+    init {
     }
 
     private fun updatePort(newPort: Int) {
@@ -58,10 +64,16 @@ class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(p
         }
 
         val proxyResponse = getProxyResponse(proxyUrl, proxyHeaders, session)
+        val bodyStream = proxyResponse.body?.byteStream()
+        val bufferedStream = if (bodyStream != null) {
+            BufferedInputStream(bodyStream, STREAM_BUFFER_SIZE)
+        } else {
+            null
+        }
         val response = newFixedLengthResponse(
             Status.lookup(proxyResponse.code) ?: Status.OK,
             proxyResponse.header("Content-Type"),
-            proxyResponse.body?.byteStream(),
+            bufferedStream,
             proxyResponse.body?.contentLength() ?: 0
         )
         val responseHeaders = proxyResponse.headers

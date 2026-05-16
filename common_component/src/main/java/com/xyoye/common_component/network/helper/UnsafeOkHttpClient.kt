@@ -5,6 +5,7 @@ import com.xyoye.common_component.BuildConfig
 import okhttp3.OkHttpClient
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
+import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
 
@@ -40,6 +41,8 @@ object UnsafeOkHttpClient {
         val builder = OkHttpClient.Builder()
             .sslSocketFactory(sslContext.socketFactory, unSafeTrustManager)
             .hostnameVerifier { _, _ -> true }
+            .readTimeout(60, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
             .addNetworkInterceptor(RedirectAuthorizationInterceptor())
         if (BuildConfig.DEBUG) {
             builder.addNetworkInterceptor(LoggerInterceptor().webDav())

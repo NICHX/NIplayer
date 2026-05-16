@@ -8,6 +8,7 @@ import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.io.BufferedInputStream
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
@@ -29,11 +30,15 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
 
     companion object {
         private const val RETRY_DELAY_MS = 200L
+        private const val STREAM_BUFFER_SIZE = 256 * 1024
 
         private fun randomPort() = Random.nextInt(25001, 30000)
 
         @JvmStatic
         fun getInstance() = Holder.instance
+    }
+
+    init {
     }
 
     private fun updatePort(newPort: Int) {
@@ -104,7 +109,7 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         val response = newFixedLengthResponse(
             Response.Status.PARTIAL_CONTENT,
             contentType,
-            inputStream,
+            BufferedInputStream(inputStream, STREAM_BUFFER_SIZE),
             rangeLength
         )
         val contentRange = "bytes ${rangeArray[0]}-${rangeArray[1]}/$sourceLength"
@@ -124,7 +129,7 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         return newFixedLengthResponse(
             Response.Status.OK,
             contentType,
-            inputStream,
+            BufferedInputStream(inputStream, STREAM_BUFFER_SIZE),
             storageFile.fileLength()
         )
     }
