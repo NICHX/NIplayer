@@ -23,7 +23,8 @@ import java.util.Collections
 
 class ImageViewerAdapter(
     private val imagePaths: List<String>,
-    private val context: Context
+    private val context: Context,
+    private val authHeader: String? = null
 ) : RecyclerView.Adapter<ImageViewerAdapter.ImageViewHolder>() {
 
     private val bitmapCache = LruCache<Int, Bitmap>(imagePaths.size.coerceAtMost(10))
@@ -215,6 +216,9 @@ class ImageViewerAdapter(
             connection.connectTimeout = 15000
             connection.readTimeout = 15000
             connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+            if (authHeader != null) {
+                connection.setRequestProperty("Authorization", authHeader)
+            }
             connection.connect()
 
             val responseCode = connection.responseCode

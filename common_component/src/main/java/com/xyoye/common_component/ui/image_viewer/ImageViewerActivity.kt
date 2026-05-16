@@ -30,7 +30,10 @@ class ImageViewerActivity : BaseAppCompatActivity<ActivityImageViewerBinding>() 
         const val EXTRA_IMAGE_URI = "extra_image_uri"
         const val EXTRA_IMAGE_URIS = "extra_image_uris"
         const val EXTRA_CURRENT_POSITION = "extra_current_position"
+        const val EXTRA_AUTH_HEADER = "extra_auth_header"
     }
+
+    private var authHeader: String? = null
 
     override fun initStatusBar() {
         ImmersionBar.with(this)
@@ -46,6 +49,7 @@ class ImageViewerActivity : BaseAppCompatActivity<ActivityImageViewerBinding>() 
         val singleUri = intent.getStringExtra(EXTRA_IMAGE_URI)
         val uris = intent.getStringArrayListExtra(EXTRA_IMAGE_URIS)
         val currentPosition = intent.getIntExtra(EXTRA_CURRENT_POSITION, 0)
+        authHeader = intent.getStringExtra(EXTRA_AUTH_HEADER)
         
         val imageList = when {
             !uris.isNullOrEmpty() -> uris
@@ -149,6 +153,9 @@ class ImageViewerActivity : BaseAppCompatActivity<ActivityImageViewerBinding>() 
             connection.connectTimeout = 15000
             connection.readTimeout = 15000
             connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+            if (authHeader != null) {
+                connection.setRequestProperty("Authorization", authHeader)
+            }
             connection.connect()
             
             val responseCode = connection.responseCode
@@ -172,7 +179,7 @@ class ImageViewerActivity : BaseAppCompatActivity<ActivityImageViewerBinding>() 
     }
 
     private fun initViewPager(imageList: List<String>, startPosition: Int) {
-        val adapter = ImageViewerAdapter(imageList, this)
+        val adapter = ImageViewerAdapter(imageList, this, authHeader)
         dataBinding.viewPager.adapter = adapter
         dataBinding.viewPager.setCurrentItem(startPosition, false)
 

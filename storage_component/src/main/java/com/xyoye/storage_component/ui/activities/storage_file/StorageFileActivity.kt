@@ -21,6 +21,7 @@ import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.extension.horizontal
 import com.xyoye.common_component.extension.setData
 
+import com.xyoye.common_component.network.config.HeaderKey
 import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.StorageFactory
 import com.xyoye.common_component.storage.file.StorageFile
@@ -467,9 +468,12 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
                         }
                     }
 
+                    val authHeader = file.storage.getNetworkHeaders()
+                        ?.get(HeaderKey.AUTHORIZATION)
+
                     if (imageUrls.isNotEmpty()) {
                         withContext(Dispatchers.Main) {
-                            ARouter.getInstance()
+                            val postcard = ARouter.getInstance()
                                 .build(RouteTable.ImageViewer.Viewer)
                                 .withStringArrayList(
                                     com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_IMAGE_URIS,
@@ -479,20 +483,32 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
                                     com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_CURRENT_POSITION,
                                     currentPosition
                                 )
-                                .navigation()
+                            if (authHeader != null) {
+                                postcard.withString(
+                                    com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_AUTH_HEADER,
+                                    authHeader
+                                )
+                            }
+                            postcard.navigation()
                         }
                     } else {
                         // 回退：单张图片
                         val imageUrl = getImageUrl(file)
                         if (imageUrl.isNotEmpty()) {
                             withContext(Dispatchers.Main) {
-                                ARouter.getInstance()
+                                val postcard = ARouter.getInstance()
                                     .build(RouteTable.ImageViewer.Viewer)
                                     .withString(
                                         com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_IMAGE_URI,
                                         imageUrl
                                     )
-                                    .navigation()
+                                if (authHeader != null) {
+                                    postcard.withString(
+                                        com.xyoye.common_component.ui.image_viewer.ImageViewerActivity.EXTRA_AUTH_HEADER,
+                                        authHeader
+                                    )
+                                }
+                                postcard.navigation()
                             }
                         } else {
                             withContext(Dispatchers.Main) {
