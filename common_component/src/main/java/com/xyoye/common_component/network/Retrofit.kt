@@ -11,8 +11,6 @@ import com.xyoye.common_component.network.helper.SignatureInterceptor
 import com.xyoye.common_component.network.service.AlistService
 import com.xyoye.common_component.network.service.DanDanService
 import com.xyoye.common_component.network.service.ExtendedService
-import com.xyoye.common_component.network.service.MagnetService
-
 import com.xyoye.common_component.utils.JsonHelper
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -27,7 +25,6 @@ class Retrofit private constructor() {
     companion object {
         val danDanService: DanDanService by lazy { Holder.instance.danDanService }
         val extendedService: ExtendedService by lazy { Holder.instance.extendedService }
-        val magnetService: MagnetService by lazy { Holder.instance.magnetService }
 
         val alistService: AlistService by lazy { Holder.instance.alistService }
     }
@@ -73,15 +70,6 @@ class Retrofit private constructor() {
             .baseUrl(Api.DAN_DAN_OPEN)
             .build()
             .create(DanDanService::class.java)
-    }
-
-    private val magnetService: MagnetService by lazy {
-        Retrofit.Builder()
-            .addConverterFactory(moshiConverterFactory)
-            .client(commonClient)
-            .baseUrl(Api.DAN_DAN_RES)
-            .build()
-            .create(MagnetService::class.java)
     }
 
     private val extendedService: ExtendedService by lazy {

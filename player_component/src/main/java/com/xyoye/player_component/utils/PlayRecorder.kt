@@ -18,8 +18,6 @@ import com.xyoye.common_component.extension.resumeWhenAlive
 import com.xyoye.common_component.network.repository.AnimeRepository
 import com.xyoye.common_component.network.repository.ResourceRepository
 import com.xyoye.common_component.source.base.BaseVideoSource
-import com.xyoye.common_component.source.media.StorageVideoSource
-
 import com.xyoye.common_component.utils.JsonHelper
 import com.xyoye.common_component.utils.MediaUtils
 import com.xyoye.common_component.utils.PathHelper
@@ -43,14 +41,6 @@ object PlayRecorder {
 
     fun recordProgress(source: BaseVideoSource, position: Long, duration: Long) {
         SupervisorScope.IO.launch {
-            var torrentPath: String? = null
-            var torrentIndex = -1
-
-            if (source is StorageVideoSource) {
-                torrentPath = source.getTorrentPath()
-                torrentIndex = source.getTorrentIndex()
-            }
-
             val history = PlayHistoryEntity(
                 0,
                 source.getVideoTitle(),
@@ -62,8 +52,8 @@ object PlayRecorder {
                 null,
                 null,
                 source.getSubtitlePath(),
-                torrentPath,
-                torrentIndex,
+                null,
+                -1,
                 JsonHelper.toJson(source.getHttpHeader()),
                 source.getUniqueKey(),
                 source.getStoragePath(),

@@ -123,7 +123,7 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
 
     private fun launchMediaStorage(data: MediaLibraryEntity) {
         when (data.mediaType) {
-            MediaType.STREAM_LINK, MediaType.MAGNET_LINK, MediaType.OTHER_STORAGE -> {
+            MediaType.STREAM_LINK, MediaType.OTHER_STORAGE -> {
                 ARouter.getInstance()
                     .build(RouteTable.Local.PlayHistory)
                     .withSerializable("typeValue", data.mediaType.value)
@@ -148,8 +148,7 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
         val actionList = MediaType.values()
             .filter { 
                 (it.deletable && it != MediaType.EXTERNAL_STORAGE) 
-                || it == MediaType.STREAM_LINK 
-                || it == MediaType.MAGNET_LINK
+                || it == MediaType.STREAM_LINK
             }
             .map { it.toAction() }
 

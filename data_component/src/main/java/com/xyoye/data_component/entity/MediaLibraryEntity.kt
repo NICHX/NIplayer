@@ -91,13 +91,6 @@ data class MediaLibraryEntity(
             mediaType = MediaType.STREAM_LINK,
             describe = "https://"
         )
-        val TORRENT = MediaLibraryEntity(
-            id = 3,
-            displayName = "磁链播放",
-            url = "url://dandanplay_magnet_link",
-            mediaType = MediaType.MAGNET_LINK,
-            describe = "magnet:?xt=urn:btih:"
-        )
         val HISTORY = MediaLibraryEntity(
             id = 4,
             displayName = "播放历史",
@@ -114,7 +107,6 @@ data class MediaLibraryEntity(
     val disPlayDescribe
         get() = when (mediaType) {
             MediaType.STREAM_LINK,
-            MediaType.MAGNET_LINK,
             MediaType.SMB_SERVER,
             MediaType.EXTERNAL_STORAGE -> describe
 

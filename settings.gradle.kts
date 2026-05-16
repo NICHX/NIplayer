@@ -10,4 +10,3 @@ include(":data_component")
 
 include(":repository:panel_switch")
 include(":repository:seven_zip")
-include(":repository:thunder")

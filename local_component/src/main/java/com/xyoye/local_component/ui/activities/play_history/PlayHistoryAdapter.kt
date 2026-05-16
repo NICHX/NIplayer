@@ -29,9 +29,7 @@ import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.bean.SheetActionBean
 import com.xyoye.data_component.bean.VideoTagBean
 import com.xyoye.data_component.entity.PlayHistoryEntity
-import com.xyoye.data_component.enums.MediaType
 import com.xyoye.local_component.R
-import java.io.File
 
 /**
  * Created by xyoye on 2023/4/14
@@ -153,19 +151,7 @@ class PlayHistoryAdapter(
     }
 
     private fun isHistoryInvalid(entity: PlayHistoryEntity): Boolean {
-        return when (entity.mediaType) {
-            MediaType.MAGNET_LINK -> {
-                val torrentPath = entity.torrentPath
-                //磁链种子文件丢失
-                if (torrentPath.isNullOrEmpty() || entity.torrentIndex == -1) {
-                    return true
-                }
-                val torrentFile = File(torrentPath)
-                return !torrentFile.exists()
-            }
-
-            else -> entity.storageId == null
-        }
+        return entity.storageId == null
     }
 
     private fun getProgress(data: PlayHistoryEntity): String {

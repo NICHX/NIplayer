@@ -53,11 +53,6 @@ fun isDanmuFile(filePath: String): Boolean {
     return "xml" == extension.lowercase(Locale.ROOT)
 }
 
-fun isTorrentFile(filePath: String): Boolean {
-    val extension = getFileExtension(filePath)
-    return extension.lowercase(Locale.ROOT) == "torrent"
-}
-
 fun isAudioFile(filePath: String): Boolean {
     val extension = getFileExtension(filePath)
     return supportAudioExtension.contains(extension.lowercase(Locale.ROOT))

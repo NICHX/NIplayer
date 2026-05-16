@@ -9,14 +9,6 @@ import com.xyoye.common_component.network.Retrofit
 object ResourceRepository : BaseRepository() {
 
     /**
-     * 匹配字幕，Thunder
-     */
-    suspend fun matchSubtitleFormThunder(hash: String) = request()
-        .doGet {
-            Retrofit.extendedService.matchSubtitleFormThunder(hash)
-        }
-
-    /**
      * 匹配字幕，Shooter
      */
     suspend fun matchSubtitleFormShooter(fileHash: String, fileName: String) = request()

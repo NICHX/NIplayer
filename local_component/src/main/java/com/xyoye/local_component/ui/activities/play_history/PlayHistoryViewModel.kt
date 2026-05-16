@@ -49,7 +49,7 @@ class PlayHistoryViewModel : BaseViewModel() {
     fun clearHistory() {
         viewModelScope.launch(Dispatchers.IO) {
             val historyDao = DatabaseManager.instance.getPlayHistoryDao()
-            if (mediaType == MediaType.STREAM_LINK || mediaType == MediaType.MAGNET_LINK) {
+            if (mediaType == MediaType.STREAM_LINK) {
                 historyDao.deleteTypeAll(listOf(mediaType))
             } else {
                 historyDao.deleteAll()

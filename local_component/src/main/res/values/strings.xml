@@ -18,8 +18,6 @@
     <string name="item_remove_history">删除</string>
     <string name="item_select_all_history">全选</string>
     <string name="action_add_media_storage">添加媒体库</string>
-    <string name="action_select_torrent_file">选择种子文件</string>
-    <string name="tips_input_magnet_link">请输入磁链</string>
     <string name="text_shooter_setting">api设置</string>
     <string name="tips_api_limit">搜索API有频率限制，超过限制后请稍等一段时间后再操作</string>
     <string name="hint_shooter_secret">射手(伪)网API密钥</string>

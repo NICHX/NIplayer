@@ -115,7 +115,7 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
 
     private fun launchMediaStorage(data: MediaLibraryEntity) {
         when (data.mediaType) {
-            MediaType.STREAM_LINK, MediaType.MAGNET_LINK, MediaType.OTHER_STORAGE -> {
+            MediaType.STREAM_LINK, MediaType.OTHER_STORAGE -> {
                 ARouter.getInstance()
                     .build(RouteTable.Local.PlayHistory)
                     .withSerializable("typeValue", data.mediaType.value)

@@ -3,9 +3,7 @@ package com.xyoye.common_component.source.media
 import com.xyoye.common_component.source.base.BaseVideoSource
 import com.xyoye.common_component.source.factory.StorageVideoSourceFactory
 import com.xyoye.common_component.storage.file.StorageFile
-import com.xyoye.common_component.storage.file.impl.TorrentStorageFile
 import com.xyoye.common_component.utils.getFileName
-import com.xyoye.common_component.utils.thunder.ThunderManager
 import com.xyoye.data_component.bean.LocalDanmuBean
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import com.xyoye.data_component.enums.MediaType
@@ -98,27 +96,6 @@ class StorageVideoSource(
         file.storage.updateFileHistory(file, playHistory)
         videoSources.firstOrNull { it.uniqueKey() == file.uniqueKey() }
             ?.let { it.playHistory = playHistory }
-    }
-
-    fun getTorrentPath(): String? {
-        if (file is TorrentStorageFile) {
-            return file.filePath()
-        }
-        return null
-    }
-
-    fun getTorrentIndex(): Int {
-        if (file is TorrentStorageFile) {
-            return file.getRealFile().mFileIndex
-        }
-        return -1
-    }
-
-    fun getPlayTaskId(): Long {
-        if (file is TorrentStorageFile) {
-            return ThunderManager.getInstance().getTaskId(file.filePath())
-        }
-        return -1L
     }
 
     fun getStorageFile(): StorageFile {

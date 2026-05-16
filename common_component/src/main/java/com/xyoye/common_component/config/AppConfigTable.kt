@@ -27,10 +27,6 @@ object AppConfigTable {
     var showFTPVideoTips = true
 
     @MMKVFiled
-    //磁链搜索节点
-    var magnetResDomain: String? = null
-
-    @MMKVFiled
     //最后一次更新云屏蔽信息的时间
     var cloudBlockUpdateTime: Long = 0
 
