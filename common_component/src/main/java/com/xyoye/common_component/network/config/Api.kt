@@ -18,9 +18,6 @@ object Api {
     // 弹弹play Res
     const val DAN_DAN_RES = "http://res.acplay.net/"
 
-    // Thunder字幕
-    const val THUNDER_SUB = "http://sub.xmp.sandai.net:8000/subxl/"
-
     // Shooter字幕
     const val SHOOTER_SUB = "https://www.shooter.cn/api/subapi.php/"
 

@@ -4,7 +4,6 @@ import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.viewModelScope
 import com.xyoye.common_component.base.BaseViewModel
 import com.xyoye.common_component.database.DatabaseManager
-import com.xyoye.common_component.utils.getFileName
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.enums.MediaType
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +31,6 @@ class MediaViewModel : BaseViewModel() {
             MediaType.WEBDAV_SERVER,
             MediaType.ALSIT_STORAGE,
             MediaType.STREAM_LINK,
-            MediaType.MAGNET_LINK,
             MediaType.OTHER_STORAGE
         )
         return libraries.filter { serverTypes.contains(it.mediaType) }.toMutableList()
@@ -51,11 +49,6 @@ class MediaViewModel : BaseViewModel() {
                 MediaLibraryEntity.HISTORY.url = url
             }
 
-            //磁链播放首条记录
-            DatabaseManager.instance.getPlayHistoryDao().gitLastPlay(MediaType.MAGNET_LINK)?.apply {
-                MediaLibraryEntity.TORRENT.describe = getFileName(torrentPath)
-            }
-
             //串流播放首条记录
             DatabaseManager.instance.getPlayHistoryDao().gitLastPlay(MediaType.STREAM_LINK)?.apply {
                 MediaLibraryEntity.STREAM.describe = url
@@ -64,7 +57,6 @@ class MediaViewModel : BaseViewModel() {
             DatabaseManager.instance.getMediaLibraryDao()
                 .insert(
                     MediaLibraryEntity.STREAM,
-                    MediaLibraryEntity.TORRENT,
                     MediaLibraryEntity.HISTORY
                 )
         }

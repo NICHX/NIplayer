@@ -30,12 +30,6 @@ enum class MediaType(
         cover = R.drawable.ic_stream_link
     ),
 
-    MAGNET_LINK(
-        "magnet_link",
-        "磁链视频",
-        cover = R.drawable.ic_magnet_link
-    ),
-
     FTP_SERVER(
         "ftp_server",
         "FTP媒体库",
@@ -71,7 +65,6 @@ enum class MediaType(
             return when (value) {
                 "local_storage" -> LOCAL_STORAGE
                 "stream_link" -> STREAM_LINK
-                "magnet_link" -> MAGNET_LINK
                 "ftp_server" -> FTP_SERVER
                 "webdav_server" -> WEBDAV_SERVER
                 "smb_server" -> SMB_SERVER

@@ -169,6 +169,13 @@ class DatabaseManager private constructor() {
             }
         }
 
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("DROP TABLE IF EXISTS magnet_search_history")
+                database.execSQL("DROP TABLE IF EXISTS magnet_screen")
+            }
+        }
+
         val instance = DatabaseManager.holder.database
     }
 
@@ -192,7 +199,8 @@ class DatabaseManager private constructor() {
         MIGRATION_9_10,
         MIGRATION_10_11,
         MIGRATION_11_12,
-        MIGRATION_12_13
+        MIGRATION_12_13,
+        MIGRATION_13_14
     ).build()
 
 }

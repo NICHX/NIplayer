@@ -14,7 +14,6 @@ import com.alibaba.android.arouter.launcher.ARouter
 import com.gyf.immersionbar.BarHide
 import com.gyf.immersionbar.ImmersionBar
 import com.xyoye.common_component.base.BaseActivity
-import com.xyoye.common_component.bridge.PlayTaskBridge
 import com.xyoye.common_component.config.PlayerConfig
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.config.SubtitleConfig
@@ -23,7 +22,6 @@ import com.xyoye.common_component.receiver.PlayerReceiverListener
 import com.xyoye.common_component.receiver.ScreenBroadcastReceiver
 import com.xyoye.common_component.source.VideoSourceManager
 import com.xyoye.common_component.source.base.BaseVideoSource
-import com.xyoye.common_component.source.media.StorageVideoSource
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.common_component.weight.dialog.CommonDialog
 import com.xyoye.data_component.bean.VideoTrackBean
@@ -318,17 +316,9 @@ private fun updatePlayer(source: BaseVideoSource) {
     }
 
     private fun showPlayErrorDialog() {
-        val source = videoSource
-        val isTorrentSource = source?.getMediaType() == MediaType.MAGNET_LINK
+        val tips = "播放失败，请尝试更改播放器设置，或者切换其它播放内核"
 
-        val tips = if (source is StorageVideoSource && isTorrentSource) {
-            val taskLog = PlayTaskBridge.getTaskLog(source.getPlayTaskId())
-            "播放失败，资源已失效或暂时无法访问，请尝试切换资源$taskLog"
-        } else {
-            "播放失败，请尝试更改播放器设置，或者切换其它播放内核"
-        }
-
-        val builder = AlertDialog.Builder(this@PlayerActivity)
+        AlertDialog.Builder(this@PlayerActivity)
             .setTitle("错误")
             .setCancelable(false)
             .setMessage(tips)
@@ -336,25 +326,10 @@ private fun updatePlayer(source: BaseVideoSource) {
                 dialog.dismiss()
                 this@PlayerActivity.finish()
             }
-
-        if (isTorrentSource) {
-            builder.setPositiveButton("播放器设置") { dialog, _ ->
-                dialog.dismiss()
-                ARouter.getInstance()
-                    .build(RouteTable.User.SettingPlayer)
-                    .navigation()
-                this@PlayerActivity.finish()
-            }
-        }
-
-        builder.create().show()
+            .create().show()
     }
 
     private fun beforePlayExit() {
-        val source = videoSource ?: return
-        if (source is StorageVideoSource && source.getMediaType() == MediaType.MAGNET_LINK) {
-            PlayTaskBridge.sendTaskRemoveMsg(source.getPlayTaskId())
-        }
     }
 
     private fun switchVideoSource(index: Int) {

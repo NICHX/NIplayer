@@ -36,13 +36,6 @@ object PathHelper {
     }
 
     /**
-     * 获取下载种子目录
-     */
-    fun getTorrentDirectory(): File {
-        return getCacheDirectory(CacheType.TORRENT_FILE_CACHE)
-    }
-
-    /**
      * 获取播放的临时缓存文件夹
      */
     fun getPlayCacheDirectory(): File {

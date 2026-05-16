@@ -6,7 +6,6 @@ import com.xyoye.common_component.storage.impl.FtpStorage
 import com.xyoye.common_component.storage.impl.LinkStorage
 
 import com.xyoye.common_component.storage.impl.SmbStorage
-import com.xyoye.common_component.storage.impl.TorrentStorage
 import com.xyoye.common_component.storage.impl.VideoStorage
 import com.xyoye.common_component.storage.impl.WebDavStorage
 import com.xyoye.data_component.entity.MediaLibraryEntity
@@ -25,7 +24,6 @@ object StorageFactory {
             MediaType.SMB_SERVER -> SmbStorage(library)
             MediaType.FTP_SERVER -> FtpStorage(library)
             MediaType.LOCAL_STORAGE -> VideoStorage(library)
-            MediaType.MAGNET_LINK -> TorrentStorage(library)
             MediaType.STREAM_LINK -> LinkStorage(library)
             MediaType.OTHER_STORAGE -> LinkStorage(library)
             MediaType.ALSIT_STORAGE -> AlistStorage(library)

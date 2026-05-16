@@ -5,51 +5,12 @@ import java.io.IOException
 import java.io.RandomAccessFile
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
-import java.util.Locale
-
 
 /**
  * Created by xyoye on 2020/11/30.
  */
 
 object SubtitleHashUtils {
-
-    fun getThunderHash(videoPath: String): String? {
-        var file: RandomAccessFile? = null
-        try {
-            val messageDigest = MessageDigest.getInstance("SHA1")
-            file = RandomAccessFile(videoPath, "r")
-            val fileLength: Long = file.length()
-            if (fileLength < 0xF000) {
-                val buffer = ByteArray(0xF000)
-                file.seek(0)
-                file.read(buffer)
-                file.close()
-                return messageDigest.digest(buffer).toHexString().uppercase(Locale.ROOT)
-            }
-            val bufferSize = 0x5000
-            val positions = longArrayOf(0, fileLength / 3, fileLength - bufferSize)
-            for (i in positions.indices) {
-                val position = positions[i]
-                val buffer = ByteArray(bufferSize)
-                file.seek(position)
-                file.read(buffer)
-                messageDigest.update(buffer)
-            }
-            return messageDigest.digest().toHexString().uppercase(Locale.ROOT)
-        } catch (e: IOException) {
-            e.printStackTrace()
-        } catch (e: NoSuchAlgorithmException) {
-            e.printStackTrace()
-        } finally {
-            try {
-                file?.close()
-            } catch (e: IOException) {
-                e.printStackTrace()
-            }
-        }
-        return null
-    }
 
     fun getShooterHash(videoPath: String): String? {
         try {

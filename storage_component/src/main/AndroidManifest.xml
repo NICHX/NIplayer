@@ -14,16 +14,6 @@
         <activity
             android:name=".ui.activities.storage_file.StorageFileActivity"
             android:configChanges="orientation|screenSize" />
-
-        <provider
-            android:name="androidx.startup.InitializationProvider"
-            android:authorities="${applicationId}.androidx-startup"
-            android:exported="false"
-            tools:node="merge">
-            <meta-data
-                android:name="com.xyoye.storage_component.providers.ThunderInitializer"
-                android:value="androidx.startup" />
-        </provider>
     </application>
 
 </manifest>

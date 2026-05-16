@@ -33,7 +33,6 @@ dependencies {
     api(project(":data_component"))
     api(project(":repository:seven_zip"))
     api("com.geyifeng.immersionbar:immersionbar:3.2.1")
-    api(project(":repository:thunder"))
 
     api(files("libs/sardine-1.0.2.jar"))
     api(files("libs/simple-xml-2.7.1.jar"))

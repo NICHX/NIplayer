@@ -24,7 +24,6 @@ import com.xyoye.common_component.utils.getFolderName
 import com.xyoye.common_component.utils.isAudioFile
 import com.xyoye.common_component.utils.isDanmuFile
 import com.xyoye.common_component.utils.isSubtitleFile
-import com.xyoye.common_component.utils.isTorrentFile
 import com.xyoye.common_component.utils.isVideoFile
 import com.xyoye.common_component.utils.view.FilePathItemDecoration
 import com.xyoye.data_component.bean.FileManagerBean
@@ -70,7 +69,6 @@ class FileManagerDialog(
                 FileManagerAction.ACTION_SELECT_SUBTITLE -> "选择本地字幕文件"
                 FileManagerAction.ACTION_SELECT_VIDEO -> "选择视频文件"
                 FileManagerAction.ACTION_SELECT_DIRECTORY -> "选择文件夹"
-                FileManagerAction.ACTION_SELECT_TORRENT -> "选择种子文件"
                 FileManagerAction.ACTION_SELECT_AUDIO -> "选择音频文件"
             }
         )
@@ -297,8 +295,6 @@ class FileManagerDialog(
 
             FileManagerAction.ACTION_SELECT_SUBTITLE -> isSubtitleFile(filePath)
 
-            FileManagerAction.ACTION_SELECT_TORRENT -> isTorrentFile(filePath)
-
             FileManagerAction.ACTION_SELECT_AUDIO -> isAudioFile(filePath)
 
             else -> false
@@ -350,8 +346,6 @@ class FileManagerDialog(
             FileManagerAction.ACTION_SELECT_DANMU -> R.drawable.ic_file_xml
 
             FileManagerAction.ACTION_SELECT_SUBTITLE -> R.drawable.ic_file_subtitle
-
-            FileManagerAction.ACTION_SELECT_TORRENT -> R.drawable.ic_file_torrent
 
             FileManagerAction.ACTION_SELECT_AUDIO -> R.drawable.ic_file_audio
 

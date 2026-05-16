@@ -5,7 +5,6 @@ import com.xyoye.common_component.network.request.RequestParams
 
 import com.xyoye.data_component.data.SubtitleShooterData
 import com.xyoye.data_component.data.SubtitleSubData
-import com.xyoye.data_component.data.SubtitleThunderData
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.http.*
@@ -15,9 +14,6 @@ import retrofit2.http.*
  */
 
 interface ExtendedService {
-
-    @GET("${Api.THUNDER_SUB}{hash}.json")
-    suspend fun matchSubtitleFormThunder(@Path("hash") hash: String): SubtitleThunderData
 
     @POST(Api.SHOOTER_SUB)
     suspend fun matchSubtitleFormShooter(@Body body: RequestBody): List<SubtitleShooterData>
