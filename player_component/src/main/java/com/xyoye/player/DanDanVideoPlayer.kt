@@ -65,6 +65,7 @@ class DanDanVideoPlayer(
     private lateinit var mVideoPlayer: AbstractVideoPlayer
 
     //播放器是否已在后台释放
+    @Volatile
     private var mPlayerReleased = false
 
     //播放资源
@@ -105,7 +106,7 @@ class DanDanVideoPlayer(
     }
 
     override fun pause() {
-        if (isInPlayState() && mVideoPlayer.isPlaying()) {
+        if (isInPlayState() && !mPlayerReleased && mVideoPlayer.isPlaying()) {
             setPlayState(PlayState.STATE_PAUSED)
             mVideoPlayer.pause()
             mAudioFocusHelper.abandonFocus()
@@ -302,10 +303,17 @@ class DanDanVideoPlayer(
     /**
      * 保存播放信息
      */
+    fun pausePlayerAsync() {
+        if (isInPlayState() && !mPlayerReleased && mVideoPlayer.isPlaying()) {
+            mVideoPlayer.pause()
+        }
+    }
+
     fun recordPlayInfo() {
         if (this::videoSource.isInitialized.not()) {
             return
         }
+        if (mPlayerReleased) return
         //保存最后一帧
         PlayRecorder.recordImage(videoSource.getUniqueKey(), mRenderView)
         //保存播放进度

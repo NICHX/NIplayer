@@ -51,7 +51,11 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
 
     private val mRenderersFactory: RenderersFactory by lazy { FfmpegRenderersFactory(mContext) }
     private val mTrackSelector: TrackSelector by lazy { DefaultTrackSelector(mContext) }
-    private val mLoadControl: LoadControl by lazy { DefaultLoadControl() }
+    private val mLoadControl: LoadControl by lazy {
+        DefaultLoadControl.Builder()
+            .setBufferDurationsMs(5000, 15000, 3000, 5000)
+            .build()
+    }
     private lateinit var mSpeedPlaybackParameters: PlaybackParameters
     private lateinit var mMediaSourceEventListener: MediaSourceEventListener
 
