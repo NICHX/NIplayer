@@ -2,6 +2,7 @@ package com.xyoye.storage_component.ui.dialog
 
 import android.text.method.HideReturnsTransformationMethod
 import android.text.method.PasswordTransformationMethod
+import androidx.appcompat.widget.SwitchCompat
 import com.xyoye.common_component.extension.setTextColorRes
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.entity.MediaLibraryEntity
@@ -61,7 +62,8 @@ class AlistStorageEditDialog(
                     editLibrary.displayName = "Alist媒体库"
                 }
                 editLibrary.describe = editLibrary.url
-                activity.addStorage(editLibrary)
+                val isThumbnailEnabled = binding.root.findViewById<SwitchCompat>(R.id.thumbnail_switch)?.isChecked ?: true
+                activity.addStorage(editLibrary, isThumbnailEnabled)
             }
         }
 

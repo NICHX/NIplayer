@@ -29,6 +29,9 @@
         <activity
             android:name=".ui.activities.thumbnail_setting.ThumbnailSettingActivity"
             android:configChanges="orientation|screenSize" />
+        <activity
+            android:name=".ui.activities.backup_manager.BackupManagerActivity"
+            android:configChanges="orientation|screenSize" />
         
     </application>
 

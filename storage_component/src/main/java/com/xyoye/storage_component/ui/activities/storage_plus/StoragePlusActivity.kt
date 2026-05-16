@@ -91,8 +91,8 @@ class StoragePlusActivity : BaseActivity<StoragePlusViewModel, ActivityStoragePl
         storageEditDialog = dialog
     }
 
-    fun addStorage(library: MediaLibraryEntity) {
-        viewModel.addStorage(editData, library)
+    fun addStorage(library: MediaLibraryEntity, thumbnailEnabled: Boolean = true) {
+        viewModel.addStorage(editData, library, thumbnailEnabled)
     }
 
     fun testStorage(library: MediaLibraryEntity) {

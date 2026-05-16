@@ -2,6 +2,7 @@ package com.xyoye.storage_component.ui.dialog
 
 import android.text.method.HideReturnsTransformationMethod
 import android.text.method.PasswordTransformationMethod
+import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.isGone
 import com.hierynomus.smbj.SMBClient
 import com.xyoye.common_component.extension.setTextColorRes
@@ -89,7 +90,8 @@ class SmbStorageEditDialog(
                     serverData.displayName = "SMB媒体库"
                 }
                 serverData.describe = "smb://${serverData.url}"
-                activity.addStorage(serverData)
+                val isThumbnailEnabled = binding.root.findViewById<SwitchCompat>(R.id.thumbnail_switch)?.isChecked ?: true
+                activity.addStorage(serverData, isThumbnailEnabled)
             }
         }
 

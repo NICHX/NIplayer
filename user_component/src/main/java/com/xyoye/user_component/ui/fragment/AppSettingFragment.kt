@@ -47,6 +47,15 @@ class AppSettingFragment : PreferenceFragmentCompat() {
             }
         }
 
+        findPreference<Preference>("backup_manager")?.apply {
+            setOnPreferenceClickListener {
+                ARouter.getInstance()
+                    .build(RouteTable.User.BackupManager)
+                    .navigation()
+                return@setOnPreferenceClickListener true
+            }
+        }
+
         findPreference<Preference>("app_version")?.apply {
             summary = AppUtils.getVersionName()
         }
