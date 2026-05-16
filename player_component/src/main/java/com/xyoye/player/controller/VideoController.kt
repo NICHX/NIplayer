@@ -132,7 +132,7 @@ class VideoController(
     }
 
     override fun destroy() {
-
+        stopProgress()
     }
 
     /**

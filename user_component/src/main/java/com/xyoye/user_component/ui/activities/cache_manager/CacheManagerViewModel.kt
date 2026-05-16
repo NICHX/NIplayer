@@ -51,6 +51,7 @@ class CacheManagerViewModel : BaseViewModel() {
     fun clearAppCache() {
         viewModelScope.launch(Dispatchers.IO) {
             clearCacheDirectory(appCacheDir)
+            clearCacheDirectory(externalCacheDir)
         }
     }
 

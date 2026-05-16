@@ -12,7 +12,6 @@ import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import com.gyf.immersionbar.BarHide
 import com.gyf.immersionbar.ImmersionBar
-import com.xyoye.cache.CacheManager
 import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.bridge.PlayTaskBridge
 import com.xyoye.common_component.config.PlayerConfig
@@ -244,9 +243,6 @@ private fun updatePlayer(source: BaseVideoSource) {
             }
         }
 
-        // 预缓存网络视频
-        CacheManager.startPreCache(source.getVideoUrl(), source.getHttpHeader())
-
         // 视频已绑定字幕，直接加载
         val historySubtitle = source.getSubtitlePath()
         if (historySubtitle != null) {
@@ -349,7 +345,6 @@ private fun updatePlayer(source: BaseVideoSource) {
     }
 
     private fun beforePlayExit() {
-        CacheManager.stopPreCache()
         val source = videoSource ?: return
         if (source is StorageVideoSource && source.getMediaType() == MediaType.MAGNET_LINK) {
             PlayTaskBridge.sendTaskRemoveMsg(source.getPlayTaskId())
@@ -360,12 +355,14 @@ private fun updatePlayer(source: BaseVideoSource) {
         showLoading()
         lifecycleScope.launch(Dispatchers.IO) {
             danDanPlayer.pausePlayerAsync()
-            CacheManager.release()
             danDanPlayer.recordPlayInfo()
             danDanPlayer.releasePlayerAsync()
             val targetSource = videoSource?.indexSource(index)
             if (targetSource == null) {
-                ToastCenter.showOriginalToast("播放资源不存在")
+                withContext(Dispatchers.Main) {
+                    hideLoading()
+                    ToastCenter.showOriginalToast("播放资源不存在")
+                }
                 return@launch
             }
             withContext(Dispatchers.Main) {

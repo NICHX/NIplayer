@@ -11,7 +11,6 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.xyoye.cache.CacheManager
 import com.xyoye.common_component.source.base.BaseVideoSource
 import com.xyoye.data_component.bean.VideoTrackBean
 import com.xyoye.data_component.enums.PlayState
@@ -26,6 +25,7 @@ import com.xyoye.player.surface.InterSurfaceView
 import com.xyoye.player.surface.SurfaceFactory
 import com.xyoye.player.utils.AudioFocusHelper
 import com.xyoye.player.utils.PlayerConstant
+import com.xyoye.player.utils.VideoLog
 import com.xyoye.player.wrapper.InterVideoPlayer
 import com.xyoye.player.wrapper.InterVideoTrack
 import com.xyoye.player_component.utils.PlayRecorder
@@ -119,24 +119,24 @@ class DanDanVideoPlayer(
     }
 
     override fun getDuration(): Long {
-        if (isInPlayState())
+        if (!mPlayerReleased && isInPlayState())
             return mVideoPlayer.getDuration()
         return 0
     }
 
     override fun getCurrentPosition(): Long {
-        if (isInPlayState())
+        if (!mPlayerReleased && isInPlayState())
             return mVideoPlayer.getCurrentPosition()
         return 0
     }
 
     override fun seekTo(timeMs: Long) {
-        if (timeMs >= 0 && isInPlayState()) {
+        if (timeMs >= 0 && !mPlayerReleased && isInPlayState()) {
             mVideoPlayer.seekTo(timeMs)
         }
     }
 
-    override fun isPlaying() = isInPlayState() && mVideoPlayer.isPlaying()
+    override fun isPlaying() = !mPlayerReleased && isInPlayState() && mVideoPlayer.isPlaying()
 
     override fun getBufferedPercentage() = mVideoPlayer.getBufferedPercentage()
 
@@ -322,15 +322,21 @@ class DanDanVideoPlayer(
 
     fun releasePlayerAsync() {
         if (mCurrentPlayState != PlayState.STATE_IDLE && !mPlayerReleased) {
-            mVideoPlayer.release()
+            val releaseThread = Thread(
+                Runnable { mVideoPlayer.release() },
+                "player-release"
+            ).apply { isDaemon = true; start() }
+
+            releaseThread.join(3000)
+            if (releaseThread.isAlive) {
+                VideoLog.e("DanDanVideoPlayer--releasePlayerAsync--> Player release timed out after 3s, force proceeding")
+            }
             mPlayerReleased = true
         }
     }
 
     fun release() {
         if (mCurrentPlayState != PlayState.STATE_IDLE) {
-            //释放缓存
-            CacheManager.release()
             //释放播放器控制器
             mVideoController?.destroy()
             //释放播放器
