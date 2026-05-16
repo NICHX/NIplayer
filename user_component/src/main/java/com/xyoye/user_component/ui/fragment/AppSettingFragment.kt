@@ -9,6 +9,7 @@ import androidx.preference.PreferenceFragmentCompat
 import com.alibaba.android.arouter.launcher.ARouter
 import com.xyoye.common_component.config.AppConfig
 import com.xyoye.common_component.config.RouteTable
+import com.xyoye.common_component.utils.AppUtils
 import com.xyoye.user_component.R
 
 /**
@@ -44,6 +45,10 @@ class AppSettingFragment : PreferenceFragmentCompat() {
                     .navigation()
                 return@setOnPreferenceClickListener true
             }
+        }
+
+        findPreference<Preference>("app_version")?.apply {
+            summary = AppUtils.getVersionName()
         }
 
         super.onViewCreated(view, savedInstanceState)

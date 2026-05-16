@@ -1,15 +1,12 @@
 package com.xyoye.storage_component.ui.dialog
 
-import com.xyoye.common_component.application.DanDanPlay
 import com.xyoye.common_component.extension.setTextColorRes
 import com.xyoye.common_component.weight.ToastCenter
-import com.xyoye.data_component.data.RemoteScanData
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.enums.MediaType
 import com.xyoye.storage_component.R
 import com.xyoye.storage_component.databinding.DialogRemoteLoginBinding
 import com.xyoye.storage_component.ui.activities.storage_plus.StoragePlusActivity
-import com.xyoye.storage_component.utils.launcher.ScanActivityLauncher
 
 /**
  * Created by xyoye on 2021/3/25.
@@ -24,8 +21,6 @@ class RemoteStorageEditDialog(
     private var tokenRequired = false
 
     private lateinit var binding: DialogRemoteLoginBinding
-
-    private val scanActivityLauncher = ScanActivityLauncher(activity, onResult())
 
     init {
         remoteData = originalStorage ?: MediaLibraryEntity(
@@ -47,17 +42,6 @@ class RemoteStorageEditDialog(
         binding.remoteData = remoteData
 
         setGroupMode(remoteData.remoteAnimeGrouping)
-
-        binding.scanLl.setOnClickListener {
-            DanDanPlay.permission.camera.request(activity) {
-                onGranted {
-                    scanActivityLauncher.launch()
-                }
-                onDenied {
-                    ToastCenter.showError("获取相机权限失败，无法进行扫码")
-                }
-            }
-        }
 
         binding.serverTestConnectTv.setOnClickListener {
             if (checkParams(remoteData)) {
@@ -133,15 +117,5 @@ class RemoteStorageEditDialog(
         binding.tvGroupByFile.setTextColorRes(
             if (!isGroupByAnime) R.color.text_white else R.color.text_black
         )
-    }
-
-    private fun onResult() = block@{ data: RemoteScanData? ->
-        if (data == null) {
-            return@block
-        }
-        remoteData.url = "http://${data.selectedIP.orEmpty()}:${data.port}/"
-        remoteData.displayName = data.machineName ?: ""
-        tokenRequired = data.tokenRequired
-        binding.remoteData = remoteData
     }
 }

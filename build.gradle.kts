@@ -19,8 +19,6 @@ allprojects {
         google()
         mavenCentral()
         maven("https://jitpack.io")
-        maven("https://developer.huawei.com/repo/")
-        maven("https://maven.aliyun.com/nexus/content/repositories/releases/")
     }
 }
 

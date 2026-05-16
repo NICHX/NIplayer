@@ -19,12 +19,13 @@ object AppUtils {
     }
 
     fun getVersionName(): String {
-        if (SecurityHelper.getInstance().isOfficialApplication) {
+        return try {
             val packageName = BaseApplication.getAppContext().applicationInfo.packageName
             val packageInfo =
                 BaseApplication.getAppContext().packageManager.getPackageInfo(packageName, 0)
-            return packageInfo.versionName
+            packageInfo.versionName ?: "unknown"
+        } catch (e: Exception) {
+            "unknown"
         }
-        return "unknown"
     }
 }

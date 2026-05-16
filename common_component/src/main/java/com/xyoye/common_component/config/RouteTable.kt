@@ -45,8 +45,6 @@ object RouteTable {
     }
 
     object Stream {
-        const val RemoteScan = "/stream/remote_scan"
-
         const val StorageFile = "/stream/storage_file"
         const val StorageFileProvider = "/stream/storage_file/provider"
         const val StoragePlus = "/stream/storage_plus"

@@ -14,9 +14,6 @@ object Dependencies {
     object Alibaba {
         const val arouter_api = "com.alibaba:arouter-api:${Versions.arouter}"
         const val arouter_compiler = "com.alibaba:arouter-compiler:${Versions.arouter}"
-        const val alicloud_feedback = "com.aliyun.ams:alicloud-android-feedback:3.4.0"
-        const val alicloud_analysis = "com.aliyun.ams:alicloud-android-man:1.2.7"
-        const val alicloud_update = "com.taobao.android:update-main:1.1.14-open"
     }
 
     object AndroidX {
@@ -80,10 +77,6 @@ object Dependencies {
         const val exoplayer_rtmp =
             "com.google.android.exoplayer:extension-rtmp:${Versions.exoplayer}"
     }
-    object Huawei {
-        const val scan = "com.huawei.hms:scan:1.3.1.300"
-    }
-
     object Junit {
         const val junit = "junit:junit:4.13.2"
     }

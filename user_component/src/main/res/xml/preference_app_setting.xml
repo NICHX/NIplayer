@@ -11,7 +11,8 @@
             android:title="默认视图模式"
             android:summary="设置文件浏览页面的默认视图模式"
             android:entries="@array/view_mode_entries"
-            android:entryValues="@array/view_mode_values" />
+            android:entryValues="@array/view_mode_values"
+            app:icon="@drawable/ic_app_setting_view_mode" />
 
         <SwitchPreference
             android:key="hide_file"
@@ -25,8 +26,13 @@
             app:icon="@drawable/ic_dark_mode_system" />
     </PreferenceCategory>
 
-
     <PreferenceCategory android:title="其它">
+        <Preference
+            android:key="app_version"
+            android:title="应用版本"
+            android:selectable="false"
+            app:icon="@drawable/ic_app_setting_app_version" />
+
         <Preference
             android:key="license"
             android:title="开源许可协议"

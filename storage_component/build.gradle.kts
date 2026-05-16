@@ -17,8 +17,6 @@ kapt {
 dependencies {
     implementation(project(":common_component"))
 
-    implementation(Dependencies.Huawei.scan)
-
     kapt(Dependencies.Alibaba.arouter_compiler)
 }
 android {

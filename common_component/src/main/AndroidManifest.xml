@@ -24,16 +24,6 @@
             android:theme="@style/AppTheme" />
 
         <provider
-            android:name="com.taobao.update.provider.UpdateProvider"
-            android:authorities="${applicationId}.update.provider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/alicloud_update_paths" />
-        </provider>
-
-        <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
             android:exported="false"

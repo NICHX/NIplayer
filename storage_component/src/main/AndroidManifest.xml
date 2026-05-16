@@ -14,10 +14,6 @@
         <activity
             android:name=".ui.activities.storage_file.StorageFileActivity"
             android:configChanges="orientation|screenSize" />
-        <activity
-            android:name=".ui.activities.remote_scan.RemoteScanActivity"
-            android:configChanges="orientation|screenSize" />
-
 
         <provider
             android:name="androidx.startup.InitializationProvider"

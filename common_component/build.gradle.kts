@@ -75,10 +75,6 @@ dependencies {
 
     api(Dependencies.PhotoView.photo_view)
 
-    api(Dependencies.Alibaba.alicloud_update)
-    api(Dependencies.Alibaba.alicloud_feedback)
-    implementation(Dependencies.Alibaba.alicloud_analysis)
-
     kapt(files("libs/mmkv-compiler.jar"))
     kapt(Dependencies.AndroidX.room_compiler)
     kapt(Dependencies.Alibaba.arouter_compiler)
