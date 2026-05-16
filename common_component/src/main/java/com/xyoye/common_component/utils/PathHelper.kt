@@ -1,5 +1,6 @@
 package com.xyoye.common_component.utils
 
+import android.os.Environment
 import com.xyoye.common_component.base.app.BaseApplication
 import com.xyoye.common_component.config.AppConfig
 import com.xyoye.common_component.config.DefaultConfig
@@ -46,6 +47,20 @@ object PathHelper {
      */
     fun getPlayCacheDirectory(): File {
         return getCacheDirectory(CacheType.PLAY_CACHE)
+    }
+
+    /**
+     * 获取 HttpProxyCacheServer 的默认缓存目录
+     * 匹配 StorageUtils 的逻辑：优先使用外部缓存，回退到内部缓存
+     */
+    fun getProxyCacheDirectory(): File {
+        val context = BaseApplication.getAppContext()
+        val cacheDir = if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
+            context.externalCacheDir ?: context.cacheDir
+        } else {
+            context.cacheDir
+        }
+        return File(cacheDir, "video-cache")
     }
 
     /**

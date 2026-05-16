@@ -2,6 +2,7 @@ package com.xyoye.user_component.ui.fragment
 
 import android.os.Bundle
 import android.view.View
+import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceDataStore
@@ -122,6 +123,34 @@ class PlayerSettingFragment : PreferenceFragmentCompat() {
             entryValues = vlcAudioOutput.values.toTypedArray()
         }
 
+        //WiFi缓存上限
+        findPreference<EditTextPreference>("wifi_cache_size")?.apply {
+            summary = "当前设置：${text} MB"
+            setOnPreferenceChangeListener { _, newValue ->
+                val value = newValue.toString()
+                if (value.toIntOrNull() != null && value.toInt() > 0) {
+                    summary = "当前设置：${value} MB"
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+
+        //流量缓存上限
+        findPreference<EditTextPreference>("mobile_cache_size")?.apply {
+            summary = "当前设置：${text} MB"
+            setOnPreferenceChangeListener { _, newValue ->
+                val value = newValue.toString()
+                if (value.toIntOrNull() != null && value.toInt() >= 0) {
+                    summary = "当前设置：${value} MB"
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+
         super.onViewCreated(view, savedInstanceState)
     }
 
@@ -151,6 +180,8 @@ class PlayerSettingFragment : PreferenceFragmentCompat() {
                 "vlc_pixel_format_type" -> PlayerConfig.getUseVLCPixelFormat()
                 "vlc_hardware_acceleration" -> PlayerConfig.getUseVLCHWDecoder().toString()
                 "vlc_audio_output" -> PlayerConfig.getUseVLCAudioOutput()
+                "wifi_cache_size" -> PlayerConfig.getWifiCacheSize().toString()
+                "mobile_cache_size" -> PlayerConfig.getMobileCacheSize().toString()
                 else -> super.getString(key, defValue)
             }
         }
@@ -163,6 +194,8 @@ class PlayerSettingFragment : PreferenceFragmentCompat() {
                     "vlc_pixel_format_type" -> PlayerConfig.putUseVLCPixelFormat(value)
                     "vlc_hardware_acceleration" -> PlayerConfig.putUseVLCHWDecoder(value.toInt())
                     "vlc_audio_output" -> PlayerConfig.putUseVLCAudioOutput(value)
+                    "wifi_cache_size" -> PlayerConfig.putWifiCacheSize(value.toInt())
+                    "mobile_cache_size" -> PlayerConfig.putMobileCacheSize(value.toInt())
                     else -> super.putString(key, value)
                 }
             } else {

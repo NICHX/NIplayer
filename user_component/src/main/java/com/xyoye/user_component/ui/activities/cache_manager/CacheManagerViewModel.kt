@@ -58,6 +58,9 @@ class CacheManagerViewModel : BaseViewModel() {
         if (cacheType != null) {
             viewModelScope.launch(Dispatchers.IO) {
                 clearCacheDirectory(PathHelper.getCacheDirectory(cacheType))
+                if (cacheType == CacheType.PLAY_CACHE) {
+                    clearCacheDirectory(PathHelper.getProxyCacheDirectory())
+                }
                 refreshCache()
             }
             return
@@ -80,8 +83,11 @@ class CacheManagerViewModel : BaseViewModel() {
 
     private fun getCacheSize(cacheType: CacheType?): Long {
         return if (cacheType != null) {
-            val cacheTypeDir = PathHelper.getCacheDirectory(cacheType)
-            IOUtils.getDirectorySize(cacheTypeDir)
+            var size = IOUtils.getDirectorySize(PathHelper.getCacheDirectory(cacheType))
+            if (cacheType == CacheType.PLAY_CACHE) {
+                size += IOUtils.getDirectorySize(PathHelper.getProxyCacheDirectory())
+            }
+            size
         } else {
             val totalCacheSize = IOUtils.getDirectorySize(externalCacheDir)
             var namedCacheSize = 0L

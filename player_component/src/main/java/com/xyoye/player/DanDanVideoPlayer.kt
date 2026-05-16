@@ -64,6 +64,10 @@ class DanDanVideoPlayer(
     //播放器
     private lateinit var mVideoPlayer: AbstractVideoPlayer
 
+    //播放器是否已在后台释放
+    @Volatile
+    private var mPlayerReleased = false
+
     //播放资源
     private lateinit var videoSource: BaseVideoSource
 
@@ -102,7 +106,7 @@ class DanDanVideoPlayer(
     }
 
     override fun pause() {
-        if (isInPlayState() && mVideoPlayer.isPlaying()) {
+        if (isInPlayState() && !mPlayerReleased && mVideoPlayer.isPlaying()) {
             setPlayState(PlayState.STATE_PAUSED)
             mVideoPlayer.pause()
             mAudioFocusHelper.abandonFocus()
@@ -299,14 +303,28 @@ class DanDanVideoPlayer(
     /**
      * 保存播放信息
      */
+    fun pausePlayerAsync() {
+        if (isInPlayState() && !mPlayerReleased && mVideoPlayer.isPlaying()) {
+            mVideoPlayer.pause()
+        }
+    }
+
     fun recordPlayInfo() {
         if (this::videoSource.isInitialized.not()) {
             return
         }
+        if (mPlayerReleased) return
         //保存最后一帧
         PlayRecorder.recordImage(videoSource.getUniqueKey(), mRenderView)
         //保存播放进度
         PlayRecorder.recordProgress(videoSource, getCurrentPosition(), getDuration())
+    }
+
+    fun releasePlayerAsync() {
+        if (mCurrentPlayState != PlayState.STATE_IDLE && !mPlayerReleased) {
+            mVideoPlayer.release()
+            mPlayerReleased = true
+        }
     }
 
     fun release() {
@@ -316,7 +334,10 @@ class DanDanVideoPlayer(
             //释放播放器控制器
             mVideoController?.destroy()
             //释放播放器
-            mVideoPlayer.release()
+            if (!mPlayerReleased) {
+                mVideoPlayer.release()
+            }
+            mPlayerReleased = false
             //关闭常亮
             keepScreenOn = false
             //释放渲染布局

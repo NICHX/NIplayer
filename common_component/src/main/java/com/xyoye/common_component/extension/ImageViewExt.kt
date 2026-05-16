@@ -48,7 +48,7 @@ fun ImageView.loadVideoCover(image: File) {
     }
 }
 
-fun ImageView.loadStorageFileCover(file: StorageFile, maxSize: Int = 512) {
+fun ImageView.loadStorageFileCover(file: StorageFile) {
     val uniqueKey = file.uniqueKey()
     if (uniqueKey.isNotEmpty()) {
         ThumbnailMemoryCache.get(uniqueKey)?.let { bitmap ->
@@ -95,7 +95,7 @@ fun ImageView.loadStorageFileCover(file: StorageFile, maxSize: Int = 512) {
         allowHardware(true)
         allowRgb565(true)
         if (isLocalFile) {
-            size(maxSize)
+            size(512)
         }
     }
 }

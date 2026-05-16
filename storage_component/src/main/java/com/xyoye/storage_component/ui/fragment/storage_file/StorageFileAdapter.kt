@@ -263,7 +263,7 @@ class StorageFileAdapter(
 
     private fun BaseViewHolderCreator<ItemStorageVideoGridBinding>.videoGridItem() = { data: StorageFile ->
         itemBinding.run {
-            coverIv.loadStorageFileCover(data, 256)
+            coverIv.loadStorageFileCover(data)
             playOverlayIv.isVisible = true
 
             titleTv.text = data.fileName()
@@ -299,7 +299,7 @@ class StorageFileAdapter(
 
     private fun BaseViewHolderCreator<ItemStorageAudioGridBinding>.audioGridItem() = { data: StorageFile ->
         itemBinding.run {
-            coverIv.loadStorageFileCover(data, 256)
+            coverIv.loadStorageFileCover(data)
 
             titleTv.text = data.fileName()
             titleTv.setTextColor(getTitleColor(data))
@@ -325,7 +325,7 @@ class StorageFileAdapter(
 
     private fun BaseViewHolderCreator<ItemStorageImageGridBinding>.imageGridItem() = { data: StorageFile ->
         itemBinding.run {
-            coverIv.loadStorageFileCover(data, 256)
+            coverIv.loadStorageFileCover(data)
 
             titleTv.text = data.fileName()
             titleTv.setTextColor(getTitleColor(data))

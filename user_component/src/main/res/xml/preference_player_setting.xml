@@ -42,4 +42,17 @@
         android:summary="使用后视频渲染性能更高"
         android:title="SurfaceView"
         app:icon="@drawable/ic_player_setting_surface" />
+    <PreferenceCategory
+        android:title="网络视频缓存">
+        <EditTextPreference
+            android:key="wifi_cache_size"
+            android:title="WiFi 缓存上限"
+            android:summary="WiFi 网络下预缓存视频的最大容量"
+            app:icon="@drawable/ic_player_setting_codec" />
+        <EditTextPreference
+            android:key="mobile_cache_size"
+            android:title="流量缓存上限"
+            android:summary="移动网络下预缓存视频的最大容量，设为0禁用流量缓存"
+            app:icon="@drawable/ic_player_setting_codec" />
+    </PreferenceCategory>
 </PreferenceScreen>

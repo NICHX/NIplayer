@@ -65,4 +65,12 @@ object PlayerConfigTable {
     //后台播放
     @MMKVFiled
     val backgroundPlay = false
+
+    //WiFi网络视频缓存大小（MB）
+    @MMKVFiled
+    val wifiCacheSize = 1024
+
+    //移动网络视频缓存大小（MB）
+    @MMKVFiled
+    val mobileCacheSize = 100
 }
