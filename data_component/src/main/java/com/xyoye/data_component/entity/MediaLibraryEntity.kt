@@ -84,13 +84,6 @@ data class MediaLibraryEntity(
             url = MediaStore.Video.Media.EXTERNAL_CONTENT_URI.toString(),
             mediaType = MediaType.LOCAL_STORAGE
         )
-        val STREAM = MediaLibraryEntity(
-            id = 2,
-            displayName = "串流播放",
-            url = "url://dandanplay_steam_link",
-            mediaType = MediaType.STREAM_LINK,
-            describe = "https://"
-        )
         val HISTORY = MediaLibraryEntity(
             id = 4,
             displayName = "播放历史",
@@ -106,7 +99,6 @@ data class MediaLibraryEntity(
     @IgnoredOnParcel
     val disPlayDescribe
         get() = when (mediaType) {
-            MediaType.STREAM_LINK,
             MediaType.SMB_SERVER,
             MediaType.EXTERNAL_STORAGE -> describe
 

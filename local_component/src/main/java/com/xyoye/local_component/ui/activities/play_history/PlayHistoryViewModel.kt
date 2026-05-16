@@ -8,7 +8,6 @@ import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.source.VideoSourceManager
 import com.xyoye.common_component.source.factory.StorageVideoSourceFactory
 import com.xyoye.common_component.storage.StorageFactory
-import com.xyoye.common_component.storage.impl.LinkStorage
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
@@ -49,11 +48,7 @@ class PlayHistoryViewModel : BaseViewModel() {
     fun clearHistory() {
         viewModelScope.launch(Dispatchers.IO) {
             val historyDao = DatabaseManager.instance.getPlayHistoryDao()
-            if (mediaType == MediaType.STREAM_LINK) {
-                historyDao.deleteTypeAll(listOf(mediaType))
-            } else {
-                historyDao.deleteAll()
-            }
+            historyDao.deleteAll()
             updatePlayHistory()
         }
     }
@@ -96,38 +91,12 @@ class PlayHistoryViewModel : BaseViewModel() {
         }
     }
 
-    fun openStreamLink(link: String, headers: Map<String, String>?) {
-        viewModelScope.launch(Dispatchers.IO) {
-            if (setupLinkSource(link, headers)) {
-                playLiveData.postValue(Any())
-            }
-        }
-    }
-
     private suspend fun setupHistorySource(history: PlayHistoryEntity): Boolean {
         showLoading()
         val mediaSource = history.storageId
             ?.run { DatabaseManager.instance.getMediaLibraryDao().getById(this) }
             ?.run { StorageFactory.createStorage(this) }
             ?.run { historyFile(history) }
-            ?.run { StorageVideoSourceFactory.create(this) }
-        hideLoading()
-
-        if (mediaSource == null) {
-            ToastCenter.showError("播放失败，找不到播放资源")
-            return false
-        }
-        VideoSourceManager.getInstance().setSource(mediaSource)
-        return true
-    }
-
-    private suspend fun setupLinkSource(link: String, headers: Map<String, String>?): Boolean {
-        showLoading()
-        val mediaSource = MediaLibraryEntity.STREAM.copy(url = link)
-            .run { StorageFactory.createStorage(this) }
-            ?.run { this as? LinkStorage }
-            ?.apply { this.setupHttpHeader(headers) }
-            ?.run { getRootFile() }
             ?.run { StorageVideoSourceFactory.create(this) }
         hideLoading()
 

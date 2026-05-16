@@ -10,11 +10,7 @@
     <string name="tips_input_episode2">集</string>
     <string name="tips_ova">剧场版</string>
     <string name="tips_all_result">全部结果</string>
-    <string name="action_add_play_link">添加播放链接</string>
     <string name="action_play_last_video">播放上一次观看</string>
-    <string name="rule_stream_link_header">key : value ;</string>
-    <string name="text_advanced_link">高级设置</string>
-    <string name="tips_request_header">请求头:</string>
     <string name="item_remove_history">删除</string>
     <string name="item_select_all_history">全选</string>
     <string name="action_add_media_storage">添加媒体库</string>
