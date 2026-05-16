@@ -231,6 +231,11 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
             ?: return true
         removeFragment(listOf(fragment))
         onDisplayFragmentChanged()
+
+        // 恢复 storage.directoryFiles 为上一级目录的文件列表
+        // 避免视频播放时使用残留的过期文件列表
+        restoreDirectoryFiles()
+
         return true
     }
 
@@ -246,6 +251,17 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         }
         removeFragment(fragments)
         onDisplayFragmentChanged()
+
+        // 恢复 storage.directoryFiles 为目标目录的文件列表
+        // 避免视频播放时使用残留的过期文件列表
+        restoreDirectoryFiles()
+    }
+
+    private fun restoreDirectoryFiles() {
+        val previousFragment = mRouteFragmentMap.values.lastOrNull()
+        if (previousFragment is StorageFileFragment) {
+            storage.directoryFiles = previousFragment.getCurrentFileList()
+        }
     }
 
     private fun removeFragment(fragments: List<Fragment>) {
@@ -501,19 +517,19 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         if (filePath.isNotEmpty() && localFile.exists()) {
             return filePath
         }
-        
+
         // 尝试使用 createPlayUrl 获取可访问的 HTTP URL
         val playUrl = file.storage.createPlayUrl(file)
         if (playUrl != null && playUrl.isNotEmpty()) {
             return playUrl
         }
-        
+
         // 最后尝试 fileUrl() - 这个可能是 Content URI
         val fileUrl = file.fileUrl()
         if (fileUrl.isNotEmpty()) {
             return fileUrl
         }
-        
+
         return ""
     }
 

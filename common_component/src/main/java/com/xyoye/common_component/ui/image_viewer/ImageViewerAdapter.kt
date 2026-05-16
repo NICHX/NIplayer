@@ -212,9 +212,15 @@ class ImageViewerAdapter(
         try {
             val url = URL(urlStr)
             connection = url.openConnection() as HttpURLConnection
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
+            connection.connectTimeout = 15000
+            connection.readTimeout = 15000
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0")
             connection.connect()
+
+            val responseCode = connection.responseCode
+            if (responseCode != HttpURLConnection.HTTP_OK && responseCode != HttpURLConnection.HTTP_PARTIAL) {
+                return null
+            }
 
             val inputStream = connection.inputStream
             val outputStream = ByteArrayOutputStream()

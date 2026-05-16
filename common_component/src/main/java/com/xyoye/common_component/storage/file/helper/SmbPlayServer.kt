@@ -162,7 +162,7 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
 
     private fun resolveContentType(filePath: String): String {
         if (filePath.isEmpty()) {
-            return "video/*"
+            return "application/octet-stream"
         }
         val extension = getFileExtension(filePath)
         return when (extension.lowercase()) {
@@ -172,13 +172,29 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
             "bmp" -> "image/bmp"
             "webp" -> "image/webp"
             "heif", "heic" -> "image/heic"
-            else -> "video/$extension"
+            "svg" -> "image/svg+xml"
+            "ico" -> "image/x-icon"
+            "tiff", "tif" -> "image/tiff"
+            "mp4", "m4v" -> "video/mp4"
+            "mkv" -> "video/x-matroska"
+            "avi" -> "video/x-msvideo"
+            "mov" -> "video/quicktime"
+            "wmv" -> "video/x-ms-wmv"
+            "flv" -> "video/x-flv"
+            "webm" -> "video/webm"
+            "mp3" -> "audio/mpeg"
+            "wav" -> "audio/wav"
+            "flac" -> "audio/flac"
+            "aac" -> "audio/aac"
+            "ogg" -> "audio/ogg"
+            "m4a" -> "audio/mp4"
+            else -> "application/octet-stream"
         }
     }
 
     suspend fun startSync(timeoutMs: Long = 5000): Boolean {
         if (wasStarted()) {
-            release()
+            return true
         }
         var lastError: Exception? = null
         for (attempt in 0..5) {
