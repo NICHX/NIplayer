@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 object ThumbnailMemoryCache {
 
-    private const val MAX_CACHE_SIZE_BYTES = 8 * 1024 * 1024
+    private const val MAX_CACHE_SIZE_BYTES = 32 * 1024 * 1024
 
     private val cache = object : LruCache<String, Bitmap>(MAX_CACHE_SIZE_BYTES) {
         override fun sizeOf(key: String, bitmap: Bitmap): Int {

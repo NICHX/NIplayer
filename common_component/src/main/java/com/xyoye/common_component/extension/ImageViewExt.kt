@@ -63,25 +63,15 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
         ?.also { ThumbnailMemoryCache.putCoverPath(uniqueKey, it) }
 
     val resourceType = source.resourceType()
-    val hasCachedThumbnail = resourceType == ResourceType.File
+    val isLocalFile = resourceType == ResourceType.File
 
-    scaleType = if (hasCachedThumbnail) {
+    scaleType = if (isLocalFile) {
         ImageView.ScaleType.CENTER_CROP
     } else {
         ImageView.ScaleType.FIT_CENTER
     }
 
-    val diskCachePolicy = if (hasCachedThumbnail) {
-        CachePolicy.DISABLED
-    } else if (resourceType == ResourceType.File) {
-        CachePolicy.DISABLED
-    } else {
-        CachePolicy.ENABLED
-    }
-
-    val memoryCachePolicy = if (hasCachedThumbnail) {
-        CachePolicy.DISABLED
-    } else if (resourceType == ResourceType.File) {
+    val diskCachePolicy = if (isLocalFile) {
         CachePolicy.DISABLED
     } else {
         CachePolicy.ENABLED
@@ -100,9 +90,12 @@ fun ImageView.loadStorageFileCover(file: StorageFile) {
         error(defaultIcon)
         transformations(RoundedCornersTransformation(5f.dp()))
         diskCachePolicy(diskCachePolicy)
-        memoryCachePolicy(memoryCachePolicy)
+        memoryCachePolicy(CachePolicy.ENABLED)
         videoFramePercent(0.0)
         allowHardware(true)
         allowRgb565(true)
+        if (isLocalFile) {
+            size(512)
+        }
     }
 }

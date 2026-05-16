@@ -60,6 +60,9 @@ class StorageFileFragment :
     // 跟踪滚动状态
     private var isScrolling = false
     
+    // 跟踪是否暂停缩略图生成
+    private var isThumbnailPaused = false
+    
     // 缓存已生成但尚未显示的缩略图文件
     private val pendingThumbnailFiles = mutableSetOf<String>()
 
@@ -142,31 +145,47 @@ class StorageFileFragment :
     private fun initRecyclerView() {
         dataBinding.storageFileRv.apply {
             setHasFixedSize(true)
+            setItemViewCacheSize(20)
+            
             layoutManager = if (isGridView) gridEmpty(gridSpanCount) else vertical()
             adapter = StorageFileAdapter(ownerActivity, viewModel, isGridView).create()
 
-            // 添加滚动监听，用于继续生成缩略图
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                private var scrollDistanceAccumulator = 0
+
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                     super.onScrollStateChanged(recyclerView, newState)
                     when (newState) {
                         RecyclerView.SCROLL_STATE_IDLE -> {
                             isScrolling = false
-                            // 当滚动停止时，优先生成当前可见项的缩略图
+                            isThumbnailPaused = false
+                            scrollDistanceAccumulator = 0
+                            ThumbnailGeneratorManager.resumeGenerateThumbnails()
                             val visibleKeys = getVisibleFileKeys()
                             ThumbnailGeneratorManager.reprioritize(visibleKeys)
                             ThumbnailGeneratorManager.continueGenerateThumbnails(0)
-                            // 显示所有待处理的缩略图
                             displayPendingThumbnails()
                         }
                         RecyclerView.SCROLL_STATE_DRAGGING -> {
                             isScrolling = true
+                            if (!isThumbnailPaused) {
+                                isThumbnailPaused = true
+                                ThumbnailGeneratorManager.pauseGenerateThumbnails()
+                            }
                         }
                         RecyclerView.SCROLL_STATE_SETTLING -> {
                             isScrolling = true
-                            val visibleKeys = getVisibleFileKeys()
-                            ThumbnailGeneratorManager.reprioritize(visibleKeys)
                         }
+                    }
+                }
+
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    super.onScrolled(recyclerView, dx, dy)
+                    scrollDistanceAccumulator += kotlin.math.abs(dy)
+                    if (scrollDistanceAccumulator > recyclerView.height) {
+                        scrollDistanceAccumulator = 0
+                        val visibleKeys = getVisibleFileKeys()
+                        ThumbnailGeneratorManager.reprioritize(visibleKeys)
                     }
                 }
             })

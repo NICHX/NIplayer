@@ -68,6 +68,9 @@ object ThumbnailGeneratorManager {
     
     // 处理中的标志
     private var isProcessing = false
+    
+    // 缩略图生成是否暂停的标志
+    private var isPaused = false
 
     // 用于序列化 SMB 和 FTP 缩略图生成的互斥锁（按媒体库ID隔离），
     // 防止并发访问单例的 SmbPlayServer / FtpPlayServer 导致状态冲突
@@ -280,11 +283,33 @@ object ThumbnailGeneratorManager {
     }
 
     /**
+     * 暂停缩略图生成
+     */
+    fun pauseGenerateThumbnails() {
+        isPaused = true
+    }
+    
+    /**
+     * 恢复缩略图生成
+     */
+    fun resumeGenerateThumbnails() {
+        isPaused = false
+        // 如果队列有文件且当前没有处理，则继续处理
+        if (!isProcessing && pendingFiles.isNotEmpty()) {
+            processNextBatch()
+        }
+    }
+    
+    /**
      * 继续生成缩略图
      */
     fun continueGenerateThumbnails(startIndex: Int) {
         // 如果正在处理，直接返回
         if (isProcessing) {
+            return
+        }
+        // 如果已暂停，也不继续处理
+        if (isPaused) {
             return
         }
         // 只有队列还有文件时才继续处理
@@ -335,8 +360,8 @@ object ThumbnailGeneratorManager {
      * 处理下一批缩略图生成任务
      */
     private fun processNextBatch() {
-        // 如果正在处理或队列为空，直接返回
-        if (isProcessing || pendingFiles.isEmpty()) {
+        // 如果正在处理、队列为空或已暂停，直接返回
+        if (isProcessing || pendingFiles.isEmpty() || isPaused) {
             return
         }
 
@@ -391,7 +416,10 @@ object ThumbnailGeneratorManager {
             }
 
             isProcessing = false
-            processNextBatch()
+            // 处理完一批后检查是否暂停，未暂停则继续处理
+            if (!isPaused) {
+                processNextBatch()
+            }
         }
     }
 

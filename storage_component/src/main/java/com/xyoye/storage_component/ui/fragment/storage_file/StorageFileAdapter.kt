@@ -82,7 +82,7 @@ class StorageFileAdapter(
 
     private fun createListAdapter(): BaseAdapter {
         return buildAdapter {
-            setupVerticalAnimation()
+            // 移除垂直动画在滚动时可能导致卡顿，移除或简化动画
 
             setupDiffUtil {
                 newDataInstance { it }
@@ -132,7 +132,7 @@ class StorageFileAdapter(
 
     private fun createGridAdapter(): BaseAdapter {
         return buildAdapter {
-            setupVerticalAnimation()
+            // 移除垂直动画在滚动时可能导致卡顿，移除或简化动画
 
             setupDiffUtil {
                 newDataInstance { it }
@@ -337,14 +337,23 @@ class StorageFileAdapter(
     }
 
     private fun setupVideoTag(tagRv: RecyclerView, data: StorageFile) {
-        tagRv.apply {
-            layoutManager = horizontal()
-            adapter = buildAdapter {
-                addItem(R.layout.item_storage_video_tag) { initView(tagItem()) }
+        // 检查是否已经设置过 adapter，避免重复创建
+        if (tagRv.adapter == null) {
+            tagRv.apply {
+                layoutManager = horizontal()
+                adapter = buildAdapter {
+                    addItem(R.layout.item_storage_video_tag) { initView(tagItem()) }
+                }
+                removeItemDecoration(tagDecoration)
+                addItemDecoration(tagDecoration)
             }
-            removeItemDecoration(tagDecoration)
-            addItemDecoration(tagDecoration)
-            setData(generateVideoTags(data))
+        }
+        // 只更新数据 - 使用 items.clear() 和 addAll() 来更新
+        val adapter = tagRv.adapter
+        if (adapter is BaseAdapter) {
+            adapter.items.clear()
+            adapter.items.addAll(generateVideoTags(data))
+            adapter.notifyDataSetChanged()
         }
     }
 
