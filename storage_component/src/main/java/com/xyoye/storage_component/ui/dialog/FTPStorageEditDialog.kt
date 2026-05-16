@@ -2,6 +2,7 @@ package com.xyoye.storage_component.ui.dialog
 
 import android.text.method.HideReturnsTransformationMethod
 import android.text.method.PasswordTransformationMethod
+import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.isGone
 import com.xyoye.common_component.extension.setTextColorRes
 import com.xyoye.common_component.weight.ToastCenter
@@ -99,7 +100,8 @@ class FTPStorageEditDialog(
                 else
                     "ftp://${serverData.ftpAddress}:${serverData.port}"
 
-                activity.addStorage(serverData)
+                val isThumbnailEnabled = binding.root.findViewById<SwitchCompat>(R.id.thumbnail_switch)?.isChecked ?: true
+                activity.addStorage(serverData, isThumbnailEnabled)
             }
         }
 

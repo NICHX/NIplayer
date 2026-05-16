@@ -37,6 +37,7 @@ object RouteTable {
         const val CommonManager = "/user/common_manager"
         const val License = "/user/license"
         const val SwitchTheme = "/user/switch_theme"
+        const val BackupManager = "/user/backup_manager"
     }
 
     object Player {

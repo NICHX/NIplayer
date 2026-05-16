@@ -139,6 +139,7 @@ object ThumbnailGeneratorManager {
      * 确保 fileCover() 能立即找到缓存，避免显示默认图标
      */
     suspend fun preloadExistingThumbs(allFiles: List<StorageFile>, storage: Storage) {
+        if (storage.library.id > 0 && !ThumbnailServerConfig.isServerThumbnailEnabled(storage.library.id)) return
         coroutineScope {
             allFiles
                 .filter { it.fileName().endsWith("-thumb.jpg") }
@@ -530,6 +531,9 @@ object ThumbnailGeneratorManager {
 
             // 获取视频时长，取10%时间点附近的帧作为缩略图（更易识别视频内容）
             val durationMs = mediaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            if (durationMs > 0 && durationMs < 5_000) {
+                return@withContext false
+            }
             val targetTimeUs = if (durationMs > 0) durationMs * 100 else 0L
             val bitmap = mediaRetriever.getFrameAtTime(
                 targetTimeUs,

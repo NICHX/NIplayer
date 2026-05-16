@@ -138,5 +138,7 @@
                 android:textColor="@color/text_black"
                 android:textSize="14sp" />
         </FrameLayout>
+
+        <include layout="@layout/include_thumbnail_switch" />
     </LinearLayout>
 </layout>

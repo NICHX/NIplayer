@@ -24,6 +24,12 @@
             android:key="dark_mode"
             android:title="深色模式"
             app:icon="@drawable/ic_dark_mode_system" />
+
+        <Preference
+            android:key="backup_manager"
+            android:title="备份管理"
+            android:summary="导出或导入软件配置信息"
+            app:icon="@drawable/ic_backup_manager" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="其它">

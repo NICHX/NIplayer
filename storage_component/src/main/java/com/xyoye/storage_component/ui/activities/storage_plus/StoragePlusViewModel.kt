@@ -4,6 +4,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.xyoye.common_component.base.BaseViewModel
+import com.xyoye.common_component.config.ThumbnailServerConfig
 import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.storage.StorageFactory
 import com.xyoye.common_component.weight.ToastCenter
@@ -18,7 +19,7 @@ class StoragePlusViewModel : BaseViewModel() {
     private val _exitLiveData = MutableLiveData<Any>()
     var exitLiveData: LiveData<Any> = _exitLiveData
 
-    fun addStorage(oldLibrary: MediaLibraryEntity?, newLibrary: MediaLibraryEntity) {
+    fun addStorage(oldLibrary: MediaLibraryEntity?, newLibrary: MediaLibraryEntity, thumbnailEnabled: Boolean = true) {
         viewModelScope.launch(Dispatchers.IO) {
             val duplicateLibrary = DatabaseManager.instance.getMediaLibraryDao()
                 .getByUrl(newLibrary.url, newLibrary.mediaType)
@@ -29,6 +30,7 @@ class StoragePlusViewModel : BaseViewModel() {
 
             newLibrary.id = oldLibrary?.id ?: 0
             DatabaseManager.instance.getMediaLibraryDao().insert(newLibrary)
+            ThumbnailServerConfig.putServerThumbnailEnabled(newLibrary.id, thumbnailEnabled)
             _exitLiveData.postValue(Any())
         }
     }

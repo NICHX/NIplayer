@@ -2,6 +2,7 @@ package com.xyoye.storage_component.ui.dialog
 
 import android.content.Intent
 import android.net.Uri
+import androidx.appcompat.widget.SwitchCompat
 import androidx.documentfile.provider.DocumentFile
 import com.xyoye.common_component.extension.toResColor
 import com.xyoye.common_component.extension.toResDrawable
@@ -65,17 +66,18 @@ class ExternalStorageEditDialog(
         }
 
         setPositiveListener {
+            val isThumbnailEnabled = binding.root.findViewById<SwitchCompat>(R.id.thumbnail_switch)?.isChecked ?: true
             if (library != null) {
                 val newLibrary = updateLibrary(library)
                 if (newLibrary != null) {
-                    activity.addStorage(newLibrary)
+                    activity.addStorage(newLibrary, isThumbnailEnabled)
                 }
                 return@setPositiveListener
             }
 
             val newLibrary = createLibrary()
                 ?: return@setPositiveListener
-            activity.addStorage(newLibrary)
+            activity.addStorage(newLibrary, isThumbnailEnabled)
         }
 
         setNegativeListener {
