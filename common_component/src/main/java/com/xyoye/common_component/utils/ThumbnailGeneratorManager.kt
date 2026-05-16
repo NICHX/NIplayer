@@ -247,6 +247,7 @@ object ThumbnailGeneratorManager {
             pendingFiles.clear()
             retryCountMap.clear()
             clearCoverFileCache()
+            ThumbnailMemoryCache.clearBitmapCache()
 
             thumbFileLookup.clear()
             existingDotThumbKeys.clear()
@@ -276,6 +277,15 @@ object ThumbnailGeneratorManager {
             scope.launch {
                 preloadCoverFileCache(allFiles)
                 preloadDotThumbExistence(allFiles, storage)
+                withContext(Dispatchers.Main) {
+                    val callback = thumbnailCallback ?: return@withContext
+                    for (file in allFiles) {
+                        if (!file.isVideoFile() && !file.isImageFile() && !file.isAudioFile()) continue
+                        if (ThumbnailMemoryCache.getCoverPath(file.uniqueKey()) != null) {
+                            callback.onThumbnailGenerated(file)
+                        }
+                    }
+                }
             }
         }
 
@@ -303,7 +313,7 @@ object ThumbnailGeneratorManager {
     /**
      * 继续生成缩略图
      */
-    fun continueGenerateThumbnails(startIndex: Int) {
+    fun continueGenerateThumbnails() {
         // 如果正在处理，直接返回
         if (isProcessing) {
             return

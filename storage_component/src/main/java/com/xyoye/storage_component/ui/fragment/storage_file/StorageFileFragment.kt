@@ -163,7 +163,7 @@ class StorageFileFragment :
                             ThumbnailGeneratorManager.resumeGenerateThumbnails()
                             val visibleKeys = getVisibleFileKeys()
                             ThumbnailGeneratorManager.reprioritize(visibleKeys)
-                            ThumbnailGeneratorManager.continueGenerateThumbnails(0)
+                            ThumbnailGeneratorManager.continueGenerateThumbnails()
                             displayPendingThumbnails()
                         }
                         RecyclerView.SCROLL_STATE_DRAGGING -> {
