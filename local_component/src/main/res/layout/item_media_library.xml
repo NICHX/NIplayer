@@ -7,8 +7,7 @@
         android:id="@+id/item_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@drawable/background_item_press"
-        android:nextFocusRight="@id/more_menu_bt">
+        android:background="@drawable/background_item_press">
 
         <ImageView
             android:id="@+id/library_cover_iv"

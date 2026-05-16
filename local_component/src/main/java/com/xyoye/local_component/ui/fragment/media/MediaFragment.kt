@@ -1,12 +1,5 @@
 package com.xyoye.local_component.ui.fragment.media
 
-import android.transition.Fade
-import android.transition.Slide
-import android.transition.TransitionManager
-import android.transition.TransitionSet
-import android.view.Gravity
-import android.view.View
-import androidx.core.view.isVisible
 import com.alibaba.android.arouter.facade.annotation.Autowired
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
@@ -14,9 +7,9 @@ import com.xyoye.common_component.adapter.addItem
 import com.xyoye.common_component.adapter.buildAdapter
 import com.xyoye.common_component.application.DanDanPlay
 import com.xyoye.common_component.base.BaseFragment
+import com.xyoye.common_component.config.AppConfig
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.extension.deletable
-import com.tencent.mmkv.MMKV
 import com.xyoye.common_component.extension.grid
 import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.extension.vertical
@@ -32,20 +25,13 @@ import com.xyoye.local_component.databinding.FragmentMediaBinding
 import com.xyoye.local_component.databinding.ItemMediaLibraryBinding
 import com.xyoye.local_component.databinding.ItemMediaLibraryGridBinding
 
-/**
- * Created by xyoye on 2020/7/27.
- */
-
 @Route(path = RouteTable.Local.MediaFragment)
 class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
 
-    private val gridViewKey = "media_library_grid_view"
-    private var isMenuExpanded = false
-
     private var isGridView: Boolean
-        get() = MMKV.defaultMMKV().decodeBool(gridViewKey, true)
+        get() = AppConfig.isGridView()
         set(value) {
-            MMKV.defaultMMKV().encode(gridViewKey, value)
+            AppConfig.putGridView(value)
         }
 
     override fun initViewModel() = ViewModelInit(
@@ -62,18 +48,8 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
 
         initRv()
 
-        dataBinding.moreMenuBt.setOnClickListener {
-            toggleMenu()
-        }
-
-        dataBinding.viewToggleBt.setOnClickListener {
-            collapseMenu()
-            dataBinding.mediaLibRv.post { toggleViewMode() }
-        }
-
         dataBinding.addMediaStorageBt.setOnClickListener {
             showAddStorageDialog()
-            collapseMenu()
         }
 
         viewModel.mediaLibWithStatusLiveData.observe(this) {
@@ -86,13 +62,6 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
             layoutManager = if (isGridView) grid(3) else vertical()
             adapter = if (isGridView) createGridAdapter() else createListAdapter()
         }
-        updateToggleButtonIcon()
-    }
-
-    private fun updateToggleButtonIcon() {
-        dataBinding.viewToggleBt.setImageResource(
-            if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid
-        )
     }
 
     private fun createListAdapter() = buildAdapter {
@@ -152,58 +121,6 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
         }
     }
 
-    private fun toggleMenu() {
-        if (isMenuExpanded) {
-            collapseMenu()
-        } else {
-            expandMenu()
-        }
-    }
-
-    private fun expandMenu() {
-        isMenuExpanded = true
-        dataBinding.moreMenuBt.setImageResource(R.drawable.ic_close_white)
-
-        val transition = TransitionSet()
-            .addTransition(Slide(Gravity.BOTTOM).setDuration(300))
-            .addTransition(Fade().setDuration(300))
-
-        TransitionManager.beginDelayedTransition(dataBinding.fabContainer, transition)
-        dataBinding.viewToggleBt.visibility = View.VISIBLE
-        dataBinding.addMediaStorageBt.visibility = View.VISIBLE
-    }
-
-    private fun collapseMenu() {
-        if (!isMenuExpanded) return
-        isMenuExpanded = false
-        dataBinding.moreMenuBt.setImageResource(R.drawable.ic_more_vert_white)
-
-        val transition = TransitionSet()
-            .addTransition(Slide(Gravity.BOTTOM).setDuration(200))
-            .addTransition(Fade().setDuration(200))
-
-        TransitionManager.beginDelayedTransition(dataBinding.fabContainer, transition)
-        dataBinding.viewToggleBt.visibility = View.GONE
-        dataBinding.addMediaStorageBt.visibility = View.GONE
-    }
-
-    private fun toggleViewMode() {
-        isGridView = !isGridView
-        dataBinding.mediaLibRv.apply {
-            if (isGridView) {
-                layoutManager = grid(3)
-                adapter = createGridAdapter()
-            } else {
-                layoutManager = vertical()
-                adapter = createListAdapter()
-            }
-        }
-        updateToggleButtonIcon()
-        viewModel.mediaLibWithStatusLiveData.value?.let {
-            dataBinding.mediaLibRv.setData(it)
-        }
-    }
-
     private fun launchMediaStorage(data: MediaLibraryEntity) {
         when (data.mediaType) {
             MediaType.STREAM_LINK, MediaType.MAGNET_LINK, MediaType.OTHER_STORAGE -> {
@@ -212,8 +129,6 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
                     .withSerializable("typeValue", data.mediaType.value)
                     .navigation()
             }
-
-
 
             MediaType.LOCAL_STORAGE,
             MediaType.FTP_SERVER,
@@ -284,8 +199,6 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
                 addNegative()
             }.build().show()
     }
-
-
 
     private enum class ManageStorage(val title: String, val icon: Int) {
         Edit("编辑媒体库", R.drawable.ic_edit_storage),

@@ -277,15 +277,6 @@ object ThumbnailGeneratorManager {
             scope.launch {
                 preloadCoverFileCache(allFiles)
                 preloadDotThumbExistence(allFiles, storage)
-                withContext(Dispatchers.Main) {
-                    val callback = thumbnailCallback ?: return@withContext
-                    for (file in allFiles) {
-                        if (!file.isVideoFile() && !file.isImageFile() && !file.isAudioFile()) continue
-                        if (ThumbnailMemoryCache.getCoverPath(file.uniqueKey()) != null) {
-                            callback.onThumbnailGenerated(file)
-                        }
-                    }
-                }
             }
         }
 
