@@ -5,6 +5,7 @@ import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.utils.getParentFolderName
 import com.xyoye.common_component.utils.subtitle.SubtitleFinder
 import com.xyoye.common_component.utils.subtitle.SubtitleUtils
+import com.xyoye.data_component.bean.StorageFileInfo
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import java.io.File
@@ -35,6 +36,14 @@ abstract class AbstractStorage(
         this.directory = file
         this.directoryFiles = listFiles(file)
         return directoryFiles
+    }
+
+    override suspend fun fileInfo(file: StorageFile): StorageFileInfo? {
+        return null
+    }
+
+    override suspend fun delete(file: StorageFile): Boolean {
+        return false
     }
 
     override fun close() {

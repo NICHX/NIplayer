@@ -1,5 +1,8 @@
 package com.xyoye.common_component.storage.impl
 
+import android.graphics.BitmapFactory
+import android.media.MediaDataSource
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import com.hierynomus.msdtyp.AccessMask
 import com.hierynomus.msfscc.FileAttributes
@@ -24,6 +27,7 @@ import com.xyoye.common_component.storage.file.helper.SmbPlayServer
 import com.xyoye.common_component.storage.file.impl.SmbStorageFile
 import com.xyoye.common_component.utils.IOUtils
 import com.xyoye.common_component.weight.ToastCenter
+import com.xyoye.data_component.bean.StorageFileInfo
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import java.io.InputStream
@@ -294,6 +298,212 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             showErrorToast("保存文件失败", e)
             false
         }
+    }
+
+    override suspend fun fileInfo(file: StorageFile): StorageFileInfo? {
+        if (file !is SmbStorageFile) {
+            return null
+        }
+        if (checkConnection().not()) {
+            return null
+        }
+        val shareName = file.getShareName() ?: return null
+        if (switchShareDisk(shareName).not()) {
+            return null
+        }
+        val diskShare = mDiskShare ?: return null
+
+        return try {
+            if (file.isShareDirectory()) {
+                StorageFileInfo(
+                    name = file.fileName(),
+                    path = file.storagePath(),
+                    isDirectory = true,
+                    fileSize = 0,
+                    lastModified = 0,
+                    childCount = diskShare.openDirectory(file.filePath()).list().size
+                )
+            } else {
+                val fileSize = try {
+                    val entry = diskShare.open(file.filePath())
+                    entry.use {
+                        it.standardFileInfo().endOfFile
+                    }
+                } catch (_: Exception) { 0L }
+
+                val baseInfo = StorageFileInfo(
+                    name = file.fileName(),
+                    path = file.storagePath(),
+                    isDirectory = false,
+                    fileSize = fileSize,
+                    lastModified = 0L,
+                    isVideo = file.isVideoFile(),
+                    isAudio = file.isAudioFile(),
+                    isImage = file.isImageFile()
+                )
+
+                if (file.isVideoFile() || file.isAudioFile()) {
+                    extractMediaMetadata(file, baseInfo)
+                } else if (file.isImageFile()) {
+                    extractImageMetadata(file, baseInfo)
+                } else {
+                    baseInfo
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            showErrorToast("获取文件信息失败", e)
+            null
+        }
+    }
+
+    private suspend fun extractMediaMetadata(file: SmbStorageFile, base: StorageFileInfo): StorageFileInfo {
+        val diskShare = mDiskShare ?: return base
+        return try {
+            val smbFile = diskShare.openFile(file.filePath())
+
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(SmbMediaDataSource(smbFile, base.fileSize))
+
+            val widthStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+            val heightStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            val bitrateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+            val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
+            val frameRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+            val sampleRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
+
+            retriever.release()
+
+            base.copy(
+                videoWidth = widthStr?.toIntOrNull() ?: 0,
+                videoHeight = heightStr?.toIntOrNull() ?: 0,
+                durationMs = durationStr?.toLongOrNull() ?: 0,
+                bitrate = bitrateStr?.toLongOrNull() ?: 0,
+                videoCodec = mimeType?.ifEmpty { null },
+                audioCodec = null,
+                frameRate = frameRateStr?.ifEmpty { null },
+                sampleRate = sampleRateStr?.toIntOrNull() ?: 0
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            base
+        }
+    }
+
+    private suspend fun extractImageMetadata(file: SmbStorageFile, base: StorageFileInfo): StorageFileInfo {
+        val diskShare = mDiskShare ?: return base
+        return try {
+            val smbFile = diskShare.openFile(file.filePath())
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeStream(SmbFileInputStream(smbFile), null, options)
+
+            base.copy(
+                videoWidth = options.outWidth,
+                videoHeight = options.outHeight
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            base
+        }
+    }
+
+    private class SmbMediaDataSource(
+        private val smbFile: File,
+        private val fileSize: Long
+    ) : MediaDataSource() {
+        override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
+            val readBuffer = ByteArray(size)
+            val bytesRead = smbFile.read(readBuffer, position)
+            if (bytesRead > 0) {
+                System.arraycopy(readBuffer, 0, buffer, offset, bytesRead)
+            }
+            return bytesRead
+        }
+
+        override fun getSize(): Long = fileSize
+
+        override fun close() {
+            try {
+                smbFile.close()
+            } catch (_: Exception) {}
+        }
+    }
+
+    private class SmbFileInputStream(
+        private val smbFile: File
+    ) : java.io.InputStream() {
+        private var position = 0L
+
+        override fun read(): Int {
+            val buf = ByteArray(1)
+            val n = smbFile.read(buf, position)
+            if (n <= 0) return -1
+            position++
+            return buf[0].toInt() and 0xFF
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            val readBuffer = ByteArray(len)
+            val bytesRead = smbFile.read(readBuffer, position)
+            if (bytesRead <= 0) return -1
+            System.arraycopy(readBuffer, 0, b, off, bytesRead)
+            position += bytesRead
+            return bytesRead
+        }
+
+        override fun close() {
+            try {
+                smbFile.close()
+            } catch (_: Exception) {}
+        }
+    }
+
+    override suspend fun delete(file: StorageFile): Boolean {
+        if (file !is SmbStorageFile) {
+            return false
+        }
+        if (checkConnection().not()) {
+            return false
+        }
+        val shareName = file.getShareName() ?: return false
+        if (switchShareDisk(shareName).not()) {
+            return false
+        }
+        val diskShare = mDiskShare ?: return false
+
+        return try {
+            val filePath = file.filePath()
+            if (file.isDirectory()) {
+                deleteDirectoryRecursively(diskShare, filePath)
+            } else {
+                diskShare.rm(filePath)
+                true
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            showErrorToast("删除失败", e)
+            false
+        }
+    }
+
+    private fun deleteDirectoryRecursively(diskShare: DiskShare, dirPath: String): Boolean {
+        val entries = diskShare.openDirectory(dirPath).list()
+        for (entry in entries) {
+            val name = entry.fileName
+            if (name == "." || name == "..") continue
+            val childPath = generateChildPath(dirPath, name)
+            val isDir = (entry.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
+            if (isDir) {
+                deleteDirectoryRecursively(diskShare, childPath)
+            } else {
+                diskShare.rm(childPath)
+            }
+        }
+        diskShare.rmdir(dirPath, true)
+        return true
     }
 
     override suspend fun test(): Boolean {

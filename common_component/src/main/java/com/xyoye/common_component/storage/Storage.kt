@@ -2,6 +2,7 @@ package com.xyoye.common_component.storage
 
 import android.net.Uri
 import com.xyoye.common_component.storage.file.StorageFile
+import com.xyoye.data_component.bean.StorageFileInfo
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import java.io.InputStream
@@ -125,6 +126,20 @@ interface Storage {
      * 测试媒体库状态
      */
     suspend fun test(): Boolean
+
+    /**
+     * 获取文件/文件夹详细信息
+     * @param file 目标文件
+     * @return 文件信息，失败返回null
+     */
+    suspend fun fileInfo(file: StorageFile): StorageFileInfo?
+
+    /**
+     * 删除文件或文件夹（文件夹递归删除）
+     * @param file 目标文件
+     * @return 是否成功
+     */
+    suspend fun delete(file: StorageFile): Boolean
 
     /**
      * 更新文件播放历史

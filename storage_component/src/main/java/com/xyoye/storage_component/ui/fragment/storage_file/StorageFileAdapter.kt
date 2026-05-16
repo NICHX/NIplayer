@@ -37,19 +37,29 @@ import com.xyoye.common_component.extension.toResDrawable
 import com.xyoye.common_component.extension.toResString
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.file.subtitle
+import com.xyoye.common_component.storage.impl.SmbStorage
 import com.xyoye.common_component.utils.PlayHistoryUtils
 import com.xyoye.common_component.utils.formatDuration
+import com.xyoye.common_component.utils.formatFileSize
 import com.xyoye.common_component.utils.getRecognizableFileName
 import com.xyoye.common_component.utils.view.ItemDecorationOrientation
 import com.xyoye.common_component.weight.BottomActionDialog
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.common_component.weight.dialog.FileManagerDialog
 import com.xyoye.data_component.bean.SheetActionBean
+import com.xyoye.data_component.bean.StorageFileInfo
 import com.xyoye.data_component.bean.VideoTagBean
 import com.xyoye.data_component.enums.FileManagerAction
 import com.xyoye.data_component.enums.TrackType
 import com.xyoye.storage_component.R
 import com.xyoye.storage_component.ui.activities.storage_file.StorageFileActivity
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Created by xyoye on 2023/4/13
@@ -65,7 +75,9 @@ class StorageFileAdapter(
         BIND_SUBTITLE("手动查找字幕", com.xyoye.common_component.R.drawable.ic_bind_subtitle),
         BIND_AUDIO("添加音频文件", com.xyoye.common_component.R.drawable.ic_bind_audio),
         UNBIND_SUBTITLE("移除字幕绑定", com.xyoye.common_component.R.drawable.ic_unbind_subtitle),
-        UNBIND_AUDIO("移除音频绑定", com.xyoye.common_component.R.drawable.ic_unbind_subtitle);
+        UNBIND_AUDIO("移除音频绑定", com.xyoye.common_component.R.drawable.ic_unbind_subtitle),
+        FILE_INFO("文件信息", com.xyoye.common_component.R.drawable.ic_tag),
+        DELETE("删除", com.xyoye.common_component.R.drawable.ic_toast_delete);
 
         fun toAction() = SheetActionBean(this, title, icon)
     }
@@ -215,6 +227,10 @@ class StorageFileAdapter(
             itemBinding.itemLayout.setOnClickListener {
                 activity.openDirectory(data)
             }
+            itemBinding.itemLayout.setOnLongClickListener {
+                showMoreAction(data, null)
+                return@setOnLongClickListener true
+            }
         }
 
     private fun BaseViewHolderCreator<ItemStorageFolderGridBinding>.directoryGridItem() =
@@ -229,6 +245,10 @@ class StorageFileAdapter(
             itemBinding.fileCountTv.text = fileCount
             itemBinding.itemLayout.setOnClickListener {
                 activity.openDirectory(data)
+            }
+            itemBinding.itemLayout.setOnLongClickListener {
+                showMoreAction(data, null)
+                return@setOnLongClickListener true
             }
         }
 
@@ -278,7 +298,7 @@ class StorageFileAdapter(
             }
 
             mainActionFl.setOnLongClickListener {
-                showMoreAction(data, createShareOptions(itemLayout))
+                showMoreAction(data, null)
                 return@setOnLongClickListener true
             }
         }
@@ -294,6 +314,15 @@ class StorageFileAdapter(
             mainActionFl.setOnClickListener {
                 activity.openFile(data)
             }
+
+            moreActionIv.setOnClickListener {
+                showMoreAction(data, null)
+            }
+
+            mainActionFl.setOnLongClickListener {
+                showMoreAction(data, null)
+                return@setOnLongClickListener true
+            }
         }
     }
 
@@ -306,6 +335,11 @@ class StorageFileAdapter(
 
             mainActionFl.setOnClickListener {
                 activity.openFile(data)
+            }
+
+            mainActionFl.setOnLongClickListener {
+                showMoreAction(data, null)
+                return@setOnLongClickListener true
             }
         }
     }
@@ -320,6 +354,15 @@ class StorageFileAdapter(
             mainActionFl.setOnClickListener {
                 activity.openFile(data)
             }
+
+            moreActionIv.setOnClickListener {
+                showMoreAction(data, null)
+            }
+
+            mainActionFl.setOnLongClickListener {
+                showMoreAction(data, null)
+                return@setOnLongClickListener true
+            }
         }
     }
 
@@ -332,6 +375,11 @@ class StorageFileAdapter(
 
             mainActionFl.setOnClickListener {
                 activity.openFile(data)
+            }
+
+            mainActionFl.setOnLongClickListener {
+                showMoreAction(data, null)
+                return@setOnLongClickListener true
             }
         }
     }
@@ -438,13 +486,21 @@ class StorageFileAdapter(
         return file.playHistory?.audioPath?.isNotEmpty() == true
     }
 
-    private fun showMoreAction(file: StorageFile, options: ActivityOptionsCompat) {
+    private fun showMoreAction(file: StorageFile, options: ActivityOptionsCompat?) {
         BottomActionDialog(activity, getMoreActions(file)) {
             when (it.actionId) {
-                ManageAction.BIND_SUBTITLE -> bindExtraSource(file, options)
+                ManageAction.BIND_SUBTITLE -> {
+                    if (options != null) {
+                        bindExtraSource(file, options)
+                    } else {
+                        ToastCenter.showError("无法启动字幕选择")
+                    }
+                }
                 ManageAction.BIND_AUDIO -> bindAudioSource(file)
                 ManageAction.UNBIND_SUBTITLE -> viewModel.unbindExtraSource(file, TrackType.SUBTITLE)
                 ManageAction.UNBIND_AUDIO -> viewModel.unbindExtraSource(file, TrackType.AUDIO)
+                ManageAction.FILE_INFO -> showFileInfo(file)
+                ManageAction.DELETE -> confirmDelete(file)
             }
             return@BottomActionDialog true
         }.show()
@@ -453,15 +509,144 @@ class StorageFileAdapter(
 
     private fun getMoreActions(file: StorageFile) =
         mutableListOf<SheetActionBean>().apply {
-            add(ManageAction.BIND_SUBTITLE.toAction())
-            add(ManageAction.BIND_AUDIO.toAction())
+            if (file.isImageFile().not() && file.isAudioFile().not()) {
+                add(ManageAction.BIND_SUBTITLE.toAction())
+                add(ManageAction.BIND_AUDIO.toAction())
+            }
             if (file.subtitle != null) {
                 add(ManageAction.UNBIND_SUBTITLE.toAction())
             }
             if (file.playHistory?.audioPath != null) {
                 add(ManageAction.UNBIND_AUDIO.toAction())
             }
+            if (viewModel.storage is SmbStorage) {
+                add(ManageAction.FILE_INFO.toAction())
+                add(ManageAction.DELETE.toAction())
+            }
         }
+
+    private fun showFileInfo(file: StorageFile) {
+        viewModel.viewModelScope.launch(Dispatchers.IO) {
+            val info = viewModel.storage.fileInfo(file)
+            withContext(Dispatchers.Main) {
+                if (info != null) {
+                    showFileInfoDialog(info)
+                } else {
+                    ToastCenter.showError("获取文件信息失败")
+                }
+            }
+        }
+    }
+
+    private fun showFileInfoDialog(info: StorageFileInfo) {
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val lastModifiedStr = if (info.lastModified > 0) {
+            dateFormat.format(Date(info.lastModified))
+        } else {
+            "未知"
+        }
+        val sizeStr = if (info.isDirectory) {
+            "${info.childCount} 项"
+        } else {
+            formatFileSize(info.fileSize)
+        }
+        val message = buildString {
+            append("名称: ${info.name}\n")
+            append("路径: ${info.path}\n")
+            val typeLabel = when {
+                info.isDirectory -> "文件夹"
+                info.isVideo -> "视频文件"
+                info.isAudio -> "音频文件"
+                info.isImage -> "图片文件"
+                else -> "文件"
+            }
+            append("类型: $typeLabel\n")
+            append("大小: $sizeStr\n")
+            append("修改时间: $lastModifiedStr\n")
+            if (info.isVideo) {
+                if (info.videoWidth > 0 && info.videoHeight > 0) {
+                    append("分辨率: ${info.videoWidth}×${info.videoHeight}\n")
+                }
+                if (info.durationMs > 0) {
+                    val totalSec = info.durationMs / 1000
+                    val hours = totalSec / 3600
+                    val minutes = (totalSec % 3600) / 60
+                    val seconds = totalSec % 60
+                    val durationStr = if (hours > 0) {
+                        String.format("%d:%02d:%02d", hours, minutes, seconds)
+                    } else {
+                        String.format("%d:%02d", minutes, seconds)
+                    }
+                    append("时长: $durationStr\n")
+                }
+                if (info.bitrate > 0) {
+                    append("总码率: ${info.bitrate / 1000} kbps\n")
+                }
+                if (info.videoCodec != null) {
+                    append("封装格式: ${info.videoCodec}\n")
+                }
+                if (info.frameRate != null) {
+                    append("帧率: ${info.frameRate} fps\n")
+                }
+                if (info.sampleRate > 0) {
+                    append("采样率: ${info.sampleRate / 1000} kHz\n")
+                }
+            }
+            if (info.isAudio) {
+                if (info.durationMs > 0) {
+                    val totalSec = info.durationMs / 1000
+                    val minutes = totalSec / 60
+                    val seconds = totalSec % 60
+                    append("时长: ${minutes}:${String.format("%02d", seconds)}\n")
+                }
+                if (info.bitrate > 0) {
+                    append("码率: ${info.bitrate / 1000} kbps\n")
+                }
+                if (info.audioCodec != null) {
+                    append("音频编码: ${info.audioCodec}\n")
+                }
+                if (info.sampleRate > 0) {
+                    append("采样率: ${info.sampleRate / 1000} kHz\n")
+                }
+            }
+            if (info.isImage) {
+                if (info.videoWidth > 0 && info.videoHeight > 0) {
+                    append("分辨率: ${info.videoWidth}×${info.videoHeight}\n")
+                }
+            }
+        }
+        android.app.AlertDialog.Builder(activity)
+            .setTitle("文件信息")
+            .setMessage(message)
+            .setPositiveButton("确定", null)
+            .show()
+    }
+
+    private fun confirmDelete(file: StorageFile) {
+        val type = if (file.isDirectory()) "文件夹" else "文件"
+        android.app.AlertDialog.Builder(activity)
+            .setTitle("确认删除")
+            .setMessage("确定要删除${type} \"${file.fileName()}\" 吗？${if (file.isDirectory()) "文件夹内的所有内容将被删除。" else ""}")
+            .setPositiveButton("删除") { _, _ ->
+                performDelete(file)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun performDelete(file: StorageFile) {
+        viewModel.viewModelScope.launch(Dispatchers.IO) {
+            val success = viewModel.storage.delete(file)
+            withContext(Dispatchers.Main) {
+                if (success) {
+                    ToastCenter.showSuccess("删除成功")
+                    viewModel.listFile(viewModel.storage.directory, refresh = true)
+                } else {
+                    ToastCenter.showError("删除失败")
+                }
+            }
+        }
+    }
 
     private fun bindExtraSource(
         file: StorageFile,

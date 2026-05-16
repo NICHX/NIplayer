@@ -18,10 +18,6 @@ import com.xyoye.dandanplay.databinding.ActivitySplashBinding
 import com.xyoye.dandanplay.ui.main.MainActivity
 import com.xyoye.dandanplay.utils.image_anim.path.TextPathAnimView
 
-/**
- * Created by xyoye on 2020/7/27.
- */
-
 class SplashActivity : BaseAppCompatActivity<ActivitySplashBinding>() {
     override fun getLayoutId() = R.layout.activity_splash
 
@@ -62,10 +58,8 @@ class SplashActivity : BaseAppCompatActivity<ActivitySplashBinding>() {
 
         dataBinding.run {
             appNameTv.text = appName
-
             textPathView.setAnimListener(object : TextPathAnimView.AnimListener {
                 override fun onStart() {
-
                 }
 
                 override fun onEnd() {
@@ -75,7 +69,6 @@ class SplashActivity : BaseAppCompatActivity<ActivitySplashBinding>() {
                 }
 
                 override fun onLoop() {
-
                 }
             })
             textPathView.startAnim()
