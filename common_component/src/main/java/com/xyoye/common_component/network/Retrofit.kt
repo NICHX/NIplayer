@@ -12,7 +12,6 @@ import com.xyoye.common_component.network.service.AlistService
 import com.xyoye.common_component.network.service.DanDanService
 import com.xyoye.common_component.network.service.ExtendedService
 import com.xyoye.common_component.network.service.MagnetService
-import com.xyoye.common_component.network.service.RemoteService
 
 import com.xyoye.common_component.utils.JsonHelper
 import okhttp3.OkHttpClient
@@ -28,7 +27,6 @@ class Retrofit private constructor() {
     companion object {
         val danDanService: DanDanService by lazy { Holder.instance.danDanService }
         val extendedService: ExtendedService by lazy { Holder.instance.extendedService }
-        val remoteService: RemoteService by lazy { Holder.instance.remoteService }
         val magnetService: MagnetService by lazy { Holder.instance.magnetService }
 
         val alistService: AlistService by lazy { Holder.instance.alistService }
@@ -94,17 +92,6 @@ class Retrofit private constructor() {
             .build()
             .create(ExtendedService::class.java)
     }
-
-    private val remoteService: RemoteService by lazy {
-        Retrofit.Builder()
-            .addConverterFactory(moshiConverterFactory)
-            .client(commonClient)
-            .baseUrl(Api.PLACEHOLDER)
-            .build()
-            .create(RemoteService::class.java)
-    }
-
-
 
     private val alistService: AlistService by lazy {
         Retrofit.Builder()

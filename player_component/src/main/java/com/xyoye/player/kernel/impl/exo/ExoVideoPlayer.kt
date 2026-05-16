@@ -40,6 +40,10 @@ import com.xyoye.player.kernel.inter.AbstractVideoPlayer
 import com.xyoye.player.utils.PlayerConstant
 import com.xyoye.subtitle.MixedSubtitle
 import com.xyoye.subtitle.SubtitleType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Created by xyoye on 2020/10/29.
@@ -60,6 +64,8 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
     private lateinit var mMediaSourceEventListener: MediaSourceEventListener
 
     private var subtitleType = SubtitleType.UN_KNOW
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private var mIsPreparing = false
     private var mIsBuffering = false
@@ -105,13 +111,25 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
     }
 
     override fun setSurface(surface: Surface?) {
-        exoplayer.setVideoSurface(surface)
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            exoplayer.setVideoSurface(surface)
+        } else {
+            mainHandler.post { exoplayer.setVideoSurface(surface) }
+        }
     }
 
     override fun prepareAsync() {
         if (!this::mMediaSource.isInitialized) {
             return
         }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            doPrepare()
+        } else {
+            mainHandler.post { doPrepare() }
+        }
+    }
+
+    private fun doPrepare() {
         if (this::mSpeedPlaybackParameters.isInitialized) {
             exoplayer.playbackParameters = mSpeedPlaybackParameters
         }
@@ -123,18 +141,54 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
     }
 
     override fun start() {
-        exoplayer.playWhenReady = true
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            exoplayer.playWhenReady = true
+        } else {
+            mainHandler.post { exoplayer.playWhenReady = true }
+        }
     }
 
     override fun pause() {
-        exoplayer.playWhenReady = false
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            exoplayer.playWhenReady = false
+        } else {
+            mainHandler.post { exoplayer.playWhenReady = false }
+        }
     }
 
     override fun stop() {
-        exoplayer.stop()
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            exoplayer.stop()
+        } else {
+            mainHandler.post { exoplayer.stop() }
+        }
     }
 
     override fun reset() {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            doReset()
+        } else {
+            mainHandler.post { doReset() }
+        }
+    }
+
+    override fun release() {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            doRelease()
+        } else {
+            val latch = CountDownLatch(1)
+            mainHandler.post {
+                try {
+                    doRelease()
+                } finally {
+                    latch.countDown()
+                }
+            }
+            latch.await(3, TimeUnit.SECONDS)
+        }
+    }
+
+    private fun doReset() {
         exoplayer.stop()
         exoplayer.setVideoSurface(null)
         mIsPreparing = false
@@ -143,7 +197,7 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
         mLastReportedPlayWhenReady = false
     }
 
-    override fun release() {
+    private fun doRelease() {
         exoplayer.apply {
             removeListener(this@ExoVideoPlayer)
             stop()
@@ -157,20 +211,38 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
     }
 
     override fun seekTo(timeMs: Long) {
-        exoplayer.seekTo(timeMs)
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            exoplayer.seekTo(timeMs)
+        } else {
+            mainHandler.post { exoplayer.seekTo(timeMs) }
+        }
     }
 
     override fun setSpeed(speed: Float) {
         mSpeedPlaybackParameters = PlaybackParameters(speed)
-        exoplayer.playbackParameters = mSpeedPlaybackParameters
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            exoplayer.playbackParameters = mSpeedPlaybackParameters
+        } else {
+            mainHandler.post { exoplayer.playbackParameters = mSpeedPlaybackParameters }
+        }
     }
 
     override fun setVolume(leftVolume: Float, rightVolume: Float) {
-        exoplayer.volume = (leftVolume + rightVolume) / 2
+        val volume = (leftVolume + rightVolume) / 2
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            exoplayer.volume = volume
+        } else {
+            mainHandler.post { exoplayer.volume = volume }
+        }
     }
 
     override fun setLooping(isLooping: Boolean) {
-        exoplayer.repeatMode = if (isLooping) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
+        val mode = if (isLooping) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            exoplayer.repeatMode = mode
+        } else {
+            mainHandler.post { exoplayer.repeatMode = mode }
+        }
     }
 
     override fun setOptions() {
@@ -182,6 +254,15 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
     }
 
     override fun isPlaying(): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return readIsPlaying()
+        }
+        return runBlocking(Dispatchers.Main) {
+            readIsPlaying()
+        }
+    }
+
+    private fun readIsPlaying(): Boolean {
         return when (exoplayer.playbackState) {
             Player.STATE_BUFFERING,
             Player.STATE_READY -> exoplayer.playWhenReady
@@ -193,9 +274,19 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
         }
     }
 
-    override fun getCurrentPosition() = exoplayer.contentPosition
+    override fun getCurrentPosition(): Long {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return exoplayer.contentPosition
+        }
+        return runBlocking(Dispatchers.Main) { exoplayer.contentPosition }
+    }
 
-    override fun getDuration() = exoplayer.duration
+    override fun getDuration(): Long {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return exoplayer.duration
+        }
+        return runBlocking(Dispatchers.Main) { exoplayer.duration }
+    }
 
     override fun getSpeed(): Float {
         return if (this::mSpeedPlaybackParameters.isInitialized) {
@@ -206,13 +297,27 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
     }
 
     override fun getVideoSize(): Point {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return readVideoSize()
+        }
+        return runBlocking(Dispatchers.Main) {
+            readVideoSize()
+        }
+    }
+
+    private fun readVideoSize(): Point {
         return Point(
             exoplayer.videoSize.width,
             exoplayer.videoSize.height
         )
     }
 
-    override fun getBufferedPercentage() = exoplayer.bufferedPercentage
+    override fun getBufferedPercentage(): Int {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return exoplayer.bufferedPercentage
+        }
+        return runBlocking(Dispatchers.Main) { exoplayer.bufferedPercentage }
+    }
 
     //not support
     override fun getTcpSpeed(): Long = 0L

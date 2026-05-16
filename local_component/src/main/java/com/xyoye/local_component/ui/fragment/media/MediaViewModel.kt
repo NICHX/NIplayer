@@ -30,7 +30,6 @@ class MediaViewModel : BaseViewModel() {
             MediaType.FTP_SERVER,
             MediaType.SMB_SERVER,
             MediaType.WEBDAV_SERVER,
-            MediaType.REMOTE_STORAGE,
             MediaType.ALSIT_STORAGE,
             MediaType.STREAM_LINK,
             MediaType.MAGNET_LINK,
@@ -47,7 +46,6 @@ class MediaViewModel : BaseViewModel() {
                 MediaType.OTHER_STORAGE,
                 MediaType.FTP_SERVER,
                 MediaType.SMB_SERVER,
-                MediaType.REMOTE_STORAGE,
                 MediaType.WEBDAV_SERVER
             )?.apply {
                 MediaLibraryEntity.HISTORY.url = url

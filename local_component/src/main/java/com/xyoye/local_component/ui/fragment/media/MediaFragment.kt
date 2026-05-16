@@ -134,7 +134,6 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
             MediaType.FTP_SERVER,
             MediaType.SMB_SERVER,
             MediaType.WEBDAV_SERVER,
-            MediaType.REMOTE_STORAGE,
             MediaType.EXTERNAL_STORAGE,
             MediaType.ALSIT_STORAGE -> {
                 ARouter.getInstance()
