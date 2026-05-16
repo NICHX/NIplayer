@@ -1138,7 +1138,7 @@
 
         <activity
             android:name=".ui.activities.player.PlayerActivity"
-            android:screenOrientation="fullUser"
+            android:screenOrientation="behind"
             android:configChanges="orientation|screenSize|screenLayout" />
     </application>
 

@@ -266,14 +266,18 @@ class PlayerSettingView(
                 val newStatus = !PlayerInitializer.isOrientationEnabled
                 PlayerInitializer.isOrientationEnabled = newStatus
                 PlayerConfig.putAllowOrientationChange(newStatus)
-                if (!newStatus && context is AppCompatActivity) {
-                    val rotation = (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
-                    (context as AppCompatActivity).requestedOrientation = when (rotation) {
-                        Surface.ROTATION_0 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                        Surface.ROTATION_90 -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                        Surface.ROTATION_180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-                        Surface.ROTATION_270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-                        else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+                if (context is AppCompatActivity) {
+                    if (newStatus) {
+                        (context as AppCompatActivity).requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+                    } else {
+                        val rotation = (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
+                        (context as AppCompatActivity).requestedOrientation = when (rotation) {
+                            Surface.ROTATION_0 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                            Surface.ROTATION_90 -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                            Surface.ROTATION_180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                            Surface.ROTATION_270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+                        }
                     }
                 }
                 updateItemStatus(item.action, newStatus)

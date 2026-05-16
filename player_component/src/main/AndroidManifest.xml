@@ -8,8 +8,7 @@
         <activity
             android:name=".ui.activities.player.PlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout"
-            android:screenOrientation="landscape"
-            android:theme="@style/Theme.DanDanPlay.PlayerActivity" />
+            android:screenOrientation="behind" />
 
         <activity
             android:name=".ui.activities.player_interceptor.PlayerInterceptorActivity"

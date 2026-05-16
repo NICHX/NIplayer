@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
+import android.os.Bundle
 import android.view.KeyEvent
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
@@ -81,6 +82,11 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
         )
 
     override fun getLayoutId() = R.layout.activity_player
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        PlayerInitializer.isOrientationEnabled = false
+        super.onCreate(savedInstanceState)
+    }
 
     override fun initStatusBar() {
         ImmersionBar.with(this)

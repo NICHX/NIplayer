@@ -15,6 +15,7 @@ import com.xyoye.data_component.enums.PlayState
 import com.xyoye.data_component.enums.SettingViewType
 import com.xyoye.data_component.enums.TrackType
 import com.xyoye.data_component.enums.VideoScreenScale
+import com.xyoye.player.info.PlayerInitializer
 import com.xyoye.player.utils.MessageTime
 import com.xyoye.player.wrapper.ControlWrapper
 import com.xyoye.player_component.R
@@ -79,6 +80,7 @@ class PlayerControlView(context: Context): InterControllerView {
             } else {
                 ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             }
+            PlayerInitializer.isOrientationEnabled = false
         }
         viewBinding.ivSwitchPopup.setOnClickListener {
             if (OverlayPermissionActivity.hasOverlayPermission().not()) {
