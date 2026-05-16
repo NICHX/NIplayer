@@ -115,7 +115,6 @@ data class MediaLibraryEntity(
         get() = when (mediaType) {
             MediaType.STREAM_LINK,
             MediaType.MAGNET_LINK,
-            MediaType.REMOTE_STORAGE,
             MediaType.SMB_SERVER,
             MediaType.EXTERNAL_STORAGE -> describe
 

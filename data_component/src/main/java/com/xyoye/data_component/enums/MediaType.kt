@@ -54,14 +54,6 @@ enum class MediaType(
         cover = R.drawable.ic_smb_storage
     ),
 
-    REMOTE_STORAGE(
-        "remote_storage",
-        "PC端媒体库",
-        cover = R.drawable.ic_remote_storage
-    ),
-
-
-
     EXTERNAL_STORAGE(
         "external_storage",
         "设备存储库",
@@ -83,7 +75,6 @@ enum class MediaType(
                 "ftp_server" -> FTP_SERVER
                 "webdav_server" -> WEBDAV_SERVER
                 "smb_server" -> SMB_SERVER
-                "remote_storage" -> REMOTE_STORAGE
                 "external_storage" -> EXTERNAL_STORAGE
                 "alist_storage" -> ALSIT_STORAGE
                 else -> OTHER_STORAGE

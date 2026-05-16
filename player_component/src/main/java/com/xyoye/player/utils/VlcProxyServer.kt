@@ -1,17 +1,17 @@
 package com.xyoye.player.utils
 
 import com.xyoye.common_component.network.helper.UnsafeOkHttpClient
-import com.xyoye.common_component.utils.getFileName
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoHTTPD.Response.Status
 import okhttp3.Request
-import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 
 class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(port) {
     private val urlMap = ConcurrentHashMap<String, String>()
     private val headersMap = ConcurrentHashMap<String, Map<String, String>>()
+    private val keyCounter = AtomicLong(0)
 
     private object Holder {
         val instance = VlcProxyServer()
@@ -76,7 +76,7 @@ class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(p
     }
 
     fun getInputStreamUrl(url: String, headers: Map<String, String>): String {
-        val key = URLEncoder.encode(getFileName(url), "utf-8")
+        val key = keyCounter.incrementAndGet().toString()
         urlMap[key] = url
         headersMap[key] = headers
         return "http://127.0.0.1:$listeningPort/$key"

@@ -353,9 +353,9 @@ private fun updatePlayer(source: BaseVideoSource) {
 
     private fun switchVideoSource(index: Int) {
         showLoading()
+        danDanPlayer.pausePlayerAsync()
+        danDanPlayer.recordPlayInfo()
         lifecycleScope.launch(Dispatchers.IO) {
-            danDanPlayer.pausePlayerAsync()
-            danDanPlayer.recordPlayInfo()
             danDanPlayer.releasePlayerAsync()
             val targetSource = videoSource?.indexSource(index)
             if (targetSource == null) {
