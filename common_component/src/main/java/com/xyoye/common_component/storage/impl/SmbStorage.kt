@@ -252,6 +252,14 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         if (!playServer.startSync()) {
             return null
         }
+
+        // 预热 SMB 连接，使播放器发起 HTTP 请求时连接已就绪，避免播放延迟
+        val shareName = file.getShareName()
+        if (shareName != null) {
+            checkConnection()
+            switchShareDisk(shareName)
+        }
+
         return playServer.generatePlayUrl(this, file)
     }
 
