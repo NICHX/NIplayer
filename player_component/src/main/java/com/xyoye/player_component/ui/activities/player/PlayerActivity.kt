@@ -12,6 +12,7 @@ import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import com.gyf.immersionbar.BarHide
 import com.gyf.immersionbar.ImmersionBar
+import com.xyoye.cache.CacheManager
 import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.bridge.PlayTaskBridge
 import com.xyoye.common_component.config.PlayerConfig
@@ -355,6 +356,9 @@ private fun updatePlayer(source: BaseVideoSource) {
         showLoading()
         danDanPlayer.pause()
         lifecycleScope.launch(Dispatchers.IO) {
+            CacheManager.release()
+            danDanPlayer.recordPlayInfo()
+            danDanPlayer.releasePlayerAsync()
             val targetSource = videoSource?.indexSource(index)
             if (targetSource == null) {
                 ToastCenter.showOriginalToast("播放资源不存在")

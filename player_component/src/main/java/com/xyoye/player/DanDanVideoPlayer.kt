@@ -64,6 +64,9 @@ class DanDanVideoPlayer(
     //播放器
     private lateinit var mVideoPlayer: AbstractVideoPlayer
 
+    //播放器是否已在后台释放
+    private var mPlayerReleased = false
+
     //播放资源
     private lateinit var videoSource: BaseVideoSource
 
@@ -309,6 +312,13 @@ class DanDanVideoPlayer(
         PlayRecorder.recordProgress(videoSource, getCurrentPosition(), getDuration())
     }
 
+    fun releasePlayerAsync() {
+        if (mCurrentPlayState != PlayState.STATE_IDLE && !mPlayerReleased) {
+            mVideoPlayer.release()
+            mPlayerReleased = true
+        }
+    }
+
     fun release() {
         if (mCurrentPlayState != PlayState.STATE_IDLE) {
             //释放缓存
@@ -316,7 +326,10 @@ class DanDanVideoPlayer(
             //释放播放器控制器
             mVideoController?.destroy()
             //释放播放器
-            mVideoPlayer.release()
+            if (!mPlayerReleased) {
+                mVideoPlayer.release()
+            }
+            mPlayerReleased = false
             //关闭常亮
             keepScreenOn = false
             //释放渲染布局
