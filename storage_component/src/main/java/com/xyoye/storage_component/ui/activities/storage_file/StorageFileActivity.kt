@@ -10,6 +10,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentTransaction
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.coroutineScope
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import com.alibaba.android.arouter.facade.annotation.Autowired
 import com.alibaba.android.arouter.facade.annotation.Route
@@ -20,6 +21,7 @@ import com.xyoye.common_component.config.AppConfig
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.extension.horizontal
 import com.xyoye.common_component.extension.setData
+import com.xyoye.common_component.storage.download.DownloadManager
 
 import com.xyoye.common_component.network.config.HeaderKey
 import com.xyoye.common_component.storage.Storage
@@ -40,6 +42,7 @@ import com.xyoye.storage_component.ui.weight.StorageFileMenus
 import com.xyoye.storage_component.utils.storage.StorageFilePathAdapter
 import com.xyoye.storage_component.utils.storage.StorageFileStyleHelper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -112,7 +115,22 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
 
         initPathRv()
         initListener()
+        initDownloadButton()
         openDirectory(null)
+    }
+
+    private fun initDownloadButton() {
+        dataBinding.downloadBt.setOnClickListener {
+            ARouter.getInstance()
+                .build(RouteTable.Stream.DownloadManager)
+                .navigation()
+        }
+
+        lifecycleScope.launch {
+            DownloadManager.taskCount.collectLatest { count ->
+                dataBinding.downloadBt.visibility = if (count > 0) android.view.View.VISIBLE else android.view.View.GONE
+            }
+        }
     }
 
     private fun initPathRv() {

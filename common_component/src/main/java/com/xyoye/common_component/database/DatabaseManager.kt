@@ -176,6 +176,27 @@ class DatabaseManager private constructor() {
             }
         }
 
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS download_task (" +
+                            "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                            "storage_id INTEGER NOT NULL, " +
+                            "file_name TEXT NOT NULL, " +
+                            "file_path TEXT NOT NULL, " +
+                            "unique_key TEXT NOT NULL, " +
+                            "total_bytes INTEGER NOT NULL DEFAULT 0, " +
+                            "downloaded_bytes INTEGER NOT NULL DEFAULT 0, " +
+                            "state INTEGER NOT NULL DEFAULT 0, " +
+                            "error_message TEXT, " +
+                            "target_storage_url TEXT, " +
+                            "target_storage_name TEXT, " +
+                            "create_time INTEGER NOT NULL" +
+                            ")"
+                )
+            }
+        }
+
         val instance = DatabaseManager.holder.database
     }
 
@@ -200,7 +221,8 @@ class DatabaseManager private constructor() {
         MIGRATION_10_11,
         MIGRATION_11_12,
         MIGRATION_12_13,
-        MIGRATION_13_14
+        MIGRATION_13_14,
+        MIGRATION_14_15
     ).build()
 
 }

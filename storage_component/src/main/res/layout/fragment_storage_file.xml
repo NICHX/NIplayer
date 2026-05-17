@@ -42,13 +42,6 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintVertical_bias="0.35" />
 
-        <androidx.constraintlayout.widget.Guideline
-            android:id="@+id/bottom_guide"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            app:layout_constraintGuide_percent="0.88" />
-
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/scroll_to_top_bt"
             android:layout_width="wrap_content"
@@ -63,8 +56,9 @@
             app:fabCustomSize="52dp"
             app:maxImageSize="26dp"
             app:rippleColor="@color/float_button_ripple_color"
-            android:layout_marginEnd="16dp"
-            app:layout_constraintBottom_toTopOf="@id/bottom_guide"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="16dp"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>

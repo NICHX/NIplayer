@@ -49,6 +49,7 @@ object RouteTable {
         const val StorageFile = "/stream/storage_file"
         const val StorageFileProvider = "/stream/storage_file/provider"
         const val StoragePlus = "/stream/storage_plus"
+        const val DownloadManager = "/stream/download_manager"
     }
 
     object ImageViewer {

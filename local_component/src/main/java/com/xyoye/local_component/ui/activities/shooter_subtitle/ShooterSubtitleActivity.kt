@@ -43,7 +43,7 @@ class ShooterSubtitleActivity :
 
     override fun initView() {
 
-        title = "射手(伪)字幕下载"
+        title = "字幕下载"
 
         subtitleSearchAdapter = buildPagingAdapter {
 

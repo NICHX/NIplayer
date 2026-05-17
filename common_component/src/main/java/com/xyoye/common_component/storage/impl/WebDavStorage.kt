@@ -64,7 +64,15 @@ class WebDavStorage(
 
     override suspend fun pathFile(path: String, isDirectory: Boolean): StorageFile {
         val hrefUrl = resolvePath(path).toString()
-        val davResource = CustomDavResource(hrefUrl)
+        val contentLength = if (!isDirectory) {
+            try {
+                val resources = sardine.list(hrefUrl, 0)
+                resources.firstOrNull()?.contentLength ?: 0L
+            } catch (_: Exception) {
+                0L
+            }
+        } else 0L
+        val davResource = CustomDavResource(hrefUrl, isDirectory, contentLength)
         return WebDavStorageFile(davResource, this)
     }
 
@@ -170,12 +178,12 @@ class WebDavStorage(
         return false
     }
 
-    private class CustomDavResource(href: String, isDirectory: Boolean = true) : DavResource(
+    private class CustomDavResource(href: String, isDirectory: Boolean = true, contentLength: Long = 0) : DavResource(
         href,
         Date(),
         Date(),
         if (isDirectory) "httpd/unix-directory" else "application/octet-stream",
-        0,
+        contentLength,
         "",
         "",
         emptyList(),
