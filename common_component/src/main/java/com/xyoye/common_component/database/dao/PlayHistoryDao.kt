@@ -42,6 +42,9 @@ interface PlayHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(vararg entities: PlayHistoryEntity)
 
+    @Update
+    suspend fun update(entity: PlayHistoryEntity)
+
     @Query("DELETE FROM play_history WHERE id = (:id)")
     suspend fun delete(id: Int)
 
