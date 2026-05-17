@@ -22,4 +22,8 @@ class AdapterDiffCallBack(
     override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
         return diffCreator.isSameContent(oldData[oldItemPosition], newData[newItemPosition])
     }
+
+    override fun getChangePayload(oldItemPosition: Int, newItemPosition: Int): Any? {
+        return diffCreator.getChangePayload(oldData[oldItemPosition], newData[newItemPosition])
+    }
 }

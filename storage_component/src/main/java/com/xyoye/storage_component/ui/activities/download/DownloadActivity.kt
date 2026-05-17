@@ -19,6 +19,8 @@ import com.xyoye.storage_component.BR
 import com.xyoye.storage_component.R
 import com.xyoye.storage_component.databinding.ActivityDownloadBinding
 import com.xyoye.storage_component.databinding.ItemDownloadTaskBinding
+import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.SimpleItemAnimator
 import androidx.core.view.isVisible
 import com.xyoye.common_component.adapter.buildAdapter
 import com.xyoye.common_component.adapter.addItem
@@ -51,6 +53,7 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
 
         dataBinding.downloadRv.layoutManager = dataBinding.downloadRv.vertical()
         dataBinding.downloadRv.adapter = createAdapter()
+        (dataBinding.downloadRv.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
 
         lifecycleScope.launch {
             viewModel.allTasks.collectLatest { tasks ->
@@ -92,26 +95,29 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
                 (old as DownloadTaskEntity).state == (new as DownloadTaskEntity).state &&
                         (old as DownloadTaskEntity).downloadedBytes == (new as DownloadTaskEntity).downloadedBytes
             }
+            getChangePayload { old, new ->
+                val oldTask = old as DownloadTaskEntity
+                val newTask = new as DownloadTaskEntity
+                if (oldTask.state == newTask.state && oldTask.downloadedBytes != newTask.downloadedBytes) {
+                    "progress_only"
+                } else {
+                    null
+                }
+            }
         }
         addItem<DownloadTaskEntity, ItemDownloadTaskBinding>(R.layout.item_download_task) {
             initView { data, _, _ ->
                 itemBinding.bindTaskViews(data)
+            }
+            initViewForPayload { data, _, _ ->
+                itemBinding.bindProgressViews(data)
             }
         }
     }
 
     private fun ItemDownloadTaskBinding.bindTaskViews(data: DownloadTaskEntity) {
         fileNameTv.text = data.fileName
-
-        val progress = if (data.totalBytes > 0) {
-            (data.downloadedBytes * 100 / data.totalBytes).toInt()
-        } else 0
-        progressBar.progress = progress
-        progressTv.text = "$progress%"
-
-        val downloadedStr = formatFileSize(data.downloadedBytes)
-        val totalStr = formatFileSize(data.totalBytes)
-        sizeTv.text = "$downloadedStr / $totalStr"
+        bindProgressViews(data)
 
         statusTv.text = when (data.state) {
             DownloadState.WAITING -> "等待中"
@@ -164,6 +170,18 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
                 .setNegativeButton("取消", null)
                 .show()
         }
+    }
+
+    private fun ItemDownloadTaskBinding.bindProgressViews(data: DownloadTaskEntity) {
+        val progress = if (data.totalBytes > 0) {
+            (data.downloadedBytes * 100 / data.totalBytes).toInt()
+        } else 0
+        progressBar.progress = progress
+        progressTv.text = "$progress%"
+
+        val downloadedStr = formatFileSize(data.downloadedBytes)
+        val totalStr = formatFileSize(data.totalBytes)
+        sizeTv.text = "$downloadedStr / $totalStr"
     }
 
     private fun openDownloadedFile(task: DownloadTaskEntity, isLongPress: Boolean) {

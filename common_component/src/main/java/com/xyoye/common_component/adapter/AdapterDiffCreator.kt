@@ -18,6 +18,9 @@ class AdapterDiffCreator {
     //数据内容是否相同
     private var areContentsTheSame: ((Any, Any) -> Boolean)? = null
 
+    //变更负载
+    private var changePayload: ((Any, Any) -> Any?)? = null
+
     fun newDataInstance(newDataInstance: (Any) -> Any) {
         this.newDataInstance = newDataInstance
     }
@@ -28,6 +31,10 @@ class AdapterDiffCreator {
 
     fun areContentsTheSame(areContentsTheSame: (old: Any, new: Any) -> Boolean) {
         this.areContentsTheSame = areContentsTheSame
+    }
+
+    fun getChangePayload(getChangePayload: (old: Any, new: Any) -> Any?) {
+        this.changePayload = getChangePayload
     }
 
     fun createNewData(data: Any): Any {
@@ -52,6 +59,10 @@ class AdapterDiffCreator {
             return oldData == newData
         }
         return areContentsTheSame!!.invoke(oldData, newData)
+    }
+
+    fun getChangePayload(oldData: Any, newData: Any): Any? {
+        return changePayload?.invoke(oldData, newData)
     }
 
     private fun generateNewData(data: Any): Any {
