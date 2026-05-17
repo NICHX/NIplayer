@@ -42,29 +42,51 @@ object PlayRecorder {
 
     fun recordProgress(source: BaseVideoSource, position: Long, duration: Long) {
         SupervisorScope.IO.launch {
-            val history = PlayHistoryEntity(
-                0,
-                source.getVideoTitle(),
-                source.getVideoUrl(),
-                source.getMediaType(),
-                position,
-                duration,
-                Date(),
-                null,
-                null,
-                source.getSubtitlePath(),
-                null,
-                -1,
-                JsonHelper.toJson(source.getHttpHeader()),
-                source.getUniqueKey(),
-                source.getStoragePath(),
-                source.getStorageId(),
-                source.getAudioPath()
-            )
+            val uniqueKey = source.getUniqueKey()
+            val storageId = source.getStorageId()
+            val historyDao = DatabaseManager.instance.getPlayHistoryDao()
 
-            // 保存播放历史到数据库
-            DatabaseManager.instance.getPlayHistoryDao()
-                .insert(history)
+            val existingHistory = if (uniqueKey.isNotEmpty() && (storageId != null && storageId > 0)) {
+                historyDao.getPlayHistory(uniqueKey, storageId)
+            } else {
+                null
+            }
+
+            if (existingHistory != null) {
+                historyDao.update(existingHistory.copy(
+                    videoName = source.getVideoTitle(),
+                    url = source.getVideoUrl(),
+                    videoPosition = position,
+                    videoDuration = duration,
+                    playTime = Date(),
+                    subtitlePath = source.getSubtitlePath(),
+                    httpHeader = JsonHelper.toJson(source.getHttpHeader()),
+                    storagePath = source.getStoragePath(),
+                    audioPath = source.getAudioPath()
+                ))
+            } else {
+                val history = PlayHistoryEntity(
+                    0,
+                    source.getVideoTitle(),
+                    source.getVideoUrl(),
+                    source.getMediaType(),
+                    position,
+                    duration,
+                    Date(),
+                    null,
+                    null,
+                    source.getSubtitlePath(),
+                    null,
+                    -1,
+                    JsonHelper.toJson(source.getHttpHeader()),
+                    uniqueKey,
+                    source.getStoragePath(),
+                    storageId,
+                    source.getAudioPath()
+                )
+                historyDao.insert(history)
+            }
+
             // 上报剧集播放到云端
             recordToCloud(source)
 

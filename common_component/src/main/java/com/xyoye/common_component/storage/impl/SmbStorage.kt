@@ -473,8 +473,14 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         private val smbFile: File,
         private val fileSize: Long
     ) : MediaDataSource() {
+        private var readBuffer: ByteArray? = null
+
         override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
-            val readBuffer = ByteArray(size)
+            val localBuf = readBuffer
+            if (localBuf == null || localBuf.size < size) {
+                readBuffer = ByteArray(size)
+            }
+            val readBuffer = readBuffer!!
             val bytesRead = smbFile.read(readBuffer, position)
             if (bytesRead > 0) {
                 System.arraycopy(readBuffer, 0, buffer, offset, bytesRead)
@@ -495,20 +501,23 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         private val smbFile: File
     ) : java.io.InputStream() {
         private var position = 0L
+        private var readBuffer: ByteArray? = null
 
         override fun read(): Int {
-            val buf = ByteArray(1)
-            val n = smbFile.read(buf, position)
+            val buf = readBuffer
+            val localBuf = if (buf == null || buf.size < 1) { ByteArray(1).also { readBuffer = it } } else buf
+            val n = smbFile.read(localBuf, position)
             if (n <= 0) return -1
             position++
-            return buf[0].toInt() and 0xFF
+            return localBuf[0].toInt() and 0xFF
         }
 
         override fun read(b: ByteArray, off: Int, len: Int): Int {
-            val readBuffer = ByteArray(len)
-            val bytesRead = smbFile.read(readBuffer, position)
+            val buf = readBuffer
+            val localBuf = if (buf == null || buf.size < len) { ByteArray(len).also { readBuffer = it } } else buf
+            val bytesRead = smbFile.read(localBuf, position)
             if (bytesRead <= 0) return -1
-            System.arraycopy(readBuffer, 0, b, off, bytesRead)
+            System.arraycopy(localBuf, 0, b, off, bytesRead)
             position += bytesRead
             return bytesRead
         }
