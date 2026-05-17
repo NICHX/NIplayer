@@ -204,27 +204,46 @@ object PlayHistorySyncManager {
                 continue
             }
 
-            val entity = PlayHistoryEntity(
-                id = 0,
-                videoName = remoteJson.optString("video_name"),
-                url = remoteJson.optString("url"),
-                mediaType = mediaType,
-                videoPosition = remoteJson.optLong("video_position"),
-                videoDuration = remoteJson.optLong("video_duration"),
-                playTime = Date(remotePlayTime),
-                danmuPath = remoteJson.optString("danmu_path").ifEmpty { null },
-                episodeId = remoteJson.optString("episode_id").ifEmpty { null },
-                subtitlePath = remoteJson.optString("subtitle_path").ifEmpty { null },
-                audioPath = remoteJson.optString("audio_path").ifEmpty { null },
-                torrentPath = remoteJson.optString("torrent_path").ifEmpty { null },
-                torrentIndex = remoteJson.optInt("torrent_index", -1),
-                httpHeader = remoteJson.optString("http_header").ifEmpty { null },
-                uniqueKey = uniqueKey,
-                storagePath = storagePath,
-                storageId = matchedStorageId
-            )
-            dao.insert(entity)
-            appliedCount++
+            if (existing != null) {
+                dao.update(existing.copy(
+                    videoName = remoteJson.optString("video_name"),
+                    url = remoteJson.optString("url"),
+                    mediaType = mediaType,
+                    videoPosition = remoteJson.optLong("video_position"),
+                    videoDuration = remoteJson.optLong("video_duration"),
+                    playTime = Date(remotePlayTime),
+                    danmuPath = remoteJson.optString("danmu_path").ifEmpty { null },
+                    episodeId = remoteJson.optString("episode_id").ifEmpty { null },
+                    subtitlePath = remoteJson.optString("subtitle_path").ifEmpty { null },
+                    audioPath = remoteJson.optString("audio_path").ifEmpty { null },
+                    torrentPath = remoteJson.optString("torrent_path").ifEmpty { null },
+                    torrentIndex = remoteJson.optInt("torrent_index", -1),
+                    httpHeader = remoteJson.optString("http_header").ifEmpty { null }
+                ))
+                appliedCount++
+            } else {
+                val entity = PlayHistoryEntity(
+                    id = 0,
+                    videoName = remoteJson.optString("video_name"),
+                    url = remoteJson.optString("url"),
+                    mediaType = mediaType,
+                    videoPosition = remoteJson.optLong("video_position"),
+                    videoDuration = remoteJson.optLong("video_duration"),
+                    playTime = Date(remotePlayTime),
+                    danmuPath = remoteJson.optString("danmu_path").ifEmpty { null },
+                    episodeId = remoteJson.optString("episode_id").ifEmpty { null },
+                    subtitlePath = remoteJson.optString("subtitle_path").ifEmpty { null },
+                    audioPath = remoteJson.optString("audio_path").ifEmpty { null },
+                    torrentPath = remoteJson.optString("torrent_path").ifEmpty { null },
+                    torrentIndex = remoteJson.optInt("torrent_index", -1),
+                    httpHeader = remoteJson.optString("http_header").ifEmpty { null },
+                    uniqueKey = uniqueKey,
+                    storagePath = storagePath,
+                    storageId = matchedStorageId
+                )
+                dao.insert(entity)
+                appliedCount++
+            }
         }
 
         return appliedCount

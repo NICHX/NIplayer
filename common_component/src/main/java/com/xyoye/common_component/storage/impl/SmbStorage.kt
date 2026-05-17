@@ -29,6 +29,8 @@ import com.xyoye.common_component.utils.IOUtils
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.bean.StorageFileInfo
 import com.xyoye.data_component.entity.MediaLibraryEntity
+import kotlinx.coroutines.withTimeout
+import java.util.LinkedList
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import java.io.InputStream
 import java.util.EnumSet
@@ -42,6 +44,12 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
     private var mSmbClient = SMBClient()
     private var mSmbSession: Session? = null
     private var mDiskShare: DiskShare? = null
+
+    private val fileInfoCache = object : LinkedHashMap<String, StorageFileInfo>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, StorageFileInfo>?): Boolean {
+            return size > 64
+        }
+    }
 
     override var rootUri: Uri = Uri.parse("smb://${library.url}")
 
@@ -304,6 +312,9 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         if (file !is SmbStorageFile) {
             return null
         }
+        val cacheKey = file.storagePath()
+        fileInfoCache[cacheKey]?.let { return it }
+
         if (checkConnection().not()) {
             return null
         }
@@ -313,7 +324,7 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         }
 
         return try {
-            if (file.isShareDirectory()) {
+            val result = if (file.isShareDirectory()) {
                 StorageFileInfo(
                     name = file.fileName(),
                     path = file.storagePath(),
@@ -344,6 +355,8 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
                     baseInfo
                 }
             }
+            fileInfoCache[cacheKey] = result
+            result
         } catch (e: Exception) {
             e.printStackTrace()
             showErrorToast("获取文件信息失败", e)
@@ -352,36 +365,87 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
     }
 
     private suspend fun extractMediaMetadata(file: SmbStorageFile, base: StorageFileInfo): StorageFileInfo {
+        val playServer = SmbPlayServer.getInstance()
+        if (!playServer.wasStarted()) {
+            if (!playServer.startSync()) {
+                android.util.Log.w("SmbStorage", "nanohttpd failed to start, fallback to raw SMB")
+                return extractMediaMetadataRaw(file, base)
+            }
+        }
+        val httpUrl = playServer.generatePlayUrl(this, file)
+        return try {
+            withTimeout(3000) {
+                val retriever = MediaMetadataRetriever()
+                retriever.setDataSource(httpUrl, emptyMap())
+
+                val widthStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                val heightStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                val bitrateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+                val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
+                val frameRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+                val sampleRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
+
+                retriever.release()
+
+                base.copy(
+                    videoWidth = widthStr?.toIntOrNull() ?: 0,
+                    videoHeight = heightStr?.toIntOrNull() ?: 0,
+                    durationMs = durationStr?.toLongOrNull() ?: 0,
+                    bitrate = bitrateStr?.toLongOrNull() ?: 0,
+                    videoCodec = mimeType?.ifEmpty { null },
+                    audioCodec = null,
+                    frameRate = frameRateStr?.ifEmpty { null },
+                    sampleRate = sampleRateStr?.toIntOrNull() ?: 0
+                )
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.TimeoutCancellationException) {
+                android.util.Log.w("SmbStorage", "extractMediaMetadata timed out for ${file.fileName()}")
+            } else {
+                e.printStackTrace()
+            }
+            base
+        }
+    }
+
+    private suspend fun extractMediaMetadataRaw(file: SmbStorageFile, base: StorageFileInfo): StorageFileInfo {
         val diskShare = mDiskShare ?: return base
         val smbFile = try {
             diskShare.openFile(file.filePath())
         } catch (_: Exception) { return base }
         return try {
-            val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(SmbMediaDataSource(smbFile, base.fileSize))
+            withTimeout(3000) {
+                val retriever = MediaMetadataRetriever()
+                retriever.setDataSource(SmbMediaDataSource(smbFile, base.fileSize))
 
-            val widthStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
-            val heightStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            val bitrateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
-            val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
-            val frameRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
-            val sampleRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
+                val widthStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                val heightStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                val bitrateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+                val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
+                val frameRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+                val sampleRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
 
-            retriever.release()
+                retriever.release()
 
-            base.copy(
-                videoWidth = widthStr?.toIntOrNull() ?: 0,
-                videoHeight = heightStr?.toIntOrNull() ?: 0,
-                durationMs = durationStr?.toLongOrNull() ?: 0,
-                bitrate = bitrateStr?.toLongOrNull() ?: 0,
-                videoCodec = mimeType?.ifEmpty { null },
-                audioCodec = null,
-                frameRate = frameRateStr?.ifEmpty { null },
-                sampleRate = sampleRateStr?.toIntOrNull() ?: 0
-            )
+                base.copy(
+                    videoWidth = widthStr?.toIntOrNull() ?: 0,
+                    videoHeight = heightStr?.toIntOrNull() ?: 0,
+                    durationMs = durationStr?.toLongOrNull() ?: 0,
+                    bitrate = bitrateStr?.toLongOrNull() ?: 0,
+                    videoCodec = mimeType?.ifEmpty { null },
+                    audioCodec = null,
+                    frameRate = frameRateStr?.ifEmpty { null },
+                    sampleRate = sampleRateStr?.toIntOrNull() ?: 0
+                )
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
+            if (e is kotlinx.coroutines.TimeoutCancellationException) {
+                android.util.Log.w("SmbStorage", "extractMediaMetadataRaw timed out for ${file.fileName()}")
+            } else {
+                e.printStackTrace()
+            }
             base
         }
     }
