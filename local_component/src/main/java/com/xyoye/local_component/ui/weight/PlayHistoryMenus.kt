@@ -30,6 +30,7 @@ class PlayHistoryMenus private constructor(
 
     private var onSortChanged: ((HistorySortOption) -> Unit)? = null
     private var onClearHistory: (() -> Unit)? = null
+    private var onSyncHistory: (() -> Unit)? = null
 
     private val sortOption = HistorySortOption()
 
@@ -40,6 +41,10 @@ class PlayHistoryMenus private constructor(
     fun onOptionsItemSelected(item: MenuItem) {
         if (item.itemId == R.id.item_clear_history) {
             showClearConfirmDialog()
+            return
+        }
+        if (item.itemId == R.id.item_sync_history) {
+            onSyncHistory?.invoke()
             return
         }
 
@@ -79,6 +84,10 @@ class PlayHistoryMenus private constructor(
 
     fun onClearHistory(block: () -> Unit) {
         onClearHistory = block
+    }
+
+    fun onSyncHistory(block: () -> Unit) {
+        onSyncHistory = block
     }
 
     fun onSortTypeChanged(block: (HistorySortOption) -> Unit) {

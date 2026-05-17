@@ -4,10 +4,12 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.xyoye.common_component.base.BaseViewModel
+import com.xyoye.common_component.config.PlayHistorySyncConfig
 import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.source.VideoSourceManager
 import com.xyoye.common_component.source.factory.StorageVideoSourceFactory
 import com.xyoye.common_component.storage.StorageFactory
+import com.xyoye.common_component.utils.PlayHistorySyncManager
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
@@ -106,5 +108,26 @@ class PlayHistoryViewModel : BaseViewModel() {
         }
         VideoSourceManager.getInstance().setSource(mediaSource)
         return true
+    }
+
+    fun syncPlayHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!PlayHistorySyncConfig.enabled) {
+                ToastCenter.showError("请先在备份管理中开启播放记录同步")
+                return@launch
+            }
+            showLoading()
+            when (val result = PlayHistorySyncManager.sync()) {
+                is PlayHistorySyncManager.SyncResult.Success -> {
+                    hideLoading()
+                    ToastCenter.showSuccess("同步完成，上传${result.uploaded}条，下载${result.downloaded}条")
+                    updatePlayHistory()
+                }
+                is PlayHistorySyncManager.SyncResult.Error -> {
+                    hideLoading()
+                    ToastCenter.showError(result.message)
+                }
+            }
+        }
     }
 }

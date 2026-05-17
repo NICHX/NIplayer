@@ -69,6 +69,7 @@ class PlayHistoryActivity : BaseActivity<PlayHistoryViewModel, ActivityPlayHisto
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         mMenus = PlayHistoryMenus.inflater(this, menu)
         mMenus.onClearHistory { viewModel.clearHistory() }
+        mMenus.onSyncHistory { viewModel.syncPlayHistory() }
         mMenus.onSortTypeChanged { viewModel.changeSortOption(it) }
         return super.onCreateOptionsMenu(menu)
     }

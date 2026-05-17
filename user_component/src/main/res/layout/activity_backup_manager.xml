@@ -40,123 +40,7 @@
                     android:orientation="vertical">
 
                     <LinearLayout
-                        android:id="@+id/export_ll"
-                        android:layout_width="match_parent"
-                        android:layout_height="64dp"
-                        android:background="@drawable/background_item_press_corner"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:padding="12dp">
-
-                        <androidx.appcompat.widget.AppCompatImageView
-                            android:layout_width="40dp"
-                            android:layout_height="40dp"
-                            android:padding="2dp"
-                            android:scaleType="centerInside"
-                            android:src="@drawable/ic_backup_manager"
-                            app:tint="@color/colorAccent" />
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="10dp"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="导出配置"
-                                android:textColor="@color/text_black"
-                                android:textSize="16sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="3dp"
-                                android:text="将设置和服务器信息导出为配置文件"
-                                android:textColor="@color/text_gray"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
-                        <ImageView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:src="@drawable/ic_arrow_right" />
-                    </LinearLayout>
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:layout_marginTop="10dp"
-                    android:layout_marginEnd="10dp"
-                    android:background="@drawable/background_item_corner"
-                    android:orientation="vertical">
-
-                    <LinearLayout
-                        android:id="@+id/import_ll"
-                        android:layout_width="match_parent"
-                        android:layout_height="64dp"
-                        android:background="@drawable/background_item_press_corner"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:padding="12dp">
-
-                        <androidx.appcompat.widget.AppCompatImageView
-                            android:layout_width="40dp"
-                            android:layout_height="40dp"
-                            android:padding="2dp"
-                            android:scaleType="centerInside"
-                            android:src="@drawable/ic_restore_manager"
-                            app:tint="@color/orange" />
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="10dp"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="导入配置"
-                                android:textColor="@color/text_black"
-                                android:textSize="16sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="3dp"
-                                android:text="从配置文件恢复软件设置和服务器信息"
-                                android:textColor="@color/text_gray"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
-                        <ImageView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:src="@drawable/ic_arrow_right" />
-                    </LinearLayout>
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:layout_marginTop="10dp"
-                    android:layout_marginEnd="10dp"
-                    android:background="@drawable/background_item_corner"
-                    android:orientation="vertical">
-
-                    <LinearLayout
-                        android:id="@+id/webdav_header_ll"
+                        android:id="@+id/webdav_server_header_ll"
                         android:layout_width="match_parent"
                         android:layout_height="64dp"
                         android:background="@drawable/background_item_press_corner"
@@ -170,7 +54,7 @@
                             android:padding="2dp"
                             android:scaleType="centerInside"
                             android:src="@drawable/ic_webdav_cloud"
-                            app:tint="@color/orange" />
+                            app:tint="@color/colorAccent" />
 
                         <LinearLayout
                             android:layout_width="0dp"
@@ -182,16 +66,17 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="WebDAV自动备份"
+                                android:text="WebDAV服务器管理"
                                 android:textColor="@color/text_black"
                                 android:textSize="16sp"
                                 android:textStyle="bold" />
 
                             <TextView
+                                android:id="@+id/webdav_server_status_tv"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="3dp"
-                                android:text="配置后自动上传备份至WebDAV服务器"
+                                android:text="未添加服务器"
                                 android:textColor="@color/text_gray"
                                 android:textSize="12sp" />
                         </LinearLayout>
@@ -200,17 +85,10 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:src="@drawable/ic_arrow_right" />
-
-                        <androidx.appcompat.widget.SwitchCompat
-                            android:id="@+id/webdav_enable_switch"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="4dp"
-                            app:theme="@style/Theme.DanDanPlay.SwitchCompat" />
                     </LinearLayout>
 
                     <LinearLayout
-                        android:id="@+id/webdav_settings_ll"
+                        android:id="@+id/webdav_server_settings_ll"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
@@ -350,8 +228,8 @@
                                 android:id="@+id/select_server_tv"
                                 android:layout_width="wrap_content"
                                 android:layout_height="44dp"
-                                android:layout_marginTop="8dp"
                                 android:layout_marginStart="8dp"
+                                android:layout_marginTop="8dp"
                                 android:background="@drawable/background_button_corner_gray"
                                 android:gravity="center"
                                 android:paddingStart="16dp"
@@ -426,37 +304,321 @@
                                 android:textSize="14sp" />
                         </LinearLayout>
 
-                        <LinearLayout
+                        <TextView
+                            android:id="@+id/save_webdav_config_tv"
                             android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
+                            android:layout_height="44dp"
                             android:layout_marginTop="12dp"
-                            android:orientation="horizontal">
+                            android:background="@drawable/background_button_corner_gray"
+                            android:gravity="center"
+                            android:text="保存设置"
+                            android:textColor="@color/text_black"
+                            android:textSize="15sp" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginEnd="10dp"
+                    android:background="@drawable/background_item_corner"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:id="@+id/export_ll"
+                        android:layout_width="match_parent"
+                        android:layout_height="64dp"
+                        android:background="@drawable/background_item_press_corner"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="12dp">
+
+                        <androidx.appcompat.widget.AppCompatImageView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:padding="2dp"
+                            android:scaleType="centerInside"
+                            android:src="@drawable/ic_backup_manager"
+                            app:tint="@color/colorAccent" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
 
                             <TextView
-                                android:id="@+id/save_webdav_config_tv"
-                                android:layout_width="0dp"
-                                android:layout_height="44dp"
-                                android:layout_marginEnd="6dp"
-                                android:layout_weight="1"
-                                android:background="@drawable/background_button_corner_gray"
-                                android:gravity="center"
-                                android:text="保存设置"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="导出配置"
                                 android:textColor="@color/text_black"
-                                android:textSize="15sp" />
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
 
                             <TextView
-                                android:id="@+id/upload_now_tv"
-                                android:layout_width="0dp"
-                                android:layout_height="44dp"
-                                android:layout_marginStart="6dp"
-                                android:layout_weight="1"
-                                android:background="@drawable/background_button_corner_gray"
-                                android:gravity="center"
-                                android:text="立即上传"
-                                android:textColor="@color/text_black"
-                                android:textSize="15sp" />
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
+                                android:text="将设置和服务器信息导出为配置文件"
+                                android:textColor="@color/text_gray"
+                                android:textSize="12sp" />
                         </LinearLayout>
 
+                        <ImageView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:src="@drawable/ic_arrow_right" />
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginEnd="10dp"
+                    android:background="@drawable/background_item_corner"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:id="@+id/import_ll"
+                        android:layout_width="match_parent"
+                        android:layout_height="64dp"
+                        android:background="@drawable/background_item_press_corner"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="12dp">
+
+                        <androidx.appcompat.widget.AppCompatImageView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:padding="2dp"
+                            android:scaleType="centerInside"
+                            android:src="@drawable/ic_restore_manager"
+                            app:tint="@color/orange" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="导入配置"
+                                android:textColor="@color/text_black"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
+                                android:text="从配置文件恢复软件设置和服务器信息"
+                                android:textColor="@color/text_gray"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <ImageView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:src="@drawable/ic_arrow_right" />
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/webdav_backup_section_ll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginEnd="10dp"
+                    android:background="@drawable/background_item_corner"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <LinearLayout
+                        android:id="@+id/webdav_header_ll"
+                        android:layout_width="match_parent"
+                        android:layout_height="64dp"
+                        android:background="@drawable/background_item_press_corner"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="12dp">
+
+                        <androidx.appcompat.widget.AppCompatImageView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:padding="2dp"
+                            android:scaleType="centerInside"
+                            android:src="@drawable/ic_webdav_cloud"
+                            app:tint="@color/colorAccent" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="WebDAV自动备份"
+                                android:textColor="@color/text_black"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
+                                android:text="配置后自动上传备份至WebDAV服务器"
+                                android:textColor="@color/text_gray"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/webdav_enable_switch"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            app:theme="@style/Theme.DanDanPlay.SwitchCompat" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/webdav_settings_ll"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone"
+                        tools:visibility="visible">
+
+                        <TextView
+                            android:id="@+id/upload_now_tv"
+                            android:layout_width="match_parent"
+                            android:layout_height="44dp"
+                            android:background="@drawable/background_button_corner_gray"
+                            android:gravity="center"
+                            android:text="立即上传"
+                            android:textColor="@color/text_black"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:id="@+id/upload_status_tv"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:gravity="center"
+                            android:textColor="@color/text_gray"
+                            android:textSize="12sp"
+                            tools:text="上次上传：2026-05-17 10:00" />
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/sync_history_section_ll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginEnd="10dp"
+                    android:background="@drawable/background_item_corner"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <LinearLayout
+                        android:id="@+id/sync_history_header_ll"
+                        android:layout_width="match_parent"
+                        android:layout_height="64dp"
+                        android:background="@drawable/background_item_press_corner"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="12dp">
+
+                        <androidx.appcompat.widget.AppCompatImageView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:padding="2dp"
+                            android:scaleType="centerInside"
+                            android:src="@drawable/ic_cloud_sync"
+                            app:tint="@color/orange" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="播放记录同步"
+                                android:textColor="@color/text_black"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
+                                android:text="通过WebDAV在多设备间同步播放进度"
+                                android:textColor="@color/text_gray"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/sync_history_enable_switch"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            app:theme="@style/Theme.DanDanPlay.SwitchCompat" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/sync_history_settings_ll"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone"
+                        tools:visibility="visible">
+
+                        <TextView
+                            android:id="@+id/sync_now_tv"
+                            android:layout_width="match_parent"
+                            android:layout_height="44dp"
+                            android:background="@drawable/background_button_corner_gray"
+                            android:gravity="center"
+                            android:text="立即同步"
+                            android:textColor="@color/text_black"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:id="@+id/sync_status_tv"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:gravity="center"
+                            android:textColor="@color/text_gray"
+                            android:textSize="12sp"
+                            tools:text="上次同步：2026-05-17 10:00" />
                     </LinearLayout>
 
                 </LinearLayout>
@@ -465,9 +627,9 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:gravity="center"
+                    android:gravity="start"
                     android:padding="16dp"
-                    android:text="配置文件包含：显示隐藏文件、深色模式、常用目录、上次打开目录开关、播放器设置、字幕设置、视图模式、缩略图设置、服务器信息等"
+                    android:text="导出：点击导出配置文件\n导入：点击从WebDAV恢复配置，长按从本地文件导入\n自动备份：开启后导出配置时自动上传至WebDAV服务器\n播放记录同步：通过WebDAV在多设备间同步网络存储的播放进度（SMB/FTP/WebDAV/Alist），本地存储记录不同步"
                     android:textColor="@color/text_gray"
                     android:textSize="12sp" />
 
