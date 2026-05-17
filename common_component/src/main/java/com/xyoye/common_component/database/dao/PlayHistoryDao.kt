@@ -36,6 +36,9 @@ interface PlayHistoryDao {
     @Query("SELECT * FROM play_history WHERE unique_key = (:uniqueKey) AND storage_id = (:storageId)")
     suspend fun getPlayHistory(uniqueKey: String, storageId: Int): PlayHistoryEntity?
 
+    @Query("SELECT * FROM play_history WHERE storage_path = (:storagePath) AND storage_id = (:storageId) LIMIT 1")
+    suspend fun getPlayHistoryByPath(storagePath: String, storageId: Int): PlayHistoryEntity?
+
     @Query("SELECT * FROM play_history WHERE unique_key = (:uniqueKey) AND storage_id = (:storageId)")
     fun getPlayHistoryFlow(uniqueKey: String, storageId: Int): Flow<PlayHistoryEntity?>
 

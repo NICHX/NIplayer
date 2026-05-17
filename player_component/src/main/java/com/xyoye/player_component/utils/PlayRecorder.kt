@@ -44,12 +44,15 @@ object PlayRecorder {
         SupervisorScope.IO.launch {
             val uniqueKey = source.getUniqueKey()
             val storageId = source.getStorageId()
+            val storagePath = source.getStoragePath()
             val historyDao = DatabaseManager.instance.getPlayHistoryDao()
 
-            val existingHistory = if (uniqueKey.isNotEmpty() && (storageId != null && storageId > 0)) {
-                historyDao.getPlayHistory(uniqueKey, storageId)
-            } else {
-                null
+            val existingHistory = when {
+                storagePath != null && storagePath.isNotEmpty() && storageId > 0 ->
+                    historyDao.getPlayHistoryByPath(storagePath, storageId)
+                uniqueKey.isNotEmpty() && storageId > 0 ->
+                    historyDao.getPlayHistory(uniqueKey, storageId)
+                else -> null
             }
 
             if (existingHistory != null) {
