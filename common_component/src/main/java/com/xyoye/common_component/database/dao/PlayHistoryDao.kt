@@ -64,4 +64,12 @@ interface PlayHistoryDao {
     @Transaction
     @Query("SELECT * FROM play_history WHERE episode_id IN (:episodeIds)")
     fun getEpisodeHistory(episodeIds: List<String>): Flow<List<EpisodeHistoryEntity>>
+
+    @Query("SELECT * FROM play_history WHERE media_type IN (:mediaTypes) AND url != '' AND play_time > :sinceTimestamp ORDER BY play_time DESC")
+    @TypeConverters(MediaTypeConverter::class)
+    suspend fun getModifiedSince(mediaTypes: List<MediaType>, sinceTimestamp: Long): MutableList<PlayHistoryEntity>
+
+    @Query("SELECT * FROM play_history WHERE media_type IN (:mediaTypes) AND url != '' ORDER BY play_time DESC")
+    @TypeConverters(MediaTypeConverter::class)
+    suspend fun getByMediaTypes(mediaTypes: List<MediaType>): MutableList<PlayHistoryEntity>
 }

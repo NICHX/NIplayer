@@ -13,6 +13,7 @@ import android.view.TextureView
 import android.view.View
 import androidx.annotation.RequiresApi
 import com.xyoye.common_component.config.UserConfig
+import com.xyoye.common_component.config.PlayHistorySyncConfig
 import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.extension.resumeWhenAlive
 import com.xyoye.common_component.network.repository.AnimeRepository
@@ -66,6 +67,9 @@ object PlayRecorder {
                 .insert(history)
             // 上报剧集播放到云端
             recordToCloud(source)
+
+            // 触发播放记录同步
+            triggerSyncIfNeeded(source.getMediaType())
 
             //部分视频无法获取到视频时长，播放后再更新时长
             if (source.getMediaType() == MediaType.LOCAL_STORAGE) {
@@ -217,5 +221,20 @@ object PlayRecorder {
         // 弹幕功能已移除，云端上报功能也已移除
     }
 
-
+    private fun triggerSyncIfNeeded(mediaType: MediaType) {
+        if (!PlayHistorySyncConfig.enabled) return
+        val syncTypes = setOf(
+            MediaType.SMB_SERVER,
+            MediaType.FTP_SERVER,
+            MediaType.WEBDAV_SERVER,
+            MediaType.ALSIT_STORAGE
+        )
+        if (mediaType !in syncTypes) return
+        SupervisorScope.IO.launch {
+            try {
+                com.xyoye.common_component.utils.PlayHistorySyncManager.sync()
+            } catch (_: Exception) {
+            }
+        }
+    }
 }

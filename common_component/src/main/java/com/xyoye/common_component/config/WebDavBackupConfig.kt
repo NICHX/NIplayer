@@ -36,4 +36,8 @@ object WebDavBackupConfig {
     var keepCount: Int
         get() = mmkv.decodeInt("webdav_backup_keep_count", 3)
         set(value) { mmkv.encode("webdav_backup_keep_count", value) }
+
+    var lastUploadTime: Long
+        get() = mmkv.decodeLong("webdav_backup_last_upload_time", 0L)
+        set(value) { mmkv.encode("webdav_backup_last_upload_time", value) }
 }

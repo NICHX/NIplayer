@@ -289,6 +289,8 @@ class BackupManagerViewModel : BaseViewModel() {
 
                 cleanupOldBackups(dirUrl, credential, config.keepCount)
 
+                config.lastUploadTime = System.currentTimeMillis()
+
                 hideLoading()
                 ToastCenter.showSuccess("备份已上传至WebDAV服务器")
             } catch (e: Exception) {
@@ -507,6 +509,28 @@ class BackupManagerViewModel : BaseViewModel() {
             return server?.displayName ?: "请选择WebDAV服务器"
         }
         return "请选择WebDAV服务器"
+    }
+
+    fun syncPlayHistory(context: android.content.Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!com.xyoye.common_component.config.PlayHistorySyncConfig.enabled) {
+                com.xyoye.common_component.weight.ToastCenter.showError("请先开启播放记录同步")
+                return@launch
+            }
+            showLoading()
+            when (val result = com.xyoye.common_component.utils.PlayHistorySyncManager.sync()) {
+                is com.xyoye.common_component.utils.PlayHistorySyncManager.SyncResult.Success -> {
+                    hideLoading()
+                    com.xyoye.common_component.weight.ToastCenter.showSuccess(
+                        "同步完成，上传${result.uploaded}条，下载${result.downloaded}条"
+                    )
+                }
+                is com.xyoye.common_component.utils.PlayHistorySyncManager.SyncResult.Error -> {
+                    hideLoading()
+                    com.xyoye.common_component.weight.ToastCenter.showError(result.message)
+                }
+            }
+        }
     }
 
     private fun <T> runBlockingOnIO(block: suspend () -> T): T {
