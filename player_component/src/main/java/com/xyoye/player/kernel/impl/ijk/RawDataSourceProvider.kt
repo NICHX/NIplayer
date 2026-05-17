@@ -56,7 +56,9 @@ class RawDataSourceProvider(private var mDescriptor: AssetFileDescriptor?) : IMe
         mDescriptor?.let {
             if (mMediaBytes == null) {
                 val inputStream: InputStream = it.createInputStream()
-                mMediaBytes = readBytes(inputStream)
+                inputStream.use { stream ->
+                    mMediaBytes = readBytes(stream)
+                }
             }
             return it.length
         }

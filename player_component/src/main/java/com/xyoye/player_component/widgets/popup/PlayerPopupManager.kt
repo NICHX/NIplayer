@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Point
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.OrientationEventListener
@@ -110,6 +112,17 @@ class PlayerPopupManager(
     }
 
     fun dismiss() {
+        if (isShowing.not()) {
+            return
+        }
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Handler(Looper.getMainLooper()).post { dismissInternal() }
+        } else {
+            dismissInternal()
+        }
+    }
+
+    private fun dismissInternal() {
         if (isShowing.not()) {
             return
         }

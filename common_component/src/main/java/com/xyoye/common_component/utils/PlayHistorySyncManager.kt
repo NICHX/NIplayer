@@ -51,48 +51,7 @@ object PlayHistorySyncManager {
     suspend fun sync(): SyncResult = withContext(Dispatchers.IO) {
         try {
             withTimeout(10000L) {
-                val (serverUrl, account, password) = resolveWebDavServer()
-                if (serverUrl.isNullOrEmpty()) {
-                    return@withContext SyncResult.Error("WebDAV服务器未配置")
-                }
-
-                val credential = if (!account.isNullOrEmpty()) {
-                    Credentials.basic(account, password ?: "")
-                } else null
-
-                val config = PlayHistorySyncConfig
-                config.ensureDeviceId()
-                val lastSyncTime = config.lastSyncTime
-
-                val localDirty = DatabaseManager.instance.getPlayHistoryDao()
-                    .getModifiedSince(SYNC_MEDIA_TYPES, lastSyncTime)
-
-                val cloudData = downloadFromWebDav(serverUrl, credential)
-
-                val urlMap = buildStorageUrlMap()
-
-                val merged = if (cloudData != null) {
-                    mergeLocalToCloud(cloudData, localDirty, urlMap)
-                } else {
-                    buildSyncData(localDirty, urlMap)
-                }
-
-                val uploadSuccess = uploadToWebDav(serverUrl, credential, merged)
-                if (!uploadSuccess) {
-                    return@withContext SyncResult.Error("上传同步数据失败")
-                }
-
-                val remoteDirty = if (cloudData != null) {
-                    filterNewRecords(cloudData, lastSyncTime)
-                } else {
-                    emptyList()
-                }
-
-                val appliedCount = mergeCloudToLocal(remoteDirty)
-
-                config.lastSyncTime = System.currentTimeMillis()
-
-                SyncResult.Success(localDirty.size, appliedCount)
+                doSync()
             }
         } catch (e: TimeoutCancellationException) {
             SyncResult.Error("服务器不在线")
@@ -100,6 +59,51 @@ object PlayHistorySyncManager {
             e.printStackTrace()
             SyncResult.Error("同步失败: ${e.message}")
         }
+    }
+
+    private suspend fun doSync(): SyncResult {
+        val (serverUrl, account, password) = resolveWebDavServer()
+        if (serverUrl.isNullOrEmpty()) {
+            return SyncResult.Error("WebDAV服务器未配置")
+        }
+
+        val credential = if (!account.isNullOrEmpty()) {
+            Credentials.basic(account, password ?: "")
+        } else null
+
+        val config = PlayHistorySyncConfig
+        config.ensureDeviceId()
+        val lastSyncTime = config.lastSyncTime
+
+        val localDirty = DatabaseManager.instance.getPlayHistoryDao()
+            .getModifiedSince(SYNC_MEDIA_TYPES, lastSyncTime)
+
+        val cloudData = downloadFromWebDav(serverUrl, credential)
+
+        val urlMap = buildStorageUrlMap()
+
+        val merged = if (cloudData != null) {
+            mergeLocalToCloud(cloudData, localDirty, urlMap)
+        } else {
+            buildSyncData(localDirty, urlMap)
+        }
+
+        val uploadSuccess = uploadToWebDav(serverUrl, credential, merged)
+        if (!uploadSuccess) {
+            return SyncResult.Error("上传同步数据失败")
+        }
+
+        val remoteDirty = if (cloudData != null) {
+            filterNewRecords(cloudData, lastSyncTime)
+        } else {
+            emptyList()
+        }
+
+        val appliedCount = mergeCloudToLocal(remoteDirty)
+
+        config.lastSyncTime = System.currentTimeMillis()
+
+        return SyncResult.Success(localDirty.size, appliedCount)
     }
 
     private fun buildSyncData(records: List<PlayHistoryEntity>, urlMap: Map<Int, String>): JSONObject {
@@ -300,7 +304,8 @@ object PlayHistorySyncManager {
     private fun parseIsoDate(isoStr: String): Long {
         return try {
             isoFormat.parse(isoStr)?.time ?: 0L
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.e("PlayHistorySync", "parseIsoDate failed: $isoStr, ${e.message}")
             0L
         }
     }
@@ -342,7 +347,8 @@ object PlayHistorySyncManager {
             response.close()
             if (body.isEmpty()) return null
             JSONObject(body)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.e("PlayHistorySync", "WebDAV download failed: ${e.message}")
             null
         }
     }
@@ -397,7 +403,8 @@ object PlayHistorySyncManager {
                     retryResponse.close()
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.e("PlayHistorySync", "ensureDirectoryExists failed: ${e.message}")
         }
     }
 

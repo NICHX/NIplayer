@@ -3,6 +3,8 @@ package com.xyoye.player
 import android.content.Context
 import android.graphics.PointF
 import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.KeyEvent
@@ -30,6 +32,8 @@ import com.xyoye.player.wrapper.InterVideoPlayer
 import com.xyoye.player.wrapper.InterVideoTrack
 import com.xyoye.player_component.utils.PlayRecorder
 import com.xyoye.subtitle.MixedSubtitle
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Created by xyoye on 2020/11/3.
@@ -43,7 +47,11 @@ class DanDanVideoPlayer(
     InterVideoTrack,
     VideoPlayerEventListener {
     //播放状态
+    @Volatile
     private var mCurrentPlayState = PlayState.STATE_IDLE
+
+    //同步锁对象
+    private val stateLock = Any()
 
     //默认组件参数
     private val mDefaultLayoutParams = LayoutParams(
@@ -237,28 +245,40 @@ class DanDanVideoPlayer(
     }
 
     private fun initPlayer() {
-        mAudioFocusHelper.enable = PlayerInitializer.isEnableAudioFocus
-        //初始化播放器
-        mVideoPlayer = PlayerFactory.getFactory(PlayerInitializer.playerType)
-            .createPlayer(context).apply {
-                setPlayerEventListener(this@DanDanVideoPlayer)
-                initPlayer()
+        synchronized(stateLock) {
+            // 释放旧播放器资源
+            if (this::mVideoPlayer.isInitialized) {
+                if (!mPlayerReleased) {
+                    mVideoPlayer.release()
+                }
+                mPlayerReleased = false
+            }
+            // 释放旧渲染视图
+            mRenderView?.let {
+                this@DanDanVideoPlayer.removeView(it.getView())
+                it.release()
+                mRenderView = null
             }
 
-        //初始化渲染布局
-        mRenderView?.apply {
-            this@DanDanVideoPlayer.removeView(getView())
-            release()
+            mAudioFocusHelper.enable = PlayerInitializer.isEnableAudioFocus
+            //初始化播放器
+            mVideoPlayer = PlayerFactory.getFactory(PlayerInitializer.playerType)
+                .createPlayer(context).apply {
+                    setPlayerEventListener(this@DanDanVideoPlayer)
+                    initPlayer()
+                }
+
+            //初始化渲染布局
+            mRenderView = SurfaceFactory.getFactory(
+                PlayerInitializer.playerType, PlayerInitializer.surfaceType
+            ).createRenderView(context)
+                .apply {
+                    this@DanDanVideoPlayer.addView(getView(), 0, mDefaultLayoutParams)
+                    attachPlayer(mVideoPlayer)
+                }
+
+            setExtraOption()
         }
-        mRenderView = SurfaceFactory.getFactory(
-            PlayerInitializer.playerType, PlayerInitializer.surfaceType
-        ).createRenderView(context)
-            .apply {
-                this@DanDanVideoPlayer.addView(getView(), 0, mDefaultLayoutParams)
-                attachPlayer(mVideoPlayer)
-            }
-
-        setExtraOption()
     }
 
     private fun setExtraOption() {
@@ -278,7 +298,9 @@ class DanDanVideoPlayer(
     }
 
     private fun setPlayState(playState: PlayState) {
-        mCurrentPlayState = playState
+        synchronized(stateLock) {
+            mCurrentPlayState = playState
+        }
         mVideoController?.setPlayState(playState)
     }
 
@@ -322,13 +344,18 @@ class DanDanVideoPlayer(
 
     fun releasePlayerAsync() {
         if (mCurrentPlayState != PlayState.STATE_IDLE && !mPlayerReleased) {
-            val releaseThread = Thread(
-                Runnable { mVideoPlayer.release() },
-                "player-release"
-            ).apply { isDaemon = true; start() }
-
-            releaseThread.join(3000)
-            if (releaseThread.isAlive) {
+            val latch = CountDownLatch(1)
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    if (this::mVideoPlayer.isInitialized) {
+                        mVideoPlayer.release()
+                    }
+                } finally {
+                    latch.countDown()
+                }
+            }
+            val released = latch.await(3, TimeUnit.SECONDS)
+            if (!released) {
                 VideoLog.e("DanDanVideoPlayer--releasePlayerAsync--> Player release timed out after 3s, force proceeding")
             }
             mPlayerReleased = true
@@ -336,11 +363,17 @@ class DanDanVideoPlayer(
     }
 
     fun release() {
-        if (mCurrentPlayState != PlayState.STATE_IDLE) {
+        if (mCurrentPlayState == PlayState.STATE_IDLE) {
+            return
+        }
+        synchronized(stateLock) {
+            if (mCurrentPlayState == PlayState.STATE_IDLE) {
+                return
+            }
             //释放播放器控制器
             mVideoController?.destroy()
             //释放播放器
-            if (!mPlayerReleased) {
+            if (!mPlayerReleased && this::mVideoPlayer.isInitialized) {
                 mVideoPlayer.release()
             }
             mPlayerReleased = false
@@ -350,6 +383,7 @@ class DanDanVideoPlayer(
             mRenderView?.run {
                 this@DanDanVideoPlayer.removeView(getView())
                 release()
+                mRenderView = null
             }
             //取消音频焦点
             mAudioFocusHelper.abandonFocus()

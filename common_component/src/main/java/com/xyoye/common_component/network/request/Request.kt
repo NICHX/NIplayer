@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Created by xyoye on 2024/1/5
@@ -54,6 +55,8 @@ class Request {
                 }
 
                 return@withContext Result.success(result)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 e.printStackTrace()
                 return@withContext Result.failure(NetworkException.formException(e))
@@ -76,6 +79,8 @@ class Request {
                 }
 
                 return@withContext Result.success(result)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 e.printStackTrace()
                 return@withContext Result.failure(NetworkException.formException(e))

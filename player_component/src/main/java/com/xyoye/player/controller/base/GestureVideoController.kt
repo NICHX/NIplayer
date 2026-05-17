@@ -2,6 +2,7 @@ package com.xyoye.player.controller.base
 
 import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.media.AudioManager
 import android.util.AttributeSet
 import android.view.GestureDetector
@@ -115,7 +116,7 @@ abstract class GestureVideoController(
             return true
         }
         mStreamVolume = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        mBrightness = (context as Activity).window.attributes.screenBrightness
+        mBrightness = context.findActivity()?.window?.attributes?.screenBrightness ?: -1f
 
         mFirstTouch = true
         mChangePosition = false
@@ -220,10 +221,12 @@ abstract class GestureVideoController(
         newBrightness = max(0f, newBrightness)
         newBrightness = min(1f, newBrightness)
 
-        val window = (context as Activity).window
-        val attribute = window.attributes
-        attribute.screenBrightness = newBrightness
-        window.attributes = attribute
+        context.findActivity()?.let { activity ->
+            val window = activity.window
+            val attribute = window.attributes
+            attribute.screenBrightness = newBrightness
+            window.attributes = attribute
+        }
 
         for (entry in mControlComponents.entries) {
             val view = entry.key
@@ -313,4 +316,13 @@ abstract class GestureVideoController(
             (mCurrentPlayState != PlayState.STATE_ERROR) and
             (mCurrentPlayState != PlayState.STATE_IDLE) and
             (mCurrentPlayState != PlayState.STATE_START_ABORT)
+
+    private fun Context.findActivity(): Activity? {
+        var ctx = this
+        while (ctx is ContextWrapper) {
+            if (ctx is Activity) return ctx
+            ctx = ctx.baseContext
+        }
+        return null
+    }
 }

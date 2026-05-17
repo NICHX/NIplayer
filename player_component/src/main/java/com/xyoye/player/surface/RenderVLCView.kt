@@ -5,6 +5,7 @@ import android.view.View
 import com.xyoye.data_component.enums.VideoScreenScale
 import com.xyoye.player.kernel.impl.vlc.VlcVideoPlayer
 import com.xyoye.player.kernel.inter.AbstractVideoPlayer
+import com.xyoye.player.utils.RenderMeasureHelper
 import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
 
@@ -20,17 +21,28 @@ class RenderVLCView(
 
     private val vlcLayout = VLCVideoLayout(context)
 
+    private val mMeasureHelper = RenderMeasureHelper()
+
     override fun attachPlayer(player: AbstractVideoPlayer) {
         mVideoPlayer = (player as VlcVideoPlayer)
         player.attachRenderView(vlcLayout)
     }
 
     override fun setVideoSize(videoWidth: Int, videoHeight: Int) {
-
+        if (videoWidth > 0 && videoHeight > 0) {
+            mMeasureHelper.mVideoWidth = videoWidth
+            mMeasureHelper.mVideoHeight = videoHeight
+            vlcLayout.requestLayout()
+        }
     }
 
     override fun setVideoRotation(degree: Int) {
-
+        mMeasureHelper.mVideoDegree = degree
+        vlcLayout.post {
+            vlcLayout.pivotX = vlcLayout.width / 2f
+            vlcLayout.pivotY = vlcLayout.height / 2f
+            vlcLayout.rotation = degree.toFloat()
+        }
     }
 
     override fun setScaleType(screenScale: VideoScreenScale) {
