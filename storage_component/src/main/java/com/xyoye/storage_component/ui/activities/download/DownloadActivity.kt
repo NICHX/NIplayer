@@ -155,7 +155,14 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
 
         deleteBt.isVisible = isFinished
         deleteBt.setOnClickListener {
-            viewModel.deleteTask(data.id)
+            android.app.AlertDialog.Builder(this)
+                .setTitle("删除文件")
+                .setMessage("确定要删除文件「${data.fileName}」吗？")
+                .setPositiveButton("删除") { _, _ ->
+                    viewModel.deleteTask(data.id)
+                }
+                .setNegativeButton("取消", null)
+                .show()
         }
     }
 

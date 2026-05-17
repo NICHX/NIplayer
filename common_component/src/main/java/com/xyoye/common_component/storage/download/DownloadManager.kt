@@ -290,6 +290,7 @@ object DownloadManager {
             val buffer = ByteArray(512 * 1024)
             var len: Int
             var totalRead = offset
+            var updateCounter = 0
             while (inputStream.read(buffer).also { len = it } != -1) {
                 if (!processingJobs.containsKey(task.id)) {
                     dao.updateProgress(task.id, totalRead, DownloadState.PAUSED)
@@ -297,8 +298,10 @@ object DownloadManager {
                 }
                 outputStream.write(buffer, 0, len)
                 totalRead += len
-                if (totalRead % (buffer.size * 10) == 0L) {
+                updateCounter++
+                if (updateCounter >= 3) {
                     dao.updateProgress(task.id, totalRead, DownloadState.DOWNLOADING)
+                    updateCounter = 0
                 }
             }
             outputStream.flush()
@@ -355,6 +358,7 @@ object DownloadManager {
             val buffer = ByteArray(512 * 1024)
             var len: Int
             var totalRead = offset
+            var updateCounter = 0
             val bufferedOut = BufferedOutputStream(outputStream)
             while (inputStream.read(buffer).also { len = it } != -1) {
                 if (!processingJobs.containsKey(task.id)) {
@@ -363,8 +367,10 @@ object DownloadManager {
                 }
                 bufferedOut.write(buffer, 0, len)
                 totalRead += len
-                if (totalRead % (buffer.size * 10) == 0L) {
+                updateCounter++
+                if (updateCounter >= 3) {
                     dao.updateProgress(task.id, totalRead, DownloadState.DOWNLOADING)
+                    updateCounter = 0
                 }
             }
             bufferedOut.flush()
