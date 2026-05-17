@@ -59,6 +59,7 @@ class IjkVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
                 mMediaPlayer.setDataSource(mContext, uri, headers)
             }
         } catch (e: Exception) {
+            VideoLog.e("$TAG setDataSource failed: ${e.message}")
             mPlayerEventListener.onError(e)
         }
     }
