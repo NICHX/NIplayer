@@ -13,9 +13,11 @@ import com.xyoye.common_component.utils.EntropyUtils
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -255,44 +257,49 @@ class BackupManagerViewModel : BaseViewModel() {
     fun uploadBackupToWebDav(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                showLoading()
-                val json = collectAllConfigs().toString(2)
-                val data = json.toByteArray(Charsets.UTF_8)
-                val fileName = getBackupFileName()
+                withTimeout(10000L) {
+                    showLoading()
+                    val json = collectAllConfigs().toString(2)
+                    val data = json.toByteArray(Charsets.UTF_8)
+                    val fileName = getBackupFileName()
 
-                val config = WebDavBackupConfig
-                val targetDir = config.directory.trimEnd('/')
+                    val config = WebDavBackupConfig
+                    val targetDir = config.directory.trimEnd('/')
 
-                val (serverUrl, account, password) = resolveWebDavServer()
-                if (serverUrl.isNullOrEmpty()) {
+                    val (serverUrl, account, password) = resolveWebDavServer()
+                    if (serverUrl.isNullOrEmpty()) {
+                        hideLoading()
+                        ToastCenter.showError("WebDAV服务器未配置")
+                        return@launch
+                    }
+
+                    val credential = if (!account.isNullOrEmpty()) {
+                        Credentials.basic(account, password ?: "")
+                    } else null
+
+                    val baseUrl = serverUrl.trimEnd('/')
+                    val dirUrl = "$baseUrl$targetDir"
+
+                    ensureDirectoryExists(dirUrl, credential)
+
+                    val fileUrl = "$dirUrl/$fileName"
+                    val putSuccess = uploadFile(fileUrl, data, credential)
+                    if (!putSuccess) {
+                        hideLoading()
+                        ToastCenter.showError("上传备份文件失败")
+                        return@launch
+                    }
+
+                    cleanupOldBackups(dirUrl, credential, config.keepCount)
+
+                    config.lastUploadTime = System.currentTimeMillis()
+
                     hideLoading()
-                    ToastCenter.showError("WebDAV服务器未配置")
-                    return@launch
+                    ToastCenter.showSuccess("备份已上传至WebDAV服务器")
                 }
-
-                val credential = if (!account.isNullOrEmpty()) {
-                    Credentials.basic(account, password ?: "")
-                } else null
-
-                val baseUrl = serverUrl.trimEnd('/')
-                val dirUrl = "$baseUrl$targetDir"
-
-                ensureDirectoryExists(dirUrl, credential)
-
-                val fileUrl = "$dirUrl/$fileName"
-                val putSuccess = uploadFile(fileUrl, data, credential)
-                if (!putSuccess) {
-                    hideLoading()
-                    ToastCenter.showError("上传备份文件失败")
-                    return@launch
-                }
-
-                cleanupOldBackups(dirUrl, credential, config.keepCount)
-
-                config.lastUploadTime = System.currentTimeMillis()
-
+            } catch (e: TimeoutCancellationException) {
                 hideLoading()
-                ToastCenter.showSuccess("备份已上传至WebDAV服务器")
+                ToastCenter.showError("服务器不在线")
             } catch (e: Exception) {
                 e.printStackTrace()
                 hideLoading()
@@ -304,79 +311,84 @@ class BackupManagerViewModel : BaseViewModel() {
     fun restoreFromWebDav(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                showLoading()
+                withTimeout(10000L) {
+                    showLoading()
 
-                val config = WebDavBackupConfig
-                val targetDir = config.directory.trimEnd('/')
+                    val config = WebDavBackupConfig
+                    val targetDir = config.directory.trimEnd('/')
 
-                val (serverUrl, account, password) = resolveWebDavServer()
-                if (serverUrl.isNullOrEmpty()) {
-                    hideLoading()
-                    ToastCenter.showError("WebDAV服务器未配置")
-                    return@launch
-                }
+                    val (serverUrl, account, password) = resolveWebDavServer()
+                    if (serverUrl.isNullOrEmpty()) {
+                        hideLoading()
+                        ToastCenter.showError("WebDAV服务器未配置")
+                        return@launch
+                    }
 
-                val credential = if (!account.isNullOrEmpty()) {
-                    Credentials.basic(account, password ?: "")
-                } else null
+                    val credential = if (!account.isNullOrEmpty()) {
+                        Credentials.basic(account, password ?: "")
+                    } else null
 
-                val baseUrl = serverUrl.trimEnd('/')
-                val dirUrl = "$baseUrl$targetDir"
+                    val baseUrl = serverUrl.trimEnd('/')
+                    val dirUrl = "$baseUrl$targetDir"
 
-                val listBuilder = Request.Builder()
-                    .url(dirUrl)
-                    .method("PROPFIND", null)
-                credential?.let { listBuilder.addHeader("Authorization", it) }
-                listBuilder.addHeader("Depth", "1")
-                val listResponse = UnsafeOkHttpClient.client.newCall(listBuilder.build()).execute()
-                if (!listResponse.isSuccessful) {
+                    val listBuilder = Request.Builder()
+                        .url(dirUrl)
+                        .method("PROPFIND", null)
+                    credential?.let { listBuilder.addHeader("Authorization", it) }
+                    listBuilder.addHeader("Depth", "1")
+                    val listResponse = UnsafeOkHttpClient.client.newCall(listBuilder.build()).execute()
+                    if (!listResponse.isSuccessful) {
+                        listResponse.close()
+                        hideLoading()
+                        ToastCenter.showError("无法获取备份文件列表")
+                        return@launch
+                    }
+                    val body = listResponse.body?.string() ?: ""
                     listResponse.close()
-                    hideLoading()
-                    ToastCenter.showError("无法获取备份文件列表")
-                    return@launch
-                }
-                val body = listResponse.body?.string() ?: ""
-                listResponse.close()
 
-                val backupFiles = parseBackupFileNames(body)
-                if (backupFiles.isEmpty()) {
-                    hideLoading()
-                    ToastCenter.showError("WebDAV服务器上没有找到备份文件")
-                    return@launch
-                }
+                    val backupFiles = parseBackupFileNames(body)
+                    if (backupFiles.isEmpty()) {
+                        hideLoading()
+                        ToastCenter.showError("WebDAV服务器上没有找到备份文件")
+                        return@launch
+                    }
 
-                val latestFile = backupFiles.sorted().last()
-                val fileUrl = "$dirUrl/$latestFile"
+                    val latestFile = backupFiles.sorted().last()
+                    val fileUrl = "$dirUrl/$latestFile"
 
-                val downloadBuilder = Request.Builder()
-                    .url(fileUrl)
-                    .get()
-                credential?.let { downloadBuilder.addHeader("Authorization", it) }
-                val downloadResponse = UnsafeOkHttpClient.client.newCall(downloadBuilder.build()).execute()
-                if (!downloadResponse.isSuccessful) {
+                    val downloadBuilder = Request.Builder()
+                        .url(fileUrl)
+                        .get()
+                    credential?.let { downloadBuilder.addHeader("Authorization", it) }
+                    val downloadResponse = UnsafeOkHttpClient.client.newCall(downloadBuilder.build()).execute()
+                    if (!downloadResponse.isSuccessful) {
+                        downloadResponse.close()
+                        hideLoading()
+                        ToastCenter.showError("下载备份文件失败")
+                        return@launch
+                    }
+                    val jsonString = downloadResponse.body?.string() ?: ""
                     downloadResponse.close()
+
+                    val root = JSONObject(jsonString)
+                    val mmkv = MMKV.defaultMMKV()
+
+                    restoreAppConfig(root.optJSONObject("app_config"), mmkv)
+                    restorePlayerConfig(root.optJSONObject("player_config"), mmkv)
+                    restoreSubtitleConfig(root.optJSONObject("subtitle_config"), mmkv)
+                    restoreUserConfig(root.optJSONObject("user_config"), mmkv)
+                    restoreThumbnailConfig(root.optJSONObject("thumbnail_config"), mmkv)
+                    restoreServers(root.optJSONArray("servers"))
+                    restoreServerThumbnailConfigs(root.optJSONObject("server_thumbnail_configs"))
+                    restoreWebDavBackupConfig(root.optJSONObject("webdav_backup_config"))
+
+                    delay(500)
                     hideLoading()
-                    ToastCenter.showError("下载备份文件失败")
-                    return@launch
+                    ToastCenter.showSuccess("配置已从WebDAV恢复，重启应用后生效")
                 }
-                val jsonString = downloadResponse.body?.string() ?: ""
-                downloadResponse.close()
-
-                val root = JSONObject(jsonString)
-                val mmkv = MMKV.defaultMMKV()
-
-                restoreAppConfig(root.optJSONObject("app_config"), mmkv)
-                restorePlayerConfig(root.optJSONObject("player_config"), mmkv)
-                restoreSubtitleConfig(root.optJSONObject("subtitle_config"), mmkv)
-                restoreUserConfig(root.optJSONObject("user_config"), mmkv)
-                restoreThumbnailConfig(root.optJSONObject("thumbnail_config"), mmkv)
-                restoreServers(root.optJSONArray("servers"))
-                restoreServerThumbnailConfigs(root.optJSONObject("server_thumbnail_configs"))
-                restoreWebDavBackupConfig(root.optJSONObject("webdav_backup_config"))
-
-                delay(500)
+            } catch (e: TimeoutCancellationException) {
                 hideLoading()
-                ToastCenter.showSuccess("配置已从WebDAV恢复，重启应用后生效")
+                ToastCenter.showError("服务器不在线")
             } catch (e: Exception) {
                 e.printStackTrace()
                 hideLoading()

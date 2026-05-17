@@ -8,7 +8,9 @@ import com.xyoye.common_component.network.helper.UnsafeOkHttpClient
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import com.xyoye.data_component.enums.MediaType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -48,48 +50,52 @@ object PlayHistorySyncManager {
 
     suspend fun sync(): SyncResult = withContext(Dispatchers.IO) {
         try {
-            val (serverUrl, account, password) = resolveWebDavServer()
-            if (serverUrl.isNullOrEmpty()) {
-                return@withContext SyncResult.Error("WebDAV服务器未配置")
+            withTimeout(10000L) {
+                val (serverUrl, account, password) = resolveWebDavServer()
+                if (serverUrl.isNullOrEmpty()) {
+                    return@withContext SyncResult.Error("WebDAV服务器未配置")
+                }
+
+                val credential = if (!account.isNullOrEmpty()) {
+                    Credentials.basic(account, password ?: "")
+                } else null
+
+                val config = PlayHistorySyncConfig
+                config.ensureDeviceId()
+                val lastSyncTime = config.lastSyncTime
+
+                val localDirty = DatabaseManager.instance.getPlayHistoryDao()
+                    .getModifiedSince(SYNC_MEDIA_TYPES, lastSyncTime)
+
+                val cloudData = downloadFromWebDav(serverUrl, credential)
+
+                val urlMap = buildStorageUrlMap()
+
+                val merged = if (cloudData != null) {
+                    mergeLocalToCloud(cloudData, localDirty, urlMap)
+                } else {
+                    buildSyncData(localDirty, urlMap)
+                }
+
+                val uploadSuccess = uploadToWebDav(serverUrl, credential, merged)
+                if (!uploadSuccess) {
+                    return@withContext SyncResult.Error("上传同步数据失败")
+                }
+
+                val remoteDirty = if (cloudData != null) {
+                    filterNewRecords(cloudData, lastSyncTime)
+                } else {
+                    emptyList()
+                }
+
+                val appliedCount = mergeCloudToLocal(remoteDirty)
+
+                config.lastSyncTime = System.currentTimeMillis()
+
+                SyncResult.Success(localDirty.size, appliedCount)
             }
-
-            val credential = if (!account.isNullOrEmpty()) {
-                Credentials.basic(account, password ?: "")
-            } else null
-
-            val config = PlayHistorySyncConfig
-            config.ensureDeviceId()
-            val lastSyncTime = config.lastSyncTime
-
-            val localDirty = DatabaseManager.instance.getPlayHistoryDao()
-                .getModifiedSince(SYNC_MEDIA_TYPES, lastSyncTime)
-
-            val cloudData = downloadFromWebDav(serverUrl, credential)
-
-            val urlMap = buildStorageUrlMap()
-
-            val merged = if (cloudData != null) {
-                mergeLocalToCloud(cloudData, localDirty, urlMap)
-            } else {
-                buildSyncData(localDirty, urlMap)
-            }
-
-            val uploadSuccess = uploadToWebDav(serverUrl, credential, merged)
-            if (!uploadSuccess) {
-                return@withContext SyncResult.Error("上传同步数据失败")
-            }
-
-            val remoteDirty = if (cloudData != null) {
-                filterNewRecords(cloudData, lastSyncTime)
-            } else {
-                emptyList()
-            }
-
-            val appliedCount = mergeCloudToLocal(remoteDirty)
-
-            config.lastSyncTime = System.currentTimeMillis()
-
-            SyncResult.Success(localDirty.size, appliedCount)
+        } catch (e: TimeoutCancellationException) {
+            SyncResult.Error("服务器不在线")
         } catch (e: Exception) {
             e.printStackTrace()
             SyncResult.Error("同步失败: ${e.message}")
