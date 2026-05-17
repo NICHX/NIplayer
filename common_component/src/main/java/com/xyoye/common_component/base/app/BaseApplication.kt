@@ -10,10 +10,15 @@ import com.alibaba.android.arouter.launcher.ARouter
 import com.tencent.bugly.crashreport.CrashReport
 import com.tencent.mmkv.MMKV
 import com.xyoye.common_component.BuildConfig
+import com.xyoye.common_component.config.PlayHistorySyncConfig
 import com.xyoye.common_component.notification.Notifications
 import com.xyoye.common_component.utils.ActivityHelper
+import com.xyoye.common_component.utils.PlayHistorySyncManager
 import com.xyoye.common_component.utils.SecurityHelper
 import com.xyoye.open_cc.OpenCCFile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * Created by xyoye on 2020/4/13.
@@ -54,6 +59,16 @@ open class BaseApplication : Application(), ImageLoaderFactory {
         Notifications.setupNotificationChannels(this)
         ActivityHelper.instance.init(this)
         OpenCCFile.init(this)
+
+        // 启动时自动同步播放记录
+        CoroutineScope(Dispatchers.IO).launch {
+            if (PlayHistorySyncConfig.enabled) {
+                try {
+                    PlayHistorySyncManager.sync()
+                } catch (_: Exception) {
+                }
+            }
+        }
     }
 
     override fun newImageLoader(): ImageLoader {

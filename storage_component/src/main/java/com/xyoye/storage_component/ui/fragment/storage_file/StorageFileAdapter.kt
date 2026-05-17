@@ -42,6 +42,7 @@ import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.enums.MediaType
 import com.xyoye.common_component.storage.file.subtitle
 import com.xyoye.common_component.storage.impl.SmbStorage
+import com.xyoye.common_component.storage.impl.WebDavStorage
 import com.xyoye.common_component.utils.PlayHistoryUtils
 import com.xyoye.common_component.utils.formatDuration
 import com.xyoye.common_component.utils.formatFileSize
@@ -525,7 +526,7 @@ class StorageFileAdapter(
             if (file.isFile()) {
                 add(ManageAction.DOWNLOAD.toAction())
             }
-            if (viewModel.storage is SmbStorage) {
+            if (viewModel.storage is SmbStorage || viewModel.storage is WebDavStorage) {
                 add(ManageAction.FILE_INFO.toAction())
                 add(ManageAction.DELETE.toAction())
             }

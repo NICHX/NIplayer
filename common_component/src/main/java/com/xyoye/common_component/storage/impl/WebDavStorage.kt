@@ -7,6 +7,7 @@ import com.xyoye.common_component.storage.AbstractStorage
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.file.impl.WebDavStorageFile
 import com.xyoye.common_component.weight.ToastCenter
+import com.xyoye.data_component.bean.StorageFileInfo
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import com.xyoye.sardine.DavResource
@@ -138,6 +139,42 @@ class WebDavStorage(
         } catch (e: Exception) {
             e.printStackTrace()
             ToastCenter.showError("保存文件失败: ${e.message}")
+            false
+        }
+    }
+
+    override suspend fun fileInfo(file: StorageFile): StorageFileInfo? {
+        if (file !is WebDavStorageFile) return null
+        return try {
+            val resources = sardine.list(file.fileUrl(), 0)
+            val resource = resources.firstOrNull() ?: return null
+            val isDir = resource.isDirectory
+            StorageFileInfo(
+                name = file.fileName(),
+                path = file.storagePath(),
+                isDirectory = isDir,
+                fileSize = resource.contentLength,
+                lastModified = resource.modified.time,
+                childCount = if (isDir) sardine.list(file.fileUrl()).size - 1 else 0,
+                isVideo = file.isVideoFile(),
+                isAudio = file.isAudioFile(),
+                isImage = file.isImageFile()
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            ToastCenter.showError("获取文件信息失败: ${e.message}")
+            null
+        }
+    }
+
+    override suspend fun delete(file: StorageFile): Boolean {
+        if (file !is WebDavStorageFile) return false
+        return try {
+            sardine.delete(file.fileUrl())
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            ToastCenter.showError("删除失败: ${e.message}")
             false
         }
     }

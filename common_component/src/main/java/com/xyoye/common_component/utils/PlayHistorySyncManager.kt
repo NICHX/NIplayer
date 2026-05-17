@@ -34,6 +34,18 @@ object PlayHistorySyncManager {
         timeZone = TimeZone.getTimeZone("UTC")
     }
 
+    private suspend fun buildStorageUrlMap(): Map<Int, String> {
+        val libraryDao = DatabaseManager.instance.getMediaLibraryDao()
+        val urlMap = mutableMapOf<Int, String>()
+        for (type in SYNC_MEDIA_TYPES) {
+            val servers = libraryDao.getByMediaTypeSuspend(type)
+            for (server in servers) {
+                urlMap[server.id] = server.url.trimEnd('/')
+            }
+        }
+        return urlMap
+    }
+
     suspend fun sync(): SyncResult = withContext(Dispatchers.IO) {
         try {
             val (serverUrl, account, password) = resolveWebDavServer()
@@ -54,10 +66,12 @@ object PlayHistorySyncManager {
 
             val cloudData = downloadFromWebDav(serverUrl, credential)
 
+            val urlMap = buildStorageUrlMap()
+
             val merged = if (cloudData != null) {
-                mergeLocalToCloud(cloudData, localDirty)
+                mergeLocalToCloud(cloudData, localDirty, urlMap)
             } else {
-                buildSyncData(localDirty)
+                buildSyncData(localDirty, urlMap)
             }
 
             val uploadSuccess = uploadToWebDav(serverUrl, credential, merged)
@@ -82,14 +96,14 @@ object PlayHistorySyncManager {
         }
     }
 
-    private fun buildSyncData(records: List<PlayHistoryEntity>): JSONObject {
+    private fun buildSyncData(records: List<PlayHistoryEntity>, urlMap: Map<Int, String>): JSONObject {
         val root = JSONObject()
         root.put("version", 1)
         root.put("device_id", PlayHistorySyncConfig.deviceId)
         root.put("last_sync_time", isoFormat.format(Date()))
         val arr = JSONArray()
         for (record in records) {
-            arr.put(recordToJson(record))
+            arr.put(recordToJson(record, urlMap))
         }
         root.put("records", arr)
         return root
@@ -97,7 +111,8 @@ object PlayHistorySyncManager {
 
     private fun mergeLocalToCloud(
         cloudData: JSONObject,
-        localDirty: List<PlayHistoryEntity>
+        localDirty: List<PlayHistoryEntity>,
+        urlMap: Map<Int, String>
     ): JSONObject {
         val cloudRecords = parseRecords(cloudData.optJSONArray("records"))
         val recordMap = mutableMapOf<String, JSONObject>()
@@ -109,8 +124,8 @@ object PlayHistorySyncManager {
         }
 
         for (local in localDirty) {
-            val syncKey = buildSyncKey(local)
-            val json = recordToJson(local)
+            val syncKey = buildSyncKey(local, urlMap)
+            val json = recordToJson(local, urlMap)
             val existing = recordMap[syncKey]
             if (existing == null) {
                 recordMap[syncKey] = json
@@ -157,11 +172,11 @@ object PlayHistorySyncManager {
         val dao = DatabaseManager.instance.getPlayHistoryDao()
         val libraryDao = DatabaseManager.instance.getMediaLibraryDao()
 
-        val libraries = mutableMapOf<Int, MediaType>()
+        val urlToId = mutableMapOf<String, Int>()
         for (type in SYNC_MEDIA_TYPES) {
             val servers = libraryDao.getByMediaTypeSuspend(type)
             for (server in servers) {
-                libraries[server.id] = server.mediaType
+                urlToId[server.url.trimEnd('/')] = server.id
             }
         }
 
@@ -173,7 +188,12 @@ object PlayHistorySyncManager {
             val storagePath = remoteJson.optString("storage_path")
             if (storagePath.isEmpty()) continue
 
-            val matchedStorageId = findMatchingStorageId(mediaType, storagePath, libraries)
+            val serverUrl = remoteJson.optString("server_url")
+            val matchedStorageId = if (serverUrl.isNotEmpty()) {
+                urlToId[serverUrl]
+            } else {
+                null
+            }
             if (matchedStorageId == null) continue
 
             val uniqueKey = buildUniqueKey(matchedStorageId, storagePath)
@@ -187,13 +207,18 @@ object PlayHistorySyncManager {
             val entity = PlayHistoryEntity(
                 id = 0,
                 videoName = remoteJson.optString("video_name"),
-                url = "",
+                url = remoteJson.optString("url"),
                 mediaType = mediaType,
                 videoPosition = remoteJson.optLong("video_position"),
                 videoDuration = remoteJson.optLong("video_duration"),
                 playTime = Date(remotePlayTime),
+                danmuPath = remoteJson.optString("danmu_path").ifEmpty { null },
+                episodeId = remoteJson.optString("episode_id").ifEmpty { null },
                 subtitlePath = remoteJson.optString("subtitle_path").ifEmpty { null },
                 audioPath = remoteJson.optString("audio_path").ifEmpty { null },
+                torrentPath = remoteJson.optString("torrent_path").ifEmpty { null },
+                torrentIndex = remoteJson.optInt("torrent_index", -1),
+                httpHeader = remoteJson.optString("http_header").ifEmpty { null },
                 uniqueKey = uniqueKey,
                 storagePath = storagePath,
                 storageId = matchedStorageId
@@ -205,38 +230,35 @@ object PlayHistorySyncManager {
         return appliedCount
     }
 
-    private fun findMatchingStorageId(
-        mediaType: MediaType,
-        storagePath: String,
-        libraries: Map<Int, MediaType>
-    ): Int? {
-        for ((id, type) in libraries) {
-            if (type == mediaType) return id
-        }
-        return null
-    }
-
-    private fun buildSyncKey(entity: PlayHistoryEntity): String {
-        val mediaType = entity.mediaType.value
+    private fun buildSyncKey(entity: PlayHistoryEntity, urlMap: Map<Int, String>): String {
+        val serverUrl = entity.storageId?.let { urlMap[it] } ?: ""
         val storagePath = entity.storagePath ?: ""
-        return "$mediaType:$storagePath"
+        return "$serverUrl:$storagePath"
     }
 
     private fun buildUniqueKey(storageId: Int, storagePath: String): String {
         return "$storageId-$storagePath".toMd5String()
     }
 
-    private fun recordToJson(entity: PlayHistoryEntity): JSONObject {
+    private fun recordToJson(entity: PlayHistoryEntity, urlMap: Map<Int, String>): JSONObject {
         val json = JSONObject()
-        json.put("sync_key", buildSyncKey(entity))
+        val serverUrl = entity.storageId?.let { urlMap[it] } ?: ""
+        json.put("sync_key", "$serverUrl:${entity.storagePath ?: ""}")
+        json.put("server_url", serverUrl)
         json.put("media_type", entity.mediaType.value)
         json.put("storage_path", entity.storagePath ?: "")
         json.put("video_name", entity.videoName)
+        json.put("url", entity.url)
         json.put("video_position", entity.videoPosition)
         json.put("video_duration", entity.videoDuration)
         json.put("play_time", isoFormat.format(entity.playTime))
         json.put("subtitle_path", entity.subtitlePath ?: "")
         json.put("audio_path", entity.audioPath ?: "")
+        json.put("danmu_path", entity.danmuPath ?: "")
+        json.put("episode_id", entity.episodeId ?: "")
+        json.put("torrent_path", entity.torrentPath ?: "")
+        json.put("torrent_index", entity.torrentIndex)
+        json.put("http_header", entity.httpHeader ?: "")
         json.put("device_id", PlayHistorySyncConfig.deviceId)
         return json
     }
