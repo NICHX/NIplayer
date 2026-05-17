@@ -15,7 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.io.BufferedOutputStream
@@ -38,14 +40,32 @@ object DownloadManager {
     private val _allTasks = MutableStateFlow<List<DownloadTaskEntity>>(emptyList())
     val allTasks: StateFlow<List<DownloadTaskEntity>> = _allTasks
 
+    private val _progressUpdates = MutableSharedFlow<Map<Long, Long>>(extraBufferCapacity = 64, replay = 1)
+    val progressUpdates: SharedFlow<Map<Long, Long>> = _progressUpdates
+
+    private val currentProgress = ConcurrentHashMap<Long, Long>()
+
     init {
         scope.launch {
             DatabaseManager.instance.getDownloadTaskDao().getAllFlow().collect { tasks ->
-                _allTasks.value = tasks
+                val patched = tasks.map { task ->
+                    currentProgress[task.id]?.let { task.copy(downloadedBytes = it) } ?: task
+                }
+                _allTasks.value = patched
                 _taskCount.value = tasks.size
             }
         }
+        scope.launch {
+            _progressUpdates.collect { progress ->
+                val current = _allTasks.value
+                val patched = current.map { task ->
+                    progress[task.id]?.let { task.copy(downloadedBytes = it) } ?: task
+                }
+                _allTasks.value = patched
+            }
+        }
         startProcessingLoop()
+        startProgressFlusher()
     }
 
     private fun startProcessingLoop() {
@@ -73,9 +93,26 @@ object DownloadManager {
                     processingJobs[task.id] = job
                     job.invokeOnCompletion {
                         processingJobs.remove(task.id)
+                        currentProgress.remove(task.id)
                     }
                 }
                 delay(500)
+            }
+        }
+    }
+
+    private fun startProgressFlusher() {
+        scope.launch {
+            while (true) {
+                delay(3000)
+                if (currentProgress.isEmpty()) continue
+                val snapshot = currentProgress.toMap()
+                val dao = DatabaseManager.instance.getDownloadTaskDao()
+                for ((taskId, bytes) in snapshot) {
+                    try {
+                        dao.updateProgress(taskId, bytes, DownloadState.DOWNLOADING)
+                    } catch (_: Exception) { }
+                }
             }
         }
     }
@@ -290,7 +327,7 @@ object DownloadManager {
             val buffer = ByteArray(512 * 1024)
             var len: Int
             var totalRead = offset
-            var updateCounter = 0
+            var emitCounter = 0
             while (inputStream.read(buffer).also { len = it } != -1) {
                 if (!processingJobs.containsKey(task.id)) {
                     dao.updateProgress(task.id, totalRead, DownloadState.PAUSED)
@@ -298,14 +335,16 @@ object DownloadManager {
                 }
                 outputStream.write(buffer, 0, len)
                 totalRead += len
-                updateCounter++
-                if (updateCounter >= 3) {
-                    dao.updateProgress(task.id, totalRead, DownloadState.DOWNLOADING)
-                    updateCounter = 0
+                emitCounter++
+                if (emitCounter >= 3) {
+                    currentProgress[task.id] = totalRead
+                    _progressUpdates.tryEmit(currentProgress.toMap())
+                    emitCounter = 0
                 }
             }
             outputStream.flush()
 
+            currentProgress.remove(task.id)
             if (processingJobs.containsKey(task.id)) {
                 dao.updateProgress(task.id, totalRead, DownloadState.COMPLETED)
             }
@@ -358,7 +397,7 @@ object DownloadManager {
             val buffer = ByteArray(512 * 1024)
             var len: Int
             var totalRead = offset
-            var updateCounter = 0
+            var emitCounter = 0
             val bufferedOut = BufferedOutputStream(outputStream)
             while (inputStream.read(buffer).also { len = it } != -1) {
                 if (!processingJobs.containsKey(task.id)) {
@@ -367,14 +406,16 @@ object DownloadManager {
                 }
                 bufferedOut.write(buffer, 0, len)
                 totalRead += len
-                updateCounter++
-                if (updateCounter >= 3) {
-                    dao.updateProgress(task.id, totalRead, DownloadState.DOWNLOADING)
-                    updateCounter = 0
+                emitCounter++
+                if (emitCounter >= 3) {
+                    currentProgress[task.id] = totalRead
+                    _progressUpdates.tryEmit(currentProgress.toMap())
+                    emitCounter = 0
                 }
             }
             bufferedOut.flush()
 
+            currentProgress.remove(task.id)
             if (processingJobs.containsKey(task.id)) {
                 dao.updateProgress(task.id, totalRead, DownloadState.COMPLETED)
             }
