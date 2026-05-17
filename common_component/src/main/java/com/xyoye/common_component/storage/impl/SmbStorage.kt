@@ -453,11 +453,14 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
     private suspend fun extractImageMetadata(file: SmbStorageFile, base: StorageFileInfo): StorageFileInfo {
         val diskShare = mDiskShare ?: return base
         return try {
-            val smbFile = diskShare.openFile(file.filePath())
             val options = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
             }
-            BitmapFactory.decodeStream(SmbFileInputStream(smbFile), null, options)
+            diskShare.openFile(file.filePath()).use { smbFile ->
+                SmbFileInputStream(smbFile).use { inputStream ->
+                    BitmapFactory.decodeStream(inputStream, null, options)
+                }
+            }
 
             base.copy(
                 videoWidth = options.outWidth,

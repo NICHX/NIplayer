@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.xyoye.common_component.source.base.BaseVideoSource
+import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.bean.VideoTrackBean
 import com.xyoye.data_component.enums.PlayState
 import com.xyoye.data_component.enums.PlayerType
@@ -274,6 +275,7 @@ class DanDanVideoPlayer(
                 val headers = videoSource.getHttpHeader()
                 if (DolbyVisionDetector.isDolbyVision(url, headers)) {
                     VideoLog.d("DanDanVideoPlayer--Dolby Vision detected, switching to ExoPlayer")
+                    ToastCenter.showInfo("当前视频含杜比视界，已自动切换为 ExoPlayer 解码")
                     PlayerInitializer.playerType = PlayerType.TYPE_EXO_PLAYER
                 }
             }
