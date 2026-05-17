@@ -32,9 +32,13 @@ object PlayHistorySyncManager {
         MediaType.ALSIT_STORAGE
     )
 
-    private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
-        timeZone = TimeZone.getTimeZone("UTC")
+    private val isoFormat = ThreadLocal.withInitial {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
     }
+
+    private fun isoFormat(): SimpleDateFormat = isoFormat.get()
 
     private suspend fun buildStorageUrlMap(): Map<Int, String> {
         val libraryDao = DatabaseManager.instance.getMediaLibraryDao()
@@ -110,7 +114,7 @@ object PlayHistorySyncManager {
         val root = JSONObject()
         root.put("version", 1)
         root.put("device_id", PlayHistorySyncConfig.deviceId)
-        root.put("last_sync_time", isoFormat.format(Date()))
+        root.put("last_sync_time", isoFormat().format(Date()))
         val arr = JSONArray()
         for (record in records) {
             arr.put(recordToJson(record, urlMap))
@@ -151,7 +155,7 @@ object PlayHistorySyncManager {
         val root = JSONObject()
         root.put("version", 1)
         root.put("device_id", PlayHistorySyncConfig.deviceId)
-        root.put("last_sync_time", isoFormat.format(Date()))
+        root.put("last_sync_time", isoFormat().format(Date()))
         val arr = JSONArray()
         for (value in recordMap.values) {
             arr.put(value)
@@ -280,7 +284,7 @@ object PlayHistorySyncManager {
         json.put("url", entity.url)
         json.put("video_position", entity.videoPosition)
         json.put("video_duration", entity.videoDuration)
-        json.put("play_time", isoFormat.format(entity.playTime))
+        json.put("play_time", isoFormat().format(entity.playTime))
         json.put("subtitle_path", entity.subtitlePath ?: "")
         json.put("audio_path", entity.audioPath ?: "")
         json.put("danmu_path", entity.danmuPath ?: "")
@@ -303,7 +307,7 @@ object PlayHistorySyncManager {
 
     private fun parseIsoDate(isoStr: String): Long {
         return try {
-            isoFormat.parse(isoStr)?.time ?: 0L
+            isoFormat().parse(isoStr)?.time ?: 0L
         } catch (e: Exception) {
             android.util.Log.e("PlayHistorySync", "parseIsoDate failed: $isoStr, ${e.message}")
             0L

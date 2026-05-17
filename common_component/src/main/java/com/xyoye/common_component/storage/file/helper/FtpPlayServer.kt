@@ -92,6 +92,7 @@ class FtpPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         try {
             Thread.sleep(RETRY_DELAY_MS)
         } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
         }
         return getInputStream(storage, file, offset)
     }

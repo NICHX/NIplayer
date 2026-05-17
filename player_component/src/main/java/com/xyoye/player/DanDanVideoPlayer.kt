@@ -27,6 +27,7 @@ import com.xyoye.player.kernel.inter.VideoPlayerEventListener
 import com.xyoye.player.surface.InterSurfaceView
 import com.xyoye.player.surface.SurfaceFactory
 import com.xyoye.player.utils.AudioFocusHelper
+import com.xyoye.player.utils.DolbyVisionDetector
 import com.xyoye.player.utils.PlayerConstant
 import com.xyoye.player.utils.VideoLog
 import com.xyoye.player.wrapper.InterVideoPlayer
@@ -264,6 +265,19 @@ class DanDanVideoPlayer(
             }
 
             mAudioFocusHelper.enable = PlayerInitializer.isEnableAudioFocus
+
+            //检测杜比视界：IJK/VLC不支持杜比视界解码，自动切换ExoPlayer
+            if (PlayerInitializer.playerType != PlayerType.TYPE_EXO_PLAYER
+                && videoSource.getVideoUrl().isNotEmpty()
+                && videoSource.getVideoUrl() != "about:blank") {
+                val url = videoSource.getVideoUrl()
+                val headers = videoSource.getHttpHeader()
+                if (DolbyVisionDetector.isDolbyVision(url, headers)) {
+                    VideoLog.d("DanDanVideoPlayer--Dolby Vision detected, switching to ExoPlayer")
+                    PlayerInitializer.playerType = PlayerType.TYPE_EXO_PLAYER
+                }
+            }
+
             //初始化播放器
             mVideoPlayer = PlayerFactory.getFactory(PlayerInitializer.playerType)
                 .createPlayer(context).apply {
