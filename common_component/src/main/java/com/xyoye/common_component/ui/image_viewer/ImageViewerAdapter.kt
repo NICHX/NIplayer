@@ -10,8 +10,8 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
 import com.xyoye.common_component.databinding.ItemImageViewerBinding
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -24,6 +24,7 @@ import java.util.Collections
 class ImageViewerAdapter(
     private val imagePaths: List<String>,
     private val context: Context,
+    private val scope: CoroutineScope,
     private val authHeader: String? = null
 ) : RecyclerView.Adapter<ImageViewerAdapter.ImageViewHolder>() {
 
@@ -60,7 +61,7 @@ class ImageViewerAdapter(
             }
 
             loadingSet.add(position)
-            GlobalScope.launch(Dispatchers.IO) {
+            scope.launch(Dispatchers.IO) {
                 try {
                     val bitmap = loadImage(imagePath, context.samplingSize())
                     if (bitmap != null) {
@@ -89,7 +90,7 @@ class ImageViewerAdapter(
             if (bitmapCache.get(pos) != null) continue
             if (loadingSet.contains(pos)) continue
             loadingSet.add(pos)
-            GlobalScope.launch(Dispatchers.IO) {
+            scope.launch(Dispatchers.IO) {
                 try {
                     val bitmap = loadImage(imagePaths[pos], context.samplingSize())
                     if (bitmap != null) {

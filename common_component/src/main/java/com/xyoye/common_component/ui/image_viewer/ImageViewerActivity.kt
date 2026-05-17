@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
 import android.widget.ImageView
+import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.widget.ViewPager2
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.gyf.immersionbar.ImmersionBar
@@ -15,7 +16,6 @@ import com.xyoye.common_component.base.BaseAppCompatActivity
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.databinding.ActivityImageViewerBinding
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -85,7 +85,7 @@ class ImageViewerActivity : BaseAppCompatActivity<ActivityImageViewerBinding>() 
         dataBinding.photoView.mediumScale = 5f
         dataBinding.photoView.minimumScale = 1f
         
-        GlobalScope.launch(Dispatchers.IO) {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val bitmap = loadImage(path)
                 withContext(Dispatchers.Main) {
@@ -179,7 +179,7 @@ class ImageViewerActivity : BaseAppCompatActivity<ActivityImageViewerBinding>() 
     }
 
     private fun initViewPager(imageList: List<String>, startPosition: Int) {
-        val adapter = ImageViewerAdapter(imageList, this, authHeader)
+        val adapter = ImageViewerAdapter(imageList, this, lifecycleScope, authHeader)
         dataBinding.viewPager.adapter = adapter
         dataBinding.viewPager.setCurrentItem(startPosition, false)
 

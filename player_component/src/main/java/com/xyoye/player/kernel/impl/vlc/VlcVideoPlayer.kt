@@ -5,18 +5,21 @@ import android.content.Context
 import android.content.res.AssetFileDescriptor
 import android.graphics.Point
 import android.net.Uri
+import android.os.Build
 import android.support.v4.media.session.PlaybackStateCompat
 import android.view.Surface
-import com.xyoye.common_component.utils.IOUtils
 import com.xyoye.data_component.bean.VideoTrackBean
 import com.xyoye.data_component.enums.SurfaceType
 import com.xyoye.data_component.enums.TrackType
 import com.xyoye.data_component.enums.VLCHWDecode
+import com.xyoye.data_component.enums.VLCPixelFormat
 import com.xyoye.player.info.PlayerInitializer
 import com.xyoye.player.kernel.inter.AbstractVideoPlayer
+import com.xyoye.common_component.utils.IOUtils
 import com.xyoye.player.utils.PlayerConstant
 import com.xyoye.player.utils.VideoLog
 import com.xyoye.player.utils.VlcProxyServer
+import com.xyoye.subtitle.MixedSubtitle
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
@@ -143,15 +146,28 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
             e.printStackTrace()
         }
         mMediaPlayer.setEventListener(null)
-        stop()
         IOUtils.closeIO(videoSourceFd)
-        mMediaPlayer.media?.apply {
-            setEventListener(null)
-            release()
-        }
-        if (!mMediaPlayer.isReleased) {
-            mMediaPlayer.release()
-        }
+
+        cachedLibVlc = null
+
+        Thread {
+            try {
+                if (mMediaPlayer.hasMedia() && !mMediaPlayer.isReleased) {
+                    mMediaPlayer.stop()
+                }
+                mMediaPlayer.media?.apply {
+                    setEventListener(null)
+                    release()
+                }
+                if (!mMediaPlayer.isReleased) {
+                    mMediaPlayer.release()
+                }
+            } catch (ignored: Exception) {
+            }
+        }.apply {
+            isDaemon = true
+            name = "vlc-player-release"
+        }.start()
     }
 
     override fun seekTo(timeMs: Long) {

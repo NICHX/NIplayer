@@ -16,6 +16,7 @@ import androidx.lifecycle.lifecycleScope
 import com.xyoye.common_component.source.base.BaseVideoSource
 import com.xyoye.data_component.bean.VideoTrackBean
 import com.xyoye.data_component.enums.PlayState
+import com.xyoye.data_component.enums.PlayerType
 import com.xyoye.data_component.enums.TrackType
 import com.xyoye.data_component.enums.VideoScreenScale
 import com.xyoye.player.controller.VideoController
@@ -32,8 +33,6 @@ import com.xyoye.player.wrapper.InterVideoPlayer
 import com.xyoye.player.wrapper.InterVideoTrack
 import com.xyoye.player_component.utils.PlayRecorder
 import com.xyoye.subtitle.MixedSubtitle
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 /**
  * Created by xyoye on 2020/11/3.
@@ -52,6 +51,9 @@ class DanDanVideoPlayer(
 
     //同步锁对象
     private val stateLock = Any()
+
+    //异步释放标记
+    private var mPlayerAsyncReleased = false
 
     //默认组件参数
     private val mDefaultLayoutParams = LayoutParams(
@@ -248,10 +250,11 @@ class DanDanVideoPlayer(
         synchronized(stateLock) {
             // 释放旧播放器资源
             if (this::mVideoPlayer.isInitialized) {
-                if (!mPlayerReleased) {
+                if (!mPlayerReleased && !mPlayerAsyncReleased) {
                     mVideoPlayer.release()
                 }
                 mPlayerReleased = false
+                mPlayerAsyncReleased = false
             }
             // 释放旧渲染视图
             mRenderView?.let {
@@ -288,6 +291,10 @@ class DanDanVideoPlayer(
     private fun startPrepare(): Boolean {
         return if (videoSource.getVideoUrl().isNotEmpty()) {
             mVideoPlayer.setDataSource(videoSource.getVideoUrl(), videoSource.getHttpHeader())
+            //setDataSource可能同步触发onError，状态已变为STATE_ERROR时跳过后续步骤
+            if (mCurrentPlayState == PlayState.STATE_ERROR) {
+                return false
+            }
             mVideoPlayer.prepareAsync()
             setPlayState(PlayState.STATE_PREPARING)
             true
@@ -344,21 +351,13 @@ class DanDanVideoPlayer(
 
     fun releasePlayerAsync() {
         if (mCurrentPlayState != PlayState.STATE_IDLE && !mPlayerReleased) {
-            val latch = CountDownLatch(1)
             Handler(Looper.getMainLooper()).post {
-                try {
-                    if (this::mVideoPlayer.isInitialized) {
-                        mVideoPlayer.release()
-                    }
-                } finally {
-                    latch.countDown()
+                if (this::mVideoPlayer.isInitialized) {
+                    mVideoPlayer.release()
                 }
             }
-            val released = latch.await(3, TimeUnit.SECONDS)
-            if (!released) {
-                VideoLog.e("DanDanVideoPlayer--releasePlayerAsync--> Player release timed out after 3s, force proceeding")
-            }
             mPlayerReleased = true
+            mPlayerAsyncReleased = true
         }
     }
 
@@ -373,7 +372,7 @@ class DanDanVideoPlayer(
             //释放播放器控制器
             mVideoController?.destroy()
             //释放播放器
-            if (!mPlayerReleased && this::mVideoPlayer.isInitialized) {
+            if (!mPlayerReleased && !mPlayerAsyncReleased && this::mVideoPlayer.isInitialized) {
                 mVideoPlayer.release()
             }
             mPlayerReleased = false

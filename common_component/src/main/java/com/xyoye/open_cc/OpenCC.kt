@@ -36,16 +36,14 @@ object OpenCC {
 
     private fun convert(text: String, config: File): String {
         return try {
-            // 检查是否是符合 Unicode 6.0 的格式的UFT-8字符串
-            // Bugly#2456345
-            if (Utf8.isWellFormed(text.toByteArray()).not()) {
+            val textBytes = text.toByteArray(Charsets.UTF_8)
+            if (Utf8.isWellFormed(textBytes).not()) {
                 Log.d("OpenCC", "invalid utf-8 string: $text")
                 return text
             }
-
             convert(text, config.absolutePath)
         } catch (t: Throwable) {
-            t.printStackTrace()
+            Log.e("OpenCC", "convert failed: ${t.message}")
             text
         }
     }

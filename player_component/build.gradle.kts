@@ -42,5 +42,8 @@ dependencies {
 
     implementation(Dependencies.VLC.vlc)
 
+    //GSYVideoPlayer ex_so: 更新 IJKPlayer 原生库，适配 Android 16+ 与 16K Page Size
+    implementation("io.github.carguo:gsyvideoplayer-ex_so:13.0.0")
+
     kapt(Dependencies.Alibaba.arouter_compiler)
 }

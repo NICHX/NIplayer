@@ -44,6 +44,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.activity.OnBackPressedCallback
 
 @Route(path = RouteTable.Player.PlayerCenter)
 class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
@@ -107,6 +108,8 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
         dataBinding.playerContainer.addView(danDanPlayer)
 
         applyPlaySource(VideoSourceManager.getInstance().getSource())
+
+        onBackPressedDispatcher.addCallback(this, backPressedCallback)
     }
 
     override fun onResume() {
@@ -132,13 +135,14 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
         super.onDestroy()
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        if (danDanPlayer.onBackPressed()) {
-            return
+    private val backPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            if (danDanPlayer.onBackPressed()) {
+                return
+            }
+            danDanPlayer.recordPlayInfo()
+            finish()
         }
-        danDanPlayer.recordPlayInfo()
-        finish()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

@@ -193,6 +193,7 @@ abstract class GestureVideoController(
     }
 
     protected fun slideToChangePosition(deltaX: Float) {
+        if (measuredWidth <= 0) return
         //滑动距离与实际进度缩放比例
         val zoomPercent = 120 * 1000
         val duration = mControlWrapper.getDuration()
@@ -214,6 +215,7 @@ abstract class GestureVideoController(
     }
 
     protected fun slideToChangeBrightness(deltaY: Float) {
+        if (measuredHeight <= 0) return
         mBrightness = if (mBrightness == -1f) 0.5f else mBrightness
 
         var newBrightness = deltaY * 2f / measuredHeight * 1.0f + mBrightness
@@ -237,6 +239,7 @@ abstract class GestureVideoController(
     }
 
     protected fun slideToChangeVolume(deltaY: Float) {
+        if (measuredHeight <= 0) return
         val maxVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
 
         var newVolume = (deltaY * 2 / measuredHeight * maxVolume + mStreamVolume).toInt()
