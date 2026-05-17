@@ -73,7 +73,7 @@ class StorageFileFragment :
         viewModel.storage = ownerActivity.storage
 
         dataBinding.scrollToTopBt.setOnClickListener {
-            dataBinding.storageFileRv.smoothScrollToPosition(0)
+            dataBinding.storageFileRv.scrollToPosition(0)
         }
 
         viewModel.fileLiveData.observe(this) {

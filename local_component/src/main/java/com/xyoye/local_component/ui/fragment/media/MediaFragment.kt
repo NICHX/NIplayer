@@ -52,6 +52,12 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
             showAddStorageDialog()
         }
 
+        dataBinding.downloadBt.setOnClickListener {
+            ARouter.getInstance()
+                .build(RouteTable.Stream.DownloadManager)
+                .navigation()
+        }
+
         viewModel.mediaLibWithStatusLiveData.observe(this) {
             dataBinding.mediaLibRv.setData(it)
         }

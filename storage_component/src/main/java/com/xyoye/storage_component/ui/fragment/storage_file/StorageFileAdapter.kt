@@ -36,6 +36,10 @@ import com.xyoye.common_component.extension.toResColor
 import com.xyoye.common_component.extension.toResDrawable
 import com.xyoye.common_component.extension.toResString
 import com.xyoye.common_component.storage.file.StorageFile
+import com.xyoye.common_component.storage.download.DownloadManager
+import com.xyoye.common_component.database.DatabaseManager
+import com.xyoye.data_component.entity.MediaLibraryEntity
+import com.xyoye.data_component.enums.MediaType
 import com.xyoye.common_component.storage.file.subtitle
 import com.xyoye.common_component.storage.impl.SmbStorage
 import com.xyoye.common_component.utils.PlayHistoryUtils
@@ -73,8 +77,9 @@ class StorageFileAdapter(
         BIND_AUDIO("添加音频文件", com.xyoye.common_component.R.drawable.ic_bind_audio),
         UNBIND_SUBTITLE("移除字幕绑定", com.xyoye.common_component.R.drawable.ic_unbind_subtitle),
         UNBIND_AUDIO("移除音频绑定", com.xyoye.common_component.R.drawable.ic_unbind_subtitle),
+        DOWNLOAD("下载", com.xyoye.common_component.R.drawable.ic_arrow_down),
         FILE_INFO("文件信息", com.xyoye.common_component.R.drawable.ic_tag),
-        DELETE("删除", com.xyoye.common_component.R.drawable.ic_toast_delete);
+        DELETE("删除", com.xyoye.common_component.R.drawable.ic_delete_red);
 
         fun toAction() = SheetActionBean(this, title, icon)
     }
@@ -496,6 +501,7 @@ class StorageFileAdapter(
                 ManageAction.BIND_AUDIO -> bindAudioSource(file)
                 ManageAction.UNBIND_SUBTITLE -> viewModel.unbindExtraSource(file, TrackType.SUBTITLE)
                 ManageAction.UNBIND_AUDIO -> viewModel.unbindExtraSource(file, TrackType.AUDIO)
+                ManageAction.DOWNLOAD -> downloadFile(file)
                 ManageAction.FILE_INFO -> showFileInfo(file)
                 ManageAction.DELETE -> confirmDelete(file)
             }
@@ -515,6 +521,9 @@ class StorageFileAdapter(
             }
             if (file.playHistory?.audioPath != null) {
                 add(ManageAction.UNBIND_AUDIO.toAction())
+            }
+            if (file.isFile()) {
+                add(ManageAction.DOWNLOAD.toAction())
             }
             if (viewModel.storage is SmbStorage) {
                 add(ManageAction.FILE_INFO.toAction())
@@ -638,6 +647,45 @@ class StorageFileAdapter(
                 } else {
                     ToastCenter.showError("删除失败")
                 }
+            }
+        }
+    }
+
+    private fun downloadFile(file: StorageFile) {
+        viewModel.viewModelScope.launch(Dispatchers.IO) {
+            val externalLibraries = DatabaseManager.instance.getMediaLibraryDao()
+                .getByMediaTypeSuspend(MediaType.EXTERNAL_STORAGE)
+
+            if (externalLibraries.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    android.app.AlertDialog.Builder(activity)
+                        .setTitle("无法下载")
+                        .setMessage("请先在「媒体」页面点击 + 号添加「设备存储库」，设置保存路径后才能下载文件")
+                        .setPositiveButton("确定", null)
+                        .show()
+                }
+                return@launch
+            }
+
+            val actions = externalLibraries.map { library ->
+                SheetActionBean(library, library.displayName, library.mediaType.cover)
+            }
+
+            withContext(Dispatchers.Main) {
+                BottomActionDialog(activity, actions, "选择保存位置") {
+                    val selectedLibrary = it.actionId as MediaLibraryEntity
+                    DownloadManager.addTask(
+                        storageId = viewModel.storage.library.id,
+                        filePath = file.storagePath(),
+                        fileName = file.fileName(),
+                        uniqueKey = file.uniqueKey(),
+                        totalBytes = file.fileLength(),
+                        targetStorageUrl = selectedLibrary.url,
+                        targetStorageName = selectedLibrary.displayName
+                    )
+                    ToastCenter.showSuccess("已添加到下载队列")
+                    return@BottomActionDialog true
+                }.show()
             }
         }
     }
