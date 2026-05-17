@@ -311,7 +311,6 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         if (switchShareDisk(shareName).not()) {
             return null
         }
-        val diskShare = mDiskShare ?: return null
 
         return try {
             if (file.isShareDirectory()) {
@@ -321,15 +320,10 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
                     isDirectory = true,
                     fileSize = 0,
                     lastModified = 0,
-                    childCount = diskShare.openDirectory(file.filePath()).list().size
+                    childCount = 0
                 )
             } else {
-                val fileSize = try {
-                    val entry = diskShare.open(file.filePath())
-                    entry.use {
-                        it.standardFileInfo().endOfFile
-                    }
-                } catch (_: Exception) { 0L }
+                val fileSize = file.fileLength()
 
                 val baseInfo = StorageFileInfo(
                     name = file.fileName(),
@@ -343,9 +337,9 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
                 )
 
                 if (file.isVideoFile() || file.isAudioFile()) {
-                    extractMediaMetadata(file, baseInfo)
+                    extractMediaMetadata(file as SmbStorageFile, baseInfo)
                 } else if (file.isImageFile()) {
-                    extractImageMetadata(file, baseInfo)
+                    extractImageMetadata(file as SmbStorageFile, baseInfo)
                 } else {
                     baseInfo
                 }
@@ -359,9 +353,10 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
 
     private suspend fun extractMediaMetadata(file: SmbStorageFile, base: StorageFileInfo): StorageFileInfo {
         val diskShare = mDiskShare ?: return base
+        val smbFile = try {
+            diskShare.openFile(file.filePath())
+        } catch (_: Exception) { return base }
         return try {
-            val smbFile = diskShare.openFile(file.filePath())
-
             val retriever = MediaMetadataRetriever()
             retriever.setDataSource(SmbMediaDataSource(smbFile, base.fileSize))
 
@@ -679,7 +674,7 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             ?: ""
     }
 
-    private fun showErrorToast(message: String, e: Exception) {
-        ToastCenter.showError("$message: ${e.message}")
+    private fun showErrorToast(action: String, e: Exception) {
+        ToastCenter.showError("$action: ${e.message}")
     }
 }
