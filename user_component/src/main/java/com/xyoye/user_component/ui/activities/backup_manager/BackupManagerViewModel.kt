@@ -59,7 +59,6 @@ class BackupManagerViewModel : BaseViewModel() {
             root.put("app_config", collectAppConfig(mmkv))
             root.put("player_config", collectPlayerConfig(mmkv))
             root.put("subtitle_config", collectSubtitleConfig(mmkv))
-            root.put("user_config", collectUserConfig(mmkv))
             root.put("thumbnail_config", collectThumbnailConfig(mmkv))
 
             root.put("servers", collectServers())
@@ -116,13 +115,6 @@ class BackupManagerViewModel : BaseViewModel() {
         if (!shooterSecret.isNullOrEmpty()) {
             cfg.put("shooterSecret", encryptField(shooterSecret) ?: "")
         }
-        return cfg
-    }
-
-    private fun collectUserConfig(mmkv: MMKV): JSONObject {
-        val cfg = JSONObject()
-        cfg.put("storageFileGridView", mmkv.decodeBool("storageFileGridView"))
-        cfg.put("mediaLibraryGridView", mmkv.decodeBool("mediaLibraryGridView"))
         return cfg
     }
 
@@ -237,7 +229,6 @@ class BackupManagerViewModel : BaseViewModel() {
                 restoreAppConfig(root.optJSONObject("app_config"), mmkv)
                 restorePlayerConfig(root.optJSONObject("player_config"), mmkv)
                 restoreSubtitleConfig(root.optJSONObject("subtitle_config"), mmkv)
-                restoreUserConfig(root.optJSONObject("user_config"), mmkv)
                 restoreThumbnailConfig(root.optJSONObject("thumbnail_config"), mmkv)
                 restoreServers(root.optJSONArray("servers"))
                 restoreServerThumbnailConfigs(root.optJSONObject("server_thumbnail_configs"))
@@ -389,7 +380,6 @@ class BackupManagerViewModel : BaseViewModel() {
         restoreAppConfig(root.optJSONObject("app_config"), mmkv)
         restorePlayerConfig(root.optJSONObject("player_config"), mmkv)
         restoreSubtitleConfig(root.optJSONObject("subtitle_config"), mmkv)
-        restoreUserConfig(root.optJSONObject("user_config"), mmkv)
         restoreThumbnailConfig(root.optJSONObject("thumbnail_config"), mmkv)
         restoreServers(root.optJSONArray("servers"))
         restoreServerThumbnailConfigs(root.optJSONObject("server_thumbnail_configs"))
@@ -585,12 +575,6 @@ class BackupManagerViewModel : BaseViewModel() {
                 is String -> mmkv.encode(key, value)
             }
         }
-    }
-
-    private fun restoreUserConfig(json: JSONObject?, mmkv: MMKV) {
-        if (json == null) return
-        if (json.has("storageFileGridView")) mmkv.encode("storageFileGridView", json.optBoolean("storageFileGridView"))
-        if (json.has("mediaLibraryGridView")) mmkv.encode("mediaLibraryGridView", json.optBoolean("mediaLibraryGridView"))
     }
 
     private fun restoreThumbnailConfig(json: JSONObject?, mmkv: MMKV) {

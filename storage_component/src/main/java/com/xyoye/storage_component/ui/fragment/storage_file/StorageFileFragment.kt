@@ -2,6 +2,7 @@ package com.xyoye.storage_component.ui.fragment.storage_file
 
 import android.content.res.Configuration
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import androidx.core.view.children
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -94,7 +95,7 @@ class StorageFileFragment :
 
         viewModel.storage = ownerActivity.storage
 
-        dataBinding.scrollToTopBt.setOnClickListener {
+        scrollToTopBt?.setOnClickListener {
             dataBinding.storageFileRv.scrollToPosition(0)
         }
 
@@ -134,12 +135,14 @@ class StorageFileFragment :
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (isGridView) {
-            dataBinding.storageFileRv.apply {
-                layoutManager = gridEmpty(gridSpanCount)
-                adapter = StorageFileAdapter(ownerActivity, viewModel, true).create()
-                viewModel.fileLiveData.value?.let { setData(it) }
-            }
+        refreshViewMode()
+    }
+
+    fun refreshViewMode() {
+        dataBinding.storageFileRv.apply {
+            layoutManager = if (isGridView) gridEmpty(gridSpanCount) else vertical()
+            adapter = StorageFileAdapter(ownerActivity, viewModel, isGridView).create()
+            viewModel.fileLiveData.value?.let { setData(it) }
         }
     }
 
@@ -220,11 +223,28 @@ class StorageFileFragment :
         }
     }
 
+    private val scrollToTopBt: View?
+        get() = requireActivity().findViewById(R.id.scroll_to_top_bt)
+
     private fun updateScrollToTopVisibility(recyclerView: RecyclerView) {
         val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
         val firstVisible = layoutManager.findFirstCompletelyVisibleItemPosition()
-        dataBinding.scrollToTopBt.visibility =
-            if (firstVisible > 3) View.VISIBLE else View.GONE
+        val bt = scrollToTopBt ?: return
+        if (firstVisible > 3) {
+            if (bt.visibility != View.VISIBLE) {
+                bt.visibility = View.VISIBLE
+                bt.animate().cancel()
+                bt.alpha = 0f
+                bt.animate().alpha(1f).setDuration(200).setInterpolator(DecelerateInterpolator()).start()
+            }
+        } else {
+            if (bt.visibility == View.VISIBLE) {
+                bt.animate().cancel()
+                bt.animate().alpha(0f).setDuration(200).setInterpolator(DecelerateInterpolator())
+                    .withEndAction { bt.visibility = View.GONE }
+                    .start()
+            }
+        }
     }
 
     fun requestFocus(reversed: Boolean = false) {
