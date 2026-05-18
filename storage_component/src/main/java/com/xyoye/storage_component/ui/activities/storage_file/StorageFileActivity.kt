@@ -1,11 +1,11 @@
 package com.xyoye.storage_component.ui.activities.storage_file
 
 import android.os.Bundle
-import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewTreeObserver
+import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentTransaction
 import androidx.lifecycle.Lifecycle
@@ -144,6 +144,18 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     }
 
     private fun initListener() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (mMenus?.handleBackPressed() == true) {
+                    return
+                }
+                if (popFragment()) {
+                    return
+                }
+                finish()
+            }
+        })
+
         mToolbar?.setNavigationOnClickListener {
             if (popFragment().not()) {
                 finish()
@@ -183,16 +195,6 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         mMenus?.onOptionsItemSelected(item)
         return super.onOptionsItemSelected(item)
-    }
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && mMenus?.handleBackPressed() == true) {
-            return true
-        }
-        if (keyCode == KeyEvent.KEYCODE_BACK && popFragment()) {
-            return true
-        }
-        return super.onKeyDown(keyCode, event)
     }
 
     override fun onDestroy() {

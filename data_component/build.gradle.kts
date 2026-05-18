@@ -3,16 +3,14 @@ import setup.moduleSetup
 plugins {
     id("com.android.library")
     kotlin("android")
-    kotlin("kapt")
+    id("com.google.devtools.ksp")
     id("kotlin-parcelize")
 }
 
 moduleSetup()
 
-kapt {
-    arguments {
-        arg("AROUTER_MODULE_NAME", name)
-    }
+ksp {
+    arg("AROUTER_MODULE_NAME", name)
 }
 
 dependencies {
@@ -24,8 +22,7 @@ dependencies {
     api(Dependencies.Alibaba.arouter_api)
     api(Dependencies.Square.moshi)
 
-    kapt(Dependencies.Square.moshi_codegen)
-    kapt(Dependencies.Alibaba.arouter_compiler)
+    ksp(Dependencies.Alibaba.arouter_ksp)
 }
 android {
     namespace = "com.xyoye.data_component"

@@ -4,9 +4,8 @@ import com.xyoye.data_component.data.CommonJsonData
 import com.xyoye.data_component.data.CommonJsonModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType
 import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -92,8 +91,9 @@ class Request {
      * Post请求体
      */
     private fun requestBody(): RequestBody {
-        val mediaType = "application/json;charset=utf-8".toMediaType()
-        return requestJson?.toRequestBody(mediaType)
+        val mediaType = MediaType.parse("application/json;charset=utf-8")
+            ?: return RequestBody.create(null, "")
+        return requestJson?.let { RequestBody.create(mediaType, it) }
             ?: requestParams.toRequestBody(mediaType)
     }
 }

@@ -19,9 +19,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.Credentials
-import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -358,7 +358,7 @@ class BackupManagerViewModel : BaseViewModel() {
             hideLoading()
             throw Exception("无法获取备份文件列表")
         }
-        val body = listResponse.body?.string() ?: ""
+        val body = listResponse.body()?.string() ?: ""
         listResponse.close()
 
         val backupFiles = parseBackupFileNames(body)
@@ -380,7 +380,7 @@ class BackupManagerViewModel : BaseViewModel() {
             hideLoading()
             throw Exception("下载备份文件失败")
         }
-        val jsonString = downloadResponse.body?.string() ?: ""
+        val jsonString = downloadResponse.body()?.string() ?: ""
         downloadResponse.close()
 
         val root = JSONObject(jsonString)
@@ -421,7 +421,7 @@ class BackupManagerViewModel : BaseViewModel() {
                 .method("MKCOL", null)
             credential?.let { requestBuilder.addHeader("Authorization", it) }
             val response = UnsafeOkHttpClient.client.newCall(requestBuilder.build()).execute()
-            val code = response.code
+            val code = response.code()
             response.close()
             if (code == 409) {
                 val parentDir = dirUrl.substringBeforeLast('/')
@@ -443,12 +443,12 @@ class BackupManagerViewModel : BaseViewModel() {
         return try {
             val requestBuilder = Request.Builder()
                 .url(fileUrl)
-                .put(data.toRequestBody("application/json".toMediaType()))
+                .put(RequestBody.create(MediaType.parse("application/json"), data))
             credential?.let { requestBuilder.addHeader("Authorization", it) }
             val response = UnsafeOkHttpClient.client.newCall(requestBuilder.build()).execute()
             val success = response.isSuccessful
             if (!success) {
-                android.util.Log.e("WebDavBackup", "Upload failed: HTTP ${response.code} for $fileUrl")
+                android.util.Log.e("WebDavBackup", "Upload failed: HTTP ${response.code()} for $fileUrl")
             }
             response.close()
             success
@@ -470,7 +470,7 @@ class BackupManagerViewModel : BaseViewModel() {
                 response.close()
                 return
             }
-            val body = response.body?.string() ?: ""
+            val body = response.body()?.string() ?: ""
             response.close()
 
             val backupFiles = parseBackupFileNames(body)

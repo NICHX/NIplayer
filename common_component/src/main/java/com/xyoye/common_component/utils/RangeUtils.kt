@@ -1,7 +1,5 @@
 package com.xyoye.common_component.utils
 
-import okhttp3.internal.toLongOrDefault
-
 object RangeUtils {
 
     fun getRange(rangeText: String, contentLength: Long): Array<Long> {
@@ -40,29 +38,29 @@ object RangeUtils {
         }
         // e.g. "-499"
         if (separatorIndex == 0) {
-            val end = range.substring(1).toLongOrDefault(0L)
+            val end = range.substring(1).toLongOrNull() ?: 0L
             return if (end <= 0 || end > maxRange) {
                 null
             } else {
-                0L to end
+                Pair(0L, end)
             }
         }
         // e.g. "500-"
         if (separatorIndex == range.length - 1) {
-            val start = range.substring(0, separatorIndex).toLongOrDefault(0L)
+            val start = range.substring(0, separatorIndex).toLongOrNull() ?: 0L
             return if (start < 0) {
                 null
             } else {
-                start to maxRange
+                Pair(start, maxRange)
             }
         }
         // e.g. "500-999"
-        val start = range.substring(0, separatorIndex).toLongOrDefault(0L)
-        val end = range.substring(separatorIndex + 1).toLongOrDefault(0L)
+        val start = range.substring(0, separatorIndex).toLongOrNull() ?: 0L
+        val end = range.substring(separatorIndex + 1).toLongOrNull() ?: 0L
         return if (start < 0 || end <= 0 || end > maxRange || start >= end) {
             null
         } else {
-            start to end
+            Pair(start, end)
         }
     }
 }

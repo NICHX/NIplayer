@@ -93,7 +93,7 @@ abstract class GestureVideoController(
     }
 
     override fun onFling(
-        e1: MotionEvent,
+        e1: MotionEvent?,
         e2: MotionEvent,
         velocityX: Float,
         velocityY: Float
@@ -140,12 +140,12 @@ abstract class GestureVideoController(
     }
 
     override fun onScroll(
-        e1: MotionEvent,
+        e1: MotionEvent?,
         e2: MotionEvent,
         distanceX: Float,
         distanceY: Float
     ): Boolean {
-        if (isPopupMode()) {
+        if (e1 == null || isPopupMode()) {
             return false
         }
         if (!isNormalPlayState() or isLocked() or context.isScreenEdge(e1)) {

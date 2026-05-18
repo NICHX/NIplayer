@@ -1,7 +1,7 @@
 package com.xyoye.common_component.network.helper
 
 import com.xyoye.common_component.network.config.HeaderKey
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.Response
 
@@ -19,14 +19,14 @@ class DynamicBaseUrlInterceptor : Interceptor {
             return chain.proceed(request)
         }
 
-        val baseHttpUrl = baseUrl.toHttpUrlOrNull()
+        val baseHttpUrl = HttpUrl.parse(baseUrl)
             ?: return chain.proceed(request)
 
-        val newUrl = request.url
+        val newUrl = request.url()
             .newBuilder()
-            .scheme(baseHttpUrl.scheme)
-            .host(baseHttpUrl.host)
-            .port(baseHttpUrl.port)
+            .scheme(baseHttpUrl.scheme())
+            .host(baseHttpUrl.host())
+            .port(baseHttpUrl.port())
             .build()
 
         val newRequest = request.newBuilder()

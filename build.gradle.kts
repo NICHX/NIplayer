@@ -1,30 +1,10 @@
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath("com.android.tools.build:gradle:7.4.2")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.7.10")
-    }
-}
-
 plugins {
     id("com.github.ben-manes.versions") version "0.44.0"
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-        maven("https://jitpack.io")
-    }
-}
-
 tasks {
     val clean by registering(Delete::class) {
-        delete(buildDir)
+        delete(layout.buildDirectory)
     }
 
     //检查依赖库更新

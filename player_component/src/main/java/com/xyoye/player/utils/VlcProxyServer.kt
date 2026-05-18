@@ -64,21 +64,21 @@ class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(p
         }
 
         val proxyResponse = getProxyResponse(proxyUrl, proxyHeaders, session)
-        val bodyStream = proxyResponse.body?.byteStream()
+        val bodyStream = proxyResponse.body()?.byteStream()
         val bufferedStream = if (bodyStream != null) {
             BufferedInputStream(bodyStream, STREAM_BUFFER_SIZE)
         } else {
             null
         }
         val response = newFixedLengthResponse(
-            Status.lookup(proxyResponse.code) ?: Status.OK,
+            Status.lookup(proxyResponse.code()) ?: Status.OK,
             proxyResponse.header("Content-Type"),
             bufferedStream,
-            proxyResponse.body?.contentLength() ?: 0
+            proxyResponse.body()?.contentLength() ?: 0
         )
-        val responseHeaders = proxyResponse.headers
+        val responseHeaders = proxyResponse.headers()
 
-        for (index in 0 until responseHeaders.size) {
+        for (index in 0 until responseHeaders.size()) {
             val keyName = responseHeaders.name(index)
             val value = responseHeaders.value(index)
             response.addHeader(keyName, value)

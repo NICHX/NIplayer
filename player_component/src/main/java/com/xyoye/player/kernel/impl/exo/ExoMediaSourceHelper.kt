@@ -4,7 +4,6 @@ import android.net.Uri
 import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.database.StandaloneDatabaseProvider
-import com.google.android.exoplayer2.ext.rtmp.RtmpDataSource
 import com.google.android.exoplayer2.source.MediaSource
 import com.google.android.exoplayer2.source.ProgressiveMediaSource
 import com.google.android.exoplayer2.source.dash.DashMediaSource
@@ -55,8 +54,9 @@ object ExoMediaSourceHelper {
         val mediaItem = MediaItem.fromUri(contentUri)
 
         if ("rtmp" == contentUri.scheme) {
-            return ProgressiveMediaSource.Factory(RtmpDataSource.Factory())
-                .createMediaSource(mediaItem)
+            return ProgressiveMediaSource.Factory(
+                DefaultDataSource.Factory(BaseApplication.getAppContext(), mHttpDataSourceFactory)
+            ).createMediaSource(mediaItem)
         }
 
         headers?.let { setHeaders(it) }

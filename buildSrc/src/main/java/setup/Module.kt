@@ -40,16 +40,25 @@ fun Project.moduleSetup() {
         }
 
         compileOptions {
-            sourceCompatibility = JavaVersion.VERSION_1_8
-            targetCompatibility = JavaVersion.VERSION_1_8
+            sourceCompatibility = JavaVersion.VERSION_17
+            targetCompatibility = JavaVersion.VERSION_17
         }
 
         buildFeatures {
             dataBinding = true
+            buildConfig = true
         }
-
-        setupKotlinOptions()
     }
 
+    setupKotlinOptions()
     setupDefaultDependencies()
+
+    afterEvaluate {
+        tasks.matching { it.name.startsWith("ksp") && it.name.endsWith("Kotlin") }.configureEach {
+            val generateBuildConfig = tasks.findByName("generateBuildConfig")
+            if (generateBuildConfig != null) {
+                dependsOn(generateBuildConfig)
+            }
+        }
+    }
 }

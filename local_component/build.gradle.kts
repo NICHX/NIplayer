@@ -3,15 +3,14 @@ import setup.moduleSetup
 plugins {
     id("com.android.library")
     kotlin("android")
+    id("com.google.devtools.ksp")
     kotlin("kapt")
 }
 
 moduleSetup()
 
-kapt {
-    arguments {
-        arg("AROUTER_MODULE_NAME", name)
-    }
+ksp {
+    arg("AROUTER_MODULE_NAME", name)
 }
 
 dependencies {
@@ -19,7 +18,7 @@ dependencies {
 
     implementation(Dependencies.Github.jsoup)
 
-    kapt(Dependencies.Alibaba.arouter_compiler)
+    ksp(Dependencies.Alibaba.arouter_ksp)
 }
 android {
     namespace = "com.xyoye.local_component"

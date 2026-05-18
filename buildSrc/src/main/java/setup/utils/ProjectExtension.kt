@@ -3,27 +3,25 @@ package setup.utils
 import Dependencies
 import Versions
 import com.android.build.gradle.AppExtension
-import com.android.build.gradle.BaseExtension
 import com.android.build.gradle.api.ApkVariantOutput
-import org.gradle.api.JavaVersion
 import org.gradle.api.Project
-import org.gradle.api.plugins.ExtensionAware
-import org.gradle.kotlin.dsl.fileTree
-import org.gradle.kotlin.dsl.getByName
-import org.jetbrains.kotlin.gradle.dsl.KotlinJvmOptions
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.ByteArrayOutputStream
 
-fun BaseExtension.setupKotlinOptions() {
-    val extensions = (this as ExtensionAware).extensions
-    val kotlinOptions = extensions.getByName<KotlinJvmOptions>("kotlinOptions")
-    kotlinOptions.apply {
-        jvmTarget = JavaVersion.VERSION_1_8.toString()
+fun Project.setupKotlinOptions() {
+    tasks.withType(KotlinCompile::class.java).configureEach {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
     }
 }
 
 fun Project.setupDefaultDependencies() {
     dependencies.apply {
-        add("implementation", fileTree("include" to listOf("*.jar"), "dir" to "libs"))
+        add("implementation", fileTree("libs") {
+            include("*.jar")
+        })
 
         add("testImplementation", Dependencies.Junit.junit)
         add("androidTestImplementation", Dependencies.AndroidX.junit_ext)

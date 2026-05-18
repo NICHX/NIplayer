@@ -4,6 +4,7 @@ plugins {
     id("com.android.library")
     id("kotlin-parcelize")
     kotlin("android")
+    id("com.google.devtools.ksp")
     kotlin("kapt")
 }
 
@@ -21,6 +22,10 @@ android {
         buildConfigField("String", "BUGLY_ID", "\"981fe7dfc2\"")
     }
     namespace = "com.xyoye.common_component"
+}
+
+ksp {
+    arg("AROUTER_MODULE_NAME", name)
 }
 
 kapt {
@@ -65,6 +70,8 @@ dependencies {
 
     api(Dependencies.Square.retrofit)
     implementation(Dependencies.Square.retrofit_moshi)
+    implementation(Dependencies.Square.okhttp)
+    implementation(Dependencies.Square.moshi_kotlin)
 
     api(Dependencies.Github.coil)
     api(Dependencies.Github.coil_video)
@@ -75,7 +82,7 @@ dependencies {
     api(Dependencies.PhotoView.photo_view)
 
     kapt(files("libs/mmkv-compiler.jar"))
-    kapt(Dependencies.AndroidX.room_compiler)
-    kapt(Dependencies.Alibaba.arouter_compiler)
+    ksp(Dependencies.AndroidX.room_compiler)
+    ksp(Dependencies.Alibaba.arouter_ksp)
     implementation(kotlin("reflect"))
 }

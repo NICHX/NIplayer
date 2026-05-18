@@ -3,6 +3,7 @@ import setup.moduleSetup
 plugins {
     id("com.android.library")
     kotlin("android")
+    id("com.google.devtools.ksp")
     kotlin("kapt")
 }
 
@@ -17,10 +18,8 @@ android {
     namespace = "com.xyoye.player_component"
 }
 
-kapt {
-    arguments {
-        arg("AROUTER_MODULE_NAME", name)
-    }
+ksp {
+    arg("AROUTER_MODULE_NAME", name)
 }
 
 dependencies {
@@ -45,5 +44,5 @@ dependencies {
     //GSYVideoPlayer ex_so: 更新 IJKPlayer 原生库，适配 Android 16+ 与 16K Page Size
     implementation("io.github.carguo:gsyvideoplayer-ex_so:13.0.0")
 
-    kapt(Dependencies.Alibaba.arouter_compiler)
+    ksp(Dependencies.Alibaba.arouter_ksp)
 }

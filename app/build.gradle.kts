@@ -3,6 +3,7 @@ import setup.applicationSetup
 plugins {
     id("com.android.application")
     kotlin("android")
+    id("com.google.devtools.ksp")
     kotlin("kapt")
 }
 
@@ -37,10 +38,8 @@ android {
     }
 }
 
-kapt {
-    arguments {
-        arg("AROUTER_MODULE_NAME", project.name)
-    }
+ksp {
+    arg("AROUTER_MODULE_NAME", project.name)
 }
 
 dependencies {
@@ -50,5 +49,5 @@ dependencies {
     implementation(project(":local_component"))
     implementation(project(":storage_component"))
 
-    kapt(Dependencies.Alibaba.arouter_compiler)
+    ksp(Dependencies.Alibaba.arouter_ksp)
 }

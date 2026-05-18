@@ -77,8 +77,8 @@ class SplashActivity : BaseAppCompatActivity<ActivitySplashBinding>() {
         }
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
-        return if (event!!.keyCode == KeyEvent.KEYCODE_BACK) {
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        return if (event.keyCode == KeyEvent.KEYCODE_BACK) {
             true
         } else {
             super.dispatchKeyEvent(event)

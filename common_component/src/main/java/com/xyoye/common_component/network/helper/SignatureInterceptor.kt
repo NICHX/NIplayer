@@ -18,7 +18,7 @@ class SignatureInterceptor : Interceptor {
         val newRequest = oldRequest.newBuilder()
 
         SecurityHelper.getInstance().getSignatureMap(
-            oldRequest.url.encodedPath,
+            oldRequest.url().encodedPath(),
             BaseApplication.getAppContext()
         ).forEach {
             newRequest.addHeader(it.key, it.value ?: "")

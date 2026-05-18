@@ -30,7 +30,7 @@ class RedirectAuthorizationInterceptor : Interceptor {
      * 在当前请求加上已缓存的Authorization请求头，并移除此缓存
      */
     private fun considerUseCacheHeader(request: Request): Request {
-        val requestUrl = request.url.toString().toMd5String()
+        val requestUrl = request.url().toString().toMd5String()
         val requestAuthorization = request.header(HeaderKey.AUTHORIZATION)
         if (authorizationCache.containsKey(requestUrl) && requestAuthorization == null) {
             val authorization = authorizationCache.remove(requestUrl)
@@ -51,7 +51,7 @@ class RedirectAuthorizationInterceptor : Interceptor {
         }
 
         val redirectUrl = response.header("Location")
-        val authorization = response.request.header(HeaderKey.AUTHORIZATION)
+        val authorization = response.request().header(HeaderKey.AUTHORIZATION)
         val redirectAuth = response.header(HeaderKey.AUTH_REDIRECT) == "redirect"
         if (redirectUrl != null && authorization != null && redirectAuth) {
             authorizationCache[redirectUrl.toMd5String()] = authorization
@@ -62,6 +62,6 @@ class RedirectAuthorizationInterceptor : Interceptor {
      * HttpCode为301、302、303时，视为重定向请求
      */
     private fun isRedirectResponse(response: Response): Boolean {
-        return response.code in 301..308
+        return response.code() in 301..308
     }
 }

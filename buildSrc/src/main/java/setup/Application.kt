@@ -13,18 +13,28 @@ import setup.utils.setupSignConfigs
 fun Project.applicationSetup() {
     extensions.getByName<AppExtension>("android").apply {
         compileOptions {
-            sourceCompatibility = JavaVersion.VERSION_1_8
-            targetCompatibility = JavaVersion.VERSION_1_8
+            sourceCompatibility = JavaVersion.VERSION_17
+            targetCompatibility = JavaVersion.VERSION_17
         }
 
         buildFeatures.apply {
             dataBinding.isEnabled = true
+            buildConfig = true
         }
 
-        setupKotlinOptions()
         setupSignConfigs(this@applicationSetup)
         setupOutputApk()
     }
 
+    setupKotlinOptions()
     setupDefaultDependencies()
+
+    afterEvaluate {
+        tasks.matching { it.name.startsWith("ksp") && it.name.endsWith("Kotlin") }.configureEach {
+            val generateBuildConfig = tasks.findByName("generateBuildConfig")
+            if (generateBuildConfig != null) {
+                dependsOn(generateBuildConfig)
+            }
+        }
+    }
 }

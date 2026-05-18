@@ -14,9 +14,9 @@ import com.xyoye.sardine.DavResource
 import com.xyoye.sardine.impl.OkHttpSardine
 import com.xyoye.sardine.util.SardineConfig
 import okhttp3.Credentials
-import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
 import java.io.InputStream
 import java.net.URI
 import java.util.Date
@@ -128,7 +128,7 @@ class WebDavStorage(
         return try {
             val requestBuilder = Request.Builder()
                 .url(targetUrl)
-                .put(data.toRequestBody("image/jpeg".toMediaType()))
+                .put(RequestBody.create(MediaType.parse("image/jpeg"), data))
             headers?.forEach { (key, value) ->
                 requestBuilder.addHeader(key, value)
             }

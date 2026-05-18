@@ -19,7 +19,7 @@ class DecompressInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalResponse = chain.proceed(chain.request())
 
-        val originalBody = originalResponse.body
+        val originalBody = originalResponse.body()
             ?: return originalResponse
         val originalEncoding = originalResponse.header("Content-Encoding")
             ?: return originalResponse

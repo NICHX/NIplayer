@@ -12,9 +12,8 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.Credentials
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -347,7 +346,7 @@ object PlayHistorySyncManager {
                 response.close()
                 return null
             }
-            val body = response.body?.string() ?: ""
+            val body = response.body()?.string() ?: ""
             response.close()
             if (body.isEmpty()) return null
             JSONObject(body)
@@ -374,7 +373,7 @@ object PlayHistorySyncManager {
 
             val requestBuilder = Request.Builder()
                 .url(fileUrl)
-                .put(bytes.toRequestBody("application/json".toMediaType()))
+                .put(RequestBody.create(okhttp3.MediaType.parse("application/json"), bytes))
             credential?.let { requestBuilder.addHeader("Authorization", it) }
             val response = UnsafeOkHttpClient.client.newCall(requestBuilder.build()).execute()
             val success = response.isSuccessful
@@ -393,7 +392,7 @@ object PlayHistorySyncManager {
                 .method("MKCOL", null)
             credential?.let { requestBuilder.addHeader("Authorization", it) }
             val response = UnsafeOkHttpClient.client.newCall(requestBuilder.build()).execute()
-            val code = response.code
+            val code = response.code()
             response.close()
             if (code == 409) {
                 val parentDir = dirUrl.substringBeforeLast('/')

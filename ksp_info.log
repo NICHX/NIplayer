@@ -1,0 +1,329 @@
+﻿Initialized native services in: C:\Users\NICHE\.gradle\native
+Initialized jansi services in: C:\Users\NICHE\.gradle\native
+Found daemon DaemonInfo{pid=1752, address=[e77991a2-c22c-4e30-afe4-5c3502f31bd8 port:62067, addresses:[/127.0.0.1]], state=Idle, lastBusy=1779111450417, context=DefaultDaemonContext[uid=d0fd69d6-f2d4-40ed-897f-f5cdda7fedb4,javaHome=C:\Users\NICHE\.jdks\jbr-17.0.14,javaVersion=17,javaVendor=JetBrains s.r.o.,daemonRegistryDir=C:\Users\NICHE\.gradle\daemon,pid=1752,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-XX:MaxMetaspaceSize=1g,-XX:+HeapDumpOnOutOfMemoryError,-XX:+UseParallelGC,-Xmx4096m,-Dfile.encoding=UTF-8,-Duser.country=CN,-Duser.language=zh,-Duser.variant]} however its context does not match the desired criteria.
+JVM is incompatible.
+Wanted: DaemonRequestContext{jvmCriteria=D:\Program Files\Java\jdk-17 (no JDK specified, using current Java home), daemonOpts=[-XX:MaxMetaspaceSize=1g, -XX:+HeapDumpOnOutOfMemoryError, -XX:+UseParallelGC, -Xmx4096m, -Dfile.encoding=GBK, -Duser.country=CN, -Duser.language=zh, -Duser.variant], applyInstrumentationAgent=true, nativeServicesMode=ENABLED, priority=NORMAL}
+Actual: DefaultDaemonContext[uid=d0fd69d6-f2d4-40ed-897f-f5cdda7fedb4,javaHome=C:\Users\NICHE\.jdks\jbr-17.0.14,javaVersion=17,javaVendor=JetBrains s.r.o.,daemonRegistryDir=C:\Users\NICHE\.gradle\daemon,pid=1752,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-XX:MaxMetaspaceSize=1g,-XX:+HeapDumpOnOutOfMemoryError,-XX:+UseParallelGC,-Xmx4096m,-Dfile.encoding=UTF-8,-Duser.country=CN,-Duser.language=zh,-Duser.variant]
+
+  Looking for a different daemon...
+The client will now receive all logging from the daemon (pid: 28616). The daemon log file: C:\Users\NICHE\.gradle\daemon\8.13\daemon-28616.out.log
+Starting 4th build in daemon [uptime: 2 mins 37.232 secs, performance: 99%, GC rate: 0.31/s, heap usage: 2% of 2.6 GiB, non-heap usage: 16% of 1 GiB]
+Using 16 worker leases.
+Now considering [D:\project\NIplayer\NIplayer, D:\project\NIplayer\NIplayer\buildSrc] as hierarchies to watch
+Now considering [D:\project\NIplayer\NIplayer\buildSrc, D:\project\NIplayer\NIplayer] as hierarchies to watch
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Settings evaluated using settings file 'D:\project\NIplayer\NIplayer\settings.gradle.kts'.
+Projects loaded. Root project using build file 'D:\project\NIplayer\NIplayer\build.gradle.kts'.
+Included projects: [root project 'DanDanPlayForAndroid', project ':app', project ':common_component', project ':data_component', project ':local_component', project ':player_component', project ':repository', project ':storage_component', project ':user_component', project ':repository:panel_switch', project ':repository:seven_zip']
+
+> Configure project :buildSrc
+Evaluating project ':buildSrc' using build file 'D:\project\NIplayer\NIplayer\buildSrc\build.gradle.kts'.
+Resolved plugin [id: 'org.gradle.kotlin.kotlin-dsl', version: '5.2.0']
+Using Kotlin Gradle Plugin gradle85 variant
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+file or directory 'D:\project\NIplayer\NIplayer\buildSrc\src\main\kotlin', not found
+Resolve mutations for :buildSrc:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker,5,main]) started.
+:buildSrc:checkKotlinGradlePluginConfigurationErrors (Thread[Execution worker,5,main]) started.
+
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':buildSrc:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :buildSrc:compileKotlin (Thread[Execution worker,5,main]) started.
+:buildSrc:compileKotlin (Thread[Execution worker,5,main]) started.
+
+> Task :buildSrc:compileKotlin UP-TO-DATE
+Caching disabled for task ':buildSrc:compileKotlin' because:
+  Build cache is disabled
+Skipping task ':buildSrc:compileKotlin' as it is up-to-date.
+Resolve mutations for :buildSrc:compileJava (Thread[Execution worker,5,main]) started.
+:buildSrc:compileJava (Thread[Execution worker,5,main]) started.
+
+> Task :buildSrc:compileJava NO-SOURCE
+Skipping task ':buildSrc:compileJava' as it has no source files and no previous output files.
+Resolve mutations for :buildSrc:compileGroovy (Thread[Execution worker,5,main]) started.
+:buildSrc:compileGroovy (Thread[Execution worker,5,main]) started.
+
+> Task :buildSrc:compileGroovy NO-SOURCE
+Skipping task ':buildSrc:compileGroovy' as it has no source files and no previous output files.
+Resolve mutations for :buildSrc:pluginDescriptors (Thread[Execution worker,5,main]) started.
+:buildSrc:pluginDescriptors (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+Caching disabled for task ':buildSrc:pluginDescriptors' because:
+  Build cache is disabled
+  Not worth caching
+Skipping task ':buildSrc:pluginDescriptors' as it is up-to-date.
+Resolve mutations for :buildSrc:processResources (Thread[Execution worker Thread 4,5,main]) started.
+:buildSrc:processResources (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :buildSrc:processResources NO-SOURCE
+Skipping task ':buildSrc:processResources' as it has no source files and no previous output files.
+Resolve mutations for :buildSrc:classes (Thread[Execution worker Thread 4,5,main]) started.
+:buildSrc:classes (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :buildSrc:classes UP-TO-DATE
+Skipping task ':buildSrc:classes' as it has no actions.
+Resolve mutations for :buildSrc:jar (Thread[Execution worker Thread 4,5,main]) started.
+:buildSrc:jar (Thread[Execution worker Thread 4,5,main]) started.
+
+> Task :buildSrc:jar UP-TO-DATE
+Caching disabled for task ':buildSrc:jar' because:
+  Build cache is disabled
+  Not worth caching
+Skipping task ':buildSrc:jar' as it is up-to-date.
+
+> Configure project :
+Evaluating root project 'DanDanPlayForAndroid' using build file 'D:\project\NIplayer\NIplayer\build.gradle.kts'.
+Resolved plugin [id: 'com.github.ben-manes.versions', version: '0.44.0']
+
+> Configure project :app
+Evaluating project ':app' using build file 'D:\project\NIplayer\NIplayer\app\build.gradle.kts'.
+Resolved plugin [id: 'com.android.application']
+Resolved plugin [id: 'org.jetbrains.kotlin.android']
+Resolved plugin [id: 'com.google.devtools.ksp']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+
+> Configure project :common_component
+Evaluating project ':common_component' using build file 'D:\project\NIplayer\NIplayer\common_component\build.gradle.kts'.
+Resolved plugin [id: 'com.android.library']
+Resolved plugin [id: 'kotlin-parcelize']
+Resolved plugin [id: 'org.jetbrains.kotlin.android']
+Resolved plugin [id: 'com.google.devtools.ksp']
+Resolved plugin [id: 'org.jetbrains.kotlin.kapt']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\common_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\common_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\common_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+
+> Configure project :data_component
+Evaluating project ':data_component' using build file 'D:\project\NIplayer\NIplayer\data_component\build.gradle.kts'.
+Resolved plugin [id: 'com.android.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.android']
+Resolved plugin [id: 'com.google.devtools.ksp']
+Resolved plugin [id: 'kotlin-parcelize']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\data_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\data_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\data_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+
+> Configure project :local_component
+Evaluating project ':local_component' using build file 'D:\project\NIplayer\NIplayer\local_component\build.gradle.kts'.
+Resolved plugin [id: 'com.android.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.android']
+Resolved plugin [id: 'com.google.devtools.ksp']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\local_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\local_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\local_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+
+> Configure project :player_component
+Evaluating project ':player_component' using build file 'D:\project\NIplayer\NIplayer\player_component\build.gradle.kts'.
+Resolved plugin [id: 'com.android.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.android']
+Resolved plugin [id: 'com.google.devtools.ksp']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\player_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\player_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\player_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+
+> Configure project :repository
+Evaluating project ':repository' using build file 'D:\project\NIplayer\NIplayer\repository\build.gradle'.
+
+> Configure project :storage_component
+Evaluating project ':storage_component' using build file 'D:\project\NIplayer\NIplayer\storage_component\build.gradle.kts'.
+Resolved plugin [id: 'com.android.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.android']
+Resolved plugin [id: 'com.google.devtools.ksp']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\storage_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\storage_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\storage_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+
+> Configure project :user_component
+Evaluating project ':user_component' using build file 'D:\project\NIplayer\NIplayer\user_component\build.gradle.kts'.
+Resolved plugin [id: 'com.android.library']
+Resolved plugin [id: 'org.jetbrains.kotlin.android']
+Resolved plugin [id: 'com.google.devtools.ksp']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\user_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\user_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+Starting process 'command 'git''. Working directory: D:\project\NIplayer\NIplayer\user_component Command: git log --pretty=format:%h -1
+Successfully started process 'command 'git''
+
+> Configure project :repository:panel_switch
+Evaluating project ':repository:panel_switch' using build file 'D:\project\NIplayer\NIplayer\repository\panel_switch\build.gradle.kts'.
+
+> Configure project :repository:seven_zip
+Evaluating project ':repository:seven_zip' using build file 'D:\project\NIplayer\NIplayer\repository\seven_zip\build.gradle.kts'.
+All projects evaluated.
+Task path ':data_component:kspDebugKotlin' matched project ':data_component'
+Task name matched 'kspDebugKotlin'
+Selected primary task 'kspDebugKotlin' from project :data_component
+Tasks to be executed: [task ':data_component:preBuild', task ':data_component:preDebugBuild', task ':data_component:dataBindingMergeDependencyArtifactsDebug', task ':data_component:generateDebugResValues', task ':data_component:generateDebugResources', task ':data_component:packageDebugResources', task ':data_component:processDebugNavigationResources', task ':data_component:parseDebugLocalResources', task ':data_component:dataBindingGenBaseClassesDebug', task ':data_component:dataBindingTriggerDebug', task ':data_component:generateDebugBuildConfig', task ':data_component:generateDebugRFile', task ':data_component:kspDebugKotlin']
+Tasks that were excluded: []
+Resolve mutations for :data_component:preBuild (Thread[Execution worker Thread 11,5,main]) started.
+:data_component:preBuild (Thread[Execution worker Thread 11,5,main]) started.
+
+> Task :data_component:preBuild UP-TO-DATE
+Skipping task ':data_component:preBuild' as it has no actions.
+Resolve mutations for :data_component:preDebugBuild (Thread[Execution worker Thread 11,5,main]) started.
+:data_component:preDebugBuild (Thread[Execution worker Thread 14,5,main]) started.
+
+> Task :data_component:preDebugBuild UP-TO-DATE
+Skipping task ':data_component:preDebugBuild' as it has no actions.
+Resolve mutations for :data_component:dataBindingMergeDependencyArtifactsDebug (Thread[Execution worker Thread 14,5,main]) started.
+:data_component:dataBindingMergeDependencyArtifactsDebug (Thread[Execution worker Thread 14,5,main]) started.
+
+> Task :data_component:dataBindingMergeDependencyArtifactsDebug UP-TO-DATE
+file or directory 'D:\project\NIplayer\NIplayer\data_component\libs', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\libs', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\libs', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\libs', not found
+Caching disabled for task ':data_component:dataBindingMergeDependencyArtifactsDebug' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':data_component:dataBindingMergeDependencyArtifactsDebug' as it is up-to-date.
+Resolve mutations for :data_component:generateDebugResValues (Thread[Execution worker Thread 14,5,main]) started.
+:data_component:generateDebugResValues (Thread[Execution worker Thread 14,5,main]) started.
+
+> Task :data_component:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':data_component:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':data_component:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :data_component:generateDebugResources (Thread[Execution worker Thread 14,5,main]) started.
+:data_component:generateDebugResources (Thread[Execution worker Thread 14,5,main]) started.
+
+> Task :data_component:generateDebugResources UP-TO-DATE
+Caching disabled for task ':data_component:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':data_component:generateDebugResources' as it is up-to-date.
+Resolve mutations for :data_component:packageDebugResources (Thread[Execution worker Thread 14,5,main]) started.
+:data_component:packageDebugResources (Thread[Execution worker Thread 14,5,main]) started.
+
+> Task :data_component:packageDebugResources UP-TO-DATE
+Caching disabled for task ':data_component:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':data_component:packageDebugResources' as it is up-to-date.
+Resolve mutations for :data_component:processDebugNavigationResources (Thread[Execution worker Thread 14,5,main]) started.
+:data_component:processDebugNavigationResources (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :data_component:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':data_component:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':data_component:processDebugNavigationResources' as it is up-to-date.
+Resolve mutations for :data_component:parseDebugLocalResources (Thread[Execution worker Thread 9,5,main]) started.
+:data_component:parseDebugLocalResources (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :data_component:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':data_component:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':data_component:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :data_component:dataBindingGenBaseClassesDebug (Thread[Execution worker Thread 9,5,main]) started.
+:data_component:dataBindingGenBaseClassesDebug (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :data_component:dataBindingGenBaseClassesDebug UP-TO-DATE
+file or directory 'D:\project\NIplayer\NIplayer\data_component\libs', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\libs', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\libs', not found
+Caching disabled for task ':data_component:dataBindingGenBaseClassesDebug' because:
+  Build cache is disabled
+Skipping task ':data_component:dataBindingGenBaseClassesDebug' as it is up-to-date.
+Resolve mutations for :data_component:dataBindingTriggerDebug (Thread[Execution worker Thread 9,5,main]) started.
+:data_component:dataBindingTriggerDebug (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :data_component:dataBindingTriggerDebug UP-TO-DATE
+Caching disabled for task ':data_component:dataBindingTriggerDebug' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':data_component:dataBindingTriggerDebug' as it is up-to-date.
+Resolve mutations for :data_component:generateDebugBuildConfig (Thread[Execution worker Thread 9,5,main]) started.
+:data_component:generateDebugBuildConfig (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :data_component:generateDebugBuildConfig UP-TO-DATE
+Caching disabled for task ':data_component:generateDebugBuildConfig' because:
+  Build cache is disabled
+Skipping task ':data_component:generateDebugBuildConfig' as it is up-to-date.
+Resolve mutations for :data_component:generateDebugRFile (Thread[Execution worker Thread 9,5,main]) started.
+:data_component:generateDebugRFile (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :data_component:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':data_component:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':data_component:generateDebugRFile' as it is up-to-date.
+Resolve mutations for :data_component:kspDebugKotlin (Thread[Execution worker Thread 9,5,main]) started.
+:data_component:kspDebugKotlin (Thread[Execution worker Thread 9,5,main]) started.
+
+> Task :data_component:kspDebugKotlin FAILED
+file or directory 'D:\project\NIplayer\NIplayer\data_component\libs', not found
+Caching disabled for task ':data_component:kspDebugKotlin' because:
+  Build cache is disabled
+Task ':data_component:kspDebugKotlin' is not up-to-date because:
+  Task has failed previously.
+The input changes require a full rebuild for incremental task ':data_component:kspDebugKotlin'.
+file or directory 'D:\project\NIplayer\NIplayer\data_component\libs', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\src\debug\kotlin', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\src\debug\java', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\src\main\kotlin', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\src\debug\java', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\libs', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\src\debug\kotlin', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\src\debug\java', not found
+file or directory 'D:\project\NIplayer\NIplayer\data_component\src\main\kotlin', not found
+i: [ksp] loaded provider(s): [com.squareup.moshi.kotlin.codegen.ksp.JsonClassSymbolProcessorProvider, cn.jailedbird.arouter.ksp.compiler.RouteSymbolProcessorProvider, cn.jailedbird.arouter.ksp.compiler.InterceptorSymbolProcessorProvider, cn.jailedbird.arouter.ksp.compiler.AutowiredSymbolProcessorProvider]
+e: [ksp] java.lang.reflect.UndeclaredThrowableException
+
+[Incubating] Problems report is available at: file:///D:/project/NIplayer/NIplayer/build/reports/problems/problems-report.html
+.\gradlew.bat : 
+At line:1 char:5
++ & { .\gradlew.bat :data_component:kspDebugKotlin --info 2>&1 | Out-Fi ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':data_component:kspDebugKotlin'.
+> A failure occurred while executing com.google.devtools.ksp.gradle.KspAAWorkerAction
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 5s
+14 actionable tasks: 1 executed, 13 up-to-date
+Watched directory hierarchies: [D:\project\NIplayer\NIplayer]

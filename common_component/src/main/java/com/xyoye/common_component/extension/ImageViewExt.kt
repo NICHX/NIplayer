@@ -5,10 +5,13 @@ import android.os.Build
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.ImageView
-import coil.load
-import coil.request.CachePolicy
-import coil.request.videoFramePercent
-import coil.size.Scale
+import coil3.load
+import coil3.request.CachePolicy
+import coil3.request.crossfade
+import coil3.request.error
+import coil3.request.placeholder
+import coil3.size.Scale
+import coil3.video.videoFramePercent
 import com.xyoye.common_component.R
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.utils.ThumbnailMemoryCache
@@ -28,10 +31,6 @@ private fun ImageView.applyRoundedCorners() {
         }
     }
 }
-
-/**
- * Created by xyoye on 2020/7/31.
- */
 
 fun ImageView.loadImage(
     source: String?,
@@ -91,7 +90,7 @@ fun ImageView.loadStorageFileCover(file: StorageFile, scaleSize: Int? = null) {
     val resourceType = source.resourceType()
     val isLocalFile = resourceType == ResourceType.File
 
-    scaleType = if (isLocalFile) {
+    val targetScaleType = if (isLocalFile) {
         ImageView.ScaleType.CENTER_CROP
     } else {
         ImageView.ScaleType.FIT_CENTER
@@ -107,6 +106,8 @@ fun ImageView.loadStorageFileCover(file: StorageFile, scaleSize: Int? = null) {
 
     applyRoundedCorners()
 
+    scaleType = ImageView.ScaleType.CENTER_INSIDE
+
     load(source) {
         scale(Scale.FILL)
         crossfade(false)
@@ -114,15 +115,14 @@ fun ImageView.loadStorageFileCover(file: StorageFile, scaleSize: Int? = null) {
         diskCachePolicy(diskCachePolicy)
         memoryCachePolicy(CachePolicy.ENABLED)
         videoFramePercent(0.0)
-        allowHardware(true)
-        allowRgb565(true)
         if (sizePx != null) {
             size(sizePx)
         }
         listener(
             onSuccess = { _, result ->
+                scaleType = targetScaleType
                 if (uniqueKey.isNotEmpty()) {
-                    val bitmap = (result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+                    val bitmap = (result.image as? coil3.BitmapImage)?.bitmap
                     if (bitmap != null && !bitmap.isRecycled) {
                         ThumbnailMemoryCache.put(uniqueKey, bitmap)
                     }
