@@ -1,70 +1,55 @@
 package com.xyoye.common_component.extension
 
 import android.widget.ImageView
-import coil.load
-import coil.request.CachePolicy
-import coil.request.videoFramePercent
-import coil.size.Scale
-import coil.transform.RoundedCornersTransformation
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.DecodeFormat
+import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.load.resource.bitmap.RoundedCorners
+import com.bumptech.glide.request.RequestOptions
 import com.xyoye.common_component.R
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.utils.ThumbnailMemoryCache
 import com.xyoye.data_component.enums.ResourceType
 import java.io.File
 
-/**
- * Created by xyoye on 2020/7/31.
- */
-
 fun ImageView.loadImage(
     source: String?,
     radiusDp: Float = 0f,
     errorRes: Int = 0,
 ) {
-    val transformation = if (radiusDp > 0)
-        RoundedCornersTransformation(radiusDp.dp())
-    else
-        null
-
-    load(source) {
-        scale(Scale.FILL)
-        error(errorRes)
-        // 禁用淡入效果，加快加载速度
-        crossfade(false)
-        transformation?.let { transformations(it) }
-    }
+    Glide.with(this)
+        .load(source)
+        .apply(RequestOptions().apply {
+            centerCrop()
+            dontAnimate()
+            if (errorRes != 0) error(errorRes)
+            if (radiusDp > 0) transform(RoundedCorners(radiusDp.dp().toInt()))
+        })
+        .into(this)
 }
 
 fun ImageView.loadVideoCover(image: File) {
-    load(image) {
-        scale(Scale.FILL)
-        // 禁用淡入效果，加快加载速度
-        crossfade(false)
-        error(R.drawable.ic_dandanplay)
-        transformations(RoundedCornersTransformation(5f.dp()))
-        diskCachePolicy(CachePolicy.DISABLED)
-        memoryCachePolicy(CachePolicy.DISABLED)
-        videoFramePercent(0.0)
-    }
+    Glide.with(this)
+        .load(image)
+        .apply(RequestOptions().apply {
+            centerCrop()
+            dontAnimate()
+            error(R.drawable.ic_dandanplay)
+            transform(RoundedCorners(5f.dp().toInt()))
+            diskCacheStrategy(DiskCacheStrategy.NONE)
+            skipMemoryCache(true)
+            frame(0)
+        })
+        .into(this)
 }
 
 fun ImageView.loadStorageFileCover(file: StorageFile, scaleSize: Int? = null) {
     val uniqueKey = file.uniqueKey()
-    if (uniqueKey.isNotEmpty()) {
-        ThumbnailMemoryCache.get(uniqueKey)?.let { bitmap ->
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            setImageBitmap(bitmap)
-            return
-        }
-    }
 
     val source = ThumbnailMemoryCache.getCoverPath(uniqueKey)
         ?: file.fileCover()
         ?.also { ThumbnailMemoryCache.putCoverPath(uniqueKey, it) }
 
-    // No thumbnail path — show default icon directly, skip Coil entirely.
-    // This avoids Coil queue buildup when scrolling through many un-thumbnailed files,
-    // and prevents the default icon from being stretched by Coil's Scale.FILL.
     if (source == null) {
         val defaultIcon = when {
             file.isVideoFile() -> R.drawable.ic_video_cover
@@ -86,48 +71,24 @@ fun ImageView.loadStorageFileCover(file: StorageFile, scaleSize: Int? = null) {
         ImageView.ScaleType.FIT_CENTER
     }
 
-    val diskCachePolicy = if (isLocalFile) {
-        CachePolicy.DISABLED
+    val diskCacheStrategy = if (isLocalFile) {
+        DiskCacheStrategy.NONE
     } else {
-        CachePolicy.ENABLED
+        DiskCacheStrategy.AUTOMATIC
     }
 
     val sizePx = scaleSize ?: if (isLocalFile) 512 else null
 
-    load(source) {
-        scale(Scale.FILL)
-        crossfade(false)
-        transformations(RoundedCornersTransformation(5f.dp()))
-        diskCachePolicy(diskCachePolicy)
-        memoryCachePolicy(CachePolicy.ENABLED)
-        videoFramePercent(0.0)
-        allowHardware(true)
-        allowRgb565(true)
-        if (sizePx != null) {
-            size(sizePx)
-        }
-        listener(
-            onSuccess = { _, result ->
-                if (uniqueKey.isNotEmpty()) {
-                    val bitmap = (result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
-                    if (bitmap != null && !bitmap.isRecycled) {
-                        ThumbnailMemoryCache.put(uniqueKey, bitmap)
-                    }
-                }
-            },
-            onError = { _, _ ->
-                if (uniqueKey.isNotEmpty()) {
-                    ThumbnailMemoryCache.removeCoverPath(uniqueKey)
-                }
-                val errorIcon = when {
-                    file.isVideoFile() -> R.drawable.ic_video_cover
-                    file.isAudioFile() -> R.drawable.ic_audio_cover
-                    file.isImageFile() -> R.drawable.ic_image_cover
-                    else -> R.drawable.ic_dandanplay
-                }
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                setImageResource(errorIcon)
-            }
-        )
-    }
+    Glide.with(this)
+        .load(source)
+        .apply(RequestOptions().apply {
+            dontAnimate()
+            transform(RoundedCorners(5f.dp().toInt()))
+            diskCacheStrategy(diskCacheStrategy)
+            skipMemoryCache(false)
+            frame(0)
+            format(DecodeFormat.PREFER_RGB_565)
+            if (sizePx != null) override(sizePx, sizePx)
+        })
+        .into(this)
 }
