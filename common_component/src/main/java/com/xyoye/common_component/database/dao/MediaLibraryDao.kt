@@ -32,7 +32,7 @@ interface MediaLibraryDao {
     suspend fun getByUrl(url: String, mediaType: MediaType): MediaLibraryEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(vararg entity: MediaLibraryEntity)
+    suspend fun insert(vararg entity: MediaLibraryEntity): List<Long>
 
     @Query("DELETE FROM media_library WHERE url = (:url) AND media_type = (:mediaType)")
     @TypeConverters(MediaTypeConverter::class)

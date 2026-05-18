@@ -136,8 +136,26 @@ class StorageFileFragment :
         dataBinding.storageFileRv.apply {
             setHasFixedSize(true)
             setItemViewCacheSize(20)
-            
-            layoutManager = if (isGridView) gridEmpty(gridSpanCount) else vertical()
+
+            (itemAnimator as? androidx.recyclerview.widget.DefaultItemAnimator)?.supportsChangeAnimations = false
+
+            if (isGridView) {
+                val pool = androidx.recyclerview.widget.RecyclerView.RecycledViewPool()
+                pool.setMaxRecycledViews(0, gridSpanCount * 5)
+                pool.setMaxRecycledViews(1, gridSpanCount * 5)
+                pool.setMaxRecycledViews(2, gridSpanCount * 5)
+                pool.setMaxRecycledViews(3, gridSpanCount * 5)
+                pool.setMaxRecycledViews(4, gridSpanCount * 5)
+                setRecycledViewPool(pool)
+            }
+
+            layoutManager = if (isGridView) {
+                gridEmpty(gridSpanCount).also {
+                    it.initialPrefetchItemCount = gridSpanCount * 2
+                }
+            } else {
+                vertical()
+            }
             adapter = StorageFileAdapter(ownerActivity, viewModel, isGridView).create()
 
             addOnScrollListener(object : RecyclerView.OnScrollListener() {

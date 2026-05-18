@@ -295,8 +295,9 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
                 setOf(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE)
             )
             if (smbFile != null) {
-                smbFile.write(data, 0L)
-                smbFile.close()
+                smbFile.use {
+                    it.write(data, 0L)
+                }
                 true
             } else {
                 false

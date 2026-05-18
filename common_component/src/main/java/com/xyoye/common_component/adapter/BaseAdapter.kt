@@ -58,7 +58,9 @@ class BaseAdapter : AnimatedAdapter<RecyclerView.ViewHolder>() {
         position: Int,
         payloads: MutableList<Any>
     ) {
-        bindViewHolderAnimation(viewHolder)
+        if (payloads.isEmpty()) {
+            bindViewHolderAnimation(viewHolder)
+        }
         getHolderCreator(viewHolder.itemViewType).apply {
             initItemBinding(viewHolder.itemView)
             if (payloads.isEmpty()) {

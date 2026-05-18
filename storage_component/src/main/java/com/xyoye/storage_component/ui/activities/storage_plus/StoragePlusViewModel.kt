@@ -29,8 +29,9 @@ class StoragePlusViewModel : BaseViewModel() {
             }
 
             newLibrary.id = oldLibrary?.id ?: 0
-            DatabaseManager.instance.getMediaLibraryDao().insert(newLibrary)
-            ThumbnailServerConfig.putServerThumbnailEnabled(newLibrary.id, thumbnailEnabled)
+            val insertedIds = DatabaseManager.instance.getMediaLibraryDao().insert(newLibrary)
+            val realId = if (oldLibrary?.id != null) oldLibrary.id else insertedIds.firstOrNull()?.toInt() ?: 0
+            ThumbnailServerConfig.putServerThumbnailEnabled(realId, thumbnailEnabled)
             _exitLiveData.postValue(Any())
         }
     }

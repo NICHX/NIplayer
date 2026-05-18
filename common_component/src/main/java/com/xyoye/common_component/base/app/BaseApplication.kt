@@ -76,6 +76,8 @@ open class BaseApplication : Application(), ImageLoaderFactory {
             .components {
                 add(VideoFrameDecoder.Factory())
             }
+            .fetcherDispatcher(kotlinx.coroutines.Dispatchers.IO.limitedParallelism(3))
+            .decoderDispatcher(kotlinx.coroutines.Dispatchers.IO.limitedParallelism(2))
             .build()
     }
 }

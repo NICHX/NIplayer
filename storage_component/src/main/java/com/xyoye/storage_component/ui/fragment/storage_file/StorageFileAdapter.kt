@@ -371,7 +371,7 @@ class StorageFileAdapter(
 
     private fun BaseViewHolderCreator<ItemStorageImageGridBinding>.imageGridItem() = { data: StorageFile ->
         itemBinding.run {
-            coverIv.loadStorageFileCover(data, 256)
+            coverIv.loadStorageFileCover(data)
 
             titleTv.text = data.fileName()
             titleTv.setTextColor(getTitleColor(data))

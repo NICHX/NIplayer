@@ -68,9 +68,10 @@ object ThumbnailGeneratorManager {
     private val pendingFiles = LinkedBlockingQueue<StorageFile>()
     
     // 处理中的标志
+    @Volatile
     private var isProcessing = false
     
-    // 缩略图生成是否暂停的标志
+    @Volatile
     private var isPaused = false
 
     // 用于序列化 SMB 和 FTP 缩略图生成的互斥锁（按媒体库ID隔离），
@@ -81,7 +82,7 @@ object ThumbnailGeneratorManager {
     private val bitmapPool = LinkedList<Bitmap>()
 
     // 同目录下已存在的 -thumb.jpg 文件查找表，key 为视频名（不含扩展名）
-    private val thumbFileLookup = mutableMapOf<String, StorageFile>()
+    private val thumbFileLookup = ConcurrentHashMap<String, StorageFile>()
     // 远程 .thumb/ 目录下已存在的缩略图文件 uniqueKey 集合
     private val existingDotThumbKeys = ConcurrentHashMap.newKeySet<String>()
     private const val BITMAP_POOL_MAX_SIZE = 8
@@ -140,6 +141,7 @@ object ThumbnailGeneratorManager {
      */
     suspend fun preloadExistingThumbs(allFiles: List<StorageFile>, storage: Storage) {
         if (storage.library.id > 0 && !ThumbnailServerConfig.isServerThumbnailEnabled(storage.library.id)) return
+        val videoNameMap = allFiles.associateBy { getFileNameNoExtension(it.fileName()) }
         coroutineScope {
             allFiles
                 .filter { it.fileName().endsWith("-thumb.jpg") }
@@ -147,9 +149,7 @@ object ThumbnailGeneratorManager {
                     launch {
                         val videoName = thumbFile.fileName().removeSuffix("-thumb.jpg")
                         if (videoName.isEmpty()) return@launch
-                        val videoFile = allFiles.find {
-                            getFileNameNoExtension(it.fileName()) == videoName
-                        } ?: return@launch
+                        val videoFile = videoNameMap[videoName] ?: return@launch
                         val coverFile = videoFile.uniqueKey().toCoverFile() ?: return@launch
                         if (coverFile.exists() && coverFile.length() > 0) return@launch
                         try {
@@ -164,15 +164,15 @@ object ThumbnailGeneratorManager {
                 }
 
             allFiles
-                .filter { it.isVideoFile() }
-                .forEach { videoFile ->
+                .filter { it.isVideoFile() || it.isImageFile() || it.isAudioFile() }
+                .forEach { mediaFile ->
                     launch {
-                        val dotThumbPath = buildDotThumbPath(videoFile) ?: return@launch
-                        val coverFile = videoFile.uniqueKey().toCoverFile() ?: return@launch
+                        val dotThumbPath = buildDotThumbPath(mediaFile) ?: return@launch
+                        val coverFile = mediaFile.uniqueKey().toCoverFile() ?: return@launch
                         if (coverFile.exists() && coverFile.length() > 0) return@launch
 
                         try {
-                            if (isLocalStorage(videoFile)) {
+                            if (isLocalStorage(mediaFile)) {
                                 val localFile = File(dotThumbPath)
                                 if (localFile.exists() && localFile.isFile && localFile.length() > 0) {
                                     coverFile.parentFile?.mkdirs()
@@ -183,9 +183,9 @@ object ThumbnailGeneratorManager {
                                     }
                                 }
                             } else if (storage.fileExists(dotThumbPath)) {
-                                val thumbFile = videoFile.storage.pathFile(dotThumbPath, false)
+                                val thumbFile = mediaFile.storage.pathFile(dotThumbPath, false)
                                 if (thumbFile != null) {
-                                    videoFile.storage.openFile(thumbFile)?.use { input ->
+                                    mediaFile.storage.openFile(thumbFile)?.use { input ->
                                         coverFile.parentFile?.mkdirs()
                                         FileOutputStream(coverFile).use { output ->
                                             input.copyTo(output)
@@ -225,7 +225,7 @@ object ThumbnailGeneratorManager {
      */
     private suspend fun preloadDotThumbExistence(allFiles: List<StorageFile>, storage: Storage) = withContext(Dispatchers.IO) {
         for (file in allFiles) {
-            if (!file.isVideoFile()) continue
+            if (!file.isVideoFile() && !file.isImageFile() && !file.isAudioFile()) continue
             if (isLocalStorage(file)) continue
             val dotThumbPath = buildDotThumbPath(file) ?: continue
             try {
@@ -247,10 +247,11 @@ object ThumbnailGeneratorManager {
 
         if (storage.library.id > 0 && !ThumbnailServerConfig.isServerThumbnailEnabled(storage.library.id)) return
 
+        isPaused = false
+
         synchronized(pendingFiles) {
             pendingFiles.clear()
             retryCountMap.clear()
-            clearCoverFileCache()
             ThumbnailMemoryCache.clearBitmapCache()
 
             thumbFileLookup.clear()
@@ -346,17 +347,19 @@ object ThumbnailGeneratorManager {
         }
         if (file.isVideoFile()) {
             val videoName = getFileNameNoExtension(file.fileName())
-            if (videoName.isNotEmpty() && videoName in thumbFileLookup) {
+            if (videoName.isNotEmpty() && thumbFileLookup.containsKey(videoName)) {
                 return true
             }
-            val thumbPath = buildCustomThumbPath(file) ?: return false
-            val sameDirFile = File(thumbPath)
-            if (sameDirFile.exists() && sameDirFile.isFile && sameDirFile.length() > 0) {
-                return true
+            val thumbPath = buildCustomThumbPath(file)
+            if (thumbPath != null) {
+                val sameDirFile = File(thumbPath)
+                if (sameDirFile.exists() && sameDirFile.isFile && sameDirFile.length() > 0) {
+                    return true
+                }
             }
-            if (!isLocalStorage(file) && file.uniqueKey() in existingDotThumbKeys) {
-                return true
-            }
+        }
+        if (!isLocalStorage(file) && file.uniqueKey() in existingDotThumbKeys) {
+            return true
         }
         return false
     }
@@ -421,7 +424,6 @@ object ThumbnailGeneratorManager {
             }
 
             isProcessing = false
-            // 处理完一批后检查是否暂停，未暂停则继续处理
             if (!isPaused) {
                 processNextBatch()
             }
@@ -434,11 +436,10 @@ object ThumbnailGeneratorManager {
     private suspend fun generateThumbnailForFile(file: StorageFile): Boolean {
         val uniqueKey = file.uniqueKey()
 
-        if (currentTasks.contains(uniqueKey)) {
+        if (!currentTasks.add(uniqueKey)) {
             return false
         }
 
-        currentTasks.add(uniqueKey)
         var thumbnailGenerated = false
 
         try {
@@ -548,7 +549,7 @@ object ThumbnailGeneratorManager {
 
             val thumbBytes = toJpegBytes(scaledBitmap)
 
-            success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
+            success = saveBytesToFile(thumbBytes, coverFile, file.uniqueKey())
 
             if (!isLocalStorage(file)) {
                 val dotThumbPath = buildDotThumbPath(file)
@@ -578,16 +579,28 @@ object ThumbnailGeneratorManager {
     }
 
     private suspend fun tryCustomThumbnail(file: StorageFile, coverFile: File): Boolean {
-        if (!file.isVideoFile()) return false
+        if (file.isVideoFile()) {
+            val videoName = getFileNameNoExtension(file.fileName())
 
-        val videoName = getFileNameNoExtension(file.fileName())
+            if (videoName.isNotEmpty()) {
+                val thumbFile = thumbFileLookup[videoName]
+                if (thumbFile != null) {
+                    try {
+                        file.storage.openFile(thumbFile)?.use { inputStream ->
+                            return decodeAndSaveThumbnail(inputStream, file, coverFile)
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
 
-        if (videoName.isNotEmpty()) {
-            val thumbFile = thumbFileLookup[videoName]
-            if (thumbFile != null) {
+            val thumbPath = buildCustomThumbPath(file)
+            if (thumbPath != null) {
                 try {
-                    file.storage.openFile(thumbFile)?.use { inputStream ->
-                        return decodeAndSaveThumbnail(inputStream, file, coverFile)
+                    val localFile = File(thumbPath)
+                    if (localFile.exists() && localFile.isFile) {
+                        FileInputStream(localFile).use { inputStream ->
+                            return decodeAndSaveThumbnail(inputStream, file, coverFile)
+                        }
                     }
                 } catch (_: Exception) {}
             }
@@ -617,17 +630,6 @@ object ThumbnailGeneratorManager {
                 } catch (_: Exception) {}
             }
         }
-
-        val thumbPath = buildCustomThumbPath(file) ?: return false
-
-        try {
-            val localFile = File(thumbPath)
-            if (localFile.exists() && localFile.isFile) {
-                FileInputStream(localFile).use { inputStream ->
-                    return decodeAndSaveThumbnail(inputStream, file, coverFile)
-                }
-            }
-        } catch (_: Exception) {}
 
         return false
     }
@@ -683,6 +685,10 @@ object ThumbnailGeneratorManager {
      * 为图片文件生成缩略图
      */
     private suspend fun generateImageThumbnail(file: StorageFile, coverFile: File): Boolean = withContext(Dispatchers.IO) {
+        if (tryCustomThumbnail(file, coverFile)) {
+            return@withContext true
+        }
+
         var success = false
         var inputStream: java.io.InputStream? = null
 
@@ -692,14 +698,24 @@ object ThumbnailGeneratorManager {
 
             if (isNetworkStorage) {
                 withTimeout(10_000L) {
-                    val stream = file.storage.openFile(file) ?: return@withTimeout
-                    val imageBytes = stream.readBytes()
-                    IOUtils.closeIO(stream)
+                    inputStream = file.storage.openFile(file) ?: return@withTimeout
+                    val buffered = java.io.BufferedInputStream(inputStream)
+                    buffered.mark(512 * 1024)
 
                     val options = BitmapFactory.Options().apply {
                         inJustDecodeBounds = true
                     }
-                    BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
+                    BitmapFactory.decodeStream(buffered, null, options)
+
+                    var decodeStream: java.io.InputStream = buffered
+                    try {
+                        buffered.reset()
+                    } catch (e: java.io.IOException) {
+                        IOUtils.closeIO(inputStream)
+                        val reopened = file.storage.openFile(file) ?: return@withTimeout
+                        inputStream = reopened
+                        decodeStream = reopened
+                    }
 
                     options.inSampleSize = calculateInSampleSize(options, 400, 400)
                     options.inJustDecodeBounds = false
@@ -712,10 +728,21 @@ object ThumbnailGeneratorManager {
                         options.inBitmap = reusable
                     }
 
-                    val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
+                    val bitmap = BitmapFactory.decodeStream(decodeStream, null, options)
                         ?: return@withTimeout
 
-                    success = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
+                    val thumbBytes = toJpegBytes(bitmap)
+                    success = saveBytesToFile(thumbBytes, coverFile, file.uniqueKey())
+
+                    if (!isLocalStorage(file)) {
+                        val dotThumbPath = buildDotThumbPath(file)
+                        if (dotThumbPath != null) {
+                            val dotThumbDir = getDirPath(dotThumbPath)
+                            file.storage.createDirectory(dotThumbDir)
+                            file.storage.saveFile(dotThumbPath, thumbBytes)
+                        }
+                    }
+
                     if (success) {
                         ThumbnailMemoryCache.put(file.uniqueKey(), bitmap)
                     } else {
@@ -737,8 +764,9 @@ object ThumbnailGeneratorManager {
                     buffered.reset()
                 } catch (e: java.io.IOException) {
                     IOUtils.closeIO(inputStream)
-                    inputStream = file.storage.openFile(file) ?: return@withContext false
-                    decodeStream = inputStream
+                    val reopened = file.storage.openFile(file) ?: return@withContext false
+                    inputStream = reopened
+                    decodeStream = reopened
                 }
 
                 options.inSampleSize = calculateInSampleSize(options, 400, 400)
@@ -754,7 +782,18 @@ object ThumbnailGeneratorManager {
 
                 val bitmap = BitmapFactory.decodeStream(decodeStream, null, options) ?: return@withContext false
 
-                success = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
+                val thumbBytes = toJpegBytes(bitmap)
+                success = saveBytesToFile(thumbBytes, coverFile, file.uniqueKey())
+
+                if (!isLocalStorage(file)) {
+                    val dotThumbPath = buildDotThumbPath(file)
+                    if (dotThumbPath != null) {
+                        val dotThumbDir = getDirPath(dotThumbPath)
+                        file.storage.createDirectory(dotThumbDir)
+                        file.storage.saveFile(dotThumbPath, thumbBytes)
+                    }
+                }
+
                 if (success) {
                     ThumbnailMemoryCache.put(file.uniqueKey(), bitmap)
                 } else {
@@ -773,6 +812,10 @@ object ThumbnailGeneratorManager {
      * 为音频文件生成缩略图（读取内嵌封面图）
      */
     private suspend fun generateAudioThumbnail(file: StorageFile, coverFile: File): Boolean = withContext(Dispatchers.IO) {
+        if (tryCustomThumbnail(file, coverFile)) {
+            return@withContext true
+        }
+
         val mediaRetriever = MediaMetadataRetriever()
         var success = false
 
@@ -798,7 +841,18 @@ object ThumbnailGeneratorManager {
                 bitmap.recycle()
             }
 
-            success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
+            val thumbBytes = toJpegBytes(scaledBitmap)
+            success = saveBytesToFile(thumbBytes, coverFile, file.uniqueKey())
+
+            if (!isLocalStorage(file)) {
+                val dotThumbPath = buildDotThumbPath(file)
+                if (dotThumbPath != null) {
+                    val dotThumbDir = getDirPath(dotThumbPath)
+                    file.storage.createDirectory(dotThumbDir)
+                    file.storage.saveFile(dotThumbPath, thumbBytes)
+                }
+            }
+
             if (success) {
                 ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
             } else {
@@ -872,7 +926,7 @@ object ThumbnailGeneratorManager {
             file.parentFile?.mkdirs()
 
             fos = FileOutputStream(file)
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 40, fos)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 60, fos)
             fos.flush()
             success = true
         } catch (e: Exception) {
@@ -891,9 +945,32 @@ object ThumbnailGeneratorManager {
 
     private fun toJpegBytes(bitmap: Bitmap): ByteArray {
         ByteArrayOutputStream().use { bos ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 40, bos)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 60, bos)
             return bos.toByteArray()
         }
+    }
+
+    private fun saveBytesToFile(bytes: ByteArray, file: File, uniqueKey: String? = null): Boolean {
+        var fos: FileOutputStream? = null
+        var success = false
+        try {
+            file.parentFile?.mkdirs()
+            fos = FileOutputStream(file)
+            fos.write(bytes)
+            fos.flush()
+            success = true
+        } catch (e: Exception) {
+            DDLog.e("ThumbnailGenerator", "保存缩略图失败", e)
+            if (file.exists()) {
+                file.delete()
+            }
+        } finally {
+            IOUtils.closeIO(fos)
+        }
+        if (success && uniqueKey != null) {
+            ThumbnailMemoryCache.putCoverPath(uniqueKey, file.absolutePath)
+        }
+        return success
     }
 
     /**
