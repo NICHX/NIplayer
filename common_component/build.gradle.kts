@@ -63,11 +63,12 @@ dependencies {
     api(Dependencies.Tencent.mmkv)
     implementation(Dependencies.Tencent.bugly)
 
+    api(Dependencies.Square.okhttp)
     api(Dependencies.Square.retrofit)
     implementation(Dependencies.Square.retrofit_moshi)
 
-    api(Dependencies.Github.coil)
-    api(Dependencies.Github.coil_video)
+    api(Dependencies.Github.glide)
+    kapt(Dependencies.Github.glide_compiler)
     api(Dependencies.Github.nano_http)
     api(Dependencies.Github.smbj)
     api(Dependencies.Github.dcerpc)

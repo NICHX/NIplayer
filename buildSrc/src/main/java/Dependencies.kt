@@ -49,8 +49,8 @@ object Dependencies {
 
     object Github {
         const val banner = "io.github.youth5201314:banner:2.2.2"
-        const val coil = "io.coil-kt:coil:2.2.2"
-        const val coil_video = "io.coil-kt:coil-video:2.2.2"
+        const val glide = "com.github.bumptech.glide:glide:4.15.1"
+        const val glide_compiler = "com.github.bumptech.glide:compiler:4.15.1"
 
         //ftp
         const val nano_http = "org.nanohttpd:nanohttpd:2.3.1"
@@ -91,6 +91,7 @@ object Dependencies {
     }
 
     object Square {
+        const val okhttp = "com.squareup.okhttp3:okhttp:4.11.0"
         const val retrofit = "com.squareup.retrofit2:retrofit:${Versions.retrofit}"
         const val retrofit_moshi = "com.squareup.retrofit2:converter-moshi:${Versions.retrofit}"
         const val moshi = "com.squareup.moshi:moshi:${Versions.moshi}"
