@@ -4,6 +4,10 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.DecodeFormat
+import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.request.RequestOptions
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
@@ -34,110 +38,47 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.util.Collections
-import java.util.LinkedList
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 
-/**
- * 缩略图生成管理器
- * 用于为所有存储类型（本地、SMB、FTP、WebDav 等）的视图片文件生成缩略图并缓存
- */
 object ThumbnailGeneratorManager {
-    // 缩略图最大宽度
     private const val THUMBNAIL_MAX_WIDTH = 320
-    // 单次处理的文件数量
-    private const val BATCH_SIZE = 6
-    // 最大重试次数
-    private const val MAX_RETRY_COUNT = 2
-    
-    // 协程作用域
+    private const val BATCH_SIZE = 4
+    private const val MAX_RETRY_COUNT = 1
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // 当前正在生成缩略图的任务（确保同时只有一个任务）
     private val currentTasks = ConcurrentHashMap.newKeySet<String>()
-    
-    // 文件生成失败的重试次数
+
     private val retryCountMap = ConcurrentHashMap<String, Int>()
-    
-    // 是否正在处理缩略图生成
+
+    private val nonRetryableFailures = ConcurrentHashMap.newKeySet<String>()
+
     private val _isGenerating = MutableStateFlow(false)
     val isGenerating = _isGenerating.asStateFlow()
 
-    // 待处理的文件队列
     private val pendingFiles = LinkedBlockingQueue<StorageFile>()
-    
-    // 处理中的标志
+
     private var isProcessing = false
-    
-    // 缩略图生成是否暂停的标志
+
     private var isPaused = false
 
-    // 用于序列化 SMB 和 FTP 缩略图生成的互斥锁（按媒体库ID隔离），
-    // 防止并发访问单例的 SmbPlayServer / FtpPlayServer 导致状态冲突
     private val storageMutexMap = ConcurrentHashMap<String, Mutex>()
 
-    // Bitmap 复用池，减少GC压力
-    private val bitmapPool = LinkedList<Bitmap>()
-
-    // 同目录下已存在的 -thumb.jpg 文件查找表，key 为视频名（不含扩展名）
     private val thumbFileLookup = mutableMapOf<String, StorageFile>()
-    // 远程 .thumb/ 目录下已存在的缩略图文件 uniqueKey 集合
     private val existingDotThumbKeys = ConcurrentHashMap.newKeySet<String>()
-    private const val BITMAP_POOL_MAX_SIZE = 8
 
-    private fun obtainReusableBitmap(width: Int, height: Int): Bitmap? {
-        synchronized(bitmapPool) {
-            val iterator = bitmapPool.iterator()
-            while (iterator.hasNext()) {
-                val candidate = iterator.next()
-                if (candidate.isRecycled) {
-                    iterator.remove()
-                    continue
-                }
-                if (candidate.width >= width && candidate.height >= height) {
-                    iterator.remove()
-                    return candidate
-                }
-            }
-            return null
-        }
-    }
-
-    private fun recycleBitmapToPool(bitmap: Bitmap) {
-        if (bitmap.isRecycled || bitmap.isMutable.not()) return
-        synchronized(bitmapPool) {
-            if (bitmapPool.size < BITMAP_POOL_MAX_SIZE) {
-                bitmapPool.addLast(bitmap)
-            } else {
-                bitmap.recycle()
-            }
-        }
-    }
-
-    private fun clearBitmapPool() {
-        synchronized(bitmapPool) {
-            bitmapPool.forEach { it.recycle() }
-            bitmapPool.clear()
-        }
-    }
-
-    // 缩略图生成完成回调
     interface ThumbnailCallback {
         fun onThumbnailGenerated(file: StorageFile)
     }
-    
+
     private var thumbnailCallback: ThumbnailCallback? = null
-    
+
     fun setThumbnailCallback(callback: ThumbnailCallback?) {
         thumbnailCallback = callback
     }
 
-    /**
-     * 预加载现有缩略图到本地缓存
-     * 将目录中已存在的 -thumb.jpg 文件复制到缓存目录
-     * 确保 fileCover() 能立即找到缓存，避免显示默认图标
-     */
     suspend fun preloadExistingThumbs(allFiles: List<StorageFile>, storage: Storage) {
         if (storage.library.id > 0 && !ThumbnailServerConfig.isServerThumbnailEnabled(storage.library.id)) return
         coroutineScope {
@@ -199,10 +140,10 @@ object ThumbnailGeneratorManager {
         }
     }
 
-    /**
-     * 预加载已有缩略图路径到内存缓存
-     * 在后台线程批量检查 coverFile 是否存在，避免滚动时逐个触发 File.exists() IO
-     */
+    suspend fun preloadCoverPaths(allFiles: List<StorageFile>) {
+        preloadCoverFileCache(allFiles)
+    }
+
     private suspend fun preloadCoverFileCache(allFiles: List<StorageFile>) = withContext(Dispatchers.IO) {
         for (file in allFiles) {
             val uniqueKey = file.uniqueKey()
@@ -219,10 +160,6 @@ object ThumbnailGeneratorManager {
         ThumbnailMemoryCache.clearCoverPathCache()
     }
 
-    /**
-     * 预加载远程 .thumb/ 缩略图路径到内存集合
-     * 用于 hasCachedThumbnail 同步检查，避免每次触发远程 IO
-     */
     private suspend fun preloadDotThumbExistence(allFiles: List<StorageFile>, storage: Storage) = withContext(Dispatchers.IO) {
         for (file in allFiles) {
             if (!file.isVideoFile()) continue
@@ -236,12 +173,6 @@ object ThumbnailGeneratorManager {
         }
     }
 
-    /**
-     * 开始为文件列表生成缩略图
-     * @param files 文件列表
-     * @param storage 所属存储
-     * @param priorityKeys 优先处理的文件唯一键集合（当前屏幕可见项）
-     */
     fun startGenerateThumbnails(files: List<StorageFile>, storage: Storage, priorityKeys: Set<String> = emptySet(), allFiles: List<StorageFile>? = null) {
         if (!ThumbnailConfig.isGenerateThumbnail()) return
 
@@ -251,10 +182,10 @@ object ThumbnailGeneratorManager {
             pendingFiles.clear()
             retryCountMap.clear()
             clearCoverFileCache()
-            ThumbnailMemoryCache.clearBitmapCache()
 
             thumbFileLookup.clear()
             existingDotThumbKeys.clear()
+            nonRetryableFailures.clear()
             if (allFiles != null) {
                 for (f in allFiles) {
                     val name = f.fileName()
@@ -266,6 +197,7 @@ object ThumbnailGeneratorManager {
             }
 
             val filteredFiles = files.filter { file ->
+                if (isLocalStorage(file)) return@filter false
                 val isTargetType = (file.isVideoFile() && ThumbnailConfig.isGenerateForVideo()) ||
                         (file.isImageFile() && ThumbnailConfig.isGenerateForImage()) ||
                         (file.isAudioFile() && ThumbnailConfig.isGenerateForAudio())
@@ -276,10 +208,8 @@ object ThumbnailGeneratorManager {
             others.forEach { pendingFiles.offer(it) }
         }
 
-        // 预加载已有缩略图路径到内存缓存，避免首次绑定时执行 File.exists() IO
         if (allFiles != null) {
             scope.launch {
-                preloadCoverFileCache(allFiles)
                 preloadDotThumbExistence(allFiles, storage)
             }
         }
@@ -287,46 +217,25 @@ object ThumbnailGeneratorManager {
         processNextBatch()
     }
 
-    /**
-     * 暂停缩略图生成
-     */
     fun pauseGenerateThumbnails() {
         isPaused = true
     }
-    
-    /**
-     * 恢复缩略图生成
-     */
+
     fun resumeGenerateThumbnails() {
         isPaused = false
-        // 如果队列有文件且当前没有处理，则继续处理
         if (!isProcessing && pendingFiles.isNotEmpty()) {
             processNextBatch()
         }
     }
-    
-    /**
-     * 继续生成缩略图
-     */
+
     fun continueGenerateThumbnails() {
-        // 如果正在处理，直接返回
-        if (isProcessing) {
-            return
-        }
-        // 如果已暂停，也不继续处理
-        if (isPaused) {
-            return
-        }
-        // 只有队列还有文件时才继续处理
+        if (isProcessing) return
+        if (isPaused) return
         if (pendingFiles.isNotEmpty()) {
             processNextBatch()
         }
     }
 
-    /**
-     * 重新排列待处理队列，将指定文件移到队首优先处理
-     * @param priorityKeys 需要优先处理的文件唯一键集合
-     */
     fun reprioritize(priorityKeys: Set<String>) {
         if (priorityKeys.isEmpty()) return
         synchronized(pendingFiles) {
@@ -361,16 +270,9 @@ object ThumbnailGeneratorManager {
         return false
     }
 
-    /**
-     * 处理下一批缩略图生成任务
-     */
     private fun processNextBatch() {
-        // 如果正在处理、队列为空或已暂停，直接返回
-        if (isProcessing || pendingFiles.isEmpty() || isPaused) {
-            return
-        }
+        if (isProcessing || pendingFiles.isEmpty() || isPaused) return
 
-        // 取出一批文件
         val filesToProcess = mutableListOf<StorageFile>()
         synchronized(pendingFiles) {
             repeat(BATCH_SIZE) {
@@ -408,6 +310,11 @@ object ThumbnailGeneratorManager {
             results.forEachIndexed { index, success ->
                 if (!success) {
                     val file = filesToProcess[index]
+                    if (file.uniqueKey() in nonRetryableFailures) {
+                        nonRetryableFailures.remove(file.uniqueKey())
+                        retryCountMap.remove(file.uniqueKey())
+                        return@forEachIndexed
+                    }
                     val retryCount = retryCountMap.merge(file.uniqueKey(), 1) { old, _ -> old + 1 } ?: 1
                     if (retryCount <= MAX_RETRY_COUNT) {
                         synchronized(pendingFiles) {
@@ -421,22 +328,16 @@ object ThumbnailGeneratorManager {
             }
 
             isProcessing = false
-            // 处理完一批后检查是否暂停，未暂停则继续处理
             if (!isPaused) {
                 processNextBatch()
             }
         }
     }
 
-    /**
-     * 为单个文件生成缩略图
-     */
     private suspend fun generateThumbnailForFile(file: StorageFile): Boolean {
         val uniqueKey = file.uniqueKey()
 
-        if (currentTasks.contains(uniqueKey)) {
-            return false
-        }
+        if (currentTasks.contains(uniqueKey)) return false
 
         currentTasks.add(uniqueKey)
         var thumbnailGenerated = false
@@ -448,12 +349,9 @@ object ThumbnailGeneratorManager {
 
             val coverFile = uniqueKey.toCoverFile() ?: return false
 
-            if (coverFile.exists() && coverFile.length() > 0) {
-                return false
-            }
+            if (coverFile.exists() && coverFile.length() > 0) return false
 
             if (file.isVideoFile()) {
-                // SMB/FTP 使用单例服务器，需要序列化访问，防止并发冲突
                 val mediaType = file.storage.library.mediaType
                 if (mediaType == MediaType.SMB_SERVER || mediaType == MediaType.FTP_SERVER) {
                     val libraryId = file.storage.library.id.toString()
@@ -501,77 +399,56 @@ object ThumbnailGeneratorManager {
         return thumbnailGenerated
     }
 
-    /**
-     * 为视频文件生成缩略图
-     */
     private suspend fun generateVideoThumbnail(file: StorageFile, coverFile: File): Boolean = withContext(Dispatchers.IO) {
-        if (tryCustomThumbnail(file, coverFile)) {
-            return@withContext true
-        }
+        if (tryCustomThumbnail(file, coverFile)) return@withContext true
 
-        val mediaRetriever = MediaMetadataRetriever()
         var success = false
 
         try {
-            // 获取播放URL
-            val playUrl = file.storage.createPlayUrl(file) ?: return@withContext false
+            val source = file.storage.createPlayUrl(file) ?: return@withContext false
+            val playUri = Uri.parse(source)
 
-            // 设置数据源，支持 content:// URI
-            val playUri = Uri.parse(playUrl)
-            if (playUri.scheme == "content") {
-                mediaRetriever.setDataSource(BaseApplication.getAppContext(), playUri)
-            } else {
-                val headers = file.storage.getNetworkHeaders()
-                if (headers != null) {
-                    mediaRetriever.setDataSource(playUrl, headers)
+            val retriever = MediaMetadataRetriever()
+            try {
+                if (playUri.scheme == "content") {
+                    retriever.setDataSource(BaseApplication.getAppContext(), playUri)
                 } else {
-                    mediaRetriever.setDataSource(playUrl)
+                    val headers = file.storage.getNetworkHeaders()
+                    if (headers != null) retriever.setDataSource(source, headers)
+                    else retriever.setDataSource(source)
                 }
-            }
 
-            // 获取视频时长，取10%时间点附近的帧作为缩略图（更易识别视频内容）
-            val durationMs = mediaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            if (durationMs > 0 && durationMs < 5_000) {
-                return@withContext false
-            }
-            val targetTimeUs = if (durationMs > 0) durationMs * 100 else 0L
-            val bitmap = mediaRetriever.getFrameAtTime(
-                targetTimeUs,
-                MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-            ) ?: return@withContext false
+                val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                if (durationMs > 0 && durationMs < 5_000) return@withContext false
+                val targetTimeUs = if (durationMs > 0) durationMs * 100 else 0L
 
-            // 缩放到固定宽度，减少存储和后续加载开销
-            val scaledBitmap = resizeBitmap(bitmap, THUMBNAIL_MAX_WIDTH)
-            if (scaledBitmap != bitmap) {
+                val rawBitmap = retriever.getFrameAtTime(targetTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                if (rawBitmap == null) {
+                    nonRetryableFailures.add(file.uniqueKey())
+                    return@withContext false
+                }
+
+                val bitmap = resizeBitmap(rawBitmap, THUMBNAIL_MAX_WIDTH)
+                if (bitmap != rawBitmap) rawBitmap.recycle()
+
+                val thumbBytes = toJpegBytes(bitmap)
+                success = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
                 bitmap.recycle()
-            }
 
-            val thumbBytes = toJpegBytes(scaledBitmap)
-
-            success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
-
-            if (!isLocalStorage(file)) {
-                val dotThumbPath = buildDotThumbPath(file)
-                if (dotThumbPath != null) {
-                    val dotThumbDir = getDirPath(dotThumbPath)
-                    file.storage.createDirectory(dotThumbDir)
-                    file.storage.saveFile(dotThumbPath, thumbBytes)
+                if (success && !isLocalStorage(file)) {
+                    val dotThumbPath = buildDotThumbPath(file)
+                    if (dotThumbPath != null) {
+                        val dotThumbDir = getDirPath(dotThumbPath)
+                        file.storage.createDirectory(dotThumbDir)
+                        file.storage.saveFile(dotThumbPath, thumbBytes)
+                    }
                 }
-            }
-
-            if (success) {
-                ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
-            } else {
-                recycleBitmapToPool(scaledBitmap)
+            } finally {
+                try { retriever.release() } catch (_: Exception) {}
             }
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "视频缩略图生成失败: ${file.fileName()}", e)
         } finally {
-            try {
-                mediaRetriever.release()
-            } catch (e: Exception) {
-                // ignore
-            }
             cleanupPlayUrl(file)
         }
         return@withContext success
@@ -632,28 +509,18 @@ object ThumbnailGeneratorManager {
         return false
     }
 
-    /**
-     * 构建自定义缩略图文件路径（同级目录 -thumb.jpg）
-     * 使用 storagePath() 以确保 SMB 等存储包含共享名等必要信息
-     */
     private fun buildCustomThumbPath(file: StorageFile): String? {
         val fileName = getFileNameNoExtension(file.fileName()).takeIf { it.isNotEmpty() } ?: return null
         val dirPath = getDirPath(file.storagePath()).takeIf { it.isNotEmpty() } ?: return null
         return "$dirPath/$fileName-thumb.jpg"
     }
 
-    /**
-     * 构建 .thumb/ 目录下的缩略图路径
-     */
     private fun buildDotThumbPath(file: StorageFile): String? {
         val fileName = getFileNameNoExtension(file.fileName()).takeIf { it.isNotEmpty() } ?: return null
         val dirPath = getDirPath(file.storagePath()).takeIf { it.isNotEmpty() } ?: return null
         return "$dirPath/.thumb/$fileName-thumb.jpg"
     }
 
-    /**
-     * 判断是否为本地文件系统存储（可直接使用 File API）
-     */
     private fun isLocalStorage(file: StorageFile): Boolean {
         val mediaType = file.storage.library.mediaType
         return mediaType == MediaType.LOCAL_STORAGE ||
@@ -661,117 +528,44 @@ object ThumbnailGeneratorManager {
                 mediaType == MediaType.EXTERNAL_STORAGE
     }
 
-    /**
-     * 解码并保存自定义缩略图
-     */
     private fun decodeAndSaveThumbnail(inputStream: InputStream, file: StorageFile, coverFile: File): Boolean {
         val bitmap = BitmapFactory.decodeStream(BufferedInputStream(inputStream)) ?: return false
         val scaledBitmap = resizeBitmap(bitmap, THUMBNAIL_MAX_WIDTH)
-        if (scaledBitmap != bitmap) {
-            bitmap.recycle()
-        }
+        if (scaledBitmap != bitmap) bitmap.recycle()
         val success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
-        if (success) {
-            ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
-            return true
-        }
-        recycleBitmapToPool(scaledBitmap)
-        return false
+        scaledBitmap.recycle()
+        return success
     }
 
-    /**
-     * 为图片文件生成缩略图
-     */
     private suspend fun generateImageThumbnail(file: StorageFile, coverFile: File): Boolean = withContext(Dispatchers.IO) {
-        var success = false
-        var inputStream: java.io.InputStream? = null
-
         try {
-            val isNetworkStorage = file.storage.library.mediaType == MediaType.SMB_SERVER ||
-                    file.storage.library.mediaType == MediaType.FTP_SERVER
-
-            if (isNetworkStorage) {
-                withTimeout(10_000L) {
-                    val stream = file.storage.openFile(file) ?: return@withTimeout
-                    val imageBytes = stream.readBytes()
-                    IOUtils.closeIO(stream)
-
-                    val options = BitmapFactory.Options().apply {
-                        inJustDecodeBounds = true
-                    }
-                    BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
-
-                    options.inSampleSize = calculateInSampleSize(options, 400, 400)
-                    options.inJustDecodeBounds = false
-
-                    val reusable = obtainReusableBitmap(
-                        options.outWidth / options.inSampleSize,
-                        options.outHeight / options.inSampleSize
-                    )
-                    if (reusable != null) {
-                        options.inBitmap = reusable
-                    }
-
-                    val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
-                        ?: return@withTimeout
-
-                    success = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
-                    if (success) {
-                        ThumbnailMemoryCache.put(file.uniqueKey(), bitmap)
-                    } else {
-                        recycleBitmapToPool(bitmap)
-                    }
-                }
+            val source = if (isLocalStorage(file)) {
+                File(file.storagePath())
             } else {
-                inputStream = file.storage.openFile(file) ?: return@withContext false
-                val buffered = java.io.BufferedInputStream(inputStream)
-                buffered.mark(256 * 1024)
-
-                val options = BitmapFactory.Options().apply {
-                    inJustDecodeBounds = true
-                }
-                BitmapFactory.decodeStream(buffered, null, options)
-
-                var decodeStream: java.io.InputStream = buffered
-                try {
-                    buffered.reset()
-                } catch (e: java.io.IOException) {
-                    IOUtils.closeIO(inputStream)
-                    inputStream = file.storage.openFile(file) ?: return@withContext false
-                    decodeStream = inputStream
-                }
-
-                options.inSampleSize = calculateInSampleSize(options, 400, 400)
-                options.inJustDecodeBounds = false
-
-                val reusable = obtainReusableBitmap(
-                    options.outWidth / options.inSampleSize,
-                    options.outHeight / options.inSampleSize
-                )
-                if (reusable != null) {
-                    options.inBitmap = reusable
-                }
-
-                val bitmap = BitmapFactory.decodeStream(decodeStream, null, options) ?: return@withContext false
-
-                success = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
-                if (success) {
-                    ThumbnailMemoryCache.put(file.uniqueKey(), bitmap)
-                } else {
-                    recycleBitmapToPool(bitmap)
-                }
+                file.storage.createPlayUrl(file) ?: return@withContext false
             }
+
+            val bitmap = Glide.with(BaseApplication.getAppContext())
+                .asBitmap()
+                .load(source)
+                .override(THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_WIDTH)
+                .apply(RequestOptions().apply {
+                    format(DecodeFormat.PREFER_RGB_565)
+                    skipMemoryCache(true)
+                    diskCacheStrategy(DiskCacheStrategy.NONE)
+                })
+                .submit()
+                .get(15_000, TimeUnit.MILLISECONDS) ?: return@withContext false
+
+            val success = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
+            bitmap.recycle()
+            return@withContext success
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "图片缩略图生成失败: ${file.fileName()}", e)
-        } finally {
-            IOUtils.closeIO(inputStream)
+            return@withContext false
         }
-        return@withContext success
     }
-    
-    /**
-     * 为音频文件生成缩略图（读取内嵌封面图）
-     */
+
     private suspend fun generateAudioThumbnail(file: StorageFile, coverFile: File): Boolean = withContext(Dispatchers.IO) {
         val mediaRetriever = MediaMetadataRetriever()
         var success = false
@@ -783,43 +577,35 @@ object ThumbnailGeneratorManager {
                 mediaRetriever.setDataSource(BaseApplication.getAppContext(), playUri)
             } else {
                 val headers = file.storage.getNetworkHeaders()
-                if (headers != null) {
-                    mediaRetriever.setDataSource(playUrl, headers)
-                } else {
-                    mediaRetriever.setDataSource(playUrl)
-                }
+                if (headers != null) mediaRetriever.setDataSource(playUrl, headers)
+                else mediaRetriever.setDataSource(playUrl)
             }
 
-            val picture = mediaRetriever.embeddedPicture ?: return@withContext false
-            val bitmap = BitmapFactory.decodeByteArray(picture, 0, picture.size) ?: return@withContext false
+            val picture = mediaRetriever.embeddedPicture
+            if (picture == null) {
+                nonRetryableFailures.add(file.uniqueKey())
+                return@withContext false
+            }
+            val bitmap = BitmapFactory.decodeByteArray(picture, 0, picture.size)
+            if (bitmap == null) {
+                nonRetryableFailures.add(file.uniqueKey())
+                return@withContext false
+            }
 
             val scaledBitmap = resizeBitmap(bitmap, THUMBNAIL_MAX_WIDTH)
-            if (scaledBitmap != bitmap) {
-                bitmap.recycle()
-            }
+            if (scaledBitmap != bitmap) bitmap.recycle()
 
             success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
-            if (success) {
-                ThumbnailMemoryCache.put(file.uniqueKey(), scaledBitmap)
-            } else {
-                recycleBitmapToPool(scaledBitmap)
-            }
+            scaledBitmap.recycle()
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "音频封面提取失败: ${file.fileName()}", e)
         } finally {
-            try {
-                mediaRetriever.release()
-            } catch (e: Exception) {
-                // ignore
-            }
+            try { mediaRetriever.release() } catch (_: Exception) {}
             cleanupPlayUrl(file)
         }
         return@withContext success
     }
 
-    /**
-     * 清理缩略图生成中创建的 playUrl 映射，防止 urlFileMap 无限增长
-     */
     private fun cleanupPlayUrl(file: StorageFile) {
         val storage = file.storage
         val urlPath = "/" + file.uniqueKey()
@@ -829,30 +615,6 @@ object ThumbnailGeneratorManager {
         }
     }
 
-    /**
-     * 计算 Bitmap 缩放比例
-     */
-    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
-        // Raw height and width of image
-        val (height: Int, width: Int) = options.run { outHeight to outWidth }
-        var inSampleSize = 1
-
-        if (height > reqHeight || width > reqWidth) {
-            val halfHeight: Int = height / 2
-            val halfWidth: Int = width / 2
-
-            // Calculate the largest inSampleSize value that is a power of 2 and keeps both
-            // height and width larger than the requested height and width.
-            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
-                inSampleSize *= 2
-            }
-        }
-        return inSampleSize
-    }
-
-    /**
-     * 将 Bitmap 等比缩放到指定宽度
-     */
     private fun resizeBitmap(bitmap: Bitmap, maxWidth: Int): Bitmap {
         val width = bitmap.width
         val height = bitmap.height
@@ -862,9 +624,6 @@ object ThumbnailGeneratorManager {
         return Bitmap.createScaledBitmap(bitmap, maxWidth, newHeight, true)
     }
 
-    /**
-     * 将 Bitmap 保存到文件
-     */
     private fun saveBitmapToFile(bitmap: Bitmap, file: File, uniqueKey: String? = null): Boolean {
         var fos: FileOutputStream? = null
         var success = false
@@ -877,9 +636,7 @@ object ThumbnailGeneratorManager {
             success = true
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "保存缩略图失败", e)
-            if (file.exists()) {
-                file.delete()
-            }
+            if (file.exists()) file.delete()
         } finally {
             IOUtils.closeIO(fos)
         }
@@ -896,18 +653,13 @@ object ThumbnailGeneratorManager {
         }
     }
 
-    /**
-     * 清除所有待处理任务
-     */
     fun clearPendingTasks() {
-        synchronized(pendingFiles) {
-            pendingFiles.clear()
-        }
+        synchronized(pendingFiles) { pendingFiles.clear() }
         currentTasks.clear()
         retryCountMap.clear()
+        nonRetryableFailures.clear()
         existingDotThumbKeys.clear()
         storageMutexMap.clear()
-        clearBitmapPool()
         ThumbnailMemoryCache.clear()
         isProcessing = false
         _isGenerating.value = false

@@ -3,9 +3,6 @@ package com.xyoye.common_component.base.app
 import android.app.Application
 import android.content.Context
 import android.os.Handler
-import coil.ImageLoader
-import coil.ImageLoaderFactory
-import coil.decode.VideoFrameDecoder
 import com.alibaba.android.arouter.launcher.ARouter
 import com.tencent.bugly.crashreport.CrashReport
 import com.tencent.mmkv.MMKV
@@ -24,7 +21,7 @@ import kotlinx.coroutines.launch
  * Created by xyoye on 2020/4/13.
  */
 
-open class BaseApplication : Application(), ImageLoaderFactory {
+open class BaseApplication : Application() {
     companion object {
 
         private var APPLICATION_CONTEXT: Application? = null
@@ -71,11 +68,4 @@ open class BaseApplication : Application(), ImageLoaderFactory {
         }
     }
 
-    override fun newImageLoader(): ImageLoader {
-        return ImageLoader.Builder(this)
-            .components {
-                add(VideoFrameDecoder.Factory())
-            }
-            .build()
-    }
 }
