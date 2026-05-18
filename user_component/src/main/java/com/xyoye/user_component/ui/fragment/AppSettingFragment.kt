@@ -2,7 +2,6 @@ package com.xyoye.user_component.ui.fragment
 
 import android.os.Bundle
 import android.view.View
-import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceDataStore
 import androidx.preference.PreferenceFragmentCompat
@@ -78,17 +77,5 @@ class AppSettingFragment : PreferenceFragmentCompat() {
             }
         }
 
-        override fun getString(key: String?, defValue: String?): String? {
-            return when (key) {
-                "view_mode" -> AppConfig.isGridView().toString()
-                else -> super.getString(key, defValue)
-            }
-        }
-
-        override fun putString(key: String?, value: String?) {
-            when (key) {
-                "view_mode" -> AppConfig.putGridView(value?.toBoolean() ?: false)
-            }
-        }
     }
 }

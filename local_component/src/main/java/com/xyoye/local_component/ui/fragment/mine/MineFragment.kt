@@ -13,6 +13,7 @@ import com.xyoye.common_component.extension.grid
 import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.extension.vertical
 import com.xyoye.common_component.weight.BottomActionDialog
+import com.xyoye.common_component.weight.ExpandableFabMenu
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.common_component.weight.dialog.CommonDialog
 import com.xyoye.data_component.bean.SheetActionBean
@@ -43,11 +44,41 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
     override fun initView() {
         viewModel.initLocalStorage()
         initRv()
-        dataBinding.addMediaStorageBt.setOnClickListener {
-            showAddStorageDialog()
-        }
+        setupExpandableFab()
         viewModel.mediaLibWithStatusLiveData.observe(this) {
             dataBinding.mediaLibRv.setData(it)
+        }
+    }
+
+    private fun setupExpandableFab() {
+        dataBinding.expandableFab.addAction(
+            ExpandableFabMenu.FabAction(
+                id = 1,
+                icon = if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid,
+                label = if (isGridView) "列表视图" else "网格视图",
+                onClick = { toggleViewMode() }
+            )
+        )
+        dataBinding.expandableFab.addAction(
+            ExpandableFabMenu.FabAction(
+                id = 2,
+                icon = R.drawable.ic_add_white,
+                label = "新增设备存储库",
+                onClick = { showAddStorageDialog() }
+            )
+        )
+    }
+
+    private fun toggleViewMode() {
+        isGridView = !isGridView
+        initRv()
+        viewModel.mediaLibWithStatusLiveData.value?.let {
+            dataBinding.mediaLibRv.setData(it)
+        }
+        dataBinding.expandableFab.run {
+            if (isExpanded) collapse()
+            updateAction(1, if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid,
+                if (isGridView) "列表视图" else "网格视图")
         }
     }
 

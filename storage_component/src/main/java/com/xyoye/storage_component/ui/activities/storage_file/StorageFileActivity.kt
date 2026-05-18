@@ -30,6 +30,7 @@ import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.impl.FtpStorage
 import com.xyoye.common_component.utils.SupervisorScope
 import com.xyoye.common_component.weight.BottomActionDialog
+import com.xyoye.common_component.weight.ExpandableFabMenu
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.bean.SheetActionBean
 import com.xyoye.data_component.bean.StorageFilePath
@@ -115,21 +116,50 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
 
         initPathRv()
         initListener()
-        initDownloadButton()
+        initExpandableFab()
         openDirectory(null)
     }
 
-    private fun initDownloadButton() {
-        dataBinding.downloadBt.setOnClickListener {
-            ARouter.getInstance()
-                .build(RouteTable.Stream.DownloadManager)
-                .navigation()
-        }
+    private fun initExpandableFab() {
+        dataBinding.expandableFab.addAction(
+            ExpandableFabMenu.FabAction(
+                id = 1,
+                icon = if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid,
+                label = if (isGridView) "列表视图" else "网格视图",
+                onClick = { toggleViewMode() }
+            )
+        )
 
+        dataBinding.expandableFab.addAction(
+            ExpandableFabMenu.FabAction(
+                id = 2,
+                icon = R.drawable.ic_download,
+                label = "下载管理",
+                onClick = {
+                    ARouter.getInstance()
+                        .build(RouteTable.Stream.DownloadManager)
+                        .navigation()
+                }
+            )
+        )
+
+        dataBinding.expandableFab.visibility = android.view.View.GONE
         lifecycleScope.launch {
             DownloadManager.taskCount.collectLatest { count ->
-                dataBinding.downloadBt.visibility = if (count > 0) android.view.View.VISIBLE else android.view.View.GONE
+                dataBinding.expandableFab.visibility = if (count > 0) android.view.View.VISIBLE else android.view.View.GONE
             }
+        }
+    }
+
+    private fun toggleViewMode() {
+        isGridView = !isGridView
+        val currentFragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
+        if (currentFragment is StorageFileFragment) {
+            currentFragment.refreshViewMode()
+        }
+        dataBinding.expandableFab.run {
+            updateAction(1, if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid,
+                if (isGridView) "列表视图" else "网格视图")
         }
     }
 
