@@ -59,6 +59,28 @@ class StorageFileFragment :
     
     private val pendingThumbnailFiles = mutableSetOf<String>()
 
+    private val pendingThumbnailUpdates = mutableSetOf<Int>()
+    private val thumbnailUpdateHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val thumbnailBatchRunnable = Runnable {
+        if (pendingThumbnailUpdates.isEmpty()) return@Runnable
+        val adapter = dataBinding.storageFileRv.adapter ?: return@Runnable
+        val sorted = pendingThumbnailUpdates.toList().sorted().distinct()
+        pendingThumbnailUpdates.clear()
+
+        var rangeStart = sorted[0]
+        var rangeEnd = sorted[0]
+        for (i in 1 until sorted.size) {
+            if (sorted[i] == rangeEnd + 1) {
+                rangeEnd = sorted[i]
+            } else {
+                adapter.notifyItemRangeChanged(rangeStart, rangeEnd - rangeStart + 1, "thumbnail_updated")
+                rangeStart = sorted[i]
+                rangeEnd = sorted[i]
+            }
+        }
+        adapter.notifyItemRangeChanged(rangeStart, rangeEnd - rangeStart + 1, "thumbnail_updated")
+    }
+
     override fun initViewModel() =
         ViewModelInit(
             BR.viewModel,
@@ -142,6 +164,7 @@ class StorageFileFragment :
 
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 private var scrollDistanceAccumulator = 0
+                private var lastScrollDirection = 0
 
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                     super.onScrollStateChanged(recyclerView, newState)
@@ -150,9 +173,10 @@ class StorageFileFragment :
                             isScrolling = false
                             isThumbnailPaused = false
                             scrollDistanceAccumulator = 0
-                            ThumbnailGeneratorManager.resumeGenerateThumbnails()
+                            lastScrollDirection = 0
                             val visibleKeys = getVisibleFileKeys()
                             ThumbnailGeneratorManager.reprioritize(visibleKeys)
+                            ThumbnailGeneratorManager.resumeGenerateThumbnails()
                             ThumbnailGeneratorManager.continueGenerateThumbnails()
                             displayPendingThumbnails()
                         }
@@ -165,12 +189,25 @@ class StorageFileFragment :
                         }
                         RecyclerView.SCROLL_STATE_SETTLING -> {
                             isScrolling = true
+                            if (!isThumbnailPaused) {
+                                isThumbnailPaused = true
+                                ThumbnailGeneratorManager.pauseGenerateThumbnails()
+                            }
                         }
                     }
                 }
 
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                     super.onScrolled(recyclerView, dx, dy)
+                    if (dy != 0) {
+                        val currentDirection = if (dy > 0) 1 else -1
+                        if (currentDirection != lastScrollDirection) {
+                            lastScrollDirection = currentDirection
+                            scrollDistanceAccumulator = 0
+                            val visibleKeys = getVisibleFileKeys()
+                            ThumbnailGeneratorManager.reprioritize(visibleKeys)
+                        }
+                    }
                     scrollDistanceAccumulator += kotlin.math.abs(dy)
                     if (scrollDistanceAccumulator > recyclerView.height) {
                         scrollDistanceAccumulator = 0
@@ -224,6 +261,8 @@ class StorageFileFragment :
 
     override fun onDestroyView() {
         super.onDestroyView()
+        thumbnailUpdateHandler.removeCallbacks(thumbnailBatchRunnable)
+        pendingThumbnailUpdates.clear()
         ThumbnailGeneratorManager.setThumbnailCallback(null)
         ThumbnailGeneratorManager.clearPendingTasks()
     }
@@ -236,19 +275,10 @@ class StorageFileFragment :
         if (isScrolling) {
             pendingThumbnailFiles.add(file.uniqueKey())
         } else {
-            displayThumbnailForFile(file)
-        }
-    }
-    
-    private fun displayThumbnailForFile(file: StorageFile) {
-        val position = fileIndexMap[file.uniqueKey()] ?: return
-        val layoutManager = dataBinding.storageFileRv.layoutManager
-        if (layoutManager is androidx.recyclerview.widget.LinearLayoutManager) {
-            val firstVisible = layoutManager.findFirstVisibleItemPosition()
-            val lastVisible = layoutManager.findLastVisibleItemPosition()
-            if (position in firstVisible..lastVisible) {
-                dataBinding.storageFileRv.adapter?.notifyItemChanged(position, "thumbnail_updated")
-            }
+            val position = fileIndexMap[file.uniqueKey()] ?: return
+            pendingThumbnailUpdates.add(position)
+            thumbnailUpdateHandler.removeCallbacks(thumbnailBatchRunnable)
+            thumbnailUpdateHandler.postDelayed(thumbnailBatchRunnable, 80)
         }
     }
     
