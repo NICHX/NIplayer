@@ -3,12 +3,14 @@ package com.xyoye.local_component.ui.fragment.media
 import com.alibaba.android.arouter.facade.annotation.Autowired
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
+import androidx.lifecycle.lifecycleScope
 import com.xyoye.common_component.adapter.addItem
 import com.xyoye.common_component.adapter.buildAdapter
 import com.xyoye.common_component.application.DanDanPlay
 import com.xyoye.common_component.base.BaseFragment
 import com.xyoye.common_component.config.AppConfig
 import com.xyoye.common_component.config.RouteTable
+import com.xyoye.common_component.config.ViewModeSync
 import com.xyoye.common_component.extension.deletable
 import com.xyoye.common_component.extension.grid
 import com.xyoye.common_component.extension.setData
@@ -25,6 +27,7 @@ import com.xyoye.local_component.R
 import com.xyoye.local_component.databinding.FragmentMediaBinding
 import com.xyoye.local_component.databinding.ItemMediaLibraryBinding
 import com.xyoye.local_component.databinding.ItemMediaLibraryGridBinding
+import kotlinx.coroutines.launch
 
 @Route(path = RouteTable.Local.MediaFragment)
 class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
@@ -53,6 +56,12 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
 
         viewModel.mediaLibWithStatusLiveData.observe(this) {
             dataBinding.mediaLibRv.setData(it)
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            ViewModeSync.gridViewChanged.collect {
+                if (isAdded) applyViewMode()
+            }
         }
     }
 
@@ -89,6 +98,11 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
 
     private fun toggleViewMode() {
         isGridView = !isGridView
+        applyViewMode()
+        ViewModeSync.notifyGridViewChanged()
+    }
+
+    private fun applyViewMode() {
         initRv()
         viewModel.mediaLibWithStatusLiveData.value?.let {
             dataBinding.mediaLibRv.setData(it)
