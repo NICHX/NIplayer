@@ -2,18 +2,14 @@ package com.xyoye.local_component.ui.fragment.mine
 
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
-import androidx.lifecycle.lifecycleScope
 import com.xyoye.common_component.adapter.addItem
 import com.xyoye.common_component.adapter.buildAdapter
 import com.xyoye.common_component.application.DanDanPlay
 import com.xyoye.common_component.base.BaseFragment
-import com.xyoye.common_component.config.AppConfig
 import com.xyoye.common_component.config.RouteTable
-import com.xyoye.common_component.config.ViewModeSync
 import com.xyoye.common_component.extension.deletable
 import com.xyoye.common_component.extension.grid
 import com.xyoye.common_component.extension.setData
-import com.xyoye.common_component.extension.vertical
 import com.xyoye.common_component.weight.BottomActionDialog
 import com.xyoye.common_component.weight.ExpandableFabMenu
 import com.xyoye.common_component.weight.ToastCenter
@@ -24,18 +20,10 @@ import com.xyoye.data_component.enums.MediaType
 import com.xyoye.local_component.BR
 import com.xyoye.local_component.R
 import com.xyoye.local_component.databinding.FragmentMineBinding
-import com.xyoye.local_component.databinding.ItemMediaLibraryBinding
 import com.xyoye.local_component.databinding.ItemMediaLibraryGridBinding
-import kotlinx.coroutines.launch
 
 @Route(path = RouteTable.Local.MineFragment)
 class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() {
-
-    private var isGridView: Boolean
-        get() = AppConfig.isGridView()
-        set(value) {
-            AppConfig.putGridView(value)
-        }
 
     override fun initViewModel() = ViewModelInit(
         BR.viewModel,
@@ -46,28 +34,17 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
 
     override fun initView() {
         viewModel.initLocalStorage()
+
         initRv()
+
         setupExpandableFab()
+
         viewModel.mediaLibWithStatusLiveData.observe(this) {
             dataBinding.mediaLibRv.setData(it)
-        }
-
-        viewLifecycleOwner.lifecycleScope.launch {
-            ViewModeSync.gridViewChanged.collect {
-                if (isAdded) applyViewMode()
-            }
         }
     }
 
     private fun setupExpandableFab() {
-        dataBinding.expandableFab.addAction(
-            ExpandableFabMenu.FabAction(
-                id = 1,
-                icon = if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid,
-                label = if (isGridView) "列表视图" else "网格视图",
-                onClick = { toggleViewMode() }
-            )
-        )
         dataBinding.expandableFab.addAction(
             ExpandableFabMenu.FabAction(
                 id = 2,
@@ -78,56 +55,10 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
         )
     }
 
-    private fun toggleViewMode() {
-        isGridView = !isGridView
-        applyViewMode()
-        ViewModeSync.notifyGridViewChanged()
-    }
-
-    private fun applyViewMode() {
-        initRv()
-        viewModel.mediaLibWithStatusLiveData.value?.let {
-            dataBinding.mediaLibRv.setData(it)
-        }
-        dataBinding.expandableFab.run {
-            if (isExpanded) collapse()
-            updateAction(1, if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid,
-                if (isGridView) "列表视图" else "网格视图")
-        }
-    }
-
     private fun initRv() {
         dataBinding.mediaLibRv.apply {
-            layoutManager = if (isGridView) grid(3) else vertical()
-            adapter = if (isGridView) createGridAdapter() else createListAdapter()
-        }
-    }
-
-    private fun createListAdapter() = buildAdapter {
-        addItem<MediaLibraryEntity, ItemMediaLibraryBinding>(R.layout.item_media_library) {
-            initView { data, _, _ ->
-                itemBinding.apply {
-                    libraryNameTv.text = data.displayName
-                    libraryUrlTv.text = data.disPlayDescribe
-                    libraryCoverIv.setImageResource(data.mediaType.cover)
-                    itemLayout.setOnClickListener {
-                        DanDanPlay.permission.storage.request(this@MineFragment) {
-                            onGranted {
-                                launchMediaStorage(data)
-                            }
-                            onDenied {
-                                ToastCenter.showError("获取文件读取权限失败，无法打开媒体库")
-                            }
-                        }
-                    }
-                    itemLayout.setOnLongClickListener {
-                        if (data.mediaType.deletable) {
-                            showManageStorageDialog(data)
-                        }
-                        true
-                    }
-                }
-            }
+            layoutManager = grid(3)
+            adapter = createGridAdapter()
         }
     }
 
@@ -188,18 +119,14 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
     }
 
     private fun showAddStorageDialog() {
-        val actionList = listOf(MediaType.EXTERNAL_STORAGE)
-            .map { it.toAction() }
-
         BottomActionDialog(
             requireActivity(),
-            actionList,
-            "新增设备存储库"
+            listOf(MediaType.EXTERNAL_STORAGE.toAction()),
+            "新增"
         ) {
-            val mediaType = it.actionId as MediaType
             ARouter.getInstance()
                 .build(RouteTable.Stream.StoragePlus)
-                .withSerializable("mediaType", mediaType)
+                .withSerializable("mediaType", it.actionId as MediaType)
                 .navigation()
             return@BottomActionDialog true
         }.show()
@@ -207,16 +134,10 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
 
     private fun showManageStorageDialog(data: MediaLibraryEntity) {
         val actions = mutableListOf<SheetActionBean>()
-        actions.add(ManageStorage.Edit.toAction())
         actions.add(ManageStorage.Delete.toAction())
+
         BottomActionDialog(requireActivity(), actions) {
-            if (it.actionId == ManageStorage.Edit) {
-                ARouter.getInstance()
-                    .build(RouteTable.Stream.StoragePlus)
-                    .withSerializable("mediaType", data.mediaType)
-                    .withParcelable("editData", data)
-                    .navigation()
-            } else if (it.actionId == ManageStorage.Delete) {
+            if (it.actionId == ManageStorage.Delete) {
                 showDeleteStorageDialog(data)
             }
             return@BottomActionDialog true
@@ -237,7 +158,6 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
     }
 
     private enum class ManageStorage(val title: String, val icon: Int) {
-        Edit("编辑媒体库", R.drawable.ic_edit_storage),
         Delete("删除媒体库", R.drawable.ic_delete_storage);
 
         fun toAction() = SheetActionBean(this, title, icon)

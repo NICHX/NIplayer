@@ -165,7 +165,6 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         if (currentFragment is StorageFileFragment) {
             currentFragment.refreshViewMode()
         }
-        mMenus?.updateToggleViewItem()
     }
 
     private fun initPathRv() {
@@ -281,6 +280,11 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     private fun popFragment(): Boolean {
         if (mRouteFragmentMap.entries.size <= 1) {
             return false
+        }
+        // 从快速访问等外部入口进入时，跳过根目录直接返回
+        if (initialStoragePath.isNotEmpty() && mRouteFragmentMap.entries.size == 2) {
+            finish()
+            return true
         }
         val lastRoute = mRouteFragmentMap.keys.last()
         val fragment = mRouteFragmentMap.remove(lastRoute)
