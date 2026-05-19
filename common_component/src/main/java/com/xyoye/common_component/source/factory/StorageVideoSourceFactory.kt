@@ -15,7 +15,7 @@ object StorageVideoSourceFactory {
 
     suspend fun create(file: StorageFile): StorageVideoSource? {
         val storage = file.storage
-        val videoSources = getVideoSources(storage)
+        val videoSources = getVideoSources(storage, file)
         val playUrl = storage.createPlayUrl(file) ?: return null
         val subtitlePath = getSubtitlePath(file, storage)
         val audioPath = file.playHistory?.audioPath
@@ -43,9 +43,12 @@ object StorageVideoSourceFactory {
         return null
     }
 
-    private fun getVideoSources(storage: Storage): List<StorageFile> {
+    private fun getVideoSources(storage: Storage, currentFile: StorageFile): List<StorageFile> {
+        val isAudio = currentFile.isAudioFile()
         return storage.directoryFiles
-            .filter { it.isVideoFile() }
+            .filter {
+                if (isAudio) it.isAudioFile() else it.isVideoFile()
+            }
             .filter { AppConfig.isShowHiddenFile() || !it.fileName().startsWith(".") }
             .sortedWith(StorageSortOption.comparator())
     }

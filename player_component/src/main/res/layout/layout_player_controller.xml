@@ -16,7 +16,7 @@
             android:visibility="gone"
             android:importantForAccessibility="no"
             tools:visibility="visible"
-            tools:src="@drawable/ic_audio_cover" />
+            tools:src="@drawable/ic_file_audio" />
 
         <LinearLayout
             android:id="@+id/player_top_left_action_ll"

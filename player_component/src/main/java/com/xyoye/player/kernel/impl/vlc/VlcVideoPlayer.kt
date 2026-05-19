@@ -53,6 +53,7 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
     private var mCurrentDuration = 0L
     private var seekable = true
     private var isBufferEnd = false
+    private var hasPrepared = false
     private val mVideoSize = Point(0, 0)
     private var consecutiveErrorCount = 0
     private val maxConsecutiveErrors = 5
@@ -89,6 +90,7 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
         mCurrentDuration = mMedia.duration
         mMediaPlayer.media = mMedia
         mMedia.release()
+        hasPrepared = false
     }
 
     override fun setOptions() {
@@ -306,6 +308,10 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
                 MediaPlayer.Event.Playing -> {
                     consecutiveErrorCount = 0
                     playbackState = PlaybackStateCompat.STATE_PLAYING
+                    if (!hasPrepared) {
+                        hasPrepared = true
+                        mPlayerEventListener.onPrepared()
+                    }
                 }
                 //已暂停
                 MediaPlayer.Event.Paused -> playbackState = PlaybackStateCompat.STATE_PAUSED
