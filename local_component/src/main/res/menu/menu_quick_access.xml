@@ -29,6 +29,12 @@
                 android:id="@+id/action_filter_audio"
                 android:checkable="true"
                 android:title="音频" />
+
+            <item android:title="" android:enabled="false" />
+
+            <item
+                android:id="@+id/action_toggle_view"
+                android:title="网格视图" />
         </menu>
     </item>
 </menu>
