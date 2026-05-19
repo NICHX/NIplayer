@@ -1,5 +1,6 @@
 package com.xyoye.local_component.ui.activities.quick_access
 
+import android.content.res.Configuration
 import android.view.Menu
 import android.view.MenuItem
 import com.alibaba.android.arouter.facade.annotation.Route
@@ -19,6 +20,15 @@ class QuickAccessActivity : BaseActivity<QuickAccessViewModel, ActivityQuickAcce
 
     private var mMenu: Menu? = null
     private var mAdapter: QuickAccessAdapter? = null
+
+    private val gridSpanCount: Int
+        get() {
+            return if (resources.configuration.smallestScreenWidthDp >= 600) {
+                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 4
+            } else {
+                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 4 else 3
+            }
+        }
 
     override fun initViewModel() =
         ViewModelInit(
@@ -126,7 +136,7 @@ class QuickAccessActivity : BaseActivity<QuickAccessViewModel, ActivityQuickAcce
             dataBinding.quickAccessRv.adapter?.notifyItemChanged(position)
         }
         dataBinding.quickAccessRv.apply {
-            layoutManager = if (viewModel.isGridView) gridEmpty(2) else vertical()
+            layoutManager = if (viewModel.isGridView) gridEmpty(gridSpanCount) else vertical()
             adapter = mAdapter?.create()
         }
     }
@@ -138,7 +148,7 @@ class QuickAccessActivity : BaseActivity<QuickAccessViewModel, ActivityQuickAcce
             dataBinding.quickAccessRv.adapter?.notifyItemChanged(position)
         }
         dataBinding.quickAccessRv.apply {
-            layoutManager = if (viewModel.isGridView) gridEmpty(2) else vertical()
+            layoutManager = if (viewModel.isGridView) gridEmpty(gridSpanCount) else vertical()
             adapter = mAdapter?.create()
             viewModel.quickAccessLiveData.value?.let { setData(it) }
         }

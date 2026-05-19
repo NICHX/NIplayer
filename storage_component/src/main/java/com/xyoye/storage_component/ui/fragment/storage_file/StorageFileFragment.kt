@@ -47,7 +47,7 @@ class StorageFileFragment :
             return if (isTablet) {
                 if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 6 else 4
             } else {
-                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 3 else 2
+                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 4 else 3
             }
         }
     
