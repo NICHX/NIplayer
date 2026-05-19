@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <dimen name="control_bar_height">46dp</dimen>
-
-    <dimen name="settings_btn_width">44dp</dimen>
-    <dimen name="aspect_btn_height">20dp</dimen>
+    <dimen name="page_content_max_width">480dp</dimen>
+    <dimen name="common_title_bar_size">48dp</dimen>
+    <dimen name="settings_btn_width">48dp</dimen>
 </resources>
