@@ -9,6 +9,7 @@ import com.xyoye.data_component.bean.StorageFileInfo
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import java.io.File
+import java.io.InputStream
 
 /**
  * Created by xyoye on 2022/12/29
@@ -77,6 +78,22 @@ abstract class AbstractStorage(
         val inputStream = openFile(subtitleFile) ?: return null
         val directoryName = getParentFolderName(subtitleFile.filePath())
         return SubtitleUtils.saveSubtitle(subtitleFile.fileName(), inputStream, directoryName)
+    }
+
+    override suspend fun cacheLrc(audioFile: StorageFile): String? {
+        if (audioFile.isDirectory() || !audioFile.isAudioFile()) return null
+        val audioFileName = audioFile.fileName() ?: return null
+        val audioNameWithoutExt = audioFileName.substringBeforeLast(".", "")
+        if (audioNameWithoutExt.isEmpty()) return null
+
+        val lrcFile = directoryFiles.firstOrNull { file ->
+            file.isFile() && file.fileName()?.let { name ->
+                name.substringBeforeLast(".", "").equals(audioNameWithoutExt, ignoreCase = true) &&
+                name.substringAfterLast(".", "").equals("lrc", ignoreCase = true)
+            } == true
+        } ?: return null
+
+        return createPlayUrl(lrcFile)
     }
 
     override fun supportSearch(): Boolean {

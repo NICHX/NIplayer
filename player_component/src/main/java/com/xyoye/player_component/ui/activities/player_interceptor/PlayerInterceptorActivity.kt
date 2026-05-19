@@ -16,7 +16,9 @@ import com.xyoye.player_component.R
 import com.xyoye.player_component.audio.manager.AudioPlayManager
 import com.xyoye.player_component.audio.model.AudioSong
 import com.xyoye.player_component.databinding.ActivityPlayerInterceptorBinding
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -52,31 +54,61 @@ class PlayerInterceptorActivity :
             val groupSize = source.getGroupSize()
             if (groupSize > 1 && source is StorageVideoSource) {
                 lifecycleScope.launch(Dispatchers.IO) {
+                    val currentIndex = source.getGroupIndex()
+                    var currentSong: AudioSong? = null
+
+                    try {
+                        val currentFile = source.indexStorageFile(currentIndex)
+                        val playUrl = currentFile.storage.createPlayUrl(currentFile)
+                        if (playUrl != null) {
+                            val lrcUrl = currentFile.storage.cacheLrc(currentFile)
+                            currentSong = AudioSong(
+                                uri = playUrl,
+                                title = currentFile.fileName() ?: "",
+                                coverPath = currentFile.fileCover(),
+                                uniqueKey = currentFile.uniqueKey(),
+                                fileName = currentFile.fileName() ?: "",
+                                lrcFilePath = lrcUrl
+                            )
+                        }
+                    } catch (_: Exception) { }
+
+                    withContext(Dispatchers.Main) {
+                        if (currentSong != null) {
+                            AudioPlayManager.setPlaylist(listOf(currentSong!!), 0)
+                            ARouter.getInstance()
+                                .build(RouteTable.Player.AudioPlayer)
+                                .navigation()
+                        }
+                        finish()
+                    }
+                }
+
+                val bgScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+                bgScope.launch {
+                    val currentIndex = source.getGroupIndex()
                     val songs = mutableListOf<AudioSong>()
                     for (i in 0 until groupSize) {
                         try {
                             val storageFile = source.indexStorageFile(i)
                             val playUrl = storageFile.storage.createPlayUrl(storageFile)
                             if (playUrl != null) {
+                                val lrcUrl = storageFile.storage.cacheLrc(storageFile)
                                 songs.add(
                                     AudioSong(
                                         uri = playUrl,
                                         title = storageFile.fileName() ?: "",
+                                        coverPath = storageFile.fileCover(),
                                         uniqueKey = storageFile.uniqueKey(),
-                                        fileName = storageFile.fileName() ?: ""
+                                        fileName = storageFile.fileName() ?: "",
+                                        lrcFilePath = lrcUrl
                                     )
                                 )
                             }
                         } catch (_: Exception) { }
                     }
                     withContext(Dispatchers.Main) {
-                        if (songs.isNotEmpty()) {
-                            AudioPlayManager.setPlaylist(songs, source.getGroupIndex())
-                            ARouter.getInstance()
-                                .build(RouteTable.Player.AudioPlayer)
-                                .navigation()
-                        }
-                        finish()
+                        AudioPlayManager.updatePlaylist(songs)
                     }
                 }
             } else {

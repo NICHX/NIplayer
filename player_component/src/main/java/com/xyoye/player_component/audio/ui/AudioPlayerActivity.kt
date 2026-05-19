@@ -22,7 +22,9 @@ import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.player_component.BR
 import com.xyoye.player_component.R
+import com.xyoye.player_component.audio.lrc.LrcManager
 import com.xyoye.player_component.audio.manager.AudioPlayManager
+import java.io.File
 import com.xyoye.player_component.audio.model.AudioPlayMode
 import com.xyoye.player_component.audio.model.AudioPlayState
 import com.xyoye.player_component.audio.model.AudioSong
@@ -31,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 @Route(path = RouteTable.Player.AudioPlayer)
 class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlayerBinding>() {
@@ -214,6 +217,7 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
 
                         dataBinding.albumCoverView.reset()
                         loadCover(song)
+                        loadLrc(song)
                         updatePlayState(AudioPlayManager.playState.value)
                     }
                 }
@@ -254,9 +258,56 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
         }
     }
 
+    private fun loadLrc(song: AudioSong) {
+        if (song.lrcFilePath != null) {
+            val lrcRef = song.lrcFilePath
+            if (lrcRef.startsWith("http://") || lrcRef.startsWith("https://")) {
+                downloadLrc(lrcRef)
+                return
+            }
+            if (File(lrcRef).exists()) {
+                dataBinding.lrcView.loadLrc(File(lrcRef))
+                return
+            }
+        }
+
+        val lrcPath = LrcManager.getLrcFilePath(song)
+        if (lrcPath != null) {
+            dataBinding.lrcView.loadLrc(File(lrcPath))
+        } else {
+            dataBinding.lrcView.loadLrc("")
+            dataBinding.lrcView.setLabel("暂无歌词")
+        }
+    }
+
+    private fun downloadLrc(url: String) {
+        dataBinding.lrcView.loadLrc("")
+        dataBinding.lrcView.setLabel("歌词加载中…")
+        lifecycleScope.launch {
+            val content = withContext(Dispatchers.IO) {
+                try {
+                    withTimeout(5000) {
+                        java.net.URL(url).readText()
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (content != null && content.isNotEmpty()) {
+                val lrcDir = File(cacheDir, "lrc_cache")
+                if (!lrcDir.exists()) lrcDir.mkdirs()
+                val tempFile = File(lrcDir, "lrc_${System.currentTimeMillis()}.lrc")
+                tempFile.writeText(content)
+                dataBinding.lrcView.loadLrc(tempFile)
+            } else {
+                dataBinding.lrcView.loadLrc("")
+                dataBinding.lrcView.setLabel("暂无歌词")
+            }
+        }
+    }
+
     private fun loadCover(song: AudioSong) {
         setDefaultCover()
-        val uri = song.uri
         val coverPath = song.coverPath
 
         if (coverPath != null) {
@@ -276,8 +327,6 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
                     }
                 })
                 .submit()
-        } else if (uri.startsWith("/") || uri.startsWith("file://") || uri.startsWith("content://")) {
-            loadEmbeddedCover(uri)
         }
     }
 
@@ -287,31 +336,6 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
             dataBinding.ivPlayingBg.setImageBitmap(defaultBgBitmap)
         } else {
             dataBinding.ivPlayingBg.setImageDrawable(ColorDrawable(android.graphics.Color.BLACK))
-        }
-    }
-
-    private fun loadEmbeddedCover(url: String) {
-        lifecycleScope.launch {
-            val picture = withContext(Dispatchers.IO) {
-                try {
-                    val retriever = android.media.MediaMetadataRetriever()
-                    when {
-                        url.startsWith("content://") -> retriever.setDataSource(this@AudioPlayerActivity, android.net.Uri.parse(url))
-                        url.startsWith("file://") -> retriever.setDataSource(url.removePrefix("file://"))
-                        else -> retriever.setDataSource(url)
-                    }
-                    val data = retriever.embeddedPicture
-                    retriever.release()
-                    data
-                } catch (e: Exception) {
-                    null
-                }
-            }
-            if (picture != null) {
-                val bitmap = BitmapFactory.decodeByteArray(picture, 0, picture.size)
-                dataBinding.albumCoverView.setCoverBitmap(bitmap)
-                setBlurBackground(bitmap)
-            }
         }
     }
 

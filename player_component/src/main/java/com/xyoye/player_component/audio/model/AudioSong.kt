@@ -7,5 +7,6 @@ data class AudioSong(
     val coverPath: String? = null,
     val duration: Long = 0L,
     val uniqueKey: String,
-    val fileName: String = ""
+    val fileName: String = "",
+    val lrcFilePath: String? = null
 )

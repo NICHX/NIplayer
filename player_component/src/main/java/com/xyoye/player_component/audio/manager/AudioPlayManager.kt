@@ -213,6 +213,10 @@ object AudioPlayManager : AudioPlayerController {
         }
     }
 
+    fun updatePlaylist(songs: List<AudioSong>) {
+        _playlist.value = songs.toList()
+    }
+
     override fun addToPlaylist(songs: List<AudioSong>) {
         _playlist.value = _playlist.value + songs
     }

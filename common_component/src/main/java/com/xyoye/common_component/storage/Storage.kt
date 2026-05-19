@@ -108,6 +108,11 @@ interface Storage {
     suspend fun cacheSubtitle(file: StorageFile): String?
 
     /**
+     * 缓存歌词文件到本地（查找音频同目录下的 .lrc 文件，返回可播放的歌词文件URL）
+     */
+    suspend fun cacheLrc(file: StorageFile): String?
+
+    /**
      * 获取网络请求头
      */
     fun getNetworkHeaders(): Map<String, String>?
