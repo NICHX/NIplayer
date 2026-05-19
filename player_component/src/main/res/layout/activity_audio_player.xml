@@ -131,17 +131,17 @@
                     android:id="@+id/lrc_view"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
-                    android:layout_marginTop="48dp"
+                    android:layout_marginTop="56dp"
                     android:visibility="gone"
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintTop_toBottomOf="@+id/volume_layout"
                     app:lrcAnimationDuration="1000"
                     app:lrcCurrentTextColor="@android:color/white"
-                    app:lrcDividerHeight="24dp"
+                    app:lrcDividerHeight="32dp"
                     app:lrcNormalTextColor="@color/translucent_white_p50"
-                    app:lrcPadding="40dp"
+                    app:lrcPadding="32dp"
                     app:lrcTextSize="14sp"
-                    app:lrcTimelineColor="@color/translucent_white_p50"
+                    app:lrcTimelineColor="@color/translucent_white_p30"
                     app:lrcTimelineTextColor="@color/translucent_white_p80" />
 
                 <ImageView
