@@ -39,6 +39,10 @@ class QuickAccessViewModel : BaseViewModel() {
 
     private var _allItems = listOf<QuickAccessItem>()
 
+    var isEditing = false
+
+    val selectedItemKeys = mutableSetOf<String>()
+
     fun loadQuickAccessItems() {
         val items = QuickAccessHelper.getQuickAccessList()
         _allItems = items
@@ -159,5 +163,54 @@ class QuickAccessViewModel : BaseViewModel() {
     fun removeItem(item: QuickAccessItem) {
         QuickAccessHelper.removeQuickAccess(item)
         loadQuickAccessItems()
+    }
+
+    fun toggleItemSelection(position: Int) {
+        val items = _quickAccessLiveData.value ?: return
+        if (position >= items.size) return
+        val key = buildItemKey(items[position])
+        if (selectedItemKeys.contains(key)) {
+            selectedItemKeys.remove(key)
+        } else {
+            selectedItemKeys.add(key)
+        }
+    }
+
+    fun itemKeyAt(position: Int): String? {
+        val items = _quickAccessLiveData.value ?: return null
+        if (position >= items.size) return null
+        return buildItemKey(items[position])
+    }
+
+    fun isItemSelected(position: Int): Boolean {
+        val key = itemKeyAt(position) ?: return false
+        return selectedItemKeys.contains(key)
+    }
+
+    private fun buildItemKey(item: QuickAccessItem): String {
+        return "${item.libraryId}::${item.storagePath}"
+    }
+
+    fun getSelectedItems(): List<QuickAccessItem> {
+        val items = _quickAccessLiveData.value ?: return emptyList()
+        return items.filter { selectedItemKeys.contains(buildItemKey(it)) }
+    }
+
+    fun batchRemove() {
+        val itemsToRemove = getSelectedItems()
+        if (itemsToRemove.isEmpty()) return
+        itemsToRemove.forEach { QuickAccessHelper.removeQuickAccess(it) }
+        selectedItemKeys.clear()
+        loadQuickAccessItems()
+    }
+
+    fun enterEditMode() {
+        isEditing = true
+        selectedItemKeys.clear()
+    }
+
+    fun exitEditMode() {
+        isEditing = false
+        selectedItemKeys.clear()
     }
 }

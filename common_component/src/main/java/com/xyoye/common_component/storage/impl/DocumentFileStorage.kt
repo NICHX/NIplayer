@@ -47,10 +47,11 @@ class DocumentFileStorage(
     }
 
     override suspend fun pathFile(path: String, isDirectory: Boolean): StorageFile? {
-        val documentFile = DocumentFile.fromTreeUri(
-            context,
-            resolvePath(path)
-        ) ?: return null
+        val documentFile = if (path.startsWith("content://")) {
+            DocumentFile.fromSingleUri(context, Uri.parse(path))
+        } else {
+            DocumentFile.fromTreeUri(context, resolvePath(path))
+        } ?: return null
         return DocumentStorageFile(documentFile, this)
     }
 
