@@ -390,7 +390,11 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
 
     override fun onPlaybackStateChanged(state: Int) {
         if (mIsPreparing) {
-            return
+            if (state == Player.STATE_READY && exoplayer.videoSize.width == 0 && exoplayer.videoSize.height == 0) {
+                mIsPreparing = false
+            } else {
+                return
+            }
         }
 
         val playWhenReady = exoplayer.playWhenReady

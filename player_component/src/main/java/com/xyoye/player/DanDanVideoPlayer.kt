@@ -33,6 +33,7 @@ import com.xyoye.player.utils.PlayerConstant
 import com.xyoye.player.utils.VideoLog
 import com.xyoye.player.wrapper.InterVideoPlayer
 import com.xyoye.player.wrapper.InterVideoTrack
+import com.xyoye.common_component.utils.isAudioFile
 import com.xyoye.player_component.utils.PlayRecorder
 import com.xyoye.subtitle.MixedSubtitle
 
@@ -202,6 +203,9 @@ class DanDanVideoPlayer(
 
     override fun onPrepared() {
         setPlayState(PlayState.STATE_PREPARED)
+        if (isAudioFile(videoSource.getVideoUrl()) || isAudioFile(videoSource.getVideoTitle())) {
+            setPlayState(PlayState.STATE_PLAYING)
+        }
     }
 
     override fun onError(e: Exception?) {

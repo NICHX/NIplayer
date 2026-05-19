@@ -7,6 +7,17 @@
         android:layout_height="match_parent"
         android:focusable="true">
 
+        <ImageView
+            android:id="@+id/audio_cover_iv"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitCenter"
+            android:padding="64dp"
+            android:visibility="gone"
+            android:importantForAccessibility="no"
+            tools:visibility="visible"
+            tools:src="@drawable/ic_audio_cover" />
+
         <LinearLayout
             android:id="@+id/player_top_left_action_ll"
             android:layout_width="wrap_content"
