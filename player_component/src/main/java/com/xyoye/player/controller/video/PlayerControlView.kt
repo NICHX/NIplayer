@@ -7,6 +7,7 @@ import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.graphics.Point
 import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import androidx.core.view.ViewCompat
@@ -174,7 +175,7 @@ class PlayerControlView(context: Context): InterControllerView {
             Glide.with(viewBinding.audioCoverIv)
                 .load(cachePath)
                 .fitCenter()
-                .error(R.drawable.ic_audio_cover)
+                .error(R.drawable.ic_file_audio)
                 .into(viewBinding.audioCoverIv)
             return
         }
@@ -185,24 +186,29 @@ class PlayerControlView(context: Context): InterControllerView {
             Glide.with(viewBinding.audioCoverIv)
                 .load(cachedFile)
                 .fitCenter()
-                .error(R.drawable.ic_audio_cover)
+                .error(R.drawable.ic_file_audio)
                 .into(viewBinding.audioCoverIv)
             return
         }
 
-        loadEmbeddedAudioCover(url, videoSource.getHttpHeader(), uniqueKey)
+        if (url.startsWith("/") || url.startsWith("file://") || url.startsWith("content://")) {
+            viewBinding.audioCoverIv.setImageResource(R.drawable.ic_file_audio)
+            loadEmbeddedAudioCover(url, videoSource.getHttpHeader())
+        } else {
+            viewBinding.audioCoverIv.setImageResource(R.drawable.ic_file_audio)
+        }
     }
 
-    private fun loadEmbeddedAudioCover(url: String, headers: Map<String, String>?, uniqueKey: String) {
+    private fun loadEmbeddedAudioCover(url: String, headers: Map<String, String>?) {
         val lifecycleOwner = mContext as? LifecycleOwner ?: return
         lifecycleOwner.lifecycleScope.launchWhenCreated {
             val picture = withContext(Dispatchers.IO) {
                 try {
                     val retriever = MediaMetadataRetriever()
-                    if (headers != null) {
-                        retriever.setDataSource(url, headers)
-                    } else {
-                        retriever.setDataSource(url)
+                    when {
+                        url.startsWith("content://") -> retriever.setDataSource(mContext, Uri.parse(url))
+                        headers != null -> retriever.setDataSource(url, headers)
+                        else -> retriever.setDataSource(url)
                     }
                     val data = retriever.embeddedPicture
                     retriever.release()
@@ -215,7 +221,7 @@ class PlayerControlView(context: Context): InterControllerView {
                 val bitmap = BitmapFactory.decodeByteArray(picture, 0, picture.size)
                 viewBinding.audioCoverIv.setImageBitmap(bitmap)
             } else {
-                viewBinding.audioCoverIv.setImageResource(R.drawable.ic_audio_cover)
+                viewBinding.audioCoverIv.setImageResource(R.drawable.ic_file_audio)
             }
         }
     }
