@@ -18,6 +18,7 @@ import com.xyoye.common_component.weight.dialog.CommonDialog
 import com.xyoye.data_component.bean.QuickAccessItem
 import com.xyoye.local_component.R
 import com.xyoye.local_component.databinding.ItemQuickAccessEntryBinding
+import com.xyoye.local_component.databinding.ItemQuickAccessEntryGridBinding
 import com.xyoye.local_component.databinding.ItemQuickAccessFileBinding
 import com.xyoye.local_component.databinding.ItemQuickAccessFileGridBinding
 import java.io.File
@@ -52,6 +53,7 @@ class QuickAccessAdapter(
                         iconIv.setImageResource(com.xyoye.common_component.R.drawable.ic_folder)
                         nameTv.text = data.name
                         libraryTv.text = data.libraryDisplayName
+                        pathTv.text = data.storagePath
                         itemLayout.setOnClickListener { viewModel.openItem(data) }
                         itemLayout.setOnLongClickListener {
                             showRemoveDialog(data)
@@ -88,13 +90,12 @@ class QuickAccessAdapter(
                 }
             }
 
-            addItem<QuickAccessItem, ItemQuickAccessEntryBinding>(R.layout.item_quick_access_entry) {
+            addItem<QuickAccessItem, ItemQuickAccessEntryGridBinding>(R.layout.item_quick_access_entry_grid) {
                 checkType { data -> (data as QuickAccessItem).isDirectory }
                 initView { data, _, _ ->
                     itemBinding.run {
-                        iconIv.scaleType = ImageView.ScaleType.CENTER_INSIDE
-                        iconIv.setImageResource(com.xyoye.common_component.R.drawable.ic_folder)
-                        nameTv.text = data.name
+                        folderIv.setImageResource(com.xyoye.common_component.R.drawable.ic_folder)
+                        folderTv.text = data.name
                         libraryTv.text = data.libraryDisplayName
                         itemLayout.setOnClickListener { viewModel.openItem(data) }
                         itemLayout.setOnLongClickListener {
@@ -111,6 +112,7 @@ class QuickAccessAdapter(
                     itemBinding.run {
                         loadFileThumbnail(coverIv, data)
                         titleTv.text = data.name
+                        libraryTv.text = data.libraryDisplayName
                         mainActionFl.setOnClickListener { viewModel.openItem(data) }
                         mainActionFl.setOnLongClickListener {
                             showRemoveDialog(data)

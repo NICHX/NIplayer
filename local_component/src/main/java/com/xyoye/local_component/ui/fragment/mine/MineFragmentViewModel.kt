@@ -21,15 +21,14 @@ class MineFragmentViewModel : BaseViewModel() {
     }
 
     private fun filterMineLibraries(libraries: MutableList<MediaLibraryEntity>): MutableList<MediaLibraryEntity> {
-        val result = mutableListOf<MediaLibraryEntity>()
-        result.addAll(libraries.filter { 
-            it.mediaType == MediaType.LOCAL_STORAGE || it.mediaType == MediaType.EXTERNAL_STORAGE 
-        })
+        val result = mutableListOf(MediaLibraryEntity.QUICK_ACCESS)
         val history = libraries.firstOrNull { it.mediaType == MediaType.OTHER_STORAGE }
         if (history != null) {
             result.add(history)
         }
-        result.add(MediaLibraryEntity.QUICK_ACCESS)
+        result.addAll(libraries.filter {
+            it.mediaType == MediaType.LOCAL_STORAGE || it.mediaType == MediaType.EXTERNAL_STORAGE
+        })
         return result
     }
 

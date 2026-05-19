@@ -44,7 +44,6 @@ class QuickAccessActivity : BaseActivity<QuickAccessViewModel, ActivityQuickAcce
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_quick_access, menu)
         mMenu = menu
-        updateToggleViewTitle(menu)
         return super.onCreateOptionsMenu(menu)
     }
 
@@ -64,21 +63,15 @@ class QuickAccessActivity : BaseActivity<QuickAccessViewModel, ActivityQuickAcce
             }
             R.id.action_toggle_view -> {
                 viewModel.toggleViewMode()
-                updateToggleViewTitle(m)
                 refreshViewMode()
             }
         }
         return super.onOptionsItemSelected(item)
     }
 
-    private fun updateToggleViewTitle(menu: Menu) {
-        menu.findItem(R.id.action_toggle_view)?.title =
-            if (viewModel.isGridView) "列表视图" else "网格视图"
-    }
-
     private fun initRv() {
         dataBinding.quickAccessRv.apply {
-            layoutManager = vertical()
+            layoutManager = if (viewModel.isGridView) gridEmpty(2) else vertical()
             adapter = QuickAccessAdapter(this@QuickAccessActivity, viewModel, viewModel.isGridView).create()
         }
     }

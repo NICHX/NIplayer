@@ -32,8 +32,14 @@ class MediaViewModel : BaseViewModel() {
             MediaType.ALSIT_STORAGE,
             MediaType.OTHER_STORAGE
         )
-        val result = libraries.filter { serverTypes.contains(it.mediaType) }.toMutableList()
-        result.add(MediaLibraryEntity.QUICK_ACCESS)
+        val filtered = libraries.filter { serverTypes.contains(it.mediaType) }.toMutableList()
+        val history = filtered.firstOrNull { it.mediaType == MediaType.OTHER_STORAGE }
+        filtered.removeAll { it.mediaType == MediaType.OTHER_STORAGE }
+        val result = mutableListOf(MediaLibraryEntity.QUICK_ACCESS)
+        if (history != null) {
+            result.add(history)
+        }
+        result.addAll(filtered)
         return result
     }
 

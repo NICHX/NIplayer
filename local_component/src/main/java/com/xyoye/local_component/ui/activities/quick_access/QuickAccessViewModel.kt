@@ -5,6 +5,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.alibaba.android.arouter.launcher.ARouter
 import com.xyoye.common_component.base.BaseViewModel
+import com.xyoye.common_component.config.AppConfig
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.source.VideoSourceManager
@@ -27,7 +28,11 @@ class QuickAccessViewModel : BaseViewModel() {
     private val _quickAccessLiveData = MutableLiveData<List<QuickAccessItem>>()
     val quickAccessLiveData = _quickAccessLiveData
 
-    var isGridView: Boolean = false
+    var isGridView: Boolean
+        get() = AppConfig.isGridView()
+        set(value) {
+            AppConfig.putGridView(value)
+        }
 
     private val _filterTypes = MutableLiveData<Set<FileFilterType>>(emptySet())
     val filterTypes: LiveData<Set<FileFilterType>> = _filterTypes

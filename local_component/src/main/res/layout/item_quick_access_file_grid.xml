@@ -52,6 +52,20 @@
             app:layout_constraintTop_toBottomOf="@id/main_action_fl"
             tools:text="文件名称" />
 
+        <TextView
+            android:id="@+id/library_tv"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:gravity="center"
+            android:maxLines="1"
+            android:textColor="@color/text_gray"
+            android:textSize="11sp"
+            app:layout_constraintEnd_toEndOf="@id/title_tv"
+            app:layout_constraintStart_toStartOf="@id/title_tv"
+            app:layout_constraintTop_toBottomOf="@id/title_tv"
+            tools:text="本地存储" />
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 
 </layout>
