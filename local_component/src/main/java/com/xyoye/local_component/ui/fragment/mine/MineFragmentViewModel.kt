@@ -29,6 +29,7 @@ class MineFragmentViewModel : BaseViewModel() {
         if (history != null) {
             result.add(history)
         }
+        result.add(MediaLibraryEntity.QUICK_ACCESS)
         return result
     }
 

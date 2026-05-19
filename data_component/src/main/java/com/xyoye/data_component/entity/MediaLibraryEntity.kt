@@ -90,6 +90,12 @@ data class MediaLibraryEntity(
             url = "",
             mediaType = MediaType.OTHER_STORAGE
         )
+        val QUICK_ACCESS = MediaLibraryEntity(
+            id = 5,
+            displayName = "快速访问",
+            url = "",
+            mediaType = MediaType.QUICK_ACCESS
+        )
     }
 
     @Ignore

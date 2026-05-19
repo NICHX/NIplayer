@@ -1,6 +1,5 @@
 package com.xyoye.local_component.ui.fragment.media
 
-import com.alibaba.android.arouter.facade.annotation.Autowired
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import androidx.lifecycle.lifecycleScope
@@ -187,6 +186,12 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
                     .navigation()
             }
 
+            MediaType.QUICK_ACCESS -> {
+                ARouter.getInstance()
+                    .build(RouteTable.Local.QuickAccess)
+                    .navigation()
+            }
+
             MediaType.LOCAL_STORAGE,
             MediaType.FTP_SERVER,
             MediaType.SMB_SERVER,
@@ -259,3 +264,5 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
         fun toAction() = SheetActionBean(this, title, icon)
     }
 }
+
+

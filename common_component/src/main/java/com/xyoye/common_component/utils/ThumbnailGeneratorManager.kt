@@ -653,6 +653,34 @@ object ThumbnailGeneratorManager {
         }
     }
 
+    suspend fun ensureThumbnail(file: StorageFile): Boolean {
+        if (!ThumbnailConfig.isGenerateThumbnail()) return false
+        if (file.storage.library.id > 0 && !ThumbnailServerConfig.isServerThumbnailEnabled(file.storage.library.id)) return false
+
+        val uniqueKey = file.uniqueKey()
+        if (uniqueKey.isEmpty()) return false
+
+        val coverFile = uniqueKey.toCoverFile()
+        if (coverFile != null && coverFile.exists() && coverFile.length() > 0) {
+            ThumbnailMemoryCache.putCoverPath(uniqueKey, coverFile.absolutePath)
+            return true
+        }
+
+        return generateThumbnailForFile(file)
+    }
+
+    suspend fun saveBitmapToServer(file: StorageFile, bitmap: Bitmap) {
+        if (isLocalStorage(file)) return
+        val thumbBytes = toJpegBytes(bitmap)
+
+        val dotThumbPath = buildDotThumbPath(file)
+        if (dotThumbPath != null) {
+            val dotThumbDir = getDirPath(dotThumbPath)
+            file.storage.createDirectory(dotThumbDir)
+            file.storage.saveFile(dotThumbPath, thumbBytes)
+        }
+    }
+
     fun clearPendingTasks() {
         synchronized(pendingFiles) { pendingFiles.clear() }
         currentTasks.clear()

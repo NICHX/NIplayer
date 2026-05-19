@@ -38,6 +38,7 @@ import com.xyoye.common_component.extension.toResString
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.download.DownloadManager
 import com.xyoye.common_component.database.DatabaseManager
+import com.xyoye.common_component.utils.QuickAccessHelper
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.enums.MediaType
 import com.xyoye.common_component.storage.file.subtitle
@@ -74,6 +75,8 @@ class StorageFileAdapter(
 ) {
 
     private enum class ManageAction(val title: String, val icon: Int) {
+        FAVORITE("收藏", com.xyoye.common_component.R.drawable.ic_tag),
+        UNFAVORITE("取消收藏", com.xyoye.common_component.R.drawable.ic_tag),
         BIND_SUBTITLE("手动查找字幕", com.xyoye.common_component.R.drawable.ic_bind_subtitle),
         BIND_AUDIO("添加音频文件", com.xyoye.common_component.R.drawable.ic_bind_audio),
         UNBIND_SUBTITLE("移除字幕绑定", com.xyoye.common_component.R.drawable.ic_unbind_subtitle),
@@ -492,6 +495,14 @@ class StorageFileAdapter(
     private fun showMoreAction(file: StorageFile, options: ActivityOptionsCompat?) {
         BottomActionDialog(activity, getMoreActions(file)) {
             when (it.actionId) {
+                ManageAction.FAVORITE -> {
+                    QuickAccessHelper.addQuickAccess(file)
+                    ToastCenter.showSuccess("已收藏")
+                }
+                ManageAction.UNFAVORITE -> {
+                    QuickAccessHelper.removeQuickAccess(file)
+                    ToastCenter.showSuccess("已取消收藏")
+                }
                 ManageAction.BIND_SUBTITLE -> {
                     if (options != null) {
                         bindExtraSource(file, options)
@@ -513,6 +524,11 @@ class StorageFileAdapter(
 
     private fun getMoreActions(file: StorageFile) =
         mutableListOf<SheetActionBean>().apply {
+            if (QuickAccessHelper.isQuickAccess(file)) {
+                add(ManageAction.UNFAVORITE.toAction())
+            } else {
+                add(ManageAction.FAVORITE.toAction())
+            }
             if (file.isImageFile().not() && file.isAudioFile().not()) {
                 add(ManageAction.BIND_SUBTITLE.toAction())
                 add(ManageAction.BIND_AUDIO.toAction())

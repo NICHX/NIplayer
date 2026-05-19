@@ -23,6 +23,7 @@ object RouteTable {
         const val MineFragment = "/local/mine_fragment"
         const val BindExtraSource = "/local/bind_extra_source"
         const val PlayHistory = "/local/play_history"
+        const val QuickAccess = "/local/quick_access"
         const val ShooterSubtitle = "/local/shooter_subtitle"
     }
 

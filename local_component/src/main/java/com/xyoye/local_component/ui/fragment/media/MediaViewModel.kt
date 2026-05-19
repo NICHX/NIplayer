@@ -32,7 +32,9 @@ class MediaViewModel : BaseViewModel() {
             MediaType.ALSIT_STORAGE,
             MediaType.OTHER_STORAGE
         )
-        return libraries.filter { serverTypes.contains(it.mediaType) }.toMutableList()
+        val result = libraries.filter { serverTypes.contains(it.mediaType) }.toMutableList()
+        result.add(MediaLibraryEntity.QUICK_ACCESS)
+        return result
     }
 
     fun initLocalStorage() {

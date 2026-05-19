@@ -7,6 +7,10 @@
             android:configChanges="orientation|screenSize" />
 
         <activity
+            android:name=".ui.activities.quick_access.QuickAccessActivity"
+            android:configChanges="orientation|screenSize" />
+
+        <activity
             android:name=".ui.activities.shooter_subtitle.ShooterSubtitleActivity"
             android:configChanges="orientation|screenSize" />
         <activity android:name=".ui.activities.bind_source.BindExtraSourceActivity"

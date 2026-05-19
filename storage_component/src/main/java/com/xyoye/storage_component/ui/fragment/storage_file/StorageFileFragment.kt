@@ -1,5 +1,7 @@
 package com.xyoye.storage_component.ui.fragment.storage_file
 
+import android.view.LayoutInflater
+import android.view.ViewGroup
 import android.content.res.Configuration
 import android.view.View
 import android.view.animation.DecelerateInterpolator
@@ -125,7 +127,7 @@ class StorageFileFragment :
         }
 
         ThumbnailGeneratorManager.setThumbnailCallback(this)
-        
+
         viewModel.listFile(directory)
     }
 
