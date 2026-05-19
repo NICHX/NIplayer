@@ -74,6 +74,9 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
     //电量管理
     private var batteryHelper = BatteryHelper()
 
+    //标记是否已因退出而保存播放信息，防止 onPause 重复调用
+    private var playInfoRecordedForExit = false
+
     override fun initViewModel() =
         ViewModelInit(
             BR.viewModel,
@@ -114,6 +117,7 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
 
     override fun onResume() {
         super.onResume()
+        playInfoRecordedForExit = false
         exitPopupMode()
     }
 
@@ -123,7 +127,9 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
         if (popupNotShowing && backgroundPlayDisable) {
             danDanPlayer.pause()
         }
-        danDanPlayer.recordPlayInfo()
+        if (!playInfoRecordedForExit) {
+            danDanPlayer.recordPlayInfo()
+        }
         super.onPause()
     }
 
@@ -140,6 +146,7 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
             if (danDanPlayer.onBackPressed()) {
                 return
             }
+            playInfoRecordedForExit = true
             danDanPlayer.recordPlayInfo()
             finish()
         }
@@ -184,6 +191,7 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
             //退出播放
             observerExitPlayer {
                 if (popupManager.isShowing()) {
+                    playInfoRecordedForExit = true
                     danDanPlayer.recordPlayInfo()
                 }
                 popupManager.dismiss()

@@ -439,8 +439,9 @@ object ThumbnailGeneratorManager {
                     val dotThumbPath = buildDotThumbPath(file)
                     if (dotThumbPath != null) {
                         val dotThumbDir = getDirPath(dotThumbPath)
-                        file.storage.createDirectory(dotThumbDir)
-                        file.storage.saveFile(dotThumbPath, thumbBytes)
+                        if (file.storage.createDirectory(dotThumbDir)) {
+                            file.storage.saveFile(dotThumbPath, thumbBytes)
+                        }
                     }
                 }
             } finally {
@@ -676,7 +677,7 @@ object ThumbnailGeneratorManager {
         val dotThumbPath = buildDotThumbPath(file)
         if (dotThumbPath != null) {
             val dotThumbDir = getDirPath(dotThumbPath)
-            file.storage.createDirectory(dotThumbDir)
+            if (!file.storage.createDirectory(dotThumbDir)) return
             file.storage.saveFile(dotThumbPath, thumbBytes)
         }
     }

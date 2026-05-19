@@ -13,6 +13,7 @@ import com.xyoye.common_component.storage.StorageSortOption
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.utils.ThumbnailGeneratorManager
 import com.xyoye.data_component.entity.PlayHistoryEntity
+import com.xyoye.data_component.enums.FileFilterType
 import com.xyoye.data_component.enums.MediaType
 import com.xyoye.data_component.enums.TrackType
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,9 @@ class StorageFileFragmentViewModel : BaseViewModel() {
     private val _fileLiveData = MutableLiveData<List<StorageFile>>()
     val fileLiveData: LiveData<List<StorageFile>> = _fileLiveData
 
+    private val _filterTypes = MutableLiveData<Set<FileFilterType>>(emptySet())
+    val filterTypes: LiveData<Set<FileFilterType>> = _filterTypes
+
     lateinit var storage: Storage
 
     //当前媒体库中最后一次播放记录
@@ -42,6 +46,9 @@ class StorageFileFragmentViewModel : BaseViewModel() {
 
     // 文件列表快照
     private var filesSnapshot = listOf<StorageFile>()
+
+    // 完整文件列表（未过滤）
+    private var _allFiles = listOf<StorageFile>()
 
     /**
      * 展开文件夹
@@ -64,6 +71,8 @@ class StorageFileFragmentViewModel : BaseViewModel() {
                 .map { updateStorageFileHistory(it, getHistory(it)) }
                 .also { filesSnapshot = it }
 
+            _allFiles = fileList
+
             ThumbnailGeneratorManager.preloadExistingThumbs(originalFileList, storage)
             ThumbnailGeneratorManager.preloadCoverPaths(originalFileList)
 
@@ -77,12 +86,13 @@ class StorageFileFragmentViewModel : BaseViewModel() {
      */
     fun changeSortOption() {
         viewModelScope.launch(Dispatchers.IO) {
-            val currentFiles = _fileLiveData.value ?: return@launch
-            mutableListOf<StorageFile>()
+            val currentFiles = _allFiles
+            val sorted = mutableListOf<StorageFile>()
                 .plus(currentFiles)
                 .sortedWith(StorageSortOption.comparator())
-                .apply { _fileLiveData.postValue(this) }
                 .also { filesSnapshot = it }
+            _allFiles = sorted
+            applyFilter()
         }
     }
 
@@ -105,16 +115,18 @@ class StorageFileFragmentViewModel : BaseViewModel() {
 
         //搜索条件为空，返回文件列表快照
         if (text.isEmpty()) {
-            _fileLiveData.postValue(filesSnapshot)
+            filesSnapshot = _allFiles
+            applyFilter()
             return
         }
 
         //在当前文件列表进行搜索
-        val currentFiles = _fileLiveData.value ?: return
-        mutableListOf<StorageFile>()
+        val currentFiles = _allFiles
+        val searched = mutableListOf<StorageFile>()
             .plus(currentFiles)
             .filter { it.fileName().contains(text) }
-            .let { _fileLiveData.postValue(it) }
+            .also { filesSnapshot = it }
+        applyFilter()
     }
 
     /**
@@ -162,14 +174,41 @@ class StorageFileFragmentViewModel : BaseViewModel() {
      */
     fun updateHistory() {
         viewModelScope.launch(Dispatchers.IO) {
-            val fileList = _fileLiveData.value ?: return@launch
+            val fileList = _allFiles
+            if (fileList.isEmpty()) return@launch
 
             refreshStorageLastPlay()
-            fileList
+            val updated = fileList
                 .map { updateStorageFileHistory(it, getHistory(it)) }
-                .apply { _fileLiveData.postValue(this) }
                 .also { filesSnapshot = it }
+            _allFiles = updated
+            applyFilter()
         }
+    }
+
+    fun setFilterTypes(types: Set<FileFilterType>) {
+        _filterTypes.value = types
+        applyFilter()
+    }
+
+    private fun applyFilter() {
+        val currentTypes = _filterTypes.value ?: emptySet()
+        val files = filesSnapshot
+
+        val filtered = if (currentTypes.isEmpty()) {
+            files
+        } else {
+            files.filter { file ->
+                when {
+                    file.isDirectory() -> currentTypes.contains(FileFilterType.FOLDER)
+                    file.isVideoFile() -> currentTypes.contains(FileFilterType.VIDEO)
+                    file.isAudioFile() -> currentTypes.contains(FileFilterType.AUDIO)
+                    file.isImageFile() -> currentTypes.contains(FileFilterType.IMAGE)
+                    else -> false
+                }
+            }
+        }
+        _fileLiveData.postValue(filtered)
     }
 
     /**

@@ -7,13 +7,10 @@ import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.SearchView.OnQueryTextListener
 import androidx.appcompat.widget.SearchView.SearchAutoComplete
 import com.xyoye.common_component.storage.StorageSortOption
+import com.xyoye.data_component.enums.FileFilterType
 import com.xyoye.data_component.enums.StorageSort
 import com.xyoye.storage_component.R
 import com.xyoye.storage_component.ui.activities.storage_file.StorageFileActivity
-
-/**
- * Created by xyoye on 2023/3/31.
- */
 
 class StorageFileMenus private constructor(
     private val activity: StorageFileActivity,
@@ -28,6 +25,12 @@ class StorageFileMenus private constructor(
     }
 
     private val searchItem = menu.findItem(R.id.item_search)
+
+    private val filterFolderItem = menu.findItem(R.id.action_filter_folder)
+    private val filterVideoItem = menu.findItem(R.id.action_filter_video)
+    private val filterImageItem = menu.findItem(R.id.action_filter_image)
+    private val filterAudioItem = menu.findItem(R.id.action_filter_audio)
+
     private val sortNameItem = menu.findItem(R.id.action_sort_by_name)
     private val sortSizeItem = menu.findItem(R.id.action_sort_by_size)
     private val sortOrderAsc = menu.findItem(R.id.action_sort_order_asc)
@@ -36,6 +39,7 @@ class StorageFileMenus private constructor(
     private var mSearchView = searchItem.actionView as SearchView
     private var onTextChanged: ((String) -> Unit)? = null
     private var onSortChanged: (() -> Unit)? = null
+    private var onFilterChanged: ((Set<FileFilterType>) -> Unit)? = null
 
     init {
         initSearchView()
@@ -81,17 +85,47 @@ class StorageFileMenus private constructor(
     }
 
     fun onOptionsItemSelected(item: MenuItem) {
-        val changed = when (item.itemId) {
-            R.id.action_sort_by_name -> StorageSortOption.setSort(StorageSort.NAME)
-            R.id.action_sort_by_size -> StorageSortOption.setSort(StorageSort.SIZE)
-            R.id.action_sort_order_asc -> StorageSortOption.changeAsc()
-            R.id.action_sort_directory_first -> StorageSortOption.changeDirectoryFirst()
-            else -> false
+        when (item.itemId) {
+            R.id.action_filter_folder,
+            R.id.action_filter_video,
+            R.id.action_filter_image,
+            R.id.action_filter_audio -> {
+                notifyFilterChanged()
+            }
+
+            R.id.action_sort_by_name -> {
+                StorageSortOption.setSort(StorageSort.NAME)
+                updateSortItem()
+                onSortChanged?.invoke()
+            }
+
+            R.id.action_sort_by_size -> {
+                StorageSortOption.setSort(StorageSort.SIZE)
+                updateSortItem()
+                onSortChanged?.invoke()
+            }
+
+            R.id.action_sort_order_asc -> {
+                StorageSortOption.changeAsc()
+                updateSortItem()
+                onSortChanged?.invoke()
+            }
+
+            R.id.action_sort_directory_first -> {
+                StorageSortOption.changeDirectoryFirst()
+                updateSortItem()
+                onSortChanged?.invoke()
+            }
         }
-        if (changed) {
-            updateSortItem()
-            onSortChanged?.invoke()
-        }
+    }
+
+    private fun notifyFilterChanged() {
+        val selectedTypes = mutableSetOf<FileFilterType>()
+        if (filterFolderItem.isChecked) selectedTypes.add(FileFilterType.FOLDER)
+        if (filterVideoItem.isChecked) selectedTypes.add(FileFilterType.VIDEO)
+        if (filterImageItem.isChecked) selectedTypes.add(FileFilterType.IMAGE)
+        if (filterAudioItem.isChecked) selectedTypes.add(FileFilterType.AUDIO)
+        onFilterChanged?.invoke(selectedTypes)
     }
 
     fun handleBackPressed(): Boolean {
@@ -108,5 +142,16 @@ class StorageFileMenus private constructor(
 
     fun onSortTypeChanged(block: () -> Unit) {
         onSortChanged = block
+    }
+
+    fun onFilterChanged(block: (Set<FileFilterType>) -> Unit) {
+        onFilterChanged = block
+    }
+
+    fun updateFilterItems(types: Set<FileFilterType>) {
+        filterFolderItem.isChecked = types.contains(FileFilterType.FOLDER)
+        filterVideoItem.isChecked = types.contains(FileFilterType.VIDEO)
+        filterImageItem.isChecked = types.contains(FileFilterType.IMAGE)
+        filterAudioItem.isChecked = types.contains(FileFilterType.AUDIO)
     }
 }

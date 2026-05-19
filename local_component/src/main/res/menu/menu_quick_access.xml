@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/item_filter"
+        android:icon="@drawable/ic_sort"
+        android:orderInCategory="100"
+        android:title="筛选"
+        app:showAsAction="always">
+        <menu>
+            <item
+                android:id="@+id/item_filter_title"
+                android:enabled="false"
+                android:title="类型筛选" />
+            <group android:checkableBehavior="all">
+                <item
+                    android:id="@+id/action_filter_folder"
+                    android:checkable="true"
+                    android:title="文件夹" />
+                <item
+                    android:id="@+id/action_filter_video"
+                    android:checkable="true"
+                    android:title="视频" />
+                <item
+                    android:id="@+id/action_filter_image"
+                    android:checkable="true"
+                    android:title="图片" />
+                <item
+                    android:id="@+id/action_filter_audio"
+                    android:checkable="true"
+                    android:title="音频" />
+            </group>
+        </menu>
+    </item>
+</menu>

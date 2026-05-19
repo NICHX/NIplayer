@@ -15,6 +15,7 @@ import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.extension.vertical
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.utils.ThumbnailGeneratorManager
+import com.xyoye.data_component.enums.FileFilterType
 import com.xyoye.storage_component.BR
 import com.xyoye.storage_component.R
 import com.xyoye.storage_component.databinding.FragmentStorageFileBinding
@@ -135,6 +136,10 @@ class StorageFileFragment :
         super.onResume()
         viewModel.updateHistory()
         setRecyclerViewItemFocusAble(true)
+    }
+
+    fun setFilterTypes(types: Set<FileFilterType>) {
+        viewModel.setFilterTypes(types)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

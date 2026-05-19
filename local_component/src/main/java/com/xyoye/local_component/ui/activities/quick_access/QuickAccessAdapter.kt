@@ -5,6 +5,7 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.RequestOptions
+import com.bumptech.glide.signature.ObjectKey
 import com.xyoye.common_component.adapter.BaseAdapter
 import com.xyoye.common_component.adapter.addEmptyView
 import com.xyoye.common_component.adapter.addItem
@@ -18,13 +19,24 @@ import com.xyoye.data_component.bean.QuickAccessItem
 import com.xyoye.local_component.R
 import com.xyoye.local_component.databinding.ItemQuickAccessEntryBinding
 import com.xyoye.local_component.databinding.ItemQuickAccessFileBinding
+import com.xyoye.local_component.databinding.ItemQuickAccessFileGridBinding
+import java.io.File
 
 class QuickAccessAdapter(
     private val activity: QuickAccessActivity,
-    private val viewModel: QuickAccessViewModel
+    private val viewModel: QuickAccessViewModel,
+    private val isGridView: Boolean = false
 ) {
 
     fun create(): BaseAdapter {
+        return if (isGridView) {
+            createGridAdapter()
+        } else {
+            createListAdapter()
+        }
+    }
+
+    private fun createListAdapter(): BaseAdapter {
         return buildAdapter {
             addEmptyView(R.layout.layout_empty) {
                 initEmptyView {
@@ -56,8 +68,51 @@ class QuickAccessAdapter(
                         loadFileThumbnail(coverIv, data)
                         nameTv.text = data.name
                         libraryTv.text = data.libraryDisplayName
+                        pathTv.text = data.storagePath
                         itemLayout.setOnClickListener { viewModel.openItem(data) }
                         itemLayout.setOnLongClickListener {
+                            showRemoveDialog(data)
+                            true
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun createGridAdapter(): BaseAdapter {
+        return buildAdapter {
+            addEmptyView(R.layout.layout_empty) {
+                initEmptyView {
+                    itemBinding.emptyTv.text = "暂无快速访问项目\n在文件浏览中添加快速访问后，将在此显示"
+                }
+            }
+
+            addItem<QuickAccessItem, ItemQuickAccessEntryBinding>(R.layout.item_quick_access_entry) {
+                checkType { data -> (data as QuickAccessItem).isDirectory }
+                initView { data, _, _ ->
+                    itemBinding.run {
+                        iconIv.scaleType = ImageView.ScaleType.CENTER_INSIDE
+                        iconIv.setImageResource(com.xyoye.common_component.R.drawable.ic_folder)
+                        nameTv.text = data.name
+                        libraryTv.text = data.libraryDisplayName
+                        itemLayout.setOnClickListener { viewModel.openItem(data) }
+                        itemLayout.setOnLongClickListener {
+                            showRemoveDialog(data)
+                            true
+                        }
+                    }
+                }
+            }
+
+            addItem<QuickAccessItem, ItemQuickAccessFileGridBinding>(R.layout.item_quick_access_file_grid) {
+                checkType { data -> !(data as QuickAccessItem).isDirectory }
+                initView { data, _, _ ->
+                    itemBinding.run {
+                        loadFileThumbnail(coverIv, data)
+                        titleTv.text = data.name
+                        mainActionFl.setOnClickListener { viewModel.openItem(data) }
+                        mainActionFl.setOnLongClickListener {
                             showRemoveDialog(data)
                             true
                         }
@@ -84,6 +139,7 @@ class QuickAccessAdapter(
                     dontAnimate()
                     diskCacheStrategy(DiskCacheStrategy.NONE)
                     skipMemoryCache(false)
+                    signature(ObjectKey(File(coverSource).lastModified()))
                     format(DecodeFormat.PREFER_RGB_565)
                 })
                 .into(imageView)
