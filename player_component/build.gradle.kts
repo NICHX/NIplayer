@@ -46,4 +46,6 @@ dependencies {
     implementation("io.github.carguo:gsyvideoplayer-ex_so:13.0.0")
 
     kapt(Dependencies.Alibaba.arouter_compiler)
+
+    implementation("com.github.wangchenyan:lrcview:2.2.2")
 }

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="#EE000000"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
+
+        <FrameLayout
+            android:id="@+id/fl_cover"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/background_cycle_bt">
+
+            <ImageView
+                android:id="@+id/iv_cover"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitXY"
+                tools:src="@color/black" />
+
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/tv_song_info"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="8dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="@color/white"
+            android:textSize="14sp"
+            tools:text="歌曲标题 - 艺术家" />
+
+        <FrameLayout
+            android:id="@+id/fl_play"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:gravity="center">
+
+            <com.google.android.material.progressindicator.CircularProgressIndicator
+                android:id="@+id/play_progress"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:indeterminate="false"
+                android:progress="0"
+                app:indicatorColor="@color/white"
+                app:indicatorSize="28dp"
+                app:trackColor="#33ffffff"
+                app:trackThickness="2dp" />
+
+            <ImageView
+                android:id="@+id/iv_play"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_audio_play_pause_selector" />
+
+            <com.google.android.material.progressindicator.CircularProgressIndicator
+                android:id="@+id/play_loading"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:indeterminate="true"
+                android:visibility="gone"
+                app:indicatorColor="@color/white"
+                app:indicatorSize="22dp"
+                app:trackColor="@color/transparent"
+                app:trackThickness="2dp" />
+
+        </FrameLayout>
+
+        <ImageView
+            android:id="@+id/iv_next"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_video_next" />
+
+    </LinearLayout>
+</layout>

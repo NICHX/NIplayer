@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 黑色背景颜色 -->
     <color name="player_bg_color">#000000</color>
-
     <color name="player_item_bg_color">#bb000000</color>
     <color name="player_item_bg_color_light">#77000000</color>
 
@@ -12,17 +10,18 @@
     <color name="seek_ball">#ffffffff</color>
 
     <color name="transparent">#00000000</color>
-
-    <color name="text_red_dark">#e91e63</color>
-
+    <color name="grey">#9E9E9E</color>
     <color name="background_gray">#a5a5a5</color>
     <color name="background_gray_light">#bababa</color>
-
     <color name="setting_checked_gray">#33ffffff</color>
     <color name="setting_edit_hint_gray">#55ffffff</color>
-
     <color name="edit_offset_gray">#33ffffff</color>
-
     <color name="player_view_divider">#a5a5a5</color>
     <color name="player_item_selected_theme">#772095f4</color>
+
+    <color name="translucent_white_p80">#CCFFFFFF</color>
+    <color name="translucent_white_p50">#80FFFFFF</color>
+    <color name="translucent_white_p30">#4DFFFFFF</color>
+    <color name="translucent_white_p10">#1AFFFFFF</color>
+    <color name="translucent_black_p50">#80000000</color>
 </resources>

@@ -44,6 +44,7 @@ object RouteTable {
     object Player {
         const val Player = "/player/player_interceptor"
         const val PlayerCenter = "/player/player"
+        const val AudioPlayer = "/player/audio_player"
     }
 
     object Stream {
