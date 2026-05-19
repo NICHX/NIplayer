@@ -1,0 +1,23 @@
+feat: 快速访问改进 + 文件类型筛选功能
+
+快速访问:
+- 缩略图添加 signature，文件更新后正常刷新
+- 播放时查询数据库绑定 playHistory，继承播放进度
+- 新增文件路径显示
+- 新增列表/网格视图切换（ExpandableFabMenu）
+- 新增网格布局 item_quick_access_file_grid.xml
+
+类型筛选:
+- 新增 FileFilterType 枚举，支持多选
+- 快速访问和文件浏览页统一添加筛选功能
+- 筛选合并到 toolbar 排序菜单，移除独立 chip 栏
+- 去掉"全部"选项，未选中时显示全部类型
+- 使用 checkableBehavior="all" 多选复选框
+- 扁平菜单结构，enabled="false" 标题分组
+- overflow menu 下移 56dp，不遮挡按钮
+
+存储与播放优化:
+- AlistService 分页参数优化
+- SmbStorage/WebDavStorage 路径处理改进
+- PlayRecorder 定时逻辑优化
+- PlayerActivity 播放进度恢复改进

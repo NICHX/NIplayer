@@ -242,8 +242,12 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         }
         val dirPath = pathSegments.takeLast(pathSegments.size - 1).joinToString(separator = "/")
         return try {
-            diskShare.mkdir(dirPath)
-            true
+            if (diskShare.folderExists(dirPath)) {
+                true
+            } else {
+                diskShare.mkdir(dirPath)
+                true
+            }
         } catch (_: Exception) {
             false
         }
@@ -284,14 +288,15 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         if (switchShareDisk(targetShare).not()) {
             return false
         }
+        val diskShare = mDiskShare ?: return false
         val filePath = pathSegments.takeLast(pathSegments.size - 1).joinToString(separator = "/")
         return try {
-            val smbFile = mDiskShare?.openFile(
+            val smbFile = diskShare.openFile(
                 filePath,
                 EnumSet.of(AccessMask.GENERIC_WRITE),
                 setOf(FileAttributes.FILE_ATTRIBUTE_NORMAL),
                 setOf(SMB2ShareAccess.FILE_SHARE_WRITE),
-                SMB2CreateDisposition.FILE_OVERWRITE_IF,
+                SMB2CreateDisposition.FILE_OPEN_IF,
                 setOf(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE)
             )
             if (smbFile != null) {

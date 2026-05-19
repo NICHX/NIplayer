@@ -1,5 +1,6 @@
 package com.xyoye.local_component.ui.activities.quick_access
 
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.alibaba.android.arouter.launcher.ARouter
@@ -11,8 +12,12 @@ import com.xyoye.common_component.source.factory.StorageVideoSourceFactory
 import com.xyoye.common_component.storage.StorageFactory
 import com.xyoye.common_component.utils.QuickAccessHelper
 import com.xyoye.common_component.utils.ThumbnailGeneratorManager
+import com.xyoye.common_component.utils.isAudioFile
+import com.xyoye.common_component.utils.isImageFile
+import com.xyoye.common_component.utils.isVideoFile
 import com.xyoye.data_component.bean.QuickAccessItem
 import com.xyoye.data_component.entity.MediaLibraryEntity
+import com.xyoye.data_component.enums.FileFilterType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -22,9 +27,17 @@ class QuickAccessViewModel : BaseViewModel() {
     private val _quickAccessLiveData = MutableLiveData<List<QuickAccessItem>>()
     val quickAccessLiveData = _quickAccessLiveData
 
+    var isGridView: Boolean = false
+
+    private val _filterTypes = MutableLiveData<Set<FileFilterType>>(emptySet())
+    val filterTypes: LiveData<Set<FileFilterType>> = _filterTypes
+
+    private var _allItems = listOf<QuickAccessItem>()
+
     fun loadQuickAccessItems() {
         val items = QuickAccessHelper.getQuickAccessList()
-        _quickAccessLiveData.postValue(items)
+        _allItems = items
+        applyFilter()
 
         viewModelScope.launch(Dispatchers.IO) {
             preloadFileThumbnails(items)
@@ -65,6 +78,35 @@ class QuickAccessViewModel : BaseViewModel() {
         _quickAccessLiveData.postValue(QuickAccessHelper.getQuickAccessList())
     }
 
+    fun toggleViewMode() {
+        isGridView = !isGridView
+    }
+
+    fun setFilterTypes(types: Set<FileFilterType>) {
+        _filterTypes.value = types
+        applyFilter()
+    }
+
+    private fun applyFilter() {
+        val currentTypes = _filterTypes.value ?: emptySet()
+        val items = _allItems
+
+        val filtered = if (currentTypes.isEmpty()) {
+            items
+        } else {
+            items.filter { item ->
+                when {
+                    item.isDirectory -> currentTypes.contains(FileFilterType.FOLDER)
+                    isVideoFile(item.name) -> currentTypes.contains(FileFilterType.VIDEO)
+                    isAudioFile(item.name) -> currentTypes.contains(FileFilterType.AUDIO)
+                    isImageFile(item.name) -> currentTypes.contains(FileFilterType.IMAGE)
+                    else -> false
+                }
+            }
+        }
+        _quickAccessLiveData.postValue(filtered)
+    }
+
     fun openItem(item: QuickAccessItem) {
         viewModelScope.launch(Dispatchers.IO) {
             val library = DatabaseManager.instance.getMediaLibraryDao()
@@ -92,6 +134,11 @@ class QuickAccessViewModel : BaseViewModel() {
             storage.close()
             return
         }
+
+        val playHistory = DatabaseManager.instance.getPlayHistoryDao().getPlayHistory(
+            file.uniqueKey(), library.id
+        )
+        file.playHistory = playHistory
 
         val source = StorageVideoSourceFactory.create(file)
         if (source != null) {

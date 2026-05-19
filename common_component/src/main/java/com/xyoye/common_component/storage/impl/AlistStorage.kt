@@ -1,6 +1,7 @@
 package com.xyoye.common_component.storage.impl
 
 import android.net.Uri
+import com.xyoye.common_component.network.Retrofit
 import com.xyoye.common_component.network.repository.AlistRepository
 import com.xyoye.common_component.network.repository.ResourceRepository
 import com.xyoye.common_component.storage.AbstractStorage
@@ -10,6 +11,10 @@ import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.data.alist.AlistFileData
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.InputStream
 
 /**
@@ -86,6 +91,36 @@ class AlistStorage(
 
     override suspend fun createPlayUrl(file: StorageFile): String? {
         return getStorageFileUrl(file)
+    }
+
+    override suspend fun createDirectory(path: String): Boolean {
+        if (token.isEmpty()) {
+            token = refreshToken() ?: return false
+        }
+        return try {
+            val body = """{"path":"$path"}""".toRequestBody("application/json".toMediaType())
+            val result = Retrofit.alistService.createDirectory(rootUrl, token, body)
+            if (result.isSuccess) return true
+            AlistRepository.openDirectory(rootUrl, token, path).isSuccess
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override suspend fun saveFile(path: String, data: ByteArray): Boolean {
+        if (token.isEmpty()) {
+            token = refreshToken() ?: return false
+        }
+        return withContext(Dispatchers.IO) {
+            try {
+                val body = data.toRequestBody("application/octet-stream".toMediaType())
+                val result = Retrofit.alistService.uploadFile(rootUrl, token, path, "application/octet-stream", body)
+                result.isSuccess
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
+        }
     }
 
     override suspend fun test(): Boolean {

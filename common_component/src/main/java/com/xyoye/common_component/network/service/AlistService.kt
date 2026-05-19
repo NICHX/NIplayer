@@ -11,6 +11,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.PUT
 
 /**
  * Created by xyoye on 2024/1/20.
@@ -41,6 +42,22 @@ interface AlistService {
     suspend fun openFile(
         @Header(HeaderKey.BASE_URL) baseUrl: String,
         @Header(HeaderKey.AUTHORIZATION) authorization: String?,
+        @Body requestBody: RequestBody
+    ): CommonJsonModel<AlistFileData>
+
+    @POST("/api/fs/mkdir")
+    suspend fun createDirectory(
+        @Header(HeaderKey.BASE_URL) baseUrl: String,
+        @Header(HeaderKey.AUTHORIZATION) authorization: String?,
+        @Body requestBody: RequestBody
+    ): CommonJsonModel<AlistFileData>
+
+    @PUT("/api/fs/put")
+    suspend fun uploadFile(
+        @Header(HeaderKey.BASE_URL) baseUrl: String,
+        @Header(HeaderKey.AUTHORIZATION) authorization: String?,
+        @Header("File-Path") filePath: String,
+        @Header("Content-Type") contentType: String,
         @Body requestBody: RequestBody
     ): CommonJsonModel<AlistFileData>
 }

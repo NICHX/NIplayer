@@ -6,6 +6,7 @@ import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners
 import com.bumptech.glide.request.RequestOptions
+import com.bumptech.glide.signature.ObjectKey
 import com.xyoye.common_component.R
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.utils.ThumbnailMemoryCache
@@ -86,6 +87,9 @@ fun ImageView.loadStorageFileCover(file: StorageFile, scaleSize: Int? = null) {
             transform(RoundedCorners(5f.dp().toInt()))
             diskCacheStrategy(diskCacheStrategy)
             skipMemoryCache(false)
+            if (isLocalFile) {
+                signature(ObjectKey(File(source).lastModified()))
+            }
             frame(0)
             format(DecodeFormat.PREFER_RGB_565)
             if (sizePx != null) override(sizePx, sizePx)

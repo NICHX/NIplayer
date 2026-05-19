@@ -129,6 +129,7 @@ class WebDavStorage(
             val requestBuilder = Request.Builder()
                 .url(targetUrl)
                 .put(data.toRequestBody("image/jpeg".toMediaType()))
+                .header("Overwrite", "T")
             headers?.forEach { (key, value) ->
                 requestBuilder.addHeader(key, value)
             }

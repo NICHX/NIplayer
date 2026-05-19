@@ -223,6 +223,7 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         mMenus = StorageFileMenus.inflater(this, menu).apply {
             onSearchTextChanged { onSearchTextChanged(it) }
             onSortTypeChanged { onSortOptionChanged() }
+            onFilterChanged { onFilterOptionChanged(it) }
         }
         return super.onCreateOptionsMenu(menu)
     }
@@ -394,6 +395,10 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
      */
     private fun onSortOptionChanged() {
         mRouteFragmentMap.values.onEach { it.sort() }
+    }
+
+    private fun onFilterOptionChanged(types: Set<com.xyoye.data_component.enums.FileFilterType>) {
+        mRouteFragmentMap.values.lastOrNull()?.setFilterTypes(types)
     }
 
     /**
