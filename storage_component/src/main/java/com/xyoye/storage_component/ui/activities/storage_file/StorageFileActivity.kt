@@ -142,15 +142,6 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     private fun initExpandableFab() {
         dataBinding.expandableFab.addAction(
             ExpandableFabMenu.FabAction(
-                id = 1,
-                icon = if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid,
-                label = if (isGridView) "列表视图" else "网格视图",
-                onClick = { toggleViewMode() }
-            )
-        )
-
-        dataBinding.expandableFab.addAction(
-            ExpandableFabMenu.FabAction(
                 id = 2,
                 icon = R.drawable.ic_download,
                 label = "下载管理",
@@ -174,10 +165,7 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         if (currentFragment is StorageFileFragment) {
             currentFragment.refreshViewMode()
         }
-        dataBinding.expandableFab.run {
-            updateAction(1, if (isGridView) R.drawable.ic_view_list else R.drawable.ic_view_grid,
-                if (isGridView) "列表视图" else "网格视图")
-        }
+        mMenus?.updateToggleViewItem()
     }
 
     private fun initPathRv() {
@@ -224,6 +212,7 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
             onSearchTextChanged { onSearchTextChanged(it) }
             onSortTypeChanged { onSortOptionChanged() }
             onFilterChanged { onFilterOptionChanged(it) }
+            onToggleView { toggleViewMode() }
         }
         return super.onCreateOptionsMenu(menu)
     }

@@ -6,6 +6,7 @@ import android.view.inputmethod.EditorInfo
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.SearchView.OnQueryTextListener
 import androidx.appcompat.widget.SearchView.SearchAutoComplete
+import com.xyoye.common_component.config.AppConfig
 import com.xyoye.common_component.storage.StorageSortOption
 import com.xyoye.data_component.enums.FileFilterType
 import com.xyoye.data_component.enums.StorageSort
@@ -35,15 +36,18 @@ class StorageFileMenus private constructor(
     private val sortSizeItem = menu.findItem(R.id.action_sort_by_size)
     private val sortOrderAsc = menu.findItem(R.id.action_sort_order_asc)
     private val sortDirectoryFirst = menu.findItem(R.id.action_sort_directory_first)
+    private val toggleViewItem = menu.findItem(R.id.action_toggle_view)
 
     private var mSearchView = searchItem.actionView as SearchView
     private var onTextChanged: ((String) -> Unit)? = null
     private var onSortChanged: (() -> Unit)? = null
     private var onFilterChanged: ((Set<FileFilterType>) -> Unit)? = null
+    private var onToggleView: (() -> Unit)? = null
 
     init {
         initSearchView()
         updateSortItem()
+        updateToggleViewItem()
     }
 
     private fun initSearchView() {
@@ -92,6 +96,10 @@ class StorageFileMenus private constructor(
             R.id.action_filter_audio -> {
                 item.isChecked = !item.isChecked
                 notifyFilterChanged()
+            }
+
+            R.id.action_toggle_view -> {
+                onToggleView?.invoke()
             }
 
             R.id.action_sort_by_name -> {
@@ -147,6 +155,14 @@ class StorageFileMenus private constructor(
 
     fun onFilterChanged(block: (Set<FileFilterType>) -> Unit) {
         onFilterChanged = block
+    }
+
+    fun onToggleView(block: () -> Unit) {
+        onToggleView = block
+    }
+
+    fun updateToggleViewItem() {
+        toggleViewItem.title = if (AppConfig.isGridView()) "列表视图" else "网格视图"
     }
 
     fun updateFilterItems(types: Set<FileFilterType>) {

@@ -61,6 +61,12 @@
                 android:id="@+id/action_sort_directory_first"
                 android:checkable="true"
                 android:title="@string/text_sort_directory_first" />
+
+            <item android:title="" android:enabled="false" />
+
+            <item
+                android:id="@+id/action_toggle_view"
+                android:title="列表视图" />
         </menu>
     </item>
 </menu>
