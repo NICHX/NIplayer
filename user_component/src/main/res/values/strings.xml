@@ -68,6 +68,9 @@
     <string name="tips_current_open_folder">本次打开目录</string>
     <string name="action_commonly_folder_manager">常用目录管理</string>
     <string name="action_thumbnail_setting">缩略图设置</string>
+    <string name="tips_commonly_folder_description_1">用于播放器中快速切换字幕、音轨文件目录</string>
+    <string name="tips_commonly_folder_description_2">用于绑定字幕、绑定外部音轨、添加扫描目录等文件选择场景快速定位目标目录</string>
+    <string name="tips_commonly_folder_description_3">开启「上次选择目录」后，文件选择器将自动记录并快速跳转上次打开的目录</string>
     <string name="tips_screencast_receiving">运行中</string>
 
     <string name="tips_video_extension_support_setting">视频文件扩展名设置</string>
