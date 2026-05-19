@@ -3,14 +3,35 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_toggle_view"
+        android:title="列表/网格"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_edit"
+        android:title="编辑"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_done"
+        android:title="完成"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_delete"
+        android:title="删除"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/item_filter"
         android:icon="@drawable/ic_sort"
-        android:orderInCategory="100"
         android:title="筛选"
         app:showAsAction="always">
         <menu>
             <item
-                android:id="@+id/action_toggle_view"
+                android:id="@+id/action_toggle_view_sub"
                 android:title="列表/网格" />
 
             <item

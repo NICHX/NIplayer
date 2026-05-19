@@ -33,7 +33,7 @@
                 android:layout_height="40dp"
                 android:layout_gravity="center"
                 android:src="@drawable/ic_video_play_overlay"
-                android:visibility="gone" />
+                android:visibility="visible" />
 
         </FrameLayout>
 

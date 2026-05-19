@@ -35,7 +35,7 @@ fun ImageView.loadVideoCover(image: File) {
         .apply(RequestOptions().apply {
             centerCrop()
             dontAnimate()
-            error(R.drawable.ic_dandanplay)
+            error(R.drawable.ic_video_cover)
             transform(RoundedCorners(5f.dp().toInt()))
             diskCacheStrategy(DiskCacheStrategy.NONE)
             skipMemoryCache(true)
@@ -53,10 +53,10 @@ fun ImageView.loadStorageFileCover(file: StorageFile, scaleSize: Int? = null) {
 
     if (source == null) {
         val defaultIcon = when {
-            file.isVideoFile() -> R.drawable.ic_video_cover
-            file.isAudioFile() -> R.drawable.ic_audio_cover
+            file.isVideoFile() -> R.drawable.ic_video
+            file.isAudioFile() -> R.drawable.ic_file_audio
             file.isImageFile() -> R.drawable.ic_image_cover
-            else -> R.drawable.ic_dandanplay
+            else -> R.drawable.ic_video
         }
         scaleType = ImageView.ScaleType.CENTER_INSIDE
         setImageResource(defaultIcon)
