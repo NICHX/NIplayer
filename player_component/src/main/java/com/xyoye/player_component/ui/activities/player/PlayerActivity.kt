@@ -252,6 +252,9 @@ private fun updatePlayer(source: BaseVideoSource) {
     private fun afterInitPlayer() {
         val source = videoSource ?: return
 
+        //加载音频封面
+        videoController.loadAudioCover(source)
+
         //设置本地视频文件的父文件夹，用于选取字幕
         if (source.getMediaType() == MediaType.LOCAL_STORAGE) {
             File(source.getVideoUrl()).parentFile?.absolutePath?.let {

@@ -2,6 +2,7 @@ package com.xyoye.player.controller
 
 import android.content.Context
 import android.util.AttributeSet
+import com.xyoye.common_component.source.base.BaseVideoSource
 import com.xyoye.common_component.utils.formatDuration
 import com.xyoye.data_component.bean.VideoTrackBean
 import com.xyoye.data_component.enums.PlayState
@@ -109,6 +110,13 @@ class VideoController(
         }
     }
 
+    override fun showController(ignoreShowing: Boolean) {
+        super.showController(ignoreShowing)
+        if (playerControlView.isAudioMode()) {
+            stopFadeOut()
+        }
+    }
+
     override fun onBackPressed(): Boolean {
         if (isLocked()) {
             showController()
@@ -205,6 +213,17 @@ class VideoController(
      */
     fun observerTrackAdded(block: (VideoTrackBean) -> Unit) {
         trackAddedBlock = block
+    }
+
+    /**
+     * 加载音频封面
+     */
+    fun loadAudioCover(source: BaseVideoSource) {
+        playerControlView.loadAudioCover(source)
+        if (playerControlView.isAudioMode()) {
+            showController(true)
+            stopFadeOut()
+        }
     }
 
     /**
