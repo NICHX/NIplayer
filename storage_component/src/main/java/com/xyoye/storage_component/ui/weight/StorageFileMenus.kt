@@ -90,6 +90,7 @@ class StorageFileMenus private constructor(
             R.id.action_filter_video,
             R.id.action_filter_image,
             R.id.action_filter_audio -> {
+                item.isChecked = !item.isChecked
                 notifyFilterChanged()
             }
 
