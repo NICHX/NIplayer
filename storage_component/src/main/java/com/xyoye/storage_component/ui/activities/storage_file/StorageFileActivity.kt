@@ -54,6 +54,10 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     @JvmField
     var storageLibrary: MediaLibraryEntity? = null
 
+    @Autowired
+    @JvmField
+    var initialStoragePath: String = ""
+
     lateinit var storage: Storage
         private set
 
@@ -116,6 +120,17 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         initListener()
         initExpandableFab()
         openDirectory(null)
+
+        if (initialStoragePath.isNotEmpty()) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                val targetFile = storage.pathFile(initialStoragePath, true)
+                if (targetFile != null) {
+                    withContext(Dispatchers.Main) {
+                        openDirectory(targetFile)
+                    }
+                }
+            }
+        }
 
         lifecycleScope.launch {
             ViewModeSync.gridViewChanged.collect {

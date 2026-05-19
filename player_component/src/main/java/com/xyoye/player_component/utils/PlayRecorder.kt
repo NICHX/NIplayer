@@ -19,10 +19,12 @@ import com.xyoye.common_component.extension.resumeWhenAlive
 import com.xyoye.common_component.network.repository.AnimeRepository
 import com.xyoye.common_component.network.repository.ResourceRepository
 import com.xyoye.common_component.source.base.BaseVideoSource
+import com.xyoye.common_component.source.media.StorageVideoSource
 import com.xyoye.common_component.utils.JsonHelper
 import com.xyoye.common_component.utils.MediaUtils
 import com.xyoye.common_component.utils.PathHelper
 import com.xyoye.common_component.utils.SupervisorScope
+import com.xyoye.common_component.utils.ThumbnailGeneratorManager
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import com.xyoye.data_component.enums.MediaType
 import com.xyoye.player.surface.InterSurfaceView
@@ -105,7 +107,7 @@ object PlayRecorder {
         }
     }
 
-    fun recordImage(key: String, renderView: InterSurfaceView?) {
+    fun recordImage(key: String, renderView: InterSurfaceView?, videoSource: BaseVideoSource? = null) {
         val view = renderView?.getView()
             ?: return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
@@ -121,6 +123,11 @@ object PlayRecorder {
 
             val bitmapFile = File(PathHelper.getVideoCoverDirectory(), key)
             MediaUtils.saveImage(bitmapFile, bitmap)
+
+            if (videoSource is StorageVideoSource) {
+                ThumbnailGeneratorManager.saveBitmapToServer(videoSource.getStorageFile(), bitmap)
+            }
+
             bitmap.recycle()
         }
     }

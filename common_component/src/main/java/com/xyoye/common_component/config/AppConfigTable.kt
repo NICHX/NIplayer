@@ -93,4 +93,8 @@ object AppConfigTable {
     @MMKVFiled
     // Jsoup的User-Agent
     var jsoupUserAgent: String = DefaultConfig.DEFAULT_JSOUP_USER_AGENT
+
+    @MMKVFiled
+    //快速访问收藏夹（JSON格式存储QuickAccessItem列表）
+    var quickAccessItems: String? = null
 }

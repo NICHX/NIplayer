@@ -16,12 +16,17 @@
         android:layout_height="match_parent"
         android:background="@color/item_bg_color">
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/media_lib_rv"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:descendantFocusability="afterDescendants"
-            app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+            android:orientation="vertical">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/media_lib_rv"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:descendantFocusability="afterDescendants" />
+        </LinearLayout>
 
         <com.xyoye.common_component.weight.ExpandableFabMenu
             android:id="@+id/expandable_fab"

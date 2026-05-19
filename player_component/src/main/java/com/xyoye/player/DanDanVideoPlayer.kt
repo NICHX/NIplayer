@@ -360,7 +360,7 @@ class DanDanVideoPlayer(
         }
         if (mPlayerReleased) return
         //保存最后一帧
-        PlayRecorder.recordImage(videoSource.getUniqueKey(), mRenderView)
+        PlayRecorder.recordImage(videoSource.getUniqueKey(), mRenderView, videoSource)
         //保存播放进度
         PlayRecorder.recordProgress(videoSource, getCurrentPosition(), getDuration())
     }

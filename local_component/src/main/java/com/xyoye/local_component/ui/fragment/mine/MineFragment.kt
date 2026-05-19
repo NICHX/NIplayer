@@ -166,6 +166,13 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
                     .withSerializable("typeValue", data.mediaType.value)
                     .navigation()
             }
+
+            MediaType.QUICK_ACCESS -> {
+                ARouter.getInstance()
+                    .build(RouteTable.Local.QuickAccess)
+                    .navigation()
+            }
+
             MediaType.LOCAL_STORAGE,
             MediaType.FTP_SERVER,
             MediaType.SMB_SERVER,

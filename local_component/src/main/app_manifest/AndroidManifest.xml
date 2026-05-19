@@ -18,6 +18,7 @@
             android:exported="true" />
 
         <activity android:name=".ui.activities.play_history.PlayHistoryActivity" />
+        <activity android:name=".ui.activities.quick_access.QuickAccessActivity" />
     </application>
 
 </manifest>

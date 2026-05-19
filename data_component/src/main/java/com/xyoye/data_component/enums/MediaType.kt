@@ -52,6 +52,12 @@ enum class MediaType(
         "alist_storage",
         "Alist存储库",
         cover = R.drawable.ic_alist_storage
+    ),
+
+    QUICK_ACCESS(
+        "quick_access",
+        "快速访问",
+        cover = R.drawable.ic_remote_storage
     );
 
     companion object {
@@ -63,6 +69,7 @@ enum class MediaType(
                 "smb_server" -> SMB_SERVER
                 "external_storage" -> EXTERNAL_STORAGE
                 "alist_storage" -> ALSIT_STORAGE
+                "quick_access" -> QUICK_ACCESS
                 else -> OTHER_STORAGE
             }
         }
