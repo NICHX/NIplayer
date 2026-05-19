@@ -19,10 +19,9 @@ import com.google.android.material.appbar.AppBarLayout
 import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.config.AppConfig
 import com.xyoye.common_component.config.RouteTable
+import com.xyoye.common_component.config.ViewModeSync
 import com.xyoye.common_component.extension.horizontal
 import com.xyoye.common_component.extension.setData
-import com.xyoye.common_component.storage.download.DownloadManager
-
 import com.xyoye.common_component.network.config.HeaderKey
 import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.StorageFactory
@@ -43,7 +42,6 @@ import com.xyoye.storage_component.ui.weight.StorageFileMenus
 import com.xyoye.storage_component.utils.storage.StorageFilePathAdapter
 import com.xyoye.storage_component.utils.storage.StorageFileStyleHelper
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -118,6 +116,12 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         initListener()
         initExpandableFab()
         openDirectory(null)
+
+        lifecycleScope.launch {
+            ViewModeSync.gridViewChanged.collect {
+                applyViewMode()
+            }
+        }
     }
 
     private fun initExpandableFab() {
@@ -142,17 +146,15 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
                 }
             )
         )
-
-        dataBinding.expandableFab.visibility = android.view.View.GONE
-        lifecycleScope.launch {
-            DownloadManager.taskCount.collectLatest { count ->
-                dataBinding.expandableFab.visibility = if (count > 0) android.view.View.VISIBLE else android.view.View.GONE
-            }
-        }
     }
 
     private fun toggleViewMode() {
         isGridView = !isGridView
+        applyViewMode()
+        ViewModeSync.notifyGridViewChanged()
+    }
+
+    private fun applyViewMode() {
         val currentFragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
         if (currentFragment is StorageFileFragment) {
             currentFragment.refreshViewMode()

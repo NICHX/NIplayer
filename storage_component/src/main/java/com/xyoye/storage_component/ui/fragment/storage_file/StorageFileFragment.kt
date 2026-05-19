@@ -96,7 +96,9 @@ class StorageFileFragment :
         viewModel.storage = ownerActivity.storage
 
         scrollToTopBt?.setOnClickListener {
-            dataBinding.storageFileRv.scrollToPosition(0)
+            if (!isDestroyed()) {
+                dataBinding.storageFileRv.scrollToPosition(0)
+            }
         }
 
         viewModel.fileLiveData.observe(this) {
