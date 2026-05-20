@@ -153,6 +153,11 @@ object ThumbnailGeneratorManager {
             if (coverFile.exists() && coverFile.length() > 0) {
                 ThumbnailMemoryCache.putCoverPath(uniqueKey, coverFile.absolutePath)
             }
+            if (file.isAudioFile() && AudioMetadataCache.get(uniqueKey) == null) {
+                AudioMetadataCache.loadFromDisk(uniqueKey)?.let {
+                    AudioMetadataCache.put(uniqueKey, it)
+                }
+            }
         }
     }
 
@@ -590,11 +595,13 @@ object ThumbnailGeneratorManager {
             val resolvedArtist = artist?.takeIf { it.isNotEmpty() }
                 ?: albumArtist?.takeIf { it.isNotEmpty() }
                 ?: ""
-            AudioMetadataCache.put(file.uniqueKey(), AudioMetadata(
+            val metadata = AudioMetadata(
                 artist = resolvedArtist,
                 title = title ?: "",
                 duration = duration
-            ))
+            )
+            AudioMetadataCache.put(file.uniqueKey(), metadata)
+            AudioMetadataCache.saveToDisk(file.uniqueKey(), metadata)
 
             val picture = mediaRetriever.embeddedPicture
             if (picture == null) {
@@ -704,7 +711,6 @@ object ThumbnailGeneratorManager {
         existingDotThumbKeys.clear()
         storageMutexMap.clear()
         ThumbnailMemoryCache.clear()
-        AudioMetadataCache.clear()
         isProcessing = false
         _isGenerating.value = false
     }
