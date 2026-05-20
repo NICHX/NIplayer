@@ -1,0 +1,87 @@
+<resources>
+    <string name="app_name">player_component</string>
+    <string name="cant_parse_url">无法解析播放地址</string>
+    <string name="video_record">记忆上次播放到</string>
+    <string name="video_skip">继续播放</string>
+    <string name="time_separator">/</string>
+    <string name="test_default_system_time">12:00</string>
+
+    <string name="text_setting_player">播放器设置</string>
+    <string name="text_orientation_changeable">开启屏幕翻转</string>
+    <string name="text_auto_play_next">自动播放下一集</string>
+    <string name="text_video_scale_type">视频比例</string>
+    <string name="text_video_speed">播放速度</string>
+    <string name="text_audio_stream">音频流</string>
+    <string name="text_source_path_tips">路径：</string>
+    <string name="text_source_change">换源</string>
+
+    <string name="text_setting_subtitle">字幕设置</string>
+    <string name="text_subtitle_close">关闭</string>
+    <string name="text_subtitle_stream">字幕流</string>
+    <string name="text_subtitle_track_add">添加</string>
+    <string name="text_subtitle_size_tips">文字大小</string>
+    <string name="text_subtitle_color_tips">文字颜色</string>
+    <string name="text_subtitle_stroke_size_tips">描边宽度</string>
+    <string name="text_subtitle_stroke_color_tips">描边颜色</string>
+    <string name="text_subtitle_offset_tips">时间调节</string>
+    <string name="text_subtitle_offset_reduce">—</string>
+    <string name="hint_subtitle_offset">请输入偏移时间</string>
+    <string name="text_subtitle_offset_add">+</string>
+
+    <string name="exo_track_selection_title_video">视频</string>
+    <string name="exo_track_selection_title_audio">音频</string>
+    <string name="exo_track_selection_title_text">文字</string>
+    <string name="exo_track_selection_none">无</string>
+    <string name="exo_track_selection_auto">自动</string>
+    <string name="exo_track_unknown">未知</string>
+    <string name="exo_track_resolution">%1$d × %2$d</string>
+    <string name="exo_track_mono">单声道</string>
+    <string name="exo_track_stereo">立体声</string>
+    <string name="exo_track_surround">环绕声</string>
+    <string name="exo_track_surround_5_point_1">5.1 环绕声</string>
+    <string name="exo_track_surround_7_point_1">7.1 环绕声</string>
+    <string name="exo_track_role_alternate">替用轨</string>
+    <string name="exo_track_role_supplementary">补充轨</string>
+    <string name="exo_track_role_commentary">旁白</string>
+    <string name="exo_track_role_closed_captions">字幕</string>
+    <string name="exo_track_bitrate">%1$.2f Mbps</string>
+    <string name="exo_item_list">%1$s，%2$s</string>
+    <string name="action_add_block_keyword">添加</string>
+    <string name="tips_remove_block_keyword">点击可移除关键字</string>
+    <string name="tips_keyword_block">关键字屏蔽</string>
+    <string name="tips_support_regex">支持正则表达式, 例：regex=^[1–9]d*$</string>
+    <string name="tips_last_play_position">记忆上次播放到</string>
+    <string name="action_skip_position">继续播放</string>
+    <string name="action_exit_player">退出播放</string>
+    <string name="text_reset_video_speed">重置</string>
+    <string name="select_video_source">选集</string>
+    <string name="text_add_audio_stream">添加音轨</string>
+    <string name="text_reset">重置</string>
+    <string name="not_loaded">未加载</string>
+    <string name="remove">移除</string>
+
+    <string name="text_search">搜索</string>
+
+    <string name="action_aspect_default">默认</string>
+    <string name="action_aspect_match">填充</string>
+    <string name="action_aspect_crop">裁剪</string>
+    <string name="action_aspect_origin">原始</string>
+    <string name="action_aspect_16_9">16：9</string>
+    <string name="action_aspect_4_3">4：3</string>
+
+    <string name="text_select_subtitle">选择本地字幕</string>
+
+    <string name="action_offset_reduce_ten">-10</string>
+    <string name="action_offset_reduce_five">-5</string>
+    <string name="action_offset_reduce_half">-0.5</string>
+    <string name="action_offset_add_half">+0.5</string>
+    <string name="action_offset_add_five">+5</string>
+    <string name="action_offset_add_ten">+10</string>
+
+    <string name="text_setting_subtitle_style">字幕样式设置</string>
+
+    <string name="text_no_data">无数据</string>
+
+    <string name="text_long_press_speed">长按速度</string>
+    <string name="tips_long_press_rule">长按速度与播放速度一致时，将禁用长按变速</string>
+</resources>
