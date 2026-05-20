@@ -37,6 +37,7 @@ import com.xyoye.player.controller.VideoController
 import com.xyoye.player.info.PlayerInitializer
 import com.xyoye.player_component.BR
 import com.xyoye.player_component.R
+import com.xyoye.player_component.audio.manager.AudioPlayManager
 import com.xyoye.player_component.databinding.ActivityPlayerBinding
 import com.xyoye.player_component.utils.BatteryHelper
 import com.xyoye.player_component.widgets.popup.PlayerPopupManager
@@ -98,6 +99,8 @@ class PlayerActivity : BaseActivity<PlayerViewModel, ActivityPlayerBinding>(),
     }
 
     override fun initView() {
+        AudioPlayManager.pauseForVideo()
+
         ARouter.getInstance().inject(this)
 
         registerReceiver()
@@ -345,6 +348,7 @@ private fun updatePlayer(source: BaseVideoSource) {
     }
 
     private fun beforePlayExit() {
+        AudioPlayManager.resumeAfterVideo()
     }
 
     private fun switchVideoSource(index: Int) {

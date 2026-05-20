@@ -52,6 +52,8 @@ object AudioPlayManager : AudioPlayerController {
 
     private var currentIndex = 0
 
+    private var wasPlayingBeforeVideo = false
+
     fun init(context: Context) {
         if (isInitialized) return
         isInitialized = true
@@ -241,6 +243,21 @@ object AudioPlayManager : AudioPlayerController {
         _playlist.value = emptyList()
         _currentSong.value = null
         currentIndex = 0
+    }
+
+    fun pauseForVideo() {
+        val wasPlaying = _playState.value.isPlaying
+        wasPlayingBeforeVideo = wasPlaying
+        if (wasPlaying) {
+            exoPlayer?.pause()
+        }
+    }
+
+    fun resumeAfterVideo() {
+        if (wasPlayingBeforeVideo) {
+            wasPlayingBeforeVideo = false
+            exoPlayer?.play()
+        }
     }
 
     private fun playAtIndex(index: Int) {

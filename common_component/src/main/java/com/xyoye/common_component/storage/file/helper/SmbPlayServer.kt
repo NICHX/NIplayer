@@ -1,7 +1,5 @@
 package com.xyoye.common_component.storage.file.helper
 
-import com.xyoye.common_component.storage.Storage
-import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.file.impl.SmbStorageFile
 import com.xyoye.common_component.storage.impl.SmbStorage
 import com.xyoye.common_component.utils.RangeUtils
@@ -86,7 +84,7 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         }
     }
 
-    private fun getInputStreamWithRetry(storage: Storage, file: StorageFile): InputStream? {
+    private fun getInputStreamWithRetry(storage: SmbStorage, file: SmbStorageFile): InputStream? {
         val inputStream = getInputStream(storage, file)
         if (inputStream != null) return inputStream
         try {
@@ -97,7 +95,7 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         return getInputStream(storage, file)
     }
 
-    private fun getInputStreamWithRetry(storage: Storage, file: StorageFile, offset: Long): InputStream? {
+    private fun getInputStreamWithRetry(storage: SmbStorage, file: SmbStorageFile, offset: Long): InputStream? {
         val inputStream = getInputStream(storage, file, offset)
         if (inputStream != null) return inputStream
         try {
@@ -108,12 +106,12 @@ class SmbPlayServer private constructor(port: Int = randomPort()) : NanoHTTPD(po
         return getInputStream(storage, file, offset)
     }
 
-    private fun getInputStream(storage: Storage, file: StorageFile) = runBlocking {
-        storage.openFile(file)
+    private fun getInputStream(storage: SmbStorage, file: SmbStorageFile) = runBlocking {
+        storage.openPlayStream(file)
     }
 
-    private fun getInputStream(storage: Storage, file: StorageFile, offset: Long) = runBlocking {
-        storage.openFile(file, offset)
+    private fun getInputStream(storage: SmbStorage, file: SmbStorageFile, offset: Long) = runBlocking {
+        storage.openPlayStream(file, offset)
     }
 
     private fun getPartialResponse(

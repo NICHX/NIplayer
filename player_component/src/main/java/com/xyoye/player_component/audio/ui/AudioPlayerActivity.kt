@@ -3,11 +3,14 @@ package com.xyoye.player_component.audio.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.drawable.ColorDrawable
 import android.media.AudioManager
 import android.view.View
+import android.widget.ImageView
 import android.widget.SeekBar
 import androidx.core.view.isVisible
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -178,7 +181,11 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
                 isDraggingProgress = false
                 val state = AudioPlayManager.playState.value
                 if (state.isPlaying || state.isPausing) {
-                    AudioPlayManager.seekTo(seekBar?.progress ?: 0)
+                    val progress = seekBar?.progress ?: 0
+                    AudioPlayManager.seekTo(progress)
+                    if (dataBinding.lrcView.hasLrc()) {
+                        dataBinding.lrcView.updateTime(progress.toLong())
+                    }
                 } else {
                     seekBar?.progress = 0
                 }
@@ -322,6 +329,7 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
                         resource?.let {
                             dataBinding.albumCoverView.setCoverBitmap(it)
                             setBlurBackground(it)
+                            updateLrcMask()
                         }
                         return true
                     }
@@ -337,6 +345,7 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
         } else {
             dataBinding.ivPlayingBg.setImageDrawable(ColorDrawable(android.graphics.Color.BLACK))
         }
+        updateLrcMask()
     }
 
     private fun setBlurBackground(bitmap: Bitmap) {
@@ -366,11 +375,62 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
 
     private fun toggleCoverAndLrc() {
         isShowCover = !isShowCover
-        dataBinding.albumCoverView.visibility = if (isShowCover) View.VISIBLE else View.GONE
-        dataBinding.volumeLayout.visibility = if (isShowCover) View.GONE else View.VISIBLE
-        dataBinding.lrcView.visibility = if (isShowCover) View.GONE else View.VISIBLE
-        dataBinding.ivLrcMaskTop.visibility = if (isShowCover) View.GONE else View.VISIBLE
-        dataBinding.ivLrcMaskBottom.visibility = if (isShowCover) View.GONE else View.VISIBLE
+        dataBinding.albumCoverView.isVisible = isShowCover
+        dataBinding.lrcLayout.isVisible = isShowCover.not()
+        if (!isShowCover) {
+            updateLrcMask()
+        }
+    }
+
+    private fun updateLrcMask() {
+        updateLrcMask(dataBinding.ivLrcMaskTop, true)
+        updateLrcMask(dataBinding.ivLrcMaskBottom, false)
+    }
+
+    private fun updateLrcMask(maskView: ImageView, topToBottom: Boolean) {
+        maskView.doOnLayout {
+            val bg = dataBinding.flBackground
+            val bitmap = Bitmap.createBitmap(bg.width, bg.height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            bg.draw(canvas)
+
+            val location = IntArray(2)
+            maskView.getLocationInWindow(location)
+            val bgLocation = IntArray(2)
+            bg.getLocationInWindow(bgLocation)
+
+            val relativeX = location[0] - bgLocation[0]
+            val relativeY = location[1] - bgLocation[1]
+            val clipW = maskView.width.coerceAtMost(bitmap.width - relativeX.coerceAtLeast(0))
+            val clipH = maskView.height.coerceAtMost(bitmap.height - relativeY.coerceAtLeast(0))
+            if (clipW <= 0 || clipH <= 0) {
+                bitmap.recycle()
+                return@doOnLayout
+            }
+
+            val clipped = Bitmap.createBitmap(bitmap, relativeX.coerceAtLeast(0), relativeY.coerceAtLeast(0), clipW, clipH)
+            val result = clipped.copy(Bitmap.Config.ARGB_8888, true)
+            clipped.recycle()
+            bitmap.recycle()
+
+            val pixels = IntArray(result.width * result.height)
+            result.getPixels(pixels, 0, result.width, 0, 0, result.width, result.height)
+
+            for (y in 0 until result.height) {
+                val alpha = if (topToBottom) {
+                    ((result.height - y).toFloat() / result.height * 255).toInt()
+                } else {
+                    (y.toFloat() / result.height * 255).toInt()
+                }
+                val rowStart = y * result.width
+                for (x in 0 until result.width) {
+                    val idx = rowStart + x
+                    pixels[idx] = (pixels[idx] and 0x00FFFFFF) or (alpha shl 24)
+                }
+            }
+            result.setPixels(pixels, 0, result.width, 0, 0, result.width, result.height)
+            maskView.setImageBitmap(result)
+        }
     }
 
     private fun formatTime(ms: Long): String {
@@ -378,5 +438,10 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
         val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
         return String.format("%02d:%02d", minutes, seconds)
+    }
+
+    override fun finish() {
+        super.finish()
+        overridePendingTransition(0, R.anim.slide_out_bottom)
     }
 }

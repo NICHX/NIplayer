@@ -79,6 +79,7 @@ class PlayerInterceptorActivity :
                             ARouter.getInstance()
                                 .build(RouteTable.Player.AudioPlayer)
                                 .navigation()
+                            overridePendingTransition(R.anim.slide_in_bottom, 0)
                         }
                         finish()
                     }
