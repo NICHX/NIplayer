@@ -1,17 +1,21 @@
 package com.xyoye.common_component.notification
 
+import android.app.NotificationManager
 import android.content.Context
 import androidx.core.app.NotificationManagerCompat
 import com.xyoye.common_component.extension.buildNotificationChannel
-import com.xyoye.common_component.extension.buildNotificationChannelGroup
-
-/**
- * Created by xyoye on 2022/9/14
- */
 
 object Notifications {
 
+    const val AUDIO_CHANNEL_ID = "audio_playback"
+
     fun setupNotificationChannels(context: Context) {
-        // 不再需要投屏相关的通知通道
+        NotificationManagerCompat.from(context).createNotificationChannel(
+            buildNotificationChannel(AUDIO_CHANNEL_ID, NotificationManager.IMPORTANCE_LOW) {
+                setName("音频播放")
+                setDescription("音频播放控制与状态显示")
+                setShowBadge(false)
+            }
+        )
     }
 }

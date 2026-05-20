@@ -129,9 +129,9 @@ class BatteryView @JvmOverloads constructor(
         setProgress(mProgress)
     }
 
-    override fun onDraw(canvas: Canvas?) {
+    override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        canvas?.apply {
+        canvas.apply {
             drawPath(mHeaderPath, mHeaderPaint)
             drawRect(mOuterRect, mOuterPaint)
             drawRect(mInnerRect, mInnerPaint)

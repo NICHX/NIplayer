@@ -6,7 +6,6 @@ import android.content.res.AssetFileDescriptor
 import android.graphics.Point
 import android.net.Uri
 import android.os.Build
-import android.support.v4.media.session.PlaybackStateCompat
 import android.view.Surface
 import com.xyoye.data_component.bean.VideoTrackBean
 import com.xyoye.data_component.enums.SurfaceType
@@ -37,8 +36,13 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
     companion object {
         private val TAG = VlcVideoPlayer::class.java.simpleName
 
+        const val STATE_NONE = 0
+        const val STATE_STOPPED = 1
+        const val STATE_PAUSED = 2
+        const val STATE_PLAYING = 3
+
         @Volatile
-        var playbackState = PlaybackStateCompat.STATE_NONE
+        var playbackState = STATE_NONE
             private set
 
         private var cachedLibVlc: LibVLC? = null
@@ -127,7 +131,7 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
     }
 
     override fun stop() {
-        playbackState = PlaybackStateCompat.STATE_STOPPED
+        playbackState = STATE_STOPPED
 
         if (mMediaPlayer.hasMedia() && !mMediaPlayer.isReleased) {
             mMediaPlayer.stop()
@@ -307,14 +311,14 @@ class VlcVideoPlayer(private val mContext: Context) : AbstractVideoPlayer() {
                 //播放中
                 MediaPlayer.Event.Playing -> {
                     consecutiveErrorCount = 0
-                    playbackState = PlaybackStateCompat.STATE_PLAYING
+                    playbackState = STATE_PLAYING
                     if (!hasPrepared) {
                         hasPrepared = true
                         mPlayerEventListener.onPrepared()
                     }
                 }
                 //已暂停
-                MediaPlayer.Event.Paused -> playbackState = PlaybackStateCompat.STATE_PAUSED
+                MediaPlayer.Event.Paused -> playbackState = STATE_PAUSED
                 //是否可跳转
                 MediaPlayer.Event.SeekableChanged -> seekable = it.seekable
                 //播放错误
