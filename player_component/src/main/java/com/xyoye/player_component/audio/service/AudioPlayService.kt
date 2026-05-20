@@ -77,6 +77,7 @@ class AudioPlayService : MediaSessionService() {
                 addAction(ACTION_SKIP_NEXT)
                 addAction(ACTION_SKIP_PREV)
             }, RECEIVER_NOT_EXPORTED)
+            startForeground(NOTIFICATION_ID, buildNotification(mediaSession!!))
         }
     }
 
