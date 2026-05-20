@@ -193,24 +193,10 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
         })
     }
 
-    private fun showPlaylistDialog() {
-        val songs = AudioPlayManager.playlist.value
-        if (songs.isEmpty()) return
-        val currentSong = AudioPlayManager.currentSong.value
-        val items = songs.mapIndexed { index, song ->
-            val isPlaying = song.uniqueKey == currentSong?.uniqueKey
-            val prefix = if (isPlaying) "▶ " else "  "
-            "$prefix${song.title}"
-        }.toTypedArray()
+    private val playlistDialog by lazy { AudioPlaylistDialog(this, this) }
 
-        android.app.AlertDialog.Builder(this)
-            .setTitle("播放列表")
-            .setItems(items) { _, which ->
-                val song = songs.getOrNull(which) ?: return@setItems
-                AudioPlayManager.play(song)
-            }
-            .setPositiveButton("关闭", null)
-            .show()
+    private fun showPlaylistDialog() {
+        playlistDialog.show()
     }
 
     private fun observeData() {

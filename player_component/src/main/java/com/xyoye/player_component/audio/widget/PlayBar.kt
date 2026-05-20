@@ -3,6 +3,7 @@ package com.xyoye.player_component.audio.widget
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.app.Activity
+import androidx.appcompat.app.AppCompatActivity
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -25,6 +26,7 @@ import com.xyoye.common_component.extension.isNightMode
 import com.xyoye.player_component.R
 import com.xyoye.player_component.audio.manager.AudioPlayManager
 import com.xyoye.player_component.audio.model.AudioPlayState
+import com.xyoye.player_component.audio.ui.AudioPlaylistDialog
 import com.xyoye.player_component.databinding.LayoutPlayBarBinding
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -40,6 +42,7 @@ class PlayBar @JvmOverloads constructor(
     private val textPrimaryColor: Int
     private val textDimColor: Int
     private val progressTrackColor: Int
+    private var playlistDialog: AudioPlaylistDialog? = null
 
     init {
         viewBinding = LayoutPlayBarBinding.inflate(LayoutInflater.from(context), this, true)
@@ -87,22 +90,11 @@ class PlayBar @JvmOverloads constructor(
         }
 
         viewBinding.ivPlaylist.setOnClickListener {
-            val songs = AudioPlayManager.playlist.value
-            if (songs.isEmpty()) return@setOnClickListener
-            val currentSong = AudioPlayManager.currentSong.value
-            val items = songs.mapIndexed { index, song ->
-                val isPlaying = song.uniqueKey == currentSong?.uniqueKey
-                val prefix = if (isPlaying) "▶ " else "  "
-                "$prefix${song.title}"
-            }.toTypedArray()
-
-            android.app.AlertDialog.Builder(context)
-                .setTitle("播放列表")
-                .setItems(items) { _, which ->
-                    songs.getOrNull(which)?.let { AudioPlayManager.play(it) }
-                }
-                .setPositiveButton("关闭", null)
-                .show()
+            val activity = context as? AppCompatActivity ?: return@setOnClickListener
+            if (playlistDialog == null) {
+                playlistDialog = AudioPlaylistDialog(activity, activity)
+            }
+            playlistDialog?.show()
         }
 
         viewBinding.ivClose.setOnClickListener {
