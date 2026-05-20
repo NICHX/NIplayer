@@ -582,6 +582,20 @@ object ThumbnailGeneratorManager {
                 else mediaRetriever.setDataSource(playUrl)
             }
 
+            val artist = mediaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+            val albumArtist = mediaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
+            val title = mediaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+            val duration = mediaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+
+            val resolvedArtist = artist?.takeIf { it.isNotEmpty() }
+                ?: albumArtist?.takeIf { it.isNotEmpty() }
+                ?: ""
+            AudioMetadataCache.put(file.uniqueKey(), AudioMetadata(
+                artist = resolvedArtist,
+                title = title ?: "",
+                duration = duration
+            ))
+
             val picture = mediaRetriever.embeddedPicture
             if (picture == null) {
                 nonRetryableFailures.add(file.uniqueKey())
@@ -596,7 +610,7 @@ object ThumbnailGeneratorManager {
             val scaledBitmap = resizeBitmap(bitmap, THUMBNAIL_MAX_WIDTH)
             if (scaledBitmap != bitmap) bitmap.recycle()
 
-            success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey())
+            success = saveBitmapToFile(scaledBitmap, coverFile, file.uniqueKey(), quality = 100)
             scaledBitmap.recycle()
         } catch (e: Exception) {
             DDLog.e("ThumbnailGenerator", "音频封面提取失败: ${file.fileName()}", e)
@@ -625,14 +639,14 @@ object ThumbnailGeneratorManager {
         return Bitmap.createScaledBitmap(bitmap, maxWidth, newHeight, true)
     }
 
-    private fun saveBitmapToFile(bitmap: Bitmap, file: File, uniqueKey: String? = null): Boolean {
+    private fun saveBitmapToFile(bitmap: Bitmap, file: File, uniqueKey: String? = null, quality: Int = 60): Boolean {
         var fos: FileOutputStream? = null
         var success = false
         try {
             file.parentFile?.mkdirs()
 
             fos = FileOutputStream(file)
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 40, fos)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, fos)
             fos.flush()
             success = true
         } catch (e: Exception) {
@@ -647,9 +661,9 @@ object ThumbnailGeneratorManager {
         return success
     }
 
-    private fun toJpegBytes(bitmap: Bitmap): ByteArray {
+    private fun toJpegBytes(bitmap: Bitmap, quality: Int = 60): ByteArray {
         ByteArrayOutputStream().use { bos ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 40, bos)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, bos)
             return bos.toByteArray()
         }
     }
@@ -690,6 +704,7 @@ object ThumbnailGeneratorManager {
         existingDotThumbKeys.clear()
         storageMutexMap.clear()
         ThumbnailMemoryCache.clear()
+        AudioMetadataCache.clear()
         isProcessing = false
         _isGenerating.value = false
     }

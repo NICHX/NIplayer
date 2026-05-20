@@ -9,50 +9,49 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
-import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.datasource.DefaultDataSource
 import com.xyoye.player_component.audio.model.AudioPlayMode
 import com.xyoye.player_component.audio.model.AudioPlayState
 import com.xyoye.player_component.audio.model.AudioSong
-import com.xyoye.player_component.audio.service.AudioPlayService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-object AudioPlayManager : AudioPlayerController {
+object AudioPlayManager {
+
     private var exoPlayer: ExoPlayer? = null
-    private var scope: CoroutineScope? = null
     private var appContext: Context? = null
     private var isInitialized = false
+    private var scope: CoroutineScope? = null
 
     private val _playState = MutableStateFlow<AudioPlayState>(AudioPlayState.Idle)
-    override val playState: StateFlow<AudioPlayState> = _playState.asStateFlow()
-
-    private val _playProgress = MutableStateFlow(0L)
-    override val playProgress: StateFlow<Long> = _playProgress.asStateFlow()
-
-    private val _currentSong = MutableStateFlow<AudioSong?>(null)
-    override val currentSong: StateFlow<AudioSong?> = _currentSong.asStateFlow()
-
-    private val _bufferingPercent = MutableStateFlow(0)
-    override val bufferingPercent: StateFlow<Int> = _bufferingPercent.asStateFlow()
-
-    private val _playMode = MutableStateFlow<AudioPlayMode>(AudioPlayMode.Loop)
-    override val playMode: StateFlow<AudioPlayMode> = _playMode.asStateFlow()
+    val playState: StateFlow<AudioPlayState> = _playState.asStateFlow()
 
     private val _playlist = MutableStateFlow<List<AudioSong>>(emptyList())
-    override val playlist: StateFlow<List<AudioSong>> = _playlist.asStateFlow()
+    val playlist: StateFlow<List<AudioSong>> = _playlist.asStateFlow()
+
+    private val _currentSong = MutableStateFlow<AudioSong?>(null)
+    val currentSong: StateFlow<AudioSong?> = _currentSong.asStateFlow()
+
+    private val _playMode = MutableStateFlow<AudioPlayMode>(AudioPlayMode.Loop)
+    val playMode: StateFlow<AudioPlayMode> = _playMode.asStateFlow()
+
+    private val _playProgress = MutableStateFlow(0L)
+    val playProgress: StateFlow<Long> = _playProgress.asStateFlow()
 
     private val _songDuration = MutableStateFlow(0L)
     val songDuration: StateFlow<Long> = _songDuration.asStateFlow()
+
+    private val _bufferingPercent = MutableStateFlow(0)
+    val bufferingPercent: StateFlow<Int> = _bufferingPercent.asStateFlow()
 
     private var currentIndex = 0
 
@@ -79,6 +78,7 @@ object AudioPlayManager : AudioPlayerController {
                         val duration = exoPlayer?.duration ?: C.TIME_UNSET
                         _songDuration.value = if (duration > 0 && duration != C.TIME_UNSET) duration else 0L
                         _playState.value = if (exoPlayer?.playWhenReady == true) AudioPlayState.Playing else AudioPlayState.Pause
+                        updateSongMetadataFromPlayer()
                     }
                     Player.STATE_ENDED -> handleCompletion()
                 }
@@ -107,96 +107,13 @@ object AudioPlayManager : AudioPlayerController {
         }
     }
 
-    private fun handleCompletion() {
-        when (_playMode.value) {
-            AudioPlayMode.Loop -> {
-                val nextIndex = currentIndex + 1
-                if (nextIndex < _playlist.value.size) {
-                    playAtIndex(nextIndex)
-                } else {
-                    _playState.value = AudioPlayState.Pause
-                }
-            }
-            AudioPlayMode.Shuffle -> {
-                val list = _playlist.value
-                if (list.size <= 1) {
-                    _playState.value = AudioPlayState.Pause
-                    return
-                }
-                var randomIndex: Int
-                do {
-                    randomIndex = (0 until list.size).random()
-                } while (randomIndex == currentIndex)
-                playAtIndex(randomIndex)
-            }
-            AudioPlayMode.Single -> {
-                exoPlayer?.seekTo(0)
-                exoPlayer?.play()
-            }
-        }
-    }
-
-    override fun play(song: AudioSong) {
-        val index = _playlist.value.indexOfFirst { it.uniqueKey == song.uniqueKey }
-        if (index >= 0) {
-            playAtIndex(index)
-        } else {
-            setPlaylist(listOf(song), 0)
-        }
-    }
-
-    override fun playPause() {
-        val player = exoPlayer ?: return
-        when (player.playbackState) {
-            Player.STATE_IDLE -> player.prepare()
-            Player.STATE_READY -> {
-                if (player.isPlaying) player.pause() else player.play()
-            }
-            Player.STATE_ENDED -> {
-                player.seekTo(0)
-                player.prepare()
-            }
-            else -> {}
-        }
-    }
-
-    override fun next() {
-        val list = _playlist.value
-        if (list.isEmpty()) return
-        val nextIndex = when (_playMode.value) {
-            AudioPlayMode.Shuffle -> {
-                if (list.size <= 1) 0
-                else {
-                    var randomIndex: Int
-                    do {
-                        randomIndex = (0 until list.size).random()
-                    } while (randomIndex == currentIndex)
-                    randomIndex
-                }
-            }
-            else -> (currentIndex + 1) % list.size
-        }
-        playAtIndex(nextIndex)
-    }
-
-    override fun prev() {
-        val list = _playlist.value
-        if (list.isEmpty()) return
-        val prevIndex = (currentIndex - 1 + list.size) % list.size
-        playAtIndex(prevIndex)
-    }
-
-    override fun seekTo(msec: Int) {
-        exoPlayer?.seekTo(msec.toLong())
-    }
-
-    override fun stop() {
+    fun stop() {
         exoPlayer?.stop()
         _playState.value = AudioPlayState.Idle
         _playProgress.value = 0
     }
 
-    override fun setPlayMode(mode: AudioPlayMode) {
+    fun setPlayMode(mode: AudioPlayMode) {
         _playMode.value = mode
         exoPlayer?.repeatMode = when (mode) {
             AudioPlayMode.Single -> Player.REPEAT_MODE_ONE
@@ -204,7 +121,7 @@ object AudioPlayManager : AudioPlayerController {
         }
     }
 
-    override fun setPlaylist(songs: List<AudioSong>, startIndex: Int) {
+    fun setPlaylist(songs: List<AudioSong>, startIndex: Int) {
         _playlist.value = songs.toList()
         if (songs.isNotEmpty() && startIndex in songs.indices) {
             playAtIndex(startIndex)
@@ -215,26 +132,31 @@ object AudioPlayManager : AudioPlayerController {
         _playlist.value = songs.toList()
     }
 
-    override fun addToPlaylist(songs: List<AudioSong>) {
+    fun addToPlaylist(songs: List<AudioSong>) {
         _playlist.value = _playlist.value + songs
     }
 
-    override fun removeFromPlaylist(index: Int) {
+    fun removeFromPlaylist(index: Int) {
         val list = _playlist.value.toMutableList()
-        if (index in list.indices) {
-            list.removeAt(index)
-            _playlist.value = list
-            if (index == currentIndex) {
-                if (list.isNotEmpty()) {
-                    playAtIndex(0)
-                } else {
-                    stop()
-                }
+        if (index !in list.indices) return
+        list.removeAt(index)
+        _playlist.value = list
+        if (index < currentIndex) {
+            currentIndex--
+        } else if (index == currentIndex) {
+            if (list.isEmpty()) {
+                stop()
+                _currentSong.value = null
+                stopService()
+            } else {
+                val newIndex = index.coerceAtMost(list.size - 1)
+                currentIndex = newIndex - 1
+                playAtIndex(newIndex)
             }
         }
     }
 
-    override fun clearPlaylist() {
+    fun clearPlaylist() {
         stop()
         _playlist.value = emptyList()
         _currentSong.value = null
@@ -271,15 +193,15 @@ object AudioPlayManager : AudioPlayerController {
         val context = appContext ?: return
         val dataSourceFactory = DefaultDataSource.Factory(context)
 
+        val metadataBuilder = MediaMetadata.Builder()
+            .setTitle(song.title.ifEmpty { null })
+            .setArtworkUri(song.coverPath?.let { Uri.parse(it) })
+        if (song.artist.isNotEmpty()) {
+            metadataBuilder.setArtist(song.artist)
+        }
         val mediaItem = MediaItem.Builder()
             .setUri(Uri.parse(song.uri))
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(song.title)
-                    .setArtist(song.artist)
-                    .setArtworkUri(song.coverPath?.let { Uri.parse(it) })
-                    .build()
-            )
+            .setMediaMetadata(metadataBuilder.build())
             .build()
 
         val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
@@ -294,9 +216,134 @@ object AudioPlayManager : AudioPlayerController {
         startService()
     }
 
+    private fun updateSongMetadataFromPlayer() {
+        val player = exoPlayer ?: return
+        val metadata = player.currentMediaItem?.mediaMetadata ?: return
+        val current = _currentSong.value ?: return
+
+        val artist = metadata.artist?.toString()?.takeIf { it.isNotEmpty() }
+        val title = metadata.title?.toString()?.takeIf { it.isNotEmpty() }
+
+        var updated = current
+        if (artist != null && current.artist.isEmpty()) {
+            updated = updated.copy(artist = artist)
+        }
+        if (title != null && current.title.isEmpty()) {
+            updated = updated.copy(title = title)
+        }
+        if (updated != current) {
+            _currentSong.value = updated
+            updatePlaylistItem(updated)
+        }
+    }
+
+    private fun updatePlaylistItem(updatedSong: AudioSong) {
+        val list = _playlist.value.toMutableList()
+        val index = list.indexOfFirst { it.uniqueKey == updatedSong.uniqueKey }
+        if (index >= 0) {
+            list[index] = updatedSong
+            _playlist.value = list
+        }
+    }
+
+    private fun handleCompletion() {
+        when (_playMode.value) {
+            AudioPlayMode.Loop -> {
+                val nextIndex = currentIndex + 1
+                if (nextIndex < _playlist.value.size) {
+                    playAtIndex(nextIndex)
+                } else {
+                    _playState.value = AudioPlayState.Pause
+                }
+            }
+            AudioPlayMode.Shuffle -> {
+                val list = _playlist.value
+                if (list.size <= 1) {
+                    _playState.value = AudioPlayState.Pause
+                    return
+                }
+                var randomIndex: Int
+                do {
+                    randomIndex = (0 until list.size).random()
+                } while (randomIndex == currentIndex)
+                playAtIndex(randomIndex)
+            }
+            AudioPlayMode.Single -> {
+                exoPlayer?.seekTo(0)
+                exoPlayer?.play()
+            }
+        }
+    }
+
+    fun play(song: AudioSong) {
+        val index = _playlist.value.indexOfFirst { it.uniqueKey == song.uniqueKey }
+        if (index >= 0) {
+            playAtIndex(index)
+        } else {
+            setPlaylist(listOf(song), 0)
+        }
+    }
+
+    fun playPause() {
+        val player = exoPlayer ?: return
+        if (player.isPlaying) {
+            player.pause()
+        } else {
+            player.play()
+        }
+    }
+
+    fun next() {
+        val list = _playlist.value
+        if (list.isEmpty()) return
+        when (_playMode.value) {
+            AudioPlayMode.Shuffle -> {
+                if (list.size <= 1) {
+                    playAtIndex(0)
+                    return
+                }
+                var randomIndex: Int
+                do {
+                    randomIndex = (0 until list.size).random()
+                } while (randomIndex == currentIndex)
+                playAtIndex(randomIndex)
+            }
+            else -> {
+                val nextIndex = (currentIndex + 1) % list.size
+                playAtIndex(nextIndex)
+            }
+        }
+    }
+
+    fun prev() {
+        val list = _playlist.value
+        if (list.isEmpty()) return
+        when (_playMode.value) {
+            AudioPlayMode.Shuffle -> {
+                if (list.size <= 1) {
+                    playAtIndex(0)
+                    return
+                }
+                var randomIndex: Int
+                do {
+                    randomIndex = (0 until list.size).random()
+                } while (randomIndex == currentIndex)
+                playAtIndex(randomIndex)
+            }
+            else -> {
+                val prevIndex = if (currentIndex > 0) currentIndex - 1 else list.size - 1
+                playAtIndex(prevIndex)
+            }
+        }
+    }
+
+    fun seekTo(position: Long) {
+        exoPlayer?.seekTo(position)
+    }
+
     private fun startService() {
         val context = appContext ?: return
-        val intent = Intent(context, AudioPlayService::class.java)
+        val intent = Intent(context, com.xyoye.player_component.audio.service.AudioPlayService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent)
         } else {
@@ -306,15 +353,10 @@ object AudioPlayManager : AudioPlayerController {
 
     private fun stopService() {
         val context = appContext ?: return
-        context.stopService(Intent(context, AudioPlayService::class.java))
+        context.stopService(Intent(context, com.xyoye.player_component.audio.service.AudioPlayService::class.java))
     }
 
-    fun release() {
-        scope?.cancel()
-        stopService()
-        exoPlayer?.release()
-        exoPlayer = null
-        appContext = null
-        isInitialized = false
+    private suspend fun delay(timeMs: Long) {
+        kotlinx.coroutines.delay(timeMs)
     }
 }
