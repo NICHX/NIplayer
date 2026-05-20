@@ -117,7 +117,7 @@ object AudioPlayManager {
         _playMode.value = mode
         exoPlayer?.repeatMode = when (mode) {
             AudioPlayMode.Single -> Player.REPEAT_MODE_ONE
-            else -> Player.REPEAT_MODE_ALL
+            else -> Player.REPEAT_MODE_OFF
         }
     }
 
@@ -244,6 +244,11 @@ object AudioPlayManager {
             list[index] = updatedSong
             _playlist.value = list
         }
+    }
+
+    fun updateCurrentSong(updatedSong: AudioSong) {
+        _currentSong.value = updatedSong
+        updatePlaylistItem(updatedSong)
     }
 
     private fun handleCompletion() {

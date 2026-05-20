@@ -51,6 +51,7 @@ object Dependencies {
         const val banner = "io.github.youth5201314:banner:2.2.2"
         const val glide = "com.github.bumptech.glide:glide:4.15.1"
         const val glide_compiler = "com.github.bumptech.glide:compiler:4.15.1"
+        const val blurry = "jp.wasabeef:blurry:4.0.1"
 
         //ftp
         const val nano_http = "org.nanohttpd:nanohttpd:2.3.1"
