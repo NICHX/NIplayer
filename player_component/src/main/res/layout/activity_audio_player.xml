@@ -127,38 +127,41 @@
 
                 </LinearLayout>
 
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:id="@+id/lrc_layout"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:visibility="gone">
+
                 <me.wcy.lrcview.LrcView
                     android:id="@+id/lrc_view"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_marginTop="56dp"
-                    android:visibility="gone"
                     app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintTop_toBottomOf="@+id/volume_layout"
+                    app:layout_constraintTop_toTopOf="parent"
                     app:lrcAnimationDuration="1000"
                     app:lrcCurrentTextColor="@android:color/white"
-                    app:lrcDividerHeight="32dp"
+                    app:lrcDividerHeight="28dp"
                     app:lrcNormalTextColor="@color/translucent_white_p50"
-                    app:lrcPadding="32dp"
-                    app:lrcTextSize="14sp"
-                    app:lrcTimelineColor="@color/translucent_white_p30"
-                    app:lrcTimelineTextColor="@color/translucent_white_p80" />
+                    app:lrcPadding="40dp"
+                    app:lrcTextSize="15sp"
+                    app:lrcTimelineColor="@color/translucent_white_p50"
+                    app:lrcTimelineTextColor="#CCFFFFFF" />
 
                 <ImageView
                     android:id="@+id/iv_lrc_mask_top"
                     android:layout_width="match_parent"
-                    android:layout_height="36dp"
-                    android:src="@drawable/bg_lrc_mask_top"
-                    android:visibility="gone"
+                    android:layout_height="48dp"
                     app:layout_constraintTop_toTopOf="@+id/lrc_view" />
 
                 <ImageView
                     android:id="@+id/iv_lrc_mask_bottom"
                     android:layout_width="match_parent"
-                    android:layout_height="36dp"
-                    android:src="@drawable/bg_lrc_mask_bottom"
-                    android:visibility="gone"
+                    android:layout_height="48dp"
                     app:layout_constraintBottom_toBottomOf="@+id/lrc_view" />
+
+                </androidx.constraintlayout.widget.ConstraintLayout>
 
             </androidx.constraintlayout.widget.ConstraintLayout>
 

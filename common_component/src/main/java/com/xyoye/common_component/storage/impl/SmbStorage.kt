@@ -174,6 +174,94 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         }
     }
 
+    /**
+     * 为播放服务器创建独立的 SMB 连接（不共享 mDiskShare）
+     * 避免后台构建播放列表/切换目录时关闭正在播放的连接
+     */
+    suspend fun openPlayStream(file: SmbStorageFile): InputStream? {
+        return try {
+            val shareName = file.getShareName() ?: return null
+            val port = if (library.port == 0) SMBClient.DEFAULT_PORT else library.port
+            val client = SMBClient()
+            val connection = client.connect(library.url, port)
+            val session = connection.authenticate(getAuthenticationContext())
+            val diskShare = session.connectShare(shareName) as DiskShare
+            if (!diskShare.isConnected) {
+                diskShare.close()
+                session.close()
+                connection.close()
+                client.close()
+                return null
+            }
+            val smbFile = diskShare.openFile(file.filePath())
+            val stream = smbFile.inputStream
+            object : InputStream() {
+                override fun read(): Int = stream.read()
+                override fun read(b: ByteArray, off: Int, len: Int): Int = stream.read(b, off, len)
+                override fun available(): Int = stream.available()
+                override fun close() {
+                    try { stream.close() } catch (_: Exception) {}
+                    try { smbFile.close() } catch (_: Exception) {}
+                    try { diskShare.close() } catch (_: Exception) {}
+                    try { session.close() } catch (_: Exception) {}
+                    try { connection.close() } catch (_: Exception) {}
+                    try { client.close() } catch (_: Exception) {}
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun openPlayStream(file: SmbStorageFile, offset: Long): InputStream? {
+        if (offset <= 0) return openPlayStream(file)
+        return try {
+            val shareName = file.getShareName() ?: return null
+            val port = if (library.port == 0) SMBClient.DEFAULT_PORT else library.port
+            val client = SMBClient()
+            val connection = client.connect(library.url, port)
+            val session = connection.authenticate(getAuthenticationContext())
+            val diskShare = session.connectShare(shareName) as DiskShare
+            if (!diskShare.isConnected) {
+                diskShare.close()
+                session.close()
+                connection.close()
+                client.close()
+                return null
+            }
+            val smbFile = diskShare.openFile(file.filePath())
+            val stream = smbFile.inputStream
+            object : InputStream() {
+                private var position = offset
+                override fun read(): Int {
+                    if (position < 0) return -1
+                    val buf = ByteArray(1)
+                    val bytesRead = smbFile.read(buf, position, 0, 1)
+                    return if (bytesRead > 0) { position += bytesRead; buf[0].toInt() and 0xFF } else -1
+                }
+                override fun read(b: ByteArray, off: Int, len: Int): Int {
+                    if (position < 0) return -1
+                    val bytesRead = smbFile.read(b, position, off, len)
+                    if (bytesRead > 0) position += bytesRead
+                    return bytesRead
+                }
+                override fun available(): Int = stream.available()
+                override fun close() {
+                    try { stream.close() } catch (_: Exception) {}
+                    try { smbFile.close() } catch (_: Exception) {}
+                    try { diskShare.close() } catch (_: Exception) {}
+                    try { session.close() } catch (_: Exception) {}
+                    try { connection.close() } catch (_: Exception) {}
+                    try { client.close() } catch (_: Exception) {}
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     override suspend fun pathFile(path: String, isDirectory: Boolean): StorageFile? {
         if (checkConnection().not()) {
             return null
@@ -592,7 +680,6 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
 
     override fun close() {
         closeDiskShare()
-        SmbPlayServer.getInstance().releaseStorage(this)
         IOUtils.closeIO(mSmbClient)
     }
 
