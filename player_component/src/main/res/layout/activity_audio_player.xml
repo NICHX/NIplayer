@@ -78,16 +78,15 @@
                 android:id="@+id/fl_cover_lrc"
                 android:layout_width="0dp"
                 android:layout_height="0dp"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="8dp"
+                android:layout_marginVertical="16dp"
                 clipChildren="false"
                 clipToPadding="false"
+                app:layout_constrainedWidth="true"
                 app:layout_constraintBottom_toTopOf="@+id/control_layout"
-                app:layout_constraintDimensionRatio="1:1"
                 app:layout_constraintLeft_toLeftOf="parent"
                 app:layout_constraintRight_toRightOf="parent"
                 app:layout_constraintTop_toBottomOf="@+id/title_layout"
-                app:layout_constraintWidth_max="400dp">
+                app:layout_constraintWidth_max="@dimen/page_content_max_width">
 
                 <com.xyoye.player_component.audio.widget.AlbumCoverView
                     android:id="@+id/album_cover_view"
@@ -95,6 +94,13 @@
                     android:layout_height="match_parent"
                     android:layout_gravity="center"
                     android:visibility="visible" />
+
+                <androidx.constraintlayout.widget.Group
+                    android:id="@+id/lrc_layout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    app:constraint_referenced_ids="volume_layout,lrc_view,iv_lrc_mask_top,iv_lrc_mask_bottom" />
 
                 <LinearLayout
                     android:id="@+id/volume_layout"
@@ -104,7 +110,6 @@
                     android:orientation="horizontal"
                     android:paddingLeft="16dp"
                     android:paddingRight="16dp"
-                    android:visibility="gone"
                     app:layout_constraintTop_toTopOf="parent">
 
                     <ImageView
@@ -127,41 +132,33 @@
 
                 </LinearLayout>
 
-                <androidx.constraintlayout.widget.ConstraintLayout
-                    android:id="@+id/lrc_layout"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:visibility="gone">
-
                 <me.wcy.lrcview.LrcView
                     android:id="@+id/lrc_view"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
-                    android:layout_marginTop="56dp"
+                    android:layout_marginTop="16dp"
                     app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/volume_layout"
                     app:lrcAnimationDuration="1000"
-                    app:lrcCurrentTextColor="@android:color/white"
-                    app:lrcDividerHeight="28dp"
+                    app:lrcCurrentTextColor="@color/white"
+                    app:lrcDividerHeight="24dp"
                     app:lrcNormalTextColor="@color/translucent_white_p50"
                     app:lrcPadding="40dp"
-                    app:lrcTextSize="15sp"
+                    app:lrcTextSize="16dp"
                     app:lrcTimelineColor="@color/translucent_white_p50"
                     app:lrcTimelineTextColor="#CCFFFFFF" />
 
                 <ImageView
                     android:id="@+id/iv_lrc_mask_top"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="36dp"
                     app:layout_constraintTop_toTopOf="@+id/lrc_view" />
 
                 <ImageView
                     android:id="@+id/iv_lrc_mask_bottom"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="36dp"
                     app:layout_constraintBottom_toBottomOf="@+id/lrc_view" />
-
-                </androidx.constraintlayout.widget.ConstraintLayout>
 
             </androidx.constraintlayout.widget.ConstraintLayout>
 
