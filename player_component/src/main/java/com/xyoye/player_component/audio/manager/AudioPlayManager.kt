@@ -1,17 +1,21 @@
 package com.xyoye.player_component.audio.manager
 
 import android.content.Context
-import com.google.android.exoplayer2.ExoPlayer
-import com.google.android.exoplayer2.MediaItem
-import com.google.android.exoplayer2.Player
-import com.google.android.exoplayer2.audio.AudioAttributes
-import com.google.android.exoplayer2.source.ProgressiveMediaSource
-import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory
-import com.google.android.exoplayer2.C
-import com.google.android.exoplayer2.util.Util
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.xyoye.player_component.audio.model.AudioPlayMode
 import com.xyoye.player_component.audio.model.AudioPlayState
 import com.xyoye.player_component.audio.model.AudioSong
+import com.xyoye.player_component.audio.service.AudioPlayService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,6 +58,8 @@ object AudioPlayManager : AudioPlayerController {
 
     private var wasPlayingBeforeVideo = false
 
+    fun getExoPlayer(): ExoPlayer? = exoPlayer
+
     fun init(context: Context) {
         if (isInitialized) return
         isInitialized = true
@@ -72,11 +78,7 @@ object AudioPlayManager : AudioPlayerController {
                     Player.STATE_READY -> {
                         val duration = exoPlayer?.duration ?: C.TIME_UNSET
                         _songDuration.value = if (duration > 0 && duration != C.TIME_UNSET) duration else 0L
-                        if (exoPlayer?.playWhenReady == true) {
-                            _playState.value = AudioPlayState.Playing
-                        } else {
-                            _playState.value = AudioPlayState.Pause
-                        }
+                        _playState.value = if (exoPlayer?.playWhenReady == true) AudioPlayState.Playing else AudioPlayState.Pause
                     }
                     Player.STATE_ENDED -> handleCompletion()
                 }
@@ -148,13 +150,7 @@ object AudioPlayManager : AudioPlayerController {
         when (player.playbackState) {
             Player.STATE_IDLE -> player.prepare()
             Player.STATE_READY -> {
-                if (player.isPlaying) {
-                    player.pause()
-                    _playState.value = AudioPlayState.Pause
-                } else {
-                    player.play()
-                    _playState.value = AudioPlayState.Playing
-                }
+                if (player.isPlaying) player.pause() else player.play()
             }
             Player.STATE_ENDED -> {
                 player.seekTo(0)
@@ -243,6 +239,7 @@ object AudioPlayManager : AudioPlayerController {
         _playlist.value = emptyList()
         _currentSong.value = null
         currentIndex = 0
+        stopService()
     }
 
     fun pauseForVideo() {
@@ -272,22 +269,49 @@ object AudioPlayManager : AudioPlayerController {
         _playState.value = AudioPlayState.Preparing
 
         val context = appContext ?: return
-        val dataSourceFactory = DefaultDataSourceFactory(
-            context,
-            Util.getUserAgent(context, "NIplayer")
-        )
+        val dataSourceFactory = DefaultDataSource.Factory(context)
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(Uri.parse(song.uri))
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(song.title)
+                    .setArtist(song.artist)
+                    .setArtworkUri(song.coverPath?.let { Uri.parse(it) })
+                    .build()
+            )
+            .build()
+
         val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(song.uri))
+            .createMediaSource(mediaItem)
 
         player.setMediaSource(mediaSource)
         player.prepare()
         player.play()
         _playProgress.value = 0
         _bufferingPercent.value = 0
+
+        startService()
+    }
+
+    private fun startService() {
+        val context = appContext ?: return
+        val intent = Intent(context, AudioPlayService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
+        }
+    }
+
+    private fun stopService() {
+        val context = appContext ?: return
+        context.stopService(Intent(context, AudioPlayService::class.java))
     }
 
     fun release() {
         scope?.cancel()
+        stopService()
         exoPlayer?.release()
         exoPlayer = null
         appContext = null

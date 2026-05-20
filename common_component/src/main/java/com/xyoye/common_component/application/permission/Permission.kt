@@ -46,6 +46,17 @@ class Permission {
     )
 
     /**
+     * 通知权限（Android 13+）
+     */
+    val notification = PermissionRequest(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            emptyArray()
+        }
+    )
+
+    /**
      * 检查是否有所有文件访问权限
      */
     fun hasAllFilesAccess(): Boolean {

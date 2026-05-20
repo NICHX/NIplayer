@@ -48,4 +48,12 @@ dependencies {
     kapt(Dependencies.Alibaba.arouter_compiler)
 
     implementation("com.github.wangchenyan:lrcview:2.2.2")
+
+    // Media3 - 仅音频播放器使用
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-session:1.4.1")
+    implementation("androidx.media3:media3-datasource:1.4.1")
+
+    // Media compat - 通知按钮和MediaStyle使用
+    implementation("androidx.media:media:1.6.0")
 }

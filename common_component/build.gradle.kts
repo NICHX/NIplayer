@@ -56,6 +56,7 @@ dependencies {
     api(Dependencies.AndroidX.startup)
     api(Dependencies.AndroidX.preference)
     api(Dependencies.AndroidX.activity_ktx)
+    api("androidx.media:media:1.6.0")
 
     api(Dependencies.Google.material)
     api(Dependencies.Apache.commons_net)
