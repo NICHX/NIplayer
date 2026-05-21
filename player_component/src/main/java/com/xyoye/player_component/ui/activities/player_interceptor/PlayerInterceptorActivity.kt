@@ -9,7 +9,6 @@ import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.source.VideoSourceManager
 import com.xyoye.common_component.source.media.StorageVideoSource
-import com.xyoye.common_component.utils.AudioMetadataCache
 import com.xyoye.common_component.utils.isAudioFile
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.player_component.BR
@@ -64,17 +63,17 @@ class PlayerInterceptorActivity :
                         val currentFile = source.indexStorageFile(currentIndex)
                         val playUrl = currentFile.storage.createPlayUrl(currentFile)
                         if (playUrl != null) {
-                            val lrcUrl = currentFile.storage.cacheLrc(currentFile)
-                            val cachedMetadata = AudioMetadataCache.get(currentFile.uniqueKey())
+                            val lrcUrl = try {
+                                currentFile.storage.cacheLrc(currentFile)
+                            } catch (_: Exception) {
+                                null
+                            }
                             currentSong = AudioSong(
                                 uri = playUrl,
-                                title = cachedMetadata?.title?.takeIf { it.isNotEmpty() } ?: currentFile.fileName() ?: "",
-                                artist = cachedMetadata?.artist ?: "",
-                                coverPath = currentFile.fileCover(),
-                                duration = cachedMetadata?.duration ?: 0L,
+                                title = currentFile.fileName() ?: "",
                                 uniqueKey = currentFile.uniqueKey(),
                                 fileName = currentFile.fileName() ?: "",
-                                lrcFilePath = lrcUrl
+                                lrcUrl = lrcUrl
                             )
                         }
                     } catch (_: Exception) { }
@@ -99,18 +98,18 @@ class PlayerInterceptorActivity :
                             val storageFile = source.indexStorageFile(i)
                             val playUrl = storageFile.storage.createPlayUrl(storageFile)
                             if (playUrl != null) {
-                                val lrcUrl = storageFile.storage.cacheLrc(storageFile)
-                                val cachedMetadata = AudioMetadataCache.get(storageFile.uniqueKey())
+                                val lrcUrl = try {
+                                    storageFile.storage.cacheLrc(storageFile)
+                                } catch (_: Exception) {
+                                    null
+                                }
                                 songs.add(
                                     AudioSong(
                                         uri = playUrl,
-                                        title = cachedMetadata?.title?.takeIf { it.isNotEmpty() } ?: storageFile.fileName() ?: "",
-                                        artist = cachedMetadata?.artist ?: "",
-                                        coverPath = storageFile.fileCover(),
-                                        duration = cachedMetadata?.duration ?: 0L,
+                                        title = storageFile.fileName() ?: "",
                                         uniqueKey = storageFile.uniqueKey(),
                                         fileName = storageFile.fileName() ?: "",
-                                        lrcFilePath = lrcUrl
+                                        lrcUrl = lrcUrl
                                     )
                                 )
                             }
