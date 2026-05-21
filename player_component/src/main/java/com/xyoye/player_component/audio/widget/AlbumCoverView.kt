@@ -1,5 +1,6 @@
 package com.xyoye.player_component.audio.widget
 
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
@@ -45,6 +46,9 @@ class AlbumCoverView @JvmOverloads constructor(
 
     private var coverBitmap: Bitmap? = null
     private val coverMatrix = Matrix()
+    private val coverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        alpha = 255
+    }
     private val coverHolePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xFF1a1a1a.toInt()
         style = Paint.Style.FILL
@@ -54,7 +58,22 @@ class AlbumCoverView @JvmOverloads constructor(
     private var coverSize = 0
     private var coverBorderWidth = 0
 
+    private var coverAlpha = 1f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+            coverPaint.alpha = (field * 255).toInt()
+            invalidate()
+        }
+    private var coverFadeAnimator: ValueAnimator? = null
+
+    private var slideOffset = 0f
+    private var slideAnimator: ValueAnimator? = null
+    private var needleLiftAnimator: ValueAnimator? = null
+    private var needleDropAnimator: ValueAnimator? = null
+
     private var isPlaying = false
+    private var switchInProgress = false
+    private var pendingCover: Bitmap? = null
 
     private val rotationAnimator = ValueAnimator.ofFloat(0f, 360f).apply {
         duration = 20000
@@ -130,31 +149,157 @@ class AlbumCoverView @JvmOverloads constructor(
     }
 
     fun setCoverBitmap(bitmap: Bitmap?) {
+        coverFadeAnimator?.cancel()
+        coverAlpha = 1f
         coverBitmap = bitmap
         invalidate()
     }
 
+    fun isSwitchInProgress(): Boolean = switchInProgress
+
+    fun setPendingCover(bitmap: Bitmap?) {
+        pendingCover = bitmap
+    }
+
+    fun fadeCover(bitmap: Bitmap, duration: Long = 300) {
+        coverBitmap = bitmap
+        coverAlpha = 0f
+        coverFadeAnimator?.cancel()
+        coverFadeAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            this.duration = duration
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                coverAlpha = it.animatedValue as Float
+            }
+            start()
+        }
+    }
+
+    fun switchSong(newCover: Bitmap?, direction: Int, onSlideComplete: () -> Unit = {}) {
+        if (direction == 0) {
+            reset()
+            coverBitmap = newCover
+            invalidate()
+            onSlideComplete()
+            return
+        }
+        slideAnimator?.cancel()
+        needleLiftAnimator?.cancel()
+        needleDropAnimator?.cancel()
+        switchInProgress = true
+
+        val slideWidth = width.coerceAtLeast(height)
+        val slideTarget = if (direction > 0) -slideWidth.toFloat() else slideWidth.toFloat()
+
+        // Lift needle simultaneously with slide-out
+        needleLiftAnimator = ValueAnimator.ofFloat(needleRotation, NEEDLE_ROTATION_PAUSE).apply {
+            duration = 250
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                needleRotation = it.animatedValue as Float
+                postInvalidateOnAnimation()
+            }
+            start()
+        }
+
+        // Phase 1: slide old record out
+        slideAnimator = ValueAnimator.ofFloat(0f, slideTarget).apply {
+            duration = 350
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                slideOffset = it.animatedValue as Float
+                postInvalidateOnAnimation()
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    needleLiftAnimator?.cancel()
+                    needleRotation = NEEDLE_ROTATION_PAUSE
+
+                    isPlaying = false
+                    discRotation = 0f
+                    rotationAnimator.cancel()
+                    coverBitmap = pendingCover ?: newCover
+                    pendingCover = null
+                    coverAlpha = 1f
+
+                    slideOffset = -slideTarget
+                    postInvalidateOnAnimation()
+
+                    // Phase 2: slide new record in with needle dropping simultaneously
+                    needleDropAnimator = ValueAnimator.ofFloat(NEEDLE_ROTATION_PAUSE, NEEDLE_ROTATION_PLAY).apply {
+                        duration = 350
+                        interpolator = DecelerateInterpolator()
+                        addUpdateListener {
+                            needleRotation = it.animatedValue as Float
+                            postInvalidateOnAnimation()
+                        }
+                        start()
+                    }
+
+                    slideAnimator = ValueAnimator.ofFloat(-slideTarget, 0f).apply {
+                        duration = 350
+                        interpolator = DecelerateInterpolator()
+                        addUpdateListener {
+                            slideOffset = it.animatedValue as Float
+                            postInvalidateOnAnimation()
+                        }
+                        addListener(object : AnimatorListenerAdapter() {
+                            override fun onAnimationEnd(animation: android.animation.Animator) {
+                                slideOffset = 0f
+                                needleDropAnimator?.cancel()
+                                needleRotation = NEEDLE_ROTATION_PLAY
+                                if (pendingCover != null) {
+                                    coverBitmap = pendingCover
+                                    pendingCover = null
+                                }
+                                switchInProgress = false
+                                postInvalidateOnAnimation()
+                                onSlideComplete()
+                            }
+                        })
+                        start()
+                    }
+                }
+            })
+            start()
+        }
+    }
+
     fun start() {
         if (isPlaying) return
+        if (switchInProgress) return
         isPlaying = true
         if (!rotationAnimator.isStarted) {
             rotationAnimator.start()
         } else if (rotationAnimator.isPaused) {
             rotationAnimator.resume()
         }
-        if (playAnimator.isRunning) playAnimator.cancel()
-        playAnimator.start()
+        if (needleRotation != NEEDLE_ROTATION_PLAY) {
+            if (playAnimator.isRunning) playAnimator.cancel()
+            playAnimator.start()
+        }
     }
 
     fun pause() {
         if (!isPlaying) return
+        if (switchInProgress) return
         isPlaying = false
         rotationAnimator.pause()
-        if (pauseAnimator.isRunning) pauseAnimator.cancel()
-        pauseAnimator.start()
+        if (needleRotation != NEEDLE_ROTATION_PAUSE) {
+            if (pauseAnimator.isRunning) pauseAnimator.cancel()
+            pauseAnimator.start()
+        }
     }
 
     fun reset() {
+        slideAnimator?.cancel()
+        needleLiftAnimator?.cancel()
+        needleDropAnimator?.cancel()
+        switchInProgress = false
+        pendingCover = null
+        slideOffset = 0f
+        coverFadeAnimator?.cancel()
+        coverAlpha = 1f
         isPlaying = false
         discRotation = 0f
         needleRotation = NEEDLE_ROTATION_PAUSE
@@ -165,14 +310,16 @@ class AlbumCoverView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         if (discBitmap.isRecycled || needleBitmap.isRecycled) return
 
+        canvas.save()
+        canvas.translate(slideOffset, 0f)
+
         // 1. Draw cover image
         coverBitmap?.let { cover ->
             coverMatrix.setRotate(discRotation, discCenterX.toFloat(), discCenterY.toFloat())
             coverMatrix.preTranslate(coverStartX.toFloat(), coverStartY.toFloat())
             coverMatrix.preScale(coverSize.toFloat() / cover.width, coverSize.toFloat() / cover.height)
-            canvas.drawBitmap(cover, coverMatrix, null)
+            canvas.drawBitmap(cover, coverMatrix, coverPaint)
         } ?: run {
-            // Fallback: fill the transparent hole in disc with dark color
             canvas.drawCircle(discCenterX.toFloat(), discCenterY.toFloat(), (coverSize / 2f), coverHolePaint)
         }
 
@@ -190,7 +337,9 @@ class AlbumCoverView @JvmOverloads constructor(
         discMatrix.preTranslate(discStartX.toFloat(), discStartY.toFloat())
         canvas.drawBitmap(discBitmap, discMatrix, null)
 
-        // 4. Draw needle
+        canvas.restore()
+
+        // 4. Draw needle (not affected by slide offset)
         needleMatrix.setRotate(needleRotation, needleCenterX.toFloat(), needleCenterY.toFloat())
         needleMatrix.preTranslate(needleStartX.toFloat(), needleStartY.toFloat())
         canvas.drawBitmap(needleBitmap, needleMatrix, null)
@@ -198,6 +347,10 @@ class AlbumCoverView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        slideAnimator?.cancel()
+        coverFadeAnimator?.cancel()
+        needleLiftAnimator?.cancel()
+        needleDropAnimator?.cancel()
         rotationAnimator.cancel()
         playAnimator.cancel()
         pauseAnimator.cancel()

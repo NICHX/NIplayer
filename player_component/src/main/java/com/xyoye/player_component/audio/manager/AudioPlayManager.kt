@@ -58,6 +58,8 @@ object AudioPlayManager {
 
     private var currentIndex = 0
 
+    var lastNavigationDirection: Int = 0
+
     private var wasPlayingBeforeVideo = false
 
     private val playerListener = object : Player.Listener {
@@ -91,7 +93,10 @@ object AudioPlayManager {
             val playlist = _playlist.value
             val song = playlist.find { it.uniqueKey == mediaItem.mediaId }
             if (song != null) {
-                _currentSong.value = song
+                val currentUniqueKey = _currentSong.value?.uniqueKey
+                if (currentUniqueKey != song.uniqueKey) {
+                    _currentSong.value = song
+                }
             }
         }
     }
@@ -186,7 +191,10 @@ object AudioPlayManager {
         _playlist.value = songs.toList()
         if (playingIndex in songs.indices) {
             currentIndex = playingIndex
-            _currentSong.value = songs[playingIndex]
+            val current = _currentSong.value
+            if (current?.uniqueKey != songs[playingIndex].uniqueKey) {
+                _currentSong.value = songs[playingIndex]
+            }
         }
     }
 
@@ -368,8 +376,13 @@ object AudioPlayManager {
     }
 
     fun updateCurrentSong(updatedSong: AudioSong) {
-        _currentSong.value = updatedSong
-        updatePlaylistItem(updatedSong)
+        val current = _currentSong.value
+        if (current?.uniqueKey == updatedSong.uniqueKey) {
+            updatePlaylistItem(updatedSong)
+        } else {
+            _currentSong.value = updatedSong
+            updatePlaylistItem(updatedSong)
+        }
     }
 
     private fun handleCompletion() {
@@ -443,6 +456,7 @@ object AudioPlayManager {
     }
 
     fun next() {
+        lastNavigationDirection = 1
         val list = _playlist.value
         if (list.isEmpty()) return
 
@@ -464,6 +478,7 @@ object AudioPlayManager {
     }
 
     fun prev() {
+        lastNavigationDirection = -1
         val list = _playlist.value
         if (list.isEmpty()) return
 

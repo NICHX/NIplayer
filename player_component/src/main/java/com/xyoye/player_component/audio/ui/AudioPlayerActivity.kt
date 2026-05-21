@@ -8,7 +8,9 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.TransitionDrawable
 import android.media.AudioManager
 import android.widget.ImageView
 import android.widget.SeekBar
@@ -34,6 +36,7 @@ import com.xyoye.player_component.audio.lrc.LrcManager
 import com.xyoye.player_component.audio.manager.AudioPlayManager
 import jp.wasabeef.blurry.Blurry
 import java.io.File
+import java.io.ByteArrayOutputStream
 import com.xyoye.player_component.audio.model.AudioPlayMode
 import com.xyoye.player_component.audio.model.AudioPlayState
 import com.xyoye.player_component.audio.model.AudioSong
@@ -233,33 +236,52 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
     private fun observeData() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                AudioPlayManager.currentSong.collectLatest { song ->
+                AudioPlayManager.currentSong.collect { song ->
                     if (song != null) {
                         val playState = AudioPlayManager.playState.value
                         if (playState !is AudioPlayState.Preparing && playState !is AudioPlayState.Playing && playState !is AudioPlayState.Pause) {
-                            return@collectLatest
+                            return@collect
                         }
 
                         dataBinding.tvTitle.text = song.title
                         dataBinding.tvArtist.text = song.artist.ifEmpty { "未知艺术家" }
                         dataBinding.sbProgress.secondaryProgress = 0
 
-                        dataBinding.albumCoverView.reset()
-                        
+                        val direction = AudioPlayManager.lastNavigationDirection
+                        AudioPlayManager.lastNavigationDirection = 0
+
                         val enrichedSong = if (song.title.isEmpty() || song.artist.isEmpty() || song.duration == 0L || song.coverPath == null) {
                             AudioPlayManager.playWithMetadata(song, forceReload = false)
                         } else {
                             song
                         }
-                        
-                        if (enrichedSong.title != song.title || enrichedSong.artist != song.artist || 
+
+                        if (enrichedSong.title != song.title || enrichedSong.artist != song.artist ||
                             enrichedSong.duration != song.duration || enrichedSong.coverPath != song.coverPath) {
                             AudioPlayManager.updateCurrentSong(enrichedSong)
                         }
-                        
-                        loadCover(enrichedSong)
-                        loadLrc(enrichedSong)
-                        updatePlayState(AudioPlayManager.playState.value)
+
+                        val initialCover = when {
+                            song.coverBytes != null -> BitmapFactory.decodeByteArray(song.coverBytes, 0, song.coverBytes.size)
+                            song.coverPath != null -> {
+                                val coverFile = File(song.coverPath)
+                                if (coverFile.exists()) BitmapFactory.decodeFile(song.coverPath) else defaultCoverBitmap
+                            }
+                            else -> defaultCoverBitmap
+                        }
+
+                        if (direction != 0) {
+                            dataBinding.albumCoverView.switchSong(initialCover, direction) {
+                                loadLrc(enrichedSong)
+                                updatePlayState(AudioPlayManager.playState.value)
+                            }
+                            loadCover(enrichedSong)
+                        } else {
+                            dataBinding.albumCoverView.reset()
+                            loadCover(enrichedSong)
+                            loadLrc(enrichedSong)
+                            updatePlayState(AudioPlayManager.playState.value)
+                        }
                     }
                 }
             }
@@ -401,27 +423,28 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
     }
 
     private fun loadCover(song: AudioSong) {
-        setDefaultCover()
-        
-        // 优先级1: 检查嵌入的封面字节数组（从音频文件提取但还没保存到文件）
+        dataBinding.ivLrcMaskTop.setImageDrawable(null)
+        dataBinding.ivLrcMaskBottom.setImageDrawable(null)
+
         if (song.coverBytes != null) {
             val coverBitmap = BitmapFactory.decodeByteArray(song.coverBytes, 0, song.coverBytes.size)
             if (coverBitmap != null) {
-                dataBinding.albumCoverView.setCoverBitmap(coverBitmap)
+                if (dataBinding.albumCoverView.isSwitchInProgress()) {
+                    dataBinding.albumCoverView.setPendingCover(coverBitmap)
+                } else {
+                    dataBinding.albumCoverView.setCoverBitmap(coverBitmap)
+                }
                 setBlurBackground(coverBitmap)
                 return
             }
         }
-        
-        // 优先级2: 检查外部指定的封面路径
+
         var coverPath = song.coverPath
-        
-        // 优先级3: 检查内存缓存的封面
+
         if (coverPath == null) {
             coverPath = ThumbnailMemoryCache.getCoverPath(song.uniqueKey)
         }
-        
-        // 优先级4: 检查磁盘缓存的封面文件
+
         if (coverPath == null) {
             val cachedCoverFile = song.uniqueKey.toCoverFile()
             if (cachedCoverFile != null && cachedCoverFile.exists() && cachedCoverFile.length() > 0) {
@@ -436,22 +459,44 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
                 .load(coverPath)
                 .addListener(object : RequestListener<Bitmap> {
                     override fun onLoadFailed(e: GlideException?, model: Any?, target: Target<Bitmap>?, isFirstResource: Boolean): Boolean {
+                        fadeToDefaultBackground()
+                        if (dataBinding.albumCoverView.isSwitchInProgress()) {
+                            dataBinding.albumCoverView.setPendingCover(defaultCoverBitmap)
+                        } else {
+                            dataBinding.albumCoverView.setCoverBitmap(defaultCoverBitmap)
+                        }
                         return false
                     }
                     override fun onResourceReady(resource: Bitmap?, model: Any?, target: Target<Bitmap>?, dataSource: DataSource?, isFirstResource: Boolean): Boolean {
                         if (isFinishing || isDestroyed) return true
-                        
+
                         resource?.let { bitmap ->
                             runOnUiThread {
                                 if (isFinishing || isDestroyed) return@runOnUiThread
-                                dataBinding.albumCoverView.setCoverBitmap(bitmap)
+                                if (dataBinding.albumCoverView.isSwitchInProgress()) {
+                                    dataBinding.albumCoverView.setPendingCover(bitmap)
+                                } else {
+                                    dataBinding.albumCoverView.setCoverBitmap(bitmap)
+                                }
                                 setBlurBackground(bitmap)
+                                val stream = ByteArrayOutputStream()
+                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                                val bytes = stream.toByteArray()
+                                val cachedSong = song.copy(coverBytes = bytes)
+                                AudioPlayManager.updateCurrentSong(cachedSong)
                             }
                         }
                         return true
                     }
                 })
                 .submit()
+        } else {
+            fadeToDefaultBackground()
+            if (dataBinding.albumCoverView.isSwitchInProgress()) {
+                dataBinding.albumCoverView.setPendingCover(defaultCoverBitmap)
+            } else {
+                dataBinding.albumCoverView.setCoverBitmap(defaultCoverBitmap)
+            }
         }
     }
 
@@ -466,21 +511,54 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
         dataBinding.ivLrcMaskBottom.setImageDrawable(null)
     }
 
+    private fun fadeToDefaultBackground() {
+        if (isFinishing || isDestroyed) return
+        val imageView = dataBinding.ivPlayingBg
+        val oldDrawable = imageView.drawable
+        val newDrawable = if (defaultBgBitmap != null) {
+            BitmapDrawable(resources, defaultBgBitmap)
+        } else {
+            ColorDrawable(android.graphics.Color.BLACK)
+        }
+        val layers = arrayOf(
+            oldDrawable ?: ColorDrawable(android.graphics.Color.TRANSPARENT),
+            newDrawable
+        )
+        val transitionDrawable = TransitionDrawable(layers)
+        imageView.setImageDrawable(transitionDrawable)
+        transitionDrawable.startTransition(350)
+        imageView.postDelayed({
+            if (isFinishing || isDestroyed) return@postDelayed
+            updateLrcMask()
+        }, 400)
+    }
+
     private fun setBlurBackground(bitmap: Bitmap) {
         if (isFinishing || isDestroyed) return
         val imageView = dataBinding.ivPlayingBg
+        val oldDrawable = imageView.drawable
         imageView.post {
             if (isFinishing || isDestroyed) return@post
             try {
+                val tempView = ImageView(this@AudioPlayerActivity)
                 Blurry.with(this@AudioPlayerActivity)
                     .sampling(10)
                     .from(bitmap)
-                    .into(imageView)
+                    .into(tempView)
+                val newDrawable = tempView.drawable
+                val layers = arrayOf(
+                    oldDrawable ?: ColorDrawable(android.graphics.Color.TRANSPARENT),
+                    newDrawable ?: BitmapDrawable(resources, bitmap)
+                )
+                val transitionDrawable = TransitionDrawable(layers)
+                imageView.setImageDrawable(transitionDrawable)
+                transitionDrawable.startTransition(350)
                 imageView.postDelayed({
                     if (isFinishing || isDestroyed) return@postDelayed
                     updateLrcMask()
-                }, 100)
+                }, 400)
             } catch (_: Exception) {
+                imageView.setImageBitmap(defaultBgBitmap)
                 updateLrcMask()
             }
         }
