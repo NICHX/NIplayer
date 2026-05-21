@@ -269,7 +269,6 @@ object AudioPlayManager {
         if (index !in list.indices) return
         currentIndex = index
         val song = list[index]
-        _currentSong.value = song
 
         val context = appContext ?: return
         val player = ensurePlayer(context)
@@ -278,6 +277,8 @@ object AudioPlayManager {
         _playState.value = AudioPlayState.Preparing
         _playProgress.value = 0
         _bufferingPercent.value = 0
+
+        _currentSong.value = song
 
         if (song.duration > 0) {
             _songDuration.value = song.duration

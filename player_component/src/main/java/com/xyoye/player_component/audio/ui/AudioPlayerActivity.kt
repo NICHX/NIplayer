@@ -243,10 +243,6 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
                             return@collect
                         }
 
-                        dataBinding.tvTitle.text = song.title
-                        dataBinding.tvArtist.text = song.artist.ifEmpty { "未知艺术家" }
-                        dataBinding.sbProgress.secondaryProgress = 0
-
                         val direction = AudioPlayManager.lastNavigationDirection
                         AudioPlayManager.lastNavigationDirection = 0
 
@@ -261,11 +257,15 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
                             AudioPlayManager.updateCurrentSong(enrichedSong)
                         }
 
+                        dataBinding.tvTitle.text = enrichedSong.title
+                        dataBinding.tvArtist.text = enrichedSong.artist.ifEmpty { "未知艺术家" }
+                        dataBinding.sbProgress.secondaryProgress = 0
+
                         val initialCover = when {
-                            song.coverBytes != null -> BitmapFactory.decodeByteArray(song.coverBytes, 0, song.coverBytes.size)
-                            song.coverPath != null -> {
-                                val coverFile = File(song.coverPath)
-                                if (coverFile.exists()) BitmapFactory.decodeFile(song.coverPath) else defaultCoverBitmap
+                            enrichedSong.coverBytes != null -> BitmapFactory.decodeByteArray(enrichedSong.coverBytes, 0, enrichedSong.coverBytes.size)
+                            enrichedSong.coverPath != null -> {
+                                val coverFile = File(enrichedSong.coverPath)
+                                if (coverFile.exists()) BitmapFactory.decodeFile(enrichedSong.coverPath) else defaultCoverBitmap
                             }
                             else -> defaultCoverBitmap
                         }
