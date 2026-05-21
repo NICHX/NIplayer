@@ -38,18 +38,22 @@ import com.xyoye.player_component.audio.model.AudioSong
 import com.xyoye.player_component.audio.ui.AudioPlaylistDialog
 import com.xyoye.player_component.databinding.ActivityAudioPlayerBinding
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 private const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
+private const val LRC_RETRY_COUNT = 3
+private const val LRC_RETRY_DELAY_MS = 1000L
 
 @Route(path = RouteTable.Player.AudioPlayer)
 class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlayerBinding>() {
 
     private var isDraggingProgress = false
     private var isShowCover = true
+    private var lrcLoadJob: kotlinx.coroutines.Job? = null
     private val audioManager by lazy {
         getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
@@ -85,6 +89,8 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
     }
 
     override fun initView() {
+        AudioPlayManager.init(this)
+        LrcManager.setApplicationContext(this)
         adjustNavBarPadding()
         initTitle()
         initCoverAndLrc()
@@ -95,6 +101,7 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
     }
 
     override fun onDestroy() {
+        lrcLoadJob?.cancel()
         try { unregisterReceiver(volumeReceiver) } catch (_: Exception) {}
         super.onDestroy()
     }
@@ -240,10 +247,12 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
         }
 
         lifecycleScope.launch {
-            AudioPlayManager.songDuration.collectLatest { duration ->
-                if (duration > 0) {
-                    dataBinding.sbProgress.max = duration.toInt()
-                    dataBinding.tvTotalTime.text = formatTime(duration)
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                AudioPlayManager.songDuration.collectLatest { duration ->
+                    if (duration > 0) {
+                        dataBinding.sbProgress.max = duration.toInt()
+                        dataBinding.tvTotalTime.text = formatTime(duration)
+                    }
                 }
             }
         }
@@ -274,52 +283,84 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
     }
 
     private fun loadLrc(song: AudioSong) {
+        lrcLoadJob?.cancel()
+        lrcLoadJob = lifecycleScope.launch {
+            loadLrcInternal(song)
+        }
+    }
+
+    private suspend fun loadLrcInternal(song: AudioSong) {
         if (song.lrcFilePath != null) {
             val lrcRef = song.lrcFilePath
             if (lrcRef.startsWith("http://") || lrcRef.startsWith("https://")) {
-                downloadLrc(lrcRef)
-                return
-            }
-            if (File(lrcRef).exists()) {
+                val loaded = downloadLrcWithRetry(lrcRef)
+                if (loaded) return
+            } else if (File(lrcRef).exists()) {
                 dataBinding.lrcView.loadLrc(File(lrcRef))
                 return
             }
         }
 
-        val lrcPath = LrcManager.getLrcFilePath(song)
-        if (lrcPath != null) {
-            dataBinding.lrcView.loadLrc(File(lrcPath))
-        } else {
-            dataBinding.lrcView.loadLrc("")
-            dataBinding.lrcView.setLabel("暂无歌词")
+        val localLrcPath = LrcManager.findLocalLrcFile(song)
+        if (localLrcPath != null) {
+            dataBinding.lrcView.loadLrc(File(localLrcPath))
+            updateSongLrcPath(localLrcPath)
+            return
         }
+
+        val cachedLrcPath = LrcManager.findCachedLrcFile(song)
+        if (cachedLrcPath != null) {
+            dataBinding.lrcView.loadLrc(File(cachedLrcPath))
+            return
+        }
+
+        dataBinding.lrcView.loadLrc("")
+        dataBinding.lrcView.setLabel("暂无歌词")
     }
 
-    private fun downloadLrc(url: String) {
+    private suspend fun downloadLrcWithRetry(url: String): Boolean {
         dataBinding.lrcView.loadLrc("")
         dataBinding.lrcView.setLabel("歌词加载中…")
-        lifecycleScope.launch {
-            val content = withContext(Dispatchers.IO) {
-                try {
-                    withTimeout(5000) {
+
+        repeat(LRC_RETRY_COUNT) { attempt ->
+            try {
+                val content = withContext(Dispatchers.IO) {
+                    withTimeout(8000) {
                         java.net.URL(url).readText()
                     }
-                } catch (e: Exception) {
-                    null
+                }
+                if (content.isNotEmpty()) {
+                    val lrcFile = withContext(Dispatchers.IO) {
+                        saveLrcCache(content)
+                    }
+                    dataBinding.lrcView.loadLrc(lrcFile)
+                    updateSongLrcPath(lrcFile.absolutePath)
+                    return true
+                }
+            } catch (e: Exception) {
+                if (attempt < LRC_RETRY_COUNT - 1) {
+                    delay(LRC_RETRY_DELAY_MS)
                 }
             }
-            if (content != null && content.isNotEmpty()) {
-                val lrcDir = File(cacheDir, "lrc_cache")
-                if (!lrcDir.exists()) lrcDir.mkdirs()
-                val tempFile = File(lrcDir, "lrc_${System.currentTimeMillis()}.lrc")
-                tempFile.writeText(content)
-                dataBinding.lrcView.loadLrc(tempFile)
-                updateSongLrcPath(tempFile.absolutePath)
-            } else {
-                dataBinding.lrcView.loadLrc("")
-                dataBinding.lrcView.setLabel("暂无歌词")
-            }
         }
+
+        dataBinding.lrcView.loadLrc("")
+        dataBinding.lrcView.setLabel("暂无歌词")
+        return false
+    }
+
+    private fun saveLrcCache(content: String): File {
+        val song = AudioPlayManager.currentSong.value
+        val lrcDir = File(cacheDir, "lrc_cache")
+        if (!lrcDir.exists()) lrcDir.mkdirs()
+        val fileName = if (song != null) {
+            "${song.uniqueKey}.lrc"
+        } else {
+            "lrc_${System.currentTimeMillis()}.lrc"
+        }
+        val lrcFile = File(lrcDir, fileName)
+        lrcFile.writeText(content)
+        return lrcFile
     }
 
     private fun updateSongLrcPath(lrcPath: String) {
