@@ -186,6 +186,9 @@ class AlbumCoverView @JvmOverloads constructor(
         slideAnimator?.cancel()
         needleLiftAnimator?.cancel()
         needleDropAnimator?.cancel()
+        playAnimator.cancel()
+        pauseAnimator.cancel()
+        isPlaying = false
         switchInProgress = true
 
         val slideWidth = width.coerceAtLeast(height)
