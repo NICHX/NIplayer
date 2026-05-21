@@ -10,7 +10,8 @@ import java.util.concurrent.ConcurrentHashMap
 data class AudioMetadata(
     val artist: String = "",
     val title: String = "",
-    val duration: Long = 0L
+    val duration: Long = 0L,
+    val coverPath: String? = null
 )
 
 object AudioMetadataCache {
@@ -41,6 +42,7 @@ object AudioMetadataCache {
                 dos.writeUTF(metadata.artist)
                 dos.writeUTF(metadata.title)
                 dos.writeLong(metadata.duration)
+                dos.writeUTF(metadata.coverPath ?: "")
             }
         } catch (_: Exception) {
         }
@@ -54,7 +56,8 @@ object AudioMetadataCache {
                 val artist = dis.readUTF()
                 val title = dis.readUTF()
                 val duration = dis.readLong()
-                return AudioMetadata(artist, title, duration)
+                val coverPath = dis.readUTF()
+                return AudioMetadata(artist, title, duration, coverPath.ifEmpty { null })
             }
         } catch (_: Exception) {
         }
