@@ -22,13 +22,20 @@ object LrcManager {
 
     fun findLocalLrcFile(song: AudioSong): String? {
         val uri = song.uri
+        
         if (uri.startsWith("/") || uri.startsWith("file://")) {
             val filePath = if (uri.startsWith("file://")) uri.removePrefix("file://") else uri
-            return findLrcByAudioPath(filePath)
+            val lrcPath = findLrcByAudioPath(filePath)
+            if (lrcPath != null) return lrcPath
         }
 
         if (song.fileName.isNotEmpty()) {
             val lrcPath = findLrcByFileName(song.fileName)
+            if (lrcPath != null) return lrcPath
+        }
+        
+        if (song.title.isNotEmpty()) {
+            val lrcPath = findLrcByTitle(song.title)
             if (lrcPath != null) return lrcPath
         }
 
@@ -46,6 +53,14 @@ object LrcManager {
 
         return null
     }
+    
+    fun getLrcCacheDir(context: android.content.Context): File {
+        val appLrcDir = File(context.cacheDir, "lrc_cache")
+        if (!appLrcDir.exists()) {
+            appLrcDir.mkdirs()
+        }
+        return appLrcDir
+    }
 
     private fun findLrcByAudioPath(audioFilePath: String): String? {
         val audioFile = File(audioFilePath)
@@ -53,14 +68,32 @@ object LrcManager {
         val nameWithoutExt = audioFile.nameWithoutExtension
         if (nameWithoutExt.isEmpty()) return null
 
-        val lrcFile = File(parentDir, "$nameWithoutExt.lrc")
-        if (lrcFile.exists() && lrcFile.length() > 0) {
-            return lrcFile.absolutePath
+        val lrcPatterns = listOf(
+            "$nameWithoutExt.lrc",
+            "$nameWithoutExt.LRC",
+            "lyrics.lrc",
+            "lyrics.LRC",
+            "Lyrics.lrc",
+            "Lyrics.LRC",
+            " lyrics.lrc",
+            " lyrics.LRC"
+        )
+        
+        for (pattern in lrcPatterns) {
+            val lrcFile = File(parentDir, pattern)
+            if (lrcFile.exists() && lrcFile.length() > 0) {
+                return lrcFile.absolutePath
+            }
         }
-
-        val lrcFileUpper = File(parentDir, "${nameWithoutExt}.LRC")
-        if (lrcFileUpper.exists() && lrcFileUpper.length() > 0) {
-            return lrcFileUpper.absolutePath
+        
+        val parentParentDir = parentDir.parentFile
+        if (parentParentDir != null) {
+            for (pattern in lrcPatterns) {
+                val lrcFile = File(parentParentDir, pattern)
+                if (lrcFile.exists() && lrcFile.length() > 0) {
+                    return lrcFile.absolutePath
+                }
+            }
         }
 
         return null
@@ -77,8 +110,49 @@ object LrcManager {
             if (lrcFile.exists() && lrcFile.length() > 0) {
                 return lrcFile.absolutePath
             }
+            
+            val lrcFileUpper = File(musicDir, "$nameWithoutExt.LRC")
+            if (lrcFileUpper.exists() && lrcFileUpper.length() > 0) {
+                return lrcFileUpper.absolutePath
+            }
+        }
+        
+        val downloadDir = File(externalDir, "Download")
+        if (downloadDir.exists()) {
+            val lrcFile = File(downloadDir, "$nameWithoutExt.lrc")
+            if (lrcFile.exists() && lrcFile.length() > 0) {
+                return lrcFile.absolutePath
+            }
         }
 
+        return null
+    }
+    
+    private fun findLrcByTitle(title: String): String? {
+        val externalDir = android.os.Environment.getExternalStorageDirectory()
+        val lrcDirs = listOf(
+            File(externalDir, "Lyrics"),
+            File(externalDir, "lyrics"),
+            File(externalDir, "Music"),
+            File(externalDir, "Music/Lyrics")
+        )
+        
+        val cleanTitle = title.replace(Regex("[\\\\/:*?\"<>|]"), "").trim()
+        
+        for (dir in lrcDirs) {
+            if (!dir.exists()) continue
+            
+            val lrcFile = File(dir, "$cleanTitle.lrc")
+            if (lrcFile.exists() && lrcFile.length() > 0) {
+                return lrcFile.absolutePath
+            }
+            
+            val lrcFileUpper = File(dir, "$cleanTitle.LRC")
+            if (lrcFileUpper.exists() && lrcFileUpper.length() > 0) {
+                return lrcFileUpper.absolutePath
+            }
+        }
+        
         return null
     }
 
@@ -101,5 +175,17 @@ object LrcManager {
         val lrcFile = File(lrcDir, "${song.uniqueKey}.lrc")
         lrcFile.writeText(content)
         return lrcFile
+    }
+    
+    fun saveLrcToCache(uniqueKey: String, content: String): File? {
+        val context = appContext ?: return null
+        val cacheDir = getLrcCacheDir(context)
+        val lrcFile = File(cacheDir, "$uniqueKey.lrc")
+        try {
+            lrcFile.writeText(content)
+            return lrcFile
+        } catch (_: Exception) {
+            return null
+        }
     }
 }

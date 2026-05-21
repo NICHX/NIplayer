@@ -22,6 +22,8 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
+import com.xyoye.common_component.extension.toCoverFile
+import com.xyoye.common_component.utils.ThumbnailMemoryCache
 import com.xyoye.common_component.extension.isNightMode
 import com.xyoye.player_component.R
 import com.xyoye.player_component.audio.manager.AudioPlayManager
@@ -222,7 +224,35 @@ class PlayBar @JvmOverloads constructor(
                             }
                         }
                     }
-                    val coverUri = song.coverPath ?: song.uri
+                    // 封面加载优先级: 嵌入字节 > 外部指定 > 内存缓存 > 磁盘缓存 > 音频URI
+                    var coverUri: Any? = null
+                    
+                    // 优先级1: 嵌入的封面字节数组
+                    if (song.coverBytes != null) {
+                        coverUri = song.coverBytes
+                    } else {
+                        // 优先级2: 外部指定的封面路径
+                        coverUri = song.coverPath
+                        
+                        // 优先级3: 内存缓存的封面
+                        if (coverUri == null) {
+                            coverUri = ThumbnailMemoryCache.getCoverPath(song.uniqueKey)
+                        }
+                        
+                        // 优先级4: 磁盘缓存的封面文件
+                        if (coverUri == null) {
+                            val cachedCoverFile = song.uniqueKey.toCoverFile()
+                            if (cachedCoverFile != null && cachedCoverFile.exists() && cachedCoverFile.length() > 0) {
+                                coverUri = cachedCoverFile.absolutePath
+                                ThumbnailMemoryCache.putCoverPath(song.uniqueKey, coverUri as String)
+                            }
+                        }
+                        
+                        // 优先级5: 音频URI
+                        if (coverUri == null) {
+                            coverUri = song.uri
+                        }
+                    }
                     Glide.with(viewBinding.ivCover)
                         .load(coverUri)
                         .centerCrop()

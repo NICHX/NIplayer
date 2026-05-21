@@ -17,6 +17,7 @@ import com.xyoye.common_component.utils.AudioMetadataCache
 import com.xyoye.player_component.audio.model.AudioPlayMode
 import com.xyoye.player_component.audio.model.AudioPlayState
 import com.xyoye.player_component.audio.model.AudioSong
+import com.xyoye.player_component.audio.utils.AudioMetadataLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -343,6 +344,45 @@ object AudioPlayManager {
         } else {
             setPlaylist(listOf(song), 0)
         }
+    }
+
+    suspend fun playWithMetadata(song: AudioSong, forceReload: Boolean = false): AudioSong {
+        val context = appContext ?: return song
+        
+        val cachedMetadata = AudioMetadataLoader.getCachedMetadata(song.uniqueKey)
+        val cachedCoverPath = AudioMetadataLoader.getCachedCoverPath(song.uniqueKey)
+        
+        val needsReload = forceReload || 
+            cachedMetadata == null || 
+            cachedCoverPath == null ||
+            (song.title.isEmpty() && cachedMetadata.title.isEmpty().not()) ||
+            (song.artist.isEmpty() && cachedMetadata.artist.isEmpty().not()) ||
+            song.duration == 0L && cachedMetadata.duration > 0
+        
+        if (needsReload) {
+            val metadataResult = AudioMetadataLoader.loadMetadata(
+                context = context,
+                uniqueKey = song.uniqueKey,
+                uri = song.uri,
+                fileName = song.fileName
+            )
+            
+            val updatedSong = song.withMetadata(
+                title = if (song.title.isEmpty()) metadataResult.title else null,
+                artist = if (song.artist.isEmpty()) metadataResult.artist else null,
+                coverPath = if (song.coverPath == null) metadataResult.coverPath else null,
+                coverBytes = if (song.coverBytes == null) metadataResult.coverBytes else null,
+                duration = if (song.duration == 0L) metadataResult.duration else null
+            )
+            return updatedSong
+        }
+        
+        return song.withMetadata(
+            title = if (song.title.isEmpty()) cachedMetadata?.title else null,
+            artist = if (song.artist.isEmpty()) cachedMetadata?.artist else null,
+            coverPath = if (song.coverPath == null) cachedCoverPath else null,
+            duration = if (song.duration == 0L) cachedMetadata?.duration else null
+        )
     }
 
     fun playPause() {
