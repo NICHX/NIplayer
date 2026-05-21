@@ -36,6 +36,13 @@ object PathHelper {
     }
 
     /**
+     * 获取音频封面的文件夹
+     */
+    fun getAudioCoverDirectory(): File {
+        return getCacheDirectory(CacheType.AUDIO_COVER_CACHE)
+    }
+
+    /**
      * 获取播放的临时缓存文件夹
      */
     fun getPlayCacheDirectory(): File {

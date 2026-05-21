@@ -29,6 +29,12 @@ fun String?.toCoverFile(): File? {
     return File(PathHelper.getVideoCoverDirectory(), this)
 }
 
+fun String?.toAudioCoverFile(): File? {
+    if (this.isNullOrEmpty())
+        return null
+    return File(PathHelper.getAudioCoverDirectory(), this)
+}
+
 fun String?.toQuickCoverFile(): File? {
     if (this.isNullOrEmpty())
         return null

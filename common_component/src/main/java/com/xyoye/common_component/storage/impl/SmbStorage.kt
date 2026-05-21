@@ -25,6 +25,8 @@ import com.xyoye.common_component.storage.AbstractStorage
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.file.helper.SmbPlayServer
 import com.xyoye.common_component.storage.file.impl.SmbStorageFile
+import com.xyoye.common_component.utils.AudioMetadata
+import com.xyoye.common_component.utils.AudioMetadataCache
 import com.xyoye.common_component.utils.IOUtils
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.bean.StorageFileInfo
@@ -440,10 +442,12 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
                     isImage = file.isImageFile()
                 )
 
-                if (file.isVideoFile() || file.isAudioFile()) {
-                    extractMediaMetadata(file as SmbStorageFile, baseInfo)
+                if (file.isVideoFile()) {
+                    extractMediaMetadata(file, baseInfo)
+                } else if (file.isAudioFile()) {
+                    extractAudioMetadataAndCache(file, baseInfo)
                 } else if (file.isImageFile()) {
-                    extractImageMetadata(file as SmbStorageFile, baseInfo)
+                    extractImageMetadata(file, baseInfo)
                 } else {
                     baseInfo
                 }
@@ -454,6 +458,68 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             e.printStackTrace()
             showErrorToast("获取文件信息失败", e)
             null
+        }
+    }
+
+    private suspend fun extractAudioMetadataAndCache(file: SmbStorageFile, base: StorageFileInfo): StorageFileInfo {
+        val uniqueKey = file.uniqueKey()
+        val existingMetadata = AudioMetadataCache.get(uniqueKey)
+        if (existingMetadata != null && existingMetadata.title.isNotEmpty()) {
+            return base.copy(durationMs = existingMetadata.duration)
+        }
+
+        val playServer = SmbPlayServer.getInstance()
+        val useProxy = playServer.wasStarted() || playServer.startSync()
+
+        val httpUrl = if (useProxy) {
+            playServer.generatePlayUrl(this, file)
+        } else {
+            null
+        }
+
+        return try {
+            withTimeout(5000) {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    if (httpUrl != null) {
+                        retriever.setDataSource(httpUrl, emptyMap())
+                    } else {
+                        val diskShare = mDiskShare ?: return@withTimeout base
+                        val smbFile = diskShare.openFile(file.filePath()) ?: return@withTimeout base
+                        retriever.setDataSource(SmbMediaDataSource(smbFile, base.fileSize))
+                    }
+
+                    val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                    val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                    val albumArtist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
+                    val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    val duration = durationStr?.toLongOrNull() ?: 0L
+
+                    val resolvedTitle = title?.takeIf { it.isNotEmpty() }
+                        ?: file.fileName()?.substringBeforeLast(".")?.takeIf { it.isNotEmpty() }
+                        ?: ""
+                    val resolvedArtist = artist?.takeIf { it.isNotEmpty() }
+                        ?: albumArtist?.takeIf { it.isNotEmpty() }
+                        ?: ""
+
+                    val metadata = AudioMetadata(
+                        artist = resolvedArtist,
+                        title = resolvedTitle,
+                        duration = duration,
+                        coverPath = null
+                    )
+                    AudioMetadataCache.put(uniqueKey, metadata)
+
+                    base.copy(durationMs = duration)
+                } finally {
+                    retriever.release()
+                }
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.TimeoutCancellationException) {
+                android.util.Log.w("SmbStorage", "extractAudioMetadataAndCache timed out for ${file.fileName()}")
+            }
+            base
         }
     }
 

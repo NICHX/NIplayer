@@ -150,16 +150,14 @@
 
                 <ImageView
                     android:id="@+id/iv_lrc_mask_top"
-                    android:layout_width="0dp"
-                    android:layout_height="0dp"
-                    android:visibility="gone"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
                     app:layout_constraintTop_toTopOf="@+id/lrc_view" />
 
                 <ImageView
                     android:id="@+id/iv_lrc_mask_bottom"
-                    android:layout_width="0dp"
-                    android:layout_height="0dp"
-                    android:visibility="gone"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
                     app:layout_constraintBottom_toBottomOf="@+id/lrc_view" />
 
             </androidx.constraintlayout.widget.ConstraintLayout>

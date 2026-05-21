@@ -24,5 +24,10 @@ enum class CacheType(val dirName: String, val displayName: String, val clearTips
         "screen_shot",
         "视频截图",
         "截图缓存为视频截图缓存，确认清除？"
+    ),
+    AUDIO_COVER_CACHE(
+        "audio_cover",
+        "音频封面",
+        "清除音频封面缓存，将在下一次播放后重新缓存音频封面，确认清除？"
     )
 }
