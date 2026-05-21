@@ -235,6 +235,11 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 AudioPlayManager.currentSong.collectLatest { song ->
                     if (song != null) {
+                        val playState = AudioPlayManager.playState.value
+                        if (playState !is AudioPlayState.Preparing && playState !is AudioPlayState.Playing && playState !is AudioPlayState.Pause) {
+                            return@collectLatest
+                        }
+
                         dataBinding.tvTitle.text = song.title
                         dataBinding.tvArtist.text = song.artist.ifEmpty { "未知艺术家" }
                         dataBinding.sbProgress.secondaryProgress = 0

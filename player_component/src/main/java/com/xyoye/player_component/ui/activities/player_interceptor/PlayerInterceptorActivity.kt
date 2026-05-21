@@ -55,8 +55,8 @@ class PlayerInterceptorActivity :
 
             val groupSize = source.getGroupSize()
             if (groupSize > 1 && source is StorageVideoSource) {
+                val currentIndex = source.getGroupIndex()
                 lifecycleScope.launch(Dispatchers.IO) {
-                    val currentIndex = source.getGroupIndex()
                     var currentSong: AudioSong? = null
 
                     try {
@@ -116,7 +116,7 @@ class PlayerInterceptorActivity :
                         } catch (_: Exception) { }
                     }
                     withContext(Dispatchers.Main) {
-                        AudioPlayManager.updatePlaylist(songs)
+                        AudioPlayManager.updatePlaylist(songs, currentIndex)
                     }
                 }
             } else {

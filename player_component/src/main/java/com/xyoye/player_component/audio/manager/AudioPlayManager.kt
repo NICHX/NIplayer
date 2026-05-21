@@ -84,6 +84,16 @@ object AudioPlayManager {
                 _playState.value = if (isPlaying) AudioPlayState.Playing else AudioPlayState.Pause
             }
         }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            super.onMediaItemTransition(mediaItem, reason)
+            mediaItem ?: return
+            val playlist = _playlist.value
+            val song = playlist.find { it.uniqueKey == mediaItem.mediaId }
+            if (song != null) {
+                _currentSong.value = song
+            }
+        }
     }
 
     fun getExoPlayer(): ExoPlayer? = exoPlayer
@@ -127,32 +137,86 @@ object AudioPlayManager {
 
     fun setPlayMode(mode: AudioPlayMode) {
         _playMode.value = mode
-        exoPlayer?.repeatMode = when (mode) {
-            AudioPlayMode.Single -> Player.REPEAT_MODE_ONE
-            else -> Player.REPEAT_MODE_OFF
+        val player = exoPlayer ?: return
+        when (mode) {
+            AudioPlayMode.Single -> {
+                player.repeatMode = Player.REPEAT_MODE_ONE
+                player.shuffleModeEnabled = false
+            }
+            AudioPlayMode.Shuffle -> {
+                player.repeatMode = Player.REPEAT_MODE_OFF
+                player.shuffleModeEnabled = true
+            }
+            AudioPlayMode.Loop -> {
+                player.repeatMode = Player.REPEAT_MODE_OFF
+                player.shuffleModeEnabled = false
+            }
         }
     }
 
     fun setPlaylist(songs: List<AudioSong>, startIndex: Int) {
         _playlist.value = songs.toList()
-        if (songs.isNotEmpty() && startIndex in songs.indices) {
-            playAtIndex(startIndex)
+        if (songs.isEmpty()) return
+
+        val context = appContext ?: return
+        val player = ensurePlayer(context)
+
+        val mediaItems = songs.map { song ->
+            val metadataBuilder = MediaMetadata.Builder()
+                .setTitle(song.title.ifEmpty { null })
+                .setArtist(song.artist.ifEmpty { null })
+                .setArtworkUri(song.coverPath?.let { Uri.parse(it) })
+            MediaItem.Builder()
+                .setMediaId(song.uniqueKey)
+                .setUri(Uri.parse(song.uri))
+                .setMediaMetadata(metadataBuilder.build())
+                .build()
+        }
+
+        player.setMediaItems(mediaItems)
+        currentIndex = startIndex
+        _currentSong.value = songs[startIndex]
+        player.seekTo(startIndex, 0)
+        player.prepare()
+        player.play()
+        startService()
+    }
+
+    fun updatePlaylist(songs: List<AudioSong>, playingIndex: Int = -1) {
+        _playlist.value = songs.toList()
+        if (playingIndex in songs.indices) {
+            currentIndex = playingIndex
+            _currentSong.value = songs[playingIndex]
         }
     }
 
-    fun updatePlaylist(songs: List<AudioSong>) {
-        _playlist.value = songs.toList()
-    }
-
     fun addToPlaylist(songs: List<AudioSong>) {
+        val context = appContext ?: return
+        val player = exoPlayer ?: return
+
+        val mediaItems = songs.map { song ->
+            val metadataBuilder = MediaMetadata.Builder()
+                .setTitle(song.title.ifEmpty { null })
+                .setArtist(song.artist.ifEmpty { null })
+                .setArtworkUri(song.coverPath?.let { Uri.parse(it) })
+            MediaItem.Builder()
+                .setMediaId(song.uniqueKey)
+                .setUri(Uri.parse(song.uri))
+                .setMediaMetadata(metadataBuilder.build())
+                .build()
+        }
+
+        player.addMediaItems(mediaItems)
         _playlist.value = _playlist.value + songs
     }
 
     fun removeFromPlaylist(index: Int) {
+        val player = exoPlayer ?: return
         val list = _playlist.value.toMutableList()
         if (index !in list.indices) return
         list.removeAt(index)
         _playlist.value = list
+        player.removeMediaItem(index)
         if (index < currentIndex) {
             currentIndex--
         } else if (index == currentIndex) {
@@ -173,6 +237,7 @@ object AudioPlayManager {
         _playlist.value = emptyList()
         _currentSong.value = null
         currentIndex = 0
+        exoPlayer?.clearMediaItems()
         stopService()
     }
 
@@ -214,11 +279,10 @@ object AudioPlayManager {
 
         val metadataBuilder = MediaMetadata.Builder()
             .setTitle(song.title.ifEmpty { null })
+            .setArtist(song.artist.ifEmpty { null })
             .setArtworkUri(song.coverPath?.let { Uri.parse(it) })
-        if (song.artist.isNotEmpty()) {
-            metadataBuilder.setArtist(song.artist)
-        }
         val mediaItem = MediaItem.Builder()
+            .setMediaId(song.uniqueKey)
             .setUri(Uri.parse(song.uri))
             .setMediaMetadata(metadataBuilder.build())
             .build()
@@ -309,30 +373,14 @@ object AudioPlayManager {
     }
 
     private fun handleCompletion() {
+        val player = exoPlayer ?: return
         when (_playMode.value) {
-            AudioPlayMode.Loop -> {
-                val nextIndex = currentIndex + 1
-                if (nextIndex < _playlist.value.size) {
-                    playAtIndex(nextIndex)
-                } else {
-                    _playState.value = AudioPlayState.Pause
-                }
-            }
-            AudioPlayMode.Shuffle -> {
-                val list = _playlist.value
-                if (list.size <= 1) {
-                    _playState.value = AudioPlayState.Pause
-                    return
-                }
-                var randomIndex: Int
-                do {
-                    randomIndex = (0 until list.size).random()
-                } while (randomIndex == currentIndex)
-                playAtIndex(randomIndex)
-            }
             AudioPlayMode.Single -> {
-                exoPlayer?.seekTo(0)
-                exoPlayer?.play()
+                player.seekTo(0)
+                player.play()
+            }
+            else -> {
+                next()
             }
         }
     }
@@ -397,45 +445,31 @@ object AudioPlayManager {
     fun next() {
         val list = _playlist.value
         if (list.isEmpty()) return
-        when (_playMode.value) {
+
+        val nextIndex = when (_playMode.value) {
             AudioPlayMode.Shuffle -> {
-                if (list.size <= 1) {
-                    playAtIndex(0)
-                    return
+                if (list.size <= 1) 0
+                else {
+                    var randomIndex: Int
+                    do {
+                        randomIndex = (0 until list.size).random()
+                    } while (randomIndex == currentIndex)
+                    randomIndex
                 }
-                var randomIndex: Int
-                do {
-                    randomIndex = (0 until list.size).random()
-                } while (randomIndex == currentIndex)
-                playAtIndex(randomIndex)
             }
-            else -> {
-                val nextIndex = (currentIndex + 1) % list.size
-                playAtIndex(nextIndex)
-            }
+            else -> (currentIndex + 1) % list.size
         }
+
+        playAtIndex(nextIndex)
     }
 
     fun prev() {
         val list = _playlist.value
         if (list.isEmpty()) return
-        when (_playMode.value) {
-            AudioPlayMode.Shuffle -> {
-                if (list.size <= 1) {
-                    playAtIndex(0)
-                    return
-                }
-                var randomIndex: Int
-                do {
-                    randomIndex = (0 until list.size).random()
-                } while (randomIndex == currentIndex)
-                playAtIndex(randomIndex)
-            }
-            else -> {
-                val prevIndex = if (currentIndex > 0) currentIndex - 1 else list.size - 1
-                playAtIndex(prevIndex)
-            }
-        }
+
+        val prevIndex = (currentIndex - 1 + list.size) % list.size
+
+        playAtIndex(prevIndex)
     }
 
     fun seekTo(position: Long) {
