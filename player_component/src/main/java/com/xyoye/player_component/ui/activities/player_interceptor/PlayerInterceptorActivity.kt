@@ -56,31 +56,46 @@ class PlayerInterceptorActivity :
             val groupSize = source.getGroupSize()
             if (groupSize > 1 && source is StorageVideoSource) {
                 val currentIndex = source.getGroupIndex()
+                AudioPlayManager.setPendingSource(source)
+
                 lifecycleScope.launch(Dispatchers.IO) {
+                    val songs = mutableListOf<AudioSong>()
                     var currentSong: AudioSong? = null
 
-                    try {
-                        val currentFile = source.indexStorageFile(currentIndex)
-                        val playUrl = currentFile.storage.createPlayUrl(currentFile)
-                        if (playUrl != null) {
-                            val lrcUrl = try {
-                                currentFile.storage.cacheLrc(currentFile)
-                            } catch (_: Exception) {
-                                null
+                    for (i in 0 until groupSize) {
+                        try {
+                            val storageFile = source.indexStorageFile(i)
+                            val isCurrent = i == currentIndex
+                            val playUrl = if (isCurrent) {
+                                val url = source.getVideoUrl()
+                                currentSong = AudioSong(
+                                    uri = url,
+                                    title = storageFile.fileName() ?: "",
+                                    uniqueKey = storageFile.uniqueKey(),
+                                    fileName = storageFile.fileName() ?: "",
+                                    lrcUrl = try {
+                                        storageFile.storage.cacheLrc(storageFile)
+                                    } catch (_: Exception) { null }
+                                )
+                                url
+                            } else {
+                                ""
                             }
-                            currentSong = AudioSong(
-                                uri = playUrl,
-                                title = currentFile.fileName() ?: "",
-                                uniqueKey = currentFile.uniqueKey(),
-                                fileName = currentFile.fileName() ?: "",
-                                lrcUrl = lrcUrl
+                            songs.add(
+                                AudioSong(
+                                    uri = playUrl,
+                                    title = storageFile.fileName() ?: "",
+                                    uniqueKey = storageFile.uniqueKey(),
+                                    fileName = storageFile.fileName() ?: ""
+                                )
                             )
-                        }
-                    } catch (_: Exception) { }
+                        } catch (_: Exception) { }
+                    }
 
                     withContext(Dispatchers.Main) {
                         if (currentSong != null) {
                             AudioPlayManager.setPlaylist(listOf(currentSong!!), 0)
+                            AudioPlayManager.updatePlaylist(songs, currentIndex)
                             ARouter.getInstance()
                                 .build(RouteTable.Player.AudioPlayer)
                                 .navigation()
@@ -92,31 +107,15 @@ class PlayerInterceptorActivity :
 
                 val bgScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
                 bgScope.launch {
-                    val songs = mutableListOf<AudioSong>()
                     for (i in 0 until groupSize) {
+                        if (i == currentIndex) continue
                         try {
                             val storageFile = source.indexStorageFile(i)
                             val playUrl = storageFile.storage.createPlayUrl(storageFile)
                             if (playUrl != null) {
-                                val lrcUrl = try {
-                                    storageFile.storage.cacheLrc(storageFile)
-                                } catch (_: Exception) {
-                                    null
-                                }
-                                songs.add(
-                                    AudioSong(
-                                        uri = playUrl,
-                                        title = storageFile.fileName() ?: "",
-                                        uniqueKey = storageFile.uniqueKey(),
-                                        fileName = storageFile.fileName() ?: "",
-                                        lrcUrl = lrcUrl
-                                    )
-                                )
+                                AudioPlayManager.updateSongUri(i, playUrl)
                             }
                         } catch (_: Exception) { }
-                    }
-                    withContext(Dispatchers.Main) {
-                        AudioPlayManager.updatePlaylist(songs, currentIndex)
                     }
                 }
             } else {

@@ -12,6 +12,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.datasource.DefaultDataSource
+import com.xyoye.common_component.source.media.StorageVideoSource
 import com.xyoye.common_component.utils.AudioMetadata
 import com.xyoye.common_component.utils.AudioMetadataCache
 import com.xyoye.player_component.audio.model.AudioPlayMode
@@ -61,6 +62,20 @@ object AudioPlayManager {
     var lastNavigationDirection: Int = 0
 
     private var wasPlayingBeforeVideo = false
+
+    private var _pendingSource: StorageVideoSource? = null
+
+    fun setPendingSource(source: StorageVideoSource?) {
+        _pendingSource = source
+    }
+
+    fun updateSongUri(playlistIndex: Int, uri: String) {
+        val list = _playlist.value.toMutableList()
+        if (playlistIndex in list.indices) {
+            list[playlistIndex] = list[playlistIndex].copy(uri = uri)
+            _playlist.value = list
+        }
+    }
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -268,10 +283,20 @@ object AudioPlayManager {
         val list = _playlist.value
         if (index !in list.indices) return
         currentIndex = index
-        val song = list[index]
+        var song = list[index]
 
         val context = appContext ?: return
         val player = ensurePlayer(context)
+
+        if (song.uri.isEmpty() && _pendingSource != null) {
+            val resolved = resolveSongUri(song, index)
+            if (resolved != null) {
+                song = resolved
+                updatePlaylistItem(song)
+            }
+        }
+
+        if (song.uri.isEmpty()) return
 
         player.stop()
         _playState.value = AudioPlayState.Preparing
@@ -304,6 +329,17 @@ object AudioPlayManager {
         player.play()
 
         startService()
+    }
+
+    private fun resolveSongUri(song: AudioSong, index: Int): AudioSong? {
+        val source = _pendingSource ?: return null
+        return try {
+            val storageFile = source.indexStorageFile(index)
+            val playUrl = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                storageFile.storage.createPlayUrl(storageFile)
+            }
+            playUrl?.let { song.copy(uri = it) }
+        } catch (_: Exception) { null }
     }
 
     private fun cacheDurationToSong(duration: Long) {
