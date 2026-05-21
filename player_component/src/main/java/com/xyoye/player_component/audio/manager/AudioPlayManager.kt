@@ -12,6 +12,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.datasource.DefaultDataSource
+import com.xyoye.common_component.utils.AudioMetadata
+import com.xyoye.common_component.utils.AudioMetadataCache
 import com.xyoye.player_component.audio.model.AudioPlayMode
 import com.xyoye.player_component.audio.model.AudioPlayState
 import com.xyoye.player_component.audio.model.AudioSong
@@ -21,6 +23,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,7 +32,6 @@ object AudioPlayManager {
 
     private var exoPlayer: ExoPlayer? = null
     private var appContext: Context? = null
-    private var isInitialized = false
     private var scope: CoroutineScope? = null
 
     private val _playState = MutableStateFlow<AudioPlayState>(AudioPlayState.Idle)
@@ -57,54 +59,63 @@ object AudioPlayManager {
 
     private var wasPlayingBeforeVideo = false
 
+    private val playerListener = object : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            when (playbackState) {
+                Player.STATE_IDLE -> _playState.value = AudioPlayState.Idle
+                Player.STATE_BUFFERING -> _playState.value = AudioPlayState.Preparing
+                Player.STATE_READY -> {
+                    val player = exoPlayer ?: return
+                    val duration = player.duration
+                    if (duration > 0 && duration != C.TIME_UNSET) {
+                        _songDuration.value = duration
+                        cacheDurationToSong(duration)
+                    }
+                    _playState.value = if (player.playWhenReady) AudioPlayState.Playing else AudioPlayState.Pause
+                    updateSongMetadataFromPlayer()
+                }
+                Player.STATE_ENDED -> handleCompletion()
+            }
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (exoPlayer?.playbackState == Player.STATE_READY) {
+                _playState.value = if (isPlaying) AudioPlayState.Playing else AudioPlayState.Pause
+            }
+        }
+    }
+
     fun getExoPlayer(): ExoPlayer? = exoPlayer
 
-    fun init(context: Context) {
-        if (isInitialized) return
-        isInitialized = true
-        appContext = context.applicationContext
+    private fun ensurePlayer(context: Context): ExoPlayer {
+        exoPlayer?.let { return it }
 
-        exoPlayer = ExoPlayer.Builder(context)
+        appContext = context.applicationContext
+        val player = ExoPlayer.Builder(context)
             .setAudioAttributes(AudioAttributes.DEFAULT, true)
             .setHandleAudioBecomingNoisy(true)
             .build()
+        player.addListener(playerListener)
+        exoPlayer = player
 
-        exoPlayer?.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                when (playbackState) {
-                    Player.STATE_IDLE -> _playState.value = AudioPlayState.Idle
-                    Player.STATE_BUFFERING -> _playState.value = AudioPlayState.Preparing
-                    Player.STATE_READY -> {
-                        val duration = exoPlayer?.duration ?: C.TIME_UNSET
-                        _songDuration.value = if (duration > 0 && duration != C.TIME_UNSET) duration else 0L
-                        _playState.value = if (exoPlayer?.playWhenReady == true) AudioPlayState.Playing else AudioPlayState.Pause
-                        updateSongMetadataFromPlayer()
+        if (scope == null) {
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+            scope?.launch {
+                while (isActive) {
+                    val p = exoPlayer ?: break
+                    if (p.isPlaying) {
+                        _playProgress.value = p.currentPosition
                     }
-                    Player.STATE_ENDED -> handleCompletion()
+                    kotlinx.coroutines.delay(1000)
                 }
-            }
-
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (exoPlayer?.playbackState == Player.STATE_READY) {
-                    _playState.value = if (isPlaying) AudioPlayState.Playing else AudioPlayState.Pause
-                }
-            }
-
-            override fun onPlaybackSuppressionReasonChanged(reason: Int) {
-            }
-        })
-
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
-        scope?.launch {
-            while (isActive) {
-                val player = exoPlayer ?: break
-                if (player.isPlaying) {
-                    _playProgress.value = player.currentPosition
-                }
-                delay(1000)
             }
         }
+
+        return player
+    }
+
+    fun init(context: Context) {
+        ensurePlayer(context)
     }
 
     fun stop() {
@@ -186,11 +197,18 @@ object AudioPlayManager {
         val song = list[index]
         _currentSong.value = song
 
-        val player = exoPlayer ?: return
+        val context = appContext ?: return
+        val player = ensurePlayer(context)
+
         player.stop()
         _playState.value = AudioPlayState.Preparing
+        _playProgress.value = 0
+        _bufferingPercent.value = 0
 
-        val context = appContext ?: return
+        if (song.duration > 0) {
+            _songDuration.value = song.duration
+        }
+
         val dataSourceFactory = DefaultDataSource.Factory(context)
 
         val metadataBuilder = MediaMetadata.Builder()
@@ -210,10 +228,31 @@ object AudioPlayManager {
         player.setMediaSource(mediaSource)
         player.prepare()
         player.play()
-        _playProgress.value = 0
-        _bufferingPercent.value = 0
 
         startService()
+    }
+
+    private fun cacheDurationToSong(duration: Long) {
+        val current = _currentSong.value ?: return
+        if (current.duration != duration) {
+            val updated = current.copy(duration = duration)
+            _currentSong.value = updated
+            updatePlaylistItem(updated)
+        }
+        val metadata = AudioMetadataCache.get(current.uniqueKey)
+        if (metadata == null || metadata.duration != duration) {
+            val newMetadata = AudioMetadata(
+                artist = metadata?.artist ?: current.artist,
+                title = metadata?.title ?: current.title,
+                duration = duration
+            )
+            AudioMetadataCache.put(current.uniqueKey, newMetadata)
+            scope?.launch {
+                withContext(Dispatchers.IO) {
+                    AudioMetadataCache.saveToDisk(current.uniqueKey, newMetadata)
+                }
+            }
+        }
     }
 
     private fun updateSongMetadataFromPlayer() {
@@ -234,6 +273,23 @@ object AudioPlayManager {
         if (updated != current) {
             _currentSong.value = updated
             updatePlaylistItem(updated)
+        }
+
+        val cacheArtist = artist ?: current.artist.ifEmpty { null }
+        val cacheTitle = title ?: current.title.ifEmpty { null }
+        if (cacheArtist != null || cacheTitle != null) {
+            val existingMeta = AudioMetadataCache.get(current.uniqueKey)
+            val newMeta = AudioMetadata(
+                artist = cacheArtist ?: existingMeta?.artist ?: "",
+                title = cacheTitle ?: existingMeta?.title ?: "",
+                duration = existingMeta?.duration ?: current.duration
+            )
+            AudioMetadataCache.put(current.uniqueKey, newMeta)
+            scope?.launch {
+                withContext(Dispatchers.IO) {
+                    AudioMetadataCache.saveToDisk(current.uniqueKey, newMeta)
+                }
+            }
         }
     }
 
@@ -359,9 +415,5 @@ object AudioPlayManager {
     private fun stopService() {
         val context = appContext ?: return
         context.stopService(Intent(context, com.xyoye.player_component.audio.service.AudioPlayService::class.java))
-    }
-
-    private suspend fun delay(timeMs: Long) {
-        kotlinx.coroutines.delay(timeMs)
     }
 }

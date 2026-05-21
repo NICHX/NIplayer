@@ -255,10 +255,17 @@ class PlayBar @JvmOverloads constructor(
         }
 
         lifecycleOwner?.lifecycleScope?.launch {
+            AudioPlayManager.songDuration.collectLatest { duration ->
+                if (duration > 0) {
+                    viewBinding.playProgress.max = duration.toInt()
+                }
+            }
+        }
+
+        lifecycleOwner?.lifecycleScope?.launch {
             AudioPlayManager.playProgress.collectLatest { progress ->
-                val song = AudioPlayManager.currentSong.value
-                if (song != null && song.duration > 0) {
-                    viewBinding.playProgress.max = song.duration.toInt()
+                val duration = AudioPlayManager.songDuration.value
+                if (duration > 0) {
                     viewBinding.playProgress.progress = progress.toInt()
                 }
             }

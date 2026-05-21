@@ -52,6 +52,8 @@ class PlayerInterceptorActivity :
         val url = source.getVideoUrl()
         val title = source.getVideoTitle()
         if (isAudioFile(url) || isAudioFile(title)) {
+            AudioPlayManager.init(this)
+
             val groupSize = source.getGroupSize()
             if (groupSize > 1 && source is StorageVideoSource) {
                 lifecycleScope.launch(Dispatchers.IO) {
@@ -91,7 +93,6 @@ class PlayerInterceptorActivity :
 
                 val bgScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
                 bgScope.launch {
-                    val currentIndex = source.getGroupIndex()
                     val songs = mutableListOf<AudioSong>()
                     for (i in 0 until groupSize) {
                         try {
