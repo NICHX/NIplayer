@@ -14,6 +14,7 @@ import com.xyoye.common_component.adapter.addEmptyView
 import com.xyoye.common_component.adapter.addItem
 import com.xyoye.common_component.adapter.buildAdapter
 import com.xyoye.common_component.extension.isInvalid
+import com.xyoye.common_component.extension.toAudioCoverFile
 import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.extension.toMd5String
 import com.xyoye.common_component.utils.ThumbnailMemoryCache
@@ -175,8 +176,15 @@ class QuickAccessAdapter(
         } else {
             "${item.libraryId}-${item.storagePath}".toMd5String()
         }
+
+        val isAudio = com.xyoye.common_component.utils.isAudioFile(item.name)
+        val coverFile = if (isAudio) {
+            uniqueKey.toAudioCoverFile()
+        } else {
+            uniqueKey.toCoverFile()
+        }
         val coverSource = ThumbnailMemoryCache.getCoverPath(uniqueKey)
-            ?: uniqueKey.toCoverFile()?.takeIf { it.isInvalid().not() }?.absolutePath
+            ?: coverFile?.takeIf { it.isInvalid().not() }?.absolutePath
 
         if (coverSource != null) {
             imageView.scaleType = ImageView.ScaleType.CENTER_CROP

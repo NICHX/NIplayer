@@ -32,6 +32,7 @@ import com.gyf.immersionbar.BarHide
 import com.gyf.immersionbar.ImmersionBar
 import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.config.RouteTable
+import com.xyoye.common_component.extension.toAudioCoverFile
 import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.extension.toMetadataFile
 import com.xyoye.common_component.network.MusicMetadataApiService
@@ -479,14 +480,35 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
 
     private fun saveLrcCache(content: String): File {
         val song = AudioPlayManager.currentSong.value
+        
         val lrcDir = File(cacheDir, "lrc_cache")
         if (!lrcDir.exists()) lrcDir.mkdirs()
+        
+        var lrcFile: File
+        
+        if (song != null && song.uri.startsWith("/")) {
+            val musicFile = File(song.uri)
+            val lrcPath = musicFile.parentFile?.absolutePath + "/" + musicFile.nameWithoutExtension + ".lrc"
+            val musicDirLrcFile = File(lrcPath)
+            
+            if (musicDirLrcFile.parentFile?.canWrite() == true) {
+                try {
+                    musicDirLrcFile.parentFile?.mkdirs()
+                    musicDirLrcFile.writeText(content)
+                    DDLog.i("AudioPlayer", "歌词已保存到音乐目录: $lrcPath")
+                    return musicDirLrcFile
+                } catch (e: Exception) {
+                    DDLog.e("AudioPlayer", "保存歌词到音乐目录失败: ${e.message}")
+                }
+            }
+        }
+        
         val fileName = if (song != null) {
             "${song.uniqueKey}.lrc"
         } else {
             "lrc_${System.currentTimeMillis()}.lrc"
         }
-        val lrcFile = File(lrcDir, fileName)
+        lrcFile = File(lrcDir, fileName)
         lrcFile.writeText(content)
         return lrcFile
     }
@@ -523,7 +545,7 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
         }
 
         if (coverPath == null) {
-            val cachedCoverFile = song.uniqueKey.toCoverFile()
+            val cachedCoverFile = song.uniqueKey.toAudioCoverFile()
             if (cachedCoverFile != null && cachedCoverFile.exists() && cachedCoverFile.length() > 0) {
                 coverPath = cachedCoverFile.absolutePath
                 ThumbnailMemoryCache.putCoverPath(song.uniqueKey, coverPath)
@@ -631,7 +653,7 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
     private suspend fun saveCoverAsThumbnail(song: AudioSong, coverBytes: ByteArray): Boolean = withContext(Dispatchers.IO) {
         try {
             val uniqueKey = song.uniqueKey
-            val coverFile = uniqueKey.toCoverFile() ?: return@withContext false
+            val coverFile = uniqueKey.toAudioCoverFile() ?: return@withContext false
 
             coverFile.parentFile?.mkdirs()
 

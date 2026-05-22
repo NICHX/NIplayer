@@ -111,7 +111,11 @@ class StorageFileFragment :
                 scrollToTopBt?.animate()
                     ?.alpha(0f)
                     ?.setDuration(200)
-                    ?.withEndAction { scrollToTopBt?.visibility = View.GONE }
+                    ?.withEndAction { 
+                        if (!isDestroyed()) {
+                            scrollToTopBt?.visibility = View.GONE 
+                        }
+                    }
                     ?.start()
                 scrollProgressForPlayBar = 0
                 isPlayBarHidden = false
@@ -278,6 +282,8 @@ class StorageFileFragment :
         get() = requireActivity().findViewById<ViewGroup>(android.R.id.content)?.findViewWithTag<View>("play_bar_tag")
 
     private fun updateScrollToTopVisibility(recyclerView: RecyclerView) {
+        if (isDestroyed()) return
+        
         val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
         val firstVisible = layoutManager.findFirstCompletelyVisibleItemPosition()
         val bt = scrollToTopBt ?: return
@@ -293,18 +299,28 @@ class StorageFileFragment :
             if (bt.visibility == View.VISIBLE) {
                 bt.animate().cancel()
                 bt.animate().alpha(0f).setDuration(200).setInterpolator(DecelerateInterpolator())
-                    .withEndAction { bt.visibility = View.GONE }
+                    .withEndAction { 
+                        if (!isDestroyed()) {
+                            bt.visibility = View.GONE 
+                        }
+                    }
                     .start()
             }
         }
     }
 
     private fun updatePlayBarVisibility(dy: Int) {
+        if (isDestroyed()) return
+        
         val pb = playBar ?: return
         val pbHeight = pb.height
 
         if (pbHeight <= 0) {
-            pb.post { updatePlayBarVisibility(dy) }
+            pb.post { 
+                if (!isDestroyed()) {
+                    updatePlayBarVisibility(dy)
+                }
+            }
             return
         }
 
