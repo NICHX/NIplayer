@@ -39,6 +39,7 @@ object RouteTable {
         const val License = "/user/license"
         const val SwitchTheme = "/user/switch_theme"
         const val BackupManager = "/user/backup_manager"
+        const val MusicMetadataApi = "/user/music_metadata_api"
     }
 
     object Player {

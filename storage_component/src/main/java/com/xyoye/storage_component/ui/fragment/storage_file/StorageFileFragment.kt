@@ -101,6 +101,20 @@ class StorageFileFragment :
         scrollToTopBt?.setOnClickListener {
             if (!isDestroyed()) {
                 dataBinding.storageFileRv.scrollToPosition(0)
+                playBar?.let { pb ->
+                    pb.animate()
+                        .translationY(0f)
+                        .setDuration(200)
+                        .setInterpolator(DecelerateInterpolator())
+                        .start()
+                }
+                scrollToTopBt?.animate()
+                    ?.alpha(0f)
+                    ?.setDuration(200)
+                    ?.withEndAction { scrollToTopBt?.visibility = View.GONE }
+                    ?.start()
+                scrollProgressForPlayBar = 0
+                isPlayBarHidden = false
             }
         }
 
@@ -136,6 +150,14 @@ class StorageFileFragment :
         super.onResume()
         viewModel.updateHistory()
         setRecyclerViewItemFocusAble(true)
+        resetPlayBarAndScrollButton()
+    }
+
+    private fun resetPlayBarAndScrollButton() {
+        scrollProgressForPlayBar = 0
+        isPlayBarHidden = false
+        playBar?.translationY = 0f
+        scrollToTopBt?.visibility = View.GONE
     }
 
     fun setFilterTypes(types: Set<FileFilterType>) {
@@ -206,6 +228,19 @@ class StorageFileFragment :
                                 ThumbnailGeneratorManager.pauseGenerateThumbnails()
                             }
                         }
+                        RecyclerView.SCROLL_STATE_IDLE -> {
+                            isScrolling = false
+                            scrollProgressForPlayBar = 0
+                            playBar?.let { pb ->
+                                if (pb.translationY != 0f) {
+                                    pb.animate()
+                                        .translationY(0f)
+                                        .setDuration(200)
+                                        .setInterpolator(DecelerateInterpolator())
+                                        .start()
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -227,13 +262,20 @@ class StorageFileFragment :
                         ThumbnailGeneratorManager.reprioritize(visibleKeys)
                     }
                     updateScrollToTopVisibility(recyclerView)
+                    updatePlayBarVisibility(dy)
                 }
             })
         }
     }
 
+    private var isPlayBarHidden = false
+    private var scrollProgressForPlayBar = 0
+
     private val scrollToTopBt: View?
         get() = requireActivity().findViewById(R.id.scroll_to_top_bt)
+
+    private val playBar: View?
+        get() = requireActivity().findViewById<ViewGroup>(android.R.id.content)?.findViewWithTag<View>("play_bar_tag")
 
     private fun updateScrollToTopVisibility(recyclerView: RecyclerView) {
         val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
@@ -243,10 +285,11 @@ class StorageFileFragment :
             if (bt.visibility != View.VISIBLE) {
                 bt.visibility = View.VISIBLE
                 bt.animate().cancel()
-                bt.alpha = 0f
-                bt.animate().alpha(1f).setDuration(200).setInterpolator(DecelerateInterpolator()).start()
             }
+            val progress = scrollProgressForPlayBar.coerceIn(0, 100) / 100f
+            bt.alpha = 1f - progress
         } else {
+            bt.alpha = 0f
             if (bt.visibility == View.VISIBLE) {
                 bt.animate().cancel()
                 bt.animate().alpha(0f).setDuration(200).setInterpolator(DecelerateInterpolator())
@@ -254,6 +297,28 @@ class StorageFileFragment :
                     .start()
             }
         }
+    }
+
+    private fun updatePlayBarVisibility(dy: Int) {
+        val pb = playBar ?: return
+        val pbHeight = pb.height
+
+        if (pbHeight <= 0) {
+            pb.post { updatePlayBarVisibility(dy) }
+            return
+        }
+
+        if (dy > 0) {
+            scrollProgressForPlayBar = (scrollProgressForPlayBar - kotlin.math.abs(dy)).coerceAtLeast(0)
+        } else if (dy < 0) {
+            scrollProgressForPlayBar = (scrollProgressForPlayBar + kotlin.math.abs(dy)).coerceAtMost(100)
+        }
+
+        isPlayBarHidden = scrollProgressForPlayBar == 0
+
+        val progress = scrollProgressForPlayBar.coerceIn(0, 100) / 100f
+        val targetTranslationY = (1f - progress) * pbHeight
+        pb.translationY = targetTranslationY
     }
 
     fun requestFocus(reversed: Boolean = false) {
@@ -294,6 +359,9 @@ class StorageFileFragment :
         pendingThumbnailUpdates.clear()
         ThumbnailGeneratorManager.setThumbnailCallback(null)
         ThumbnailGeneratorManager.clearPendingTasks()
+
+        playBar?.translationY = 0f
+        scrollProgressForPlayBar = 0
     }
     
     override fun onThumbnailGenerated(file: StorageFile) {

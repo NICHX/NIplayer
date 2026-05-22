@@ -2,6 +2,7 @@ package com.xyoye.common_component.weight.dialog
 
 import android.app.Activity
 import android.content.res.ColorStateList
+import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Bundle
@@ -57,17 +58,62 @@ abstract class BaseBottomDialog<T : ViewDataBinding>(
             val layoutParams = attributes
             layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
             layoutParams.height = WindowManager.LayoutParams.WRAP_CONTENT
+            layoutParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                    WindowManager.LayoutParams.SOFT_INPUT_IS_FORWARD_NAVIGATION
             attributes = layoutParams
 
             setGravity(Gravity.BOTTOM)
         }
 
-        //默认展开
-        behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        behavior.apply {
+            state = BottomSheetBehavior.STATE_EXPANDED
+            skipCollapsed = true
+            isHideable = true
+        }
 
         setContentView(rootViewBinding.root)
 
+        setupKeyboardAnimation()
+
         initView(childViewBinding)
+    }
+
+    private fun setupKeyboardAnimation() {
+        rootViewBinding.root.viewTreeObserver.addOnGlobalLayoutListener {
+            val rect = android.graphics.Rect()
+            rootViewBinding.root.getWindowVisibleDisplayFrame(rect)
+            val screenHeight = rootViewBinding.root.rootView.height
+            val keypadHeight = screenHeight - rect.bottom
+
+            if (keypadHeight > screenHeight * 0.15) {
+                val bottomMargin = keypadHeight + dp2px(16)
+                animateToKeyboardVisible(bottomMargin)
+            } else {
+                animateToKeyboardHidden()
+            }
+        }
+    }
+
+    private fun animateToKeyboardVisible(bottomMargin: Int) {
+        val params = (rootViewBinding.root.parent as? View)?.layoutParams as? android.widget.FrameLayout.LayoutParams
+        params?.let {
+            if (it.bottomMargin != bottomMargin) {
+                it.bottomMargin = bottomMargin
+                (rootViewBinding.root.parent as? View)?.animate()
+                    ?.translationY((-bottomMargin + dp2px(16)).toFloat())
+                    ?.setDuration(250)
+                    ?.setInterpolator(android.view.animation.DecelerateInterpolator())
+                    ?.start()
+            }
+        }
+    }
+
+    private fun animateToKeyboardHidden() {
+        (rootViewBinding.root.parent as? View)?.animate()
+            ?.translationY(0f)
+            ?.setDuration(200)
+            ?.setInterpolator(android.view.animation.DecelerateInterpolator())
+            ?.start()
     }
 
     protected fun setTitle(text: String) {

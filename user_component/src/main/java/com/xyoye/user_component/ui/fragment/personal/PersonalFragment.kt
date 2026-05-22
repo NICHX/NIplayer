@@ -5,6 +5,8 @@ import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import com.xyoye.common_component.base.BaseFragment
 import com.xyoye.common_component.config.RouteTable
+import com.xyoye.common_component.weight.BottomActionDialog
+import com.xyoye.data_component.bean.SheetActionBean
 import com.xyoye.user_component.BR
 import com.xyoye.user_component.R
 import com.xyoye.user_component.databinding.FragmentPersonalBinding
@@ -52,12 +54,8 @@ class PersonalFragment : BaseFragment<PersonalFragmentViewModel, FragmentPersona
                 .navigation()
         }
 
-
-
-        dataBinding.shooterSubtitleLl.setOnClickListener {
-            ARouter.getInstance()
-                .build(RouteTable.Local.ShooterSubtitle)
-                .navigation()
+        dataBinding.apiManagerLl?.setOnClickListener {
+            showApiManagerDialog()
         }
 
         dataBinding.thumbnailSettingLl?.setOnClickListener {
@@ -71,5 +69,38 @@ class PersonalFragment : BaseFragment<PersonalFragmentViewModel, FragmentPersona
                 .build(RouteTable.User.SettingApp)
                 .navigation()
         }
+    }
+
+    private fun showApiManagerDialog() {
+        val subtitleApiAction = SheetActionBean(
+            actionId = "subtitle_api",
+            actionName = "字幕API",
+            actionIconRes = R.drawable.ic_shooter_subtitle_download
+        )
+        val musicMetadataApiAction = SheetActionBean(
+            actionId = "music_metadata_api",
+            actionName = "音乐元数据API",
+            actionIconRes = R.drawable.ic_domain_url
+        )
+
+        BottomActionDialog(
+            requireActivity(),
+            listOf(subtitleApiAction, musicMetadataApiAction),
+            "API管理"
+        ) {
+            when (it.actionId) {
+                "subtitle_api" -> {
+                    ARouter.getInstance()
+                        .build(RouteTable.Local.ShooterSubtitle)
+                        .navigation()
+                }
+                "music_metadata_api" -> {
+                    ARouter.getInstance()
+                        .build(RouteTable.User.MusicMetadataApi)
+                        .navigation()
+                }
+            }
+            return@BottomActionDialog true
+        }.show()
     }
 }
