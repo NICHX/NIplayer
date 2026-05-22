@@ -85,6 +85,12 @@ class AlbumCoverView @JvmOverloads constructor(
         }
     }
 
+    var showNeedle = true
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     private val playAnimator = ValueAnimator.ofFloat(NEEDLE_ROTATION_PAUSE, NEEDLE_ROTATION_PLAY).apply {
         duration = 300
         interpolator = DecelerateInterpolator()
@@ -122,16 +128,29 @@ class AlbumCoverView @JvmOverloads constructor(
         needleCenterY = (needleBitmap.width / 5.5f).toInt()
 
         discBitmap = discBitmap.scale(unit * 6, unit * 6)
-        val discOffsetY = (needleBitmap.height / 1.5).toInt()
         discStartX = (width - discBitmap.width) / 2
-        discStartY = discOffsetY
+        if (showNeedle) {
+            val discOffsetY = (needleBitmap.height / 1.5).toInt()
+            discStartY = discOffsetY
+            discCenterY = discBitmap.height / 2 + discOffsetY
+        } else {
+            discStartY = (height - discBitmap.height) / 2
+            discCenterY = discStartY + discBitmap.height / 2
+        }
         discCenterX = width / 2
-        discCenterY = discBitmap.height / 2 + discOffsetY
 
         coverSize = unit * 4
         coverStartX = (width - coverSize) / 2
-        coverStartY = discOffsetY + (discBitmap.height - coverSize) / 2
+        coverStartY = discStartY + (discBitmap.height - coverSize) / 2
         coverBorderWidth = dp2px(6f)
+    }
+
+    fun centerDiscForLandscape() {
+        showNeedle = false
+        if (width > 0 && height > 0) {
+            initSize()
+            invalidate()
+        }
     }
 
     fun initNeedle(isPlaying: Boolean) {
@@ -343,9 +362,11 @@ class AlbumCoverView @JvmOverloads constructor(
         canvas.restore()
 
         // 4. Draw needle (not affected by slide offset)
-        needleMatrix.setRotate(needleRotation, needleCenterX.toFloat(), needleCenterY.toFloat())
-        needleMatrix.preTranslate(needleStartX.toFloat(), needleStartY.toFloat())
-        canvas.drawBitmap(needleBitmap, needleMatrix, null)
+        if (showNeedle) {
+            needleMatrix.setRotate(needleRotation, needleCenterX.toFloat(), needleCenterY.toFloat())
+            needleMatrix.preTranslate(needleStartX.toFloat(), needleStartY.toFloat())
+            canvas.drawBitmap(needleBitmap, needleMatrix, null)
+        }
     }
 
     override fun onDetachedFromWindow() {

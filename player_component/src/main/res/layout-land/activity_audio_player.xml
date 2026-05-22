@@ -50,20 +50,26 @@
             android:baselineAligned="false"
             android:orientation="horizontal">
 
-            <androidx.constraintlayout.widget.ConstraintLayout
+            <FrameLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:paddingVertical="16dp">
+                android:clipChildren="false">
+
+                <com.xyoye.player_component.audio.widget.AlbumCoverView
+                    android:id="@+id/album_cover_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="center"
+                    android:layout_margin="0dp"
+                    android:visibility="visible" />
 
                 <FrameLayout
                     android:id="@+id/title_layout"
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="@dimen/common_title_bar_size"
-                    android:gravity="center_vertical"
-                    app:layout_constraintLeft_toLeftOf="parent"
-                    app:layout_constraintRight_toRightOf="parent"
-                    app:layout_constraintTop_toTopOf="parent">
+                    android:layout_gravity="top|start"
+                    android:gravity="center_vertical">
 
                     <ImageView
                         android:id="@+id/iv_close"
@@ -77,161 +83,157 @@
 
                 </FrameLayout>
 
-                <com.xyoye.player_component.audio.widget.AlbumCoverView
-                    android:id="@+id/album_cover_view"
-                    android:layout_width="0dp"
-                    android:layout_height="0dp"
-                    android:layout_gravity="center"
-                    android:layout_marginHorizontal="16dp"
-                    android:layout_marginBottom="16dp"
+            </FrameLayout>
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:id="@+id/fl_cover_lrc"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:paddingTop="18dp">
+
+                <androidx.constraintlayout.widget.Group
+                    android:id="@+id/lrc_layout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
                     android:visibility="visible"
+                    app:constraint_referenced_ids="lrc_view,iv_lrc_mask_top,iv_lrc_mask_bottom" />
+
+                <TextView
+                    android:id="@+id/tv_title"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:paddingHorizontal="24dp"
+                    android:singleLine="true"
+                    android:textColor="@color/translucent_white_p80"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    tools:text="歌曲标题" />
+
+                <TextView
+                    android:id="@+id/tv_artist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    tools:visibility="gone" />
+
+                <me.wcy.lrcview.LrcView
+                    android:id="@+id/lrc_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginTop="8dp"
                     app:layout_constraintBottom_toTopOf="@+id/control_layout"
-                    app:layout_constraintLeft_toLeftOf="parent"
-                    app:layout_constraintRight_toRightOf="parent"
-                    app:layout_constraintTop_toBottomOf="@+id/title_layout" />
+                    app:layout_constraintTop_toBottomOf="@+id/tv_title"
+                    app:lrcAnimationDuration="1000"
+                    app:lrcCurrentTextColor="@color/white"
+                    app:lrcDividerHeight="28dp"
+                    app:lrcNormalTextColor="@color/translucent_white_p50"
+                    app:lrcPadding="12dp"
+                    app:lrcTextSize="22dp"
+                    app:lrcTimelineColor="@color/translucent_white_p50"
+                    app:lrcTimelineTextColor="#CCFFFFFF" />
+
+                <ImageView
+                    android:id="@+id/iv_lrc_mask_top"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    app:layout_constraintTop_toTopOf="@+id/lrc_view" />
+
+                <ImageView
+                    android:id="@+id/iv_lrc_mask_bottom"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    app:layout_constraintBottom_toBottomOf="@+id/lrc_view" />
 
                 <LinearLayout
                     android:id="@+id/control_layout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:gravity="center_horizontal"
                     android:orientation="vertical"
-                    android:paddingHorizontal="24dp"
+                    android:paddingHorizontal="16dp"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="8dp"
                     app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintLeft_toLeftOf="parent"
-                    app:layout_constraintRight_toRightOf="parent">
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent">
 
-                    <LinearLayout
-                        android:id="@+id/ll_actions"
+                    <SeekBar
+                        android:id="@+id/sb_progress"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:maxHeight="2dp"
+                        android:minHeight="2dp"
+                        android:paddingStart="6dp"
+                        android:paddingEnd="6dp"
+                        android:progressDrawable="@drawable/bg_playing_playback_progress"
+                        android:thumb="@drawable/ic_playing_playback_progress_thumb" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:gravity="center_vertical"
                         android:orientation="horizontal">
 
-                        <LinearLayout
-                            android:layout_width="0dp"
+                        <TextView
+                            android:id="@+id/tv_current_time"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_weight="3"
-                            android:orientation="vertical">
+                            android:textColor="@android:color/white"
+                            android:textSize="10sp"
+                            tools:text="00:00" />
 
-                            <TextView
-                                android:id="@+id/tv_title"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:ellipsize="end"
-                                android:singleLine="true"
-                                android:textColor="@color/translucent_white_p80"
-                                android:textSize="17sp"
-                                android:textStyle="bold"
-                                tools:text="歌曲标题" />
-
-                            <TextView
-                                android:id="@+id/tv_artist"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:ellipsize="end"
-                                android:singleLine="true"
-                                android:textColor="@color/grey"
-                                android:textSize="12sp"
-                                tools:text="艺术家" />
-
-                        </LinearLayout>
-
-                        <ImageView
-                            android:id="@+id/iv_like"
+                        <View
                             android:layout_width="0dp"
+                            android:layout_height="0dp"
+                            android:layout_weight="1" />
+
+                        <TextView
+                            android:id="@+id/tv_total_time"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:paddingVertical="8dp"
-                            android:paddingEnd="10dp"
-                            android:scaleType="fitEnd"
-                            android:src="@drawable/ic_favorite_selector"
-                            app:tint="@color/translucent_white_p80" />
+                            android:textColor="@color/translucent_white_p50"
+                            android:textSize="10sp"
+                            tools:text="00:00" />
 
                     </LinearLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:gravity="center_vertical"
-                        android:orientation="vertical">
-
-                        <SeekBar
-                            android:id="@+id/sb_progress"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:maxHeight="2dp"
-                            android:minHeight="2dp"
-                            android:paddingStart="6dp"
-                            android:paddingEnd="6dp"
-                            android:progressDrawable="@drawable/bg_playing_playback_progress"
-                            android:thumb="@drawable/ic_playing_playback_progress_thumb" />
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:orientation="horizontal">
-
-                            <TextView
-                                android:id="@+id/tv_current_time"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:textColor="@android:color/white"
-                                android:textSize="10sp"
-                                tools:text="00:00" />
-
-                            <View
-                                android:layout_width="0dp"
-                                android:layout_height="0dp"
-                                android:layout_weight="1" />
-
-                            <TextView
-                                android:id="@+id/tv_total_time"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:textColor="@color/translucent_white_p50"
-                                android:textSize="10sp"
-                                tools:text="00:00" />
-
-                        </LinearLayout>
-
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="56dp"
-                        android:layout_marginTop="16dp"
-                        android:layout_marginBottom="24dp"
+                        android:layout_height="44dp"
+                        android:layout_marginTop="2dp"
+                        android:gravity="center"
                         android:orientation="horizontal">
 
-                        <ImageView
-                            android:id="@+id/iv_mode"
+                        <View
                             android:layout_width="0dp"
-                            android:layout_height="match_parent"
-                            android:layout_weight="1"
-                            android:paddingVertical="8dp"
-                            android:scaleType="fitStart"
-                            android:src="@drawable/ic_play_mode_level_list"
-                            app:tint="@color/translucent_white_p80" />
+                            android:layout_height="0dp"
+                            android:layout_weight="1" />
 
                         <ImageView
                             android:id="@+id/iv_prev"
-                            android:layout_width="0dp"
-                            android:layout_height="match_parent"
-                            android:layout_weight="1"
-                            android:paddingVertical="16dp"
-                            android:paddingStart="10dp"
-                            android:scaleType="fitStart"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:padding="6dp"
+                            android:scaleType="fitCenter"
                             android:src="@drawable/ic_previous"
                             app:tint="@color/translucent_white_p80" />
 
+                        <View
+                            android:layout_width="0dp"
+                            android:layout_height="0dp"
+                            android:layout_weight="1" />
+
                         <FrameLayout
                             android:id="@+id/fl_play"
-                            android:layout_width="0dp"
-                            android:layout_height="match_parent"
-                            android:layout_weight="1"
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
                             android:gravity="center">
 
                             <ImageView
@@ -243,116 +245,74 @@
 
                             <com.google.android.material.progressindicator.CircularProgressIndicator
                                 android:id="@+id/play_loading"
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
+                                android:layout_width="44dp"
+                                android:layout_height="44dp"
                                 android:layout_gravity="center"
                                 android:indeterminate="true"
                                 android:visibility="gone"
                                 app:indicatorColor="@color/translucent_white_p80"
-                                app:indicatorSize="48dp"
+                                app:indicatorSize="44dp"
                                 app:trackThickness="2dp" />
 
                         </FrameLayout>
 
+                        <View
+                            android:layout_width="0dp"
+                            android:layout_height="0dp"
+                            android:layout_weight="1" />
+
                         <ImageView
                             android:id="@+id/iv_next"
-                            android:layout_width="0dp"
-                            android:layout_height="match_parent"
-                            android:layout_weight="1"
-                            android:paddingVertical="16dp"
-                            android:paddingEnd="10dp"
-                            android:scaleType="fitEnd"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:padding="6dp"
+                            android:scaleType="fitCenter"
                             android:src="@drawable/ic_next"
                             app:tint="@color/translucent_white_p80" />
 
-                        <ImageView
-                            android:id="@+id/iv_playlist"
+                        <View
                             android:layout_width="0dp"
-                            android:layout_height="match_parent"
-                            android:layout_weight="1"
-                            android:paddingVertical="16dp"
-                            android:scaleType="fitEnd"
-                            android:src="@drawable/ic_playlist"
-                            app:tint="@color/translucent_white_p80" />
+                            android:layout_height="0dp"
+                            android:layout_weight="1" />
 
                     </LinearLayout>
 
                 </LinearLayout>
 
-            </androidx.constraintlayout.widget.ConstraintLayout>
-
-            <androidx.constraintlayout.widget.ConstraintLayout
-                android:id="@+id/fl_cover_lrc"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:paddingVertical="16dp">
-
-                <androidx.constraintlayout.widget.Group
-                    android:id="@+id/lrc_layout"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:visibility="visible"
-                    app:constraint_referenced_ids="volume_layout,lrc_view,iv_lrc_mask_top,iv_lrc_mask_bottom" />
-
                 <LinearLayout
                     android:id="@+id/volume_layout"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingLeft="16dp"
-                    android:paddingRight="16dp"
-                    app:layout_constraintTop_toTopOf="parent">
-
-                    <ImageView
-                        android:layout_width="16dp"
-                        android:layout_height="16dp"
-                        android:contentDescription="@null"
-                        android:src="@drawable/ic_volume"
-                        app:tint="@color/translucent_white_p80" />
+                    android:visibility="gone"
+                    tools:visibility="gone">
 
                     <SeekBar
                         android:id="@+id/sb_volume"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:maxHeight="2dp"
-                        android:minHeight="2dp"
-                        android:paddingTop="4dp"
-                        android:paddingBottom="4dp"
-                        android:progressDrawable="@drawable/bg_playing_volume_progress"
-                        android:thumb="@drawable/ic_playing_volume_progress_thumb" />
+                        android:layout_width="1dp"
+                        android:layout_height="wrap_content" />
 
                 </LinearLayout>
 
-                <me.wcy.lrcview.LrcView
-                    android:id="@+id/lrc_view"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_marginTop="16dp"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintTop_toBottomOf="@+id/volume_layout"
-                    app:lrcAnimationDuration="1000"
-                    app:lrcCurrentTextColor="@color/white"
-                    app:lrcDividerHeight="24dp"
-                    app:lrcNormalTextColor="@color/translucent_white_p50"
-                    app:lrcPadding="40dp"
-                    app:lrcTextSize="16dp"
-                    app:lrcTimelineColor="@color/translucent_white_p50"
-                    app:lrcTimelineTextColor="#CCFFFFFF" />
+                <ImageView
+                    android:id="@+id/iv_like"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    tools:visibility="gone" />
 
                 <ImageView
-                    android:id="@+id/iv_lrc_mask_top"
-                    android:layout_width="match_parent"
-                    android:layout_height="36dp"
-                    app:layout_constraintTop_toTopOf="@+id/lrc_view" />
+                    android:id="@+id/iv_mode"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    tools:visibility="gone" />
 
                 <ImageView
-                    android:id="@+id/iv_lrc_mask_bottom"
-                    android:layout_width="match_parent"
-                    android:layout_height="36dp"
-                    app:layout_constraintBottom_toBottomOf="@+id/lrc_view" />
+                    android:id="@+id/iv_playlist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    tools:visibility="gone" />
 
             </androidx.constraintlayout.widget.ConstraintLayout>
 

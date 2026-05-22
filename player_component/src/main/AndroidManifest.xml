@@ -19,9 +19,7 @@
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:screenOrientation="portrait" />
         <activity
-            android:name=".audio.ui.AudioPlayerActivity"
-            android:configChanges="orientation|screenSize|screenLayout"
-            android:screenOrientation="portrait" />
+            android:name=".audio.ui.AudioPlayerActivity" />
 
         <service
             android:name=".audio.service.AudioPlayService"

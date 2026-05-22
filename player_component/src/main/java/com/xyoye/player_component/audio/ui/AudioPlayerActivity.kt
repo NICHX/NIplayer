@@ -12,6 +12,9 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.TransitionDrawable
 import android.media.AudioManager
+import android.os.Build
+import android.os.Bundle
+import android.view.View
 import android.widget.ImageView
 import android.widget.SeekBar
 import androidx.core.view.isVisible
@@ -25,6 +28,7 @@ import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
+import com.gyf.immersionbar.BarHide
 import com.gyf.immersionbar.ImmersionBar
 import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.config.RouteTable
@@ -59,6 +63,8 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
     private var isDraggingProgress = false
     private var isShowCover = true
     private var lrcLoadJob: kotlinx.coroutines.Job? = null
+    private var loadedSongKey: String? = null
+    private var lastProcessedSongKey: String? = null
     private val audioManager by lazy {
         getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
@@ -90,6 +96,11 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
             .transparentNavigationBar()
             .statusBarDarkFont(false)
             .navigationBarDarkIcon(false)
+            .apply {
+                if (isLandscape()) {
+                    hideBar(BarHide.FLAG_HIDE_STATUS_BAR)
+                }
+            }
             .init()
     }
 
@@ -133,11 +144,21 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
         setDefaultCover()
         val playState = AudioPlayManager.playState.value
         dataBinding.albumCoverView.initNeedle(playState.isPlaying)
-        dataBinding.albumCoverView.setOnClickListener {
-            switchCoverLrc(false)
-        }
-        dataBinding.lrcView.setOnTapListener { _, _, _ ->
-            switchCoverLrc(true)
+        if (isLandscape()) {
+            dataBinding.albumCoverView.centerDiscForLandscape()
+            dataBinding.lrcView.setOnTapListener { _, _, _ ->
+                switchCoverLrc(true)
+            }
+            dataBinding.flCoverLrc.setOnClickListener {
+                switchCoverLrc(true)
+            }
+        } else {
+            dataBinding.albumCoverView.setOnClickListener {
+                switchCoverLrc(false)
+            }
+            dataBinding.lrcView.setOnTapListener { _, _, _ ->
+                switchCoverLrc(true)
+            }
         }
         dataBinding.lrcView.setDraggable(true) { _, time ->
             val state = AudioPlayManager.playState.value
@@ -238,6 +259,9 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 AudioPlayManager.currentSong.collect { song ->
                     if (song != null) {
+                        if (song.uniqueKey == lastProcessedSongKey) return@collect
+                        lastProcessedSongKey = song.uniqueKey
+
                         val playState = AudioPlayManager.playState.value
                         if (playState !is AudioPlayState.Preparing && playState !is AudioPlayState.Playing && playState !is AudioPlayState.Pause) {
                             return@collect
@@ -324,6 +348,8 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
     }
 
     private fun loadLrc(song: AudioSong) {
+        if (song.uniqueKey == loadedSongKey) return
+        loadedSongKey = song.uniqueKey
         lrcLoadJob?.cancel()
         lrcLoadJob = lifecycleScope.launch {
             loadLrcInternal(song)
@@ -581,7 +607,7 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
     }
 
     private fun switchCoverLrc(showCover: Boolean) {
-        if (resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) {
+        if (!isLandscape()) {
             dataBinding.albumCoverView.isVisible = showCover
             dataBinding.lrcLayout.isVisible = showCover.not()
         }
@@ -596,6 +622,9 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
         }
         updateLrcMask()
     }
+
+    private fun isLandscape(): Boolean =
+        resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     private fun updateLrcMask() {
         if (!dataBinding.lrcLayout.isVisible) return
