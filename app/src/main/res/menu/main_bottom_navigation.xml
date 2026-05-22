@@ -7,7 +7,7 @@
     <item
         android:id="@+id/navigation_mine"
         android:icon="@drawable/ic_main_mine"
-        android:title="本地" />
+        android:title="媒体库" />
     <item
         android:id="@+id/navigation_personal"
         android:icon="@drawable/ic_main_personal"

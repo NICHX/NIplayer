@@ -145,7 +145,7 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="保存到视频同目录"
+                                android:text="保存缩略图到服务器"
                                 android:textColor="@color/text_black"
                                 android:textSize="16sp" />
 
@@ -153,7 +153,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="4dp"
-                                android:text="开启后视频缩略图将保存为「视频名-thumb.jpg」到视频所在文件夹"
+                                android:text="开启后视频缩略图将保存到视频目录下的「./thumb」文件夹，以优化多设备访问性能"
                                 android:textColor="@color/text_gray"
                                 android:textSize="12sp" />
                         </LinearLayout>

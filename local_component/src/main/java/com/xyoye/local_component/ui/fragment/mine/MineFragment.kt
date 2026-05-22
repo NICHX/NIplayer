@@ -11,7 +11,6 @@ import com.xyoye.common_component.extension.deletable
 import com.xyoye.common_component.extension.grid
 import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.weight.BottomActionDialog
-import com.xyoye.common_component.weight.ExpandableFabMenu
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.common_component.weight.dialog.CommonDialog
 import com.xyoye.data_component.bean.SheetActionBean
@@ -37,22 +36,9 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
 
         initRv()
 
-        setupExpandableFab()
-
         viewModel.mediaLibWithStatusLiveData.observe(this) {
             dataBinding.mediaLibRv.setData(it)
         }
-    }
-
-    private fun setupExpandableFab() {
-        dataBinding.expandableFab.addAction(
-            ExpandableFabMenu.FabAction(
-                id = 2,
-                icon = R.drawable.ic_add_white,
-                label = "新增设备存储库",
-                onClick = { showAddStorageDialog() }
-            )
-        )
     }
 
     private fun initRv() {
@@ -104,32 +90,13 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
                     .navigation()
             }
 
-            MediaType.LOCAL_STORAGE,
-            MediaType.FTP_SERVER,
-            MediaType.SMB_SERVER,
-            MediaType.WEBDAV_SERVER,
-            MediaType.EXTERNAL_STORAGE,
-            MediaType.ALSIT_STORAGE -> {
+            else -> {
                 ARouter.getInstance()
                     .build(RouteTable.Stream.StorageFile)
                     .withParcelable("storageLibrary", data)
                     .navigation()
             }
         }
-    }
-
-    private fun showAddStorageDialog() {
-        BottomActionDialog(
-            requireActivity(),
-            listOf(MediaType.EXTERNAL_STORAGE.toAction()),
-            "新增"
-        ) {
-            ARouter.getInstance()
-                .build(RouteTable.Stream.StoragePlus)
-                .withSerializable("mediaType", it.actionId as MediaType)
-                .navigation()
-            return@BottomActionDialog true
-        }.show()
     }
 
     private fun showManageStorageDialog(data: MediaLibraryEntity) {

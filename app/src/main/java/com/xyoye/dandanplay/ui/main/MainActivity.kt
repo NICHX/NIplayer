@@ -68,7 +68,7 @@ class MainActivity : BaseActivity<MainViewModel, ActivityMainBinding>() {
                 }
 
                 R.id.navigation_mine -> {
-                    title = "本地"
+                    title = "媒体库"
                     switchFragment(TAG_FRAGMENT_MINE)
                 }
 

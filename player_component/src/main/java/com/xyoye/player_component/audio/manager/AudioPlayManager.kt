@@ -12,12 +12,14 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import com.xyoye.common_component.source.media.StorageVideoSource
 import com.xyoye.common_component.utils.AudioMetadata
 import com.xyoye.common_component.utils.AudioMetadataCache
 import com.xyoye.player_component.audio.model.AudioPlayMode
 import com.xyoye.player_component.audio.model.AudioPlayState
 import com.xyoye.player_component.audio.model.AudioSong
+import com.xyoye.player_component.audio.service.AudioPlayService
 import com.xyoye.player_component.audio.utils.AudioMetadataLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -156,6 +158,7 @@ object AudioPlayManager {
         exoPlayer?.stop()
         _playState.value = AudioPlayState.Idle
         _playProgress.value = 0
+        stopService()
     }
 
     fun setPlayMode(mode: AudioPlayMode) {
@@ -184,19 +187,33 @@ object AudioPlayManager {
         val context = appContext ?: return
         val player = ensurePlayer(context)
 
-        val mediaItems = songs.map { song ->
+        val headers = if (_pendingSource != null) {
+            _pendingSource!!.indexStorageFile(startIndex).storage.getNetworkHeaders()
+        } else null
+
+        val dataSourceFactory = if (headers != null && headers.isNotEmpty()) {
+            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                .setDefaultRequestProperties(headers)
+            DefaultDataSource.Factory(context, httpDataSourceFactory)
+        } else {
+            DefaultDataSource.Factory(context)
+        }
+
+        val mediaSources = songs.map { song ->
             val metadataBuilder = MediaMetadata.Builder()
                 .setTitle(song.title.ifEmpty { null })
                 .setArtist(song.artist.ifEmpty { null })
                 .setArtworkUri(song.coverPath?.let { Uri.parse(it) })
-            MediaItem.Builder()
+            val mediaItem = MediaItem.Builder()
                 .setMediaId(song.uniqueKey)
                 .setUri(Uri.parse(song.uri))
                 .setMediaMetadata(metadataBuilder.build())
                 .build()
+            ProgressiveMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(mediaItem)
         }
 
-        player.setMediaItems(mediaItems)
+        player.setMediaSources(mediaSources)
         currentIndex = startIndex
         _currentSong.value = songs[startIndex]
         player.seekTo(startIndex, 0)
@@ -220,19 +237,33 @@ object AudioPlayManager {
         val context = appContext ?: return
         val player = exoPlayer ?: return
 
-        val mediaItems = songs.map { song ->
+        val headers = if (_pendingSource != null) {
+            _pendingSource!!.indexStorageFile(0).storage.getNetworkHeaders()
+        } else null
+
+        val dataSourceFactory = if (headers != null && headers.isNotEmpty()) {
+            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                .setDefaultRequestProperties(headers)
+            DefaultDataSource.Factory(context, httpDataSourceFactory)
+        } else {
+            DefaultDataSource.Factory(context)
+        }
+
+        val mediaSources = songs.map { song ->
             val metadataBuilder = MediaMetadata.Builder()
                 .setTitle(song.title.ifEmpty { null })
                 .setArtist(song.artist.ifEmpty { null })
                 .setArtworkUri(song.coverPath?.let { Uri.parse(it) })
-            MediaItem.Builder()
+            val mediaItem = MediaItem.Builder()
                 .setMediaId(song.uniqueKey)
                 .setUri(Uri.parse(song.uri))
                 .setMediaMetadata(metadataBuilder.build())
                 .build()
+            ProgressiveMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(mediaItem)
         }
 
-        player.addMediaItems(mediaItems)
+        player.addMediaSources(mediaSources)
         _playlist.value = _playlist.value + songs
     }
 
@@ -320,7 +351,19 @@ object AudioPlayManager {
             _songDuration.value = song.duration
         }
 
-        val dataSourceFactory = DefaultDataSource.Factory(context)
+        val dataSourceFactory = if (_pendingSource != null) {
+            val storageFile = _pendingSource!!.indexStorageFile(currentIndex)
+            val headers = storageFile.storage.getNetworkHeaders()
+            if (headers != null && headers.isNotEmpty()) {
+                val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                    .setDefaultRequestProperties(headers)
+                DefaultDataSource.Factory(context, httpDataSourceFactory)
+            } else {
+                DefaultDataSource.Factory(context)
+            }
+        } else {
+            DefaultDataSource.Factory(context)
+        }
 
         val metadataBuilder = MediaMetadata.Builder()
             .setTitle(song.title.ifEmpty { null })
@@ -462,7 +505,7 @@ object AudioPlayManager {
         }
     }
 
-    suspend fun playWithMetadata(song: AudioSong, forceReload: Boolean = false): AudioSong {
+    suspend fun playWithMetadata(song: AudioSong, forceReload: Boolean = false, index: Int = currentIndex): AudioSong {
         val context = appContext ?: return song
         
         val cachedMetadata = AudioMetadataLoader.getCachedMetadata(song.uniqueKey)
@@ -476,11 +519,18 @@ object AudioPlayManager {
             song.duration == 0L && cachedMetadata.duration > 0
         
         if (needsReload) {
+            val headers = if (_pendingSource != null) {
+                try {
+                    _pendingSource!!.indexStorageFile(index).storage.getNetworkHeaders()
+                } catch (_: Exception) { null }
+            } else null
+
             val metadataResult = AudioMetadataLoader.loadMetadata(
                 context = context,
                 uniqueKey = song.uniqueKey,
                 uri = song.uri,
-                fileName = song.fileName
+                fileName = song.fileName,
+                headers = headers
             )
             
             val updatedSong = song.withMetadata(
@@ -556,7 +606,7 @@ object AudioPlayManager {
 
     private fun startService() {
         val context = appContext ?: return
-        val intent = Intent(context, com.xyoye.player_component.audio.service.AudioPlayService::class.java)
+        val intent = Intent(context, AudioPlayService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent)
         } else {
@@ -565,7 +615,6 @@ object AudioPlayManager {
     }
 
     private fun stopService() {
-        val context = appContext ?: return
-        context.stopService(Intent(context, com.xyoye.player_component.audio.service.AudioPlayService::class.java))
+        AudioPlayService.stopService()
     }
 }

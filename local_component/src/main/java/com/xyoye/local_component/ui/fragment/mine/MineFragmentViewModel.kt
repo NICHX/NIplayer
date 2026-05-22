@@ -26,9 +26,6 @@ class MineFragmentViewModel : BaseViewModel() {
         if (history != null) {
             result.add(history)
         }
-        result.addAll(libraries.filter {
-            it.mediaType == MediaType.LOCAL_STORAGE || it.mediaType == MediaType.EXTERNAL_STORAGE
-        })
         return result
     }
 
@@ -36,7 +33,6 @@ class MineFragmentViewModel : BaseViewModel() {
         viewModelScope.launch(context = Dispatchers.IO) {
             DatabaseManager.instance.getMediaLibraryDao()
                 .insert(
-                    MediaLibraryEntity.LOCAL,
                     MediaLibraryEntity.HISTORY
                 )
         }

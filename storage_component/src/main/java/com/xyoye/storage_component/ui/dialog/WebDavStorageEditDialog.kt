@@ -2,14 +2,15 @@ package com.xyoye.storage_component.ui.dialog
 
 import android.text.method.HideReturnsTransformationMethod
 import android.text.method.PasswordTransformationMethod
-import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.isGone
 import com.xyoye.common_component.extension.setTextColorRes
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.enums.MediaType
 import com.xyoye.storage_component.R
+import androidx.appcompat.widget.SwitchCompat
 import com.xyoye.storage_component.databinding.DialogWebDavLoginBinding
+
 import com.xyoye.storage_component.ui.activities.storage_plus.StoragePlusActivity
 
 /**
