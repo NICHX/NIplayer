@@ -30,6 +30,8 @@ class MediaViewModel : BaseViewModel() {
             MediaType.SMB_SERVER,
             MediaType.WEBDAV_SERVER,
             MediaType.ALSIT_STORAGE,
+            MediaType.LOCAL_STORAGE,
+            MediaType.EXTERNAL_STORAGE,
             MediaType.OTHER_STORAGE
         )
         val filtered = libraries.filter { serverTypes.contains(it.mediaType) }.toMutableList()
@@ -58,6 +60,7 @@ class MediaViewModel : BaseViewModel() {
 
             DatabaseManager.instance.getMediaLibraryDao()
                 .insert(
+                    MediaLibraryEntity.LOCAL,
                     MediaLibraryEntity.HISTORY
                 )
         }
