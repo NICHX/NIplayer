@@ -3,6 +3,7 @@ package com.xyoye.common_component.storage.impl
 import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import com.xyoye.common_component.base.app.BaseApplication
 import com.xyoye.common_component.network.config.HeaderKey
 import com.xyoye.common_component.network.helper.UnsafeOkHttpClient
 import com.xyoye.common_component.storage.AbstractStorage
@@ -21,6 +22,7 @@ import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import java.io.InputStream
 import java.net.URI
 import java.util.Date
@@ -119,6 +121,32 @@ class WebDavStorage(
         val storagePath = history.storagePath ?: return null
         return pathFile(storagePath, false).also {
             it.playHistory = history
+        }
+    }
+
+    override suspend fun cacheLrc(audioFile: StorageFile): String? {
+        if (audioFile.isDirectory() || !audioFile.isAudioFile()) return null
+        val audioFileName = audioFile.fileName() ?: return null
+        val audioNameWithoutExt = audioFileName.substringBeforeLast(".", "")
+        if (audioNameWithoutExt.isEmpty()) return null
+
+        val lrcFile = directoryFiles.firstOrNull { file ->
+            file.isFile() && file.fileName()?.let { name ->
+                name.substringBeforeLast(".", "").equals(audioNameWithoutExt, ignoreCase = true) &&
+                name.substringAfterLast(".", "").equals("lrc", ignoreCase = true)
+            } == true
+        } ?: return null
+
+        return try {
+            val inputStream = openFile(lrcFile) ?: return null
+            val content = inputStream.reader().readText()
+            val lrcDir = File(BaseApplication.getAppContext().cacheDir, "lrc_cache")
+            lrcDir.mkdirs()
+            val localFile = File(lrcDir, "${audioFile.uniqueKey()}.lrc")
+            localFile.writeText(content)
+            localFile.absolutePath
+        } catch (_: Exception) {
+            null
         }
     }
 

@@ -55,7 +55,8 @@ object AudioMetadataLoader {
         context: Context,
         uniqueKey: String,
         uri: String,
-        fileName: String = ""
+        fileName: String = "",
+        headers: Map<String, String>? = null
     ): AudioMetadataResult = withContext(Dispatchers.IO) {
         val cachedMetadata = AudioMetadataCache.get(uniqueKey)
         val cachedCoverPath = cachedMetadata?.coverPath ?: ThumbnailMemoryCache.getCoverPath(uniqueKey)
@@ -82,7 +83,11 @@ object AudioMetadataLoader {
                 if (cleanUri.startsWith("/")) {
                     mediaRetriever.setDataSource(cleanUri)
                 } else {
-                    mediaRetriever.setDataSource(uri)
+                    if (headers != null && headers.isNotEmpty()) {
+                        mediaRetriever.setDataSource(uri, headers)
+                    } else {
+                        mediaRetriever.setDataSource(uri)
+                    }
                 }
             }
 
@@ -101,7 +106,7 @@ object AudioMetadataLoader {
 
             val embeddedPicture = mediaRetriever.embeddedPicture
             val localCoverPath = if (embeddedPicture == null || embeddedPicture.isEmpty()) {
-                findLocalCoverFile(uri, fileName)
+                findLocalCoverFile(uri, fileName, headers)
             } else null
 
             var coverPath: String? = cachedCoverPath ?: localCoverPath
@@ -170,7 +175,7 @@ object AudioMetadataLoader {
         }
     }
 
-    private fun findLocalCoverFile(uri: String, fileName: String): String? {
+    private fun findLocalCoverFile(uri: String, fileName: String, headers: Map<String, String>? = null): String? {
         val cleanUri = if (uri.startsWith("file://")) uri.removePrefix("file://") else uri
 
         if (cleanUri.startsWith("/")) {
@@ -178,7 +183,7 @@ object AudioMetadataLoader {
         }
 
         if (cleanUri.startsWith("http://") || cleanUri.startsWith("https://")) {
-            return findNetworkCoverFile(cleanUri, fileName)
+            return findNetworkCoverFile(cleanUri, fileName, headers)
         }
 
         return null
@@ -216,7 +221,7 @@ object AudioMetadataLoader {
         return null
     }
 
-    private fun findNetworkCoverFile(uri: String, fileName: String): String? {
+    private fun findNetworkCoverFile(uri: String, fileName: String, headers: Map<String, String>? = null): String? {
         try {
             val parsedUri = Uri.parse(uri)
             val pathSegments = parsedUri.pathSegments ?: return null
@@ -247,7 +252,7 @@ object AudioMetadataLoader {
 
             for (pattern in coverPatterns) {
                 val coverUrl = "$parentUrl/$pattern"
-                if (isUrlAccessible(coverUrl)) {
+                if (isUrlAccessible(coverUrl, headers)) {
                     return coverUrl
                 }
             }
@@ -255,10 +260,13 @@ object AudioMetadataLoader {
         return null
     }
 
-    private fun isUrlAccessible(url: String): Boolean {
+    private fun isUrlAccessible(url: String, headers: Map<String, String>? = null): Boolean {
         return try {
             val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
             connection.requestMethod = "HEAD"
+            headers?.forEach { (key, value) ->
+                connection.setRequestProperty(key, value)
+            }
             connection.connectTimeout = 3000
             connection.readTimeout = 3000
             val responseCode = connection.responseCode

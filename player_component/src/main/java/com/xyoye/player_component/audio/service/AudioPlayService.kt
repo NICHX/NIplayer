@@ -36,13 +36,25 @@ class AudioPlayService : MediaSessionService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     companion object {
-        private var instance: AudioPlayService? = null
+        var instance: AudioPlayService? = null
+            private set
         private const val NOTIFICATION_ID = 1001
         private const val ACTION_PLAY_PAUSE = "com.xyoye.player.ACTION_PLAY_PAUSE"
         private const val ACTION_SKIP_NEXT = "com.xyoye.player.ACTION_SKIP_NEXT"
         private const val ACTION_SKIP_PREV = "com.xyoye.player.ACTION_SKIP_PREV"
 
         fun isRunning(): Boolean = instance != null
+
+        fun stopService() {
+            instance?.apply {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                mediaSession?.run {
+                    release()
+                    mediaSession = null
+                }
+                stopSelf()
+            }
+        }
     }
 
     override fun onCreate() {

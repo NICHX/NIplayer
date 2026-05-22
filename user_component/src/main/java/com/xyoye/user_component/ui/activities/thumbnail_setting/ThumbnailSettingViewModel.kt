@@ -25,8 +25,7 @@ class ThumbnailSettingViewModel : BaseViewModel() {
                 MediaType.SMB_SERVER,
                 MediaType.FTP_SERVER,
                 MediaType.WEBDAV_SERVER,
-                MediaType.ALSIT_STORAGE,
-                MediaType.EXTERNAL_STORAGE
+                MediaType.ALSIT_STORAGE
             )
             val items = libraries
                 .filter { it.mediaType in serverTypes }

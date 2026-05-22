@@ -20,25 +20,25 @@ enum class MediaType(
 
     OTHER_STORAGE(
         "other_storage",
-        "外部媒体库",
+        "外部服务器",
         cover = R.drawable.ic_play_history
     ),
 
     FTP_SERVER(
         "ftp_server",
-        "FTP媒体库",
+        "FTP服务器",
         cover = R.drawable.ic_ftp_storage
     ),
 
     WEBDAV_SERVER(
         "webdav_server",
-        "WebDav媒体库",
+        "WebDav服务器",
         cover = R.drawable.ic_webdav_storage
     ),
 
     SMB_SERVER(
         "smb_server",
-        "SMB媒体库",
+        "SMB服务器",
         cover = R.drawable.ic_smb_storage
     ),
 

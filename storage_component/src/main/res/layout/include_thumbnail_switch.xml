@@ -20,7 +20,7 @@
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
         android:layout_gravity="end"
-        android:checked="false"
+        android:checked="true"
         android:paddingEnd="16dp"
         app:theme="@style/Theme.DanDanPlay.SwitchCompat" />
 </FrameLayout>

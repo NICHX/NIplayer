@@ -63,7 +63,7 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
             ExpandableFabMenu.FabAction(
                 id = 3,
                 icon = R.drawable.ic_add_white,
-                label = "新增媒体库",
+                label = "新增服务器",
                 onClick = { showAddStorageDialog() }
             )
         )

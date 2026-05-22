@@ -171,15 +171,19 @@ object ThumbnailGeneratorManager {
     }
 
     private suspend fun preloadDotThumbExistence(allFiles: List<StorageFile>, storage: Storage) = withContext(Dispatchers.IO) {
-        for (file in allFiles) {
-            if (!file.isVideoFile()) continue
-            if (isLocalStorage(file)) continue
-            val dotThumbPath = buildDotThumbPath(file) ?: continue
-            try {
-                if (storage.fileExists(dotThumbPath)) {
-                    existingDotThumbKeys.add(file.uniqueKey())
+        val videoFiles = allFiles.filter { it.isVideoFile() && !isLocalStorage(it) }
+        if (videoFiles.isEmpty()) return@withContext
+        coroutineScope {
+            videoFiles.forEach { file ->
+                launch {
+                    val dotThumbPath = buildDotThumbPath(file) ?: return@launch
+                    try {
+                        if (storage.fileExists(dotThumbPath)) {
+                            existingDotThumbKeys.add(file.uniqueKey())
+                        }
+                    } catch (_: Exception) {}
                 }
-            } catch (_: Exception) {}
+            }
         }
     }
 
@@ -207,7 +211,7 @@ object ThumbnailGeneratorManager {
             }
 
             val filteredFiles = files.filter { file ->
-                if (isLocalStorage(file)) return@filter false
+                if (isLocalStorage(file) && !file.isAudioFile()) return@filter false
                 val isTargetType = (file.isVideoFile() && ThumbnailConfig.isGenerateForVideo()) ||
                         (file.isImageFile() && ThumbnailConfig.isGenerateForImage()) ||
                         (file.isAudioFile() && ThumbnailConfig.isGenerateForAudio())
@@ -558,23 +562,40 @@ object ThumbnailGeneratorManager {
 
     private suspend fun generateImageThumbnail(file: StorageFile, coverFile: File): Boolean = withContext(Dispatchers.IO) {
         try {
-            val source = if (isLocalStorage(file)) {
-                File(file.storagePath())
+            val headers = file.storage.getNetworkHeaders()
+            val bitmap = if (isLocalStorage(file)) {
+                Glide.with(BaseApplication.getAppContext())
+                    .asBitmap()
+                    .load(File(file.storagePath()))
+                    .override(THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_WIDTH)
+                    .apply(RequestOptions().apply {
+                        format(DecodeFormat.PREFER_RGB_565)
+                        skipMemoryCache(true)
+                        diskCacheStrategy(DiskCacheStrategy.NONE)
+                    })
+                    .submit()
+                    .get(15_000, TimeUnit.MILLISECONDS) ?: return@withContext false
+            } else if (headers != null && headers.isNotEmpty()) {
+                val inputStream = file.storage.openFile(file) ?: return@withContext false
+                inputStream.use { stream ->
+                    BitmapFactory.decodeStream(BufferedInputStream(stream))?.let { rawBitmap ->
+                        resizeBitmap(rawBitmap, THUMBNAIL_MAX_WIDTH)
+                    } ?: return@withContext false
+                }
             } else {
-                file.storage.createPlayUrl(file) ?: return@withContext false
+                val source = file.storage.createPlayUrl(file) ?: return@withContext false
+                Glide.with(BaseApplication.getAppContext())
+                    .asBitmap()
+                    .load(source)
+                    .override(THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_WIDTH)
+                    .apply(RequestOptions().apply {
+                        format(DecodeFormat.PREFER_RGB_565)
+                        skipMemoryCache(true)
+                        diskCacheStrategy(DiskCacheStrategy.NONE)
+                    })
+                    .submit()
+                    .get(15_000, TimeUnit.MILLISECONDS) ?: return@withContext false
             }
-
-            val bitmap = Glide.with(BaseApplication.getAppContext())
-                .asBitmap()
-                .load(source)
-                .override(THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_WIDTH)
-                .apply(RequestOptions().apply {
-                    format(DecodeFormat.PREFER_RGB_565)
-                    skipMemoryCache(true)
-                    diskCacheStrategy(DiskCacheStrategy.NONE)
-                })
-                .submit()
-                .get(15_000, TimeUnit.MILLISECONDS) ?: return@withContext false
 
             val success = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
             bitmap.recycle()

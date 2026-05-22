@@ -30,8 +30,8 @@
         app:backgroundTint="@color/float_button_bg_color"
         app:borderWidth="0dp"
         app:elevation="0dp"
-        app:fabCustomSize="42dp"
-        app:maxImageSize="22dp"
+        app:fabCustomSize="52dp"
+        app:maxImageSize="26dp"
         app:rippleColor="@color/float_button_ripple_color" />
 
 </LinearLayout>
