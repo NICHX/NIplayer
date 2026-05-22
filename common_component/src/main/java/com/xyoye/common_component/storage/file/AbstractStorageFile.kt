@@ -1,6 +1,7 @@
 package com.xyoye.common_component.storage.file
 
 import com.xyoye.common_component.extension.isInvalid
+import com.xyoye.common_component.extension.toAudioCoverFile
 import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.extension.toMd5String
 import com.xyoye.common_component.storage.AbstractStorage
@@ -32,9 +33,12 @@ abstract class AbstractStorageFile(
         if (isDirectory()) {
             return null
         }
-        val cachedCoverFile = uniqueKey().toCoverFile()
-        if (cachedCoverFile != null && cachedCoverFile.isInvalid().not()) {
-            return cachedCoverFile.absolutePath
+        val coverFile = when {
+            isAudioFile() -> uniqueKey().toAudioCoverFile()
+            else -> uniqueKey().toCoverFile()
+        }
+        if (coverFile != null && coverFile.isInvalid().not()) {
+            return coverFile.absolutePath
         }
         if (isVideoFile()) {
             val fileName = getFileNameNoExtension(fileName()).takeIf { it.isNotEmpty() } ?: return null

@@ -20,6 +20,7 @@ import kotlinx.coroutines.withTimeout
 import com.xyoye.common_component.base.app.BaseApplication
 import com.xyoye.common_component.config.ThumbnailConfig
 import com.xyoye.common_component.config.ThumbnailServerConfig
+import com.xyoye.common_component.extension.toAudioCoverFile
 import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.file.StorageFile
@@ -149,7 +150,11 @@ object ThumbnailGeneratorManager {
             val uniqueKey = file.uniqueKey()
             if (uniqueKey.isEmpty()) continue
             if (ThumbnailMemoryCache.getCoverPath(uniqueKey) != null) continue
-            val coverFile = uniqueKey.toCoverFile() ?: continue
+            val coverFile = if (file.isAudioFile()) {
+                uniqueKey.toAudioCoverFile()
+            } else {
+                uniqueKey.toCoverFile()
+            } ?: continue
             if (coverFile.exists() && coverFile.length() > 0) {
                 ThumbnailMemoryCache.putCoverPath(uniqueKey, coverFile.absolutePath)
             }
@@ -254,7 +259,11 @@ object ThumbnailGeneratorManager {
     }
 
     private fun hasCachedThumbnail(file: StorageFile): Boolean {
-        val coverFile = file.uniqueKey().toCoverFile()
+        val coverFile = if (file.isAudioFile()) {
+            file.uniqueKey().toAudioCoverFile()
+        } else {
+            file.uniqueKey().toCoverFile()
+        }
         if (coverFile != null && coverFile.exists() && coverFile.length() > 0) {
             return true
         }
@@ -352,7 +361,11 @@ object ThumbnailGeneratorManager {
             if (file.isImageFile() && !ThumbnailConfig.isGenerateForImage()) return false
             if (file.isAudioFile() && !ThumbnailConfig.isGenerateForAudio()) return false
 
-            val coverFile = uniqueKey.toCoverFile() ?: return false
+            val coverFile = if (file.isAudioFile()) {
+                uniqueKey.toAudioCoverFile() ?: return false
+            } else {
+                uniqueKey.toCoverFile() ?: return false
+            }
 
             if (coverFile.exists() && coverFile.length() > 0) return false
 
@@ -682,7 +695,11 @@ object ThumbnailGeneratorManager {
         val uniqueKey = file.uniqueKey()
         if (uniqueKey.isEmpty()) return false
 
-        val coverFile = uniqueKey.toCoverFile()
+        val coverFile = if (file.isAudioFile()) {
+            uniqueKey.toAudioCoverFile()
+        } else {
+            uniqueKey.toCoverFile()
+        }
         if (coverFile != null && coverFile.exists() && coverFile.length() > 0) {
             ThumbnailMemoryCache.putCoverPath(uniqueKey, coverFile.absolutePath)
             return true

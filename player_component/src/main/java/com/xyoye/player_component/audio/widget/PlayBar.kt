@@ -22,6 +22,7 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
+import com.xyoye.common_component.extension.toAudioCoverFile
 import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.utils.ThumbnailMemoryCache
 import com.xyoye.common_component.extension.isNightMode
@@ -241,7 +242,7 @@ class PlayBar @JvmOverloads constructor(
                         
                         // 优先级4: 磁盘缓存的封面文件
                         if (coverUri == null) {
-                            val cachedCoverFile = song.uniqueKey.toCoverFile()
+                            val cachedCoverFile = song.uniqueKey.toAudioCoverFile()
                             if (cachedCoverFile != null && cachedCoverFile.exists() && cachedCoverFile.length() > 0) {
                                 coverUri = cachedCoverFile.absolutePath
                                 ThumbnailMemoryCache.putCoverPath(song.uniqueKey, coverUri as String)
