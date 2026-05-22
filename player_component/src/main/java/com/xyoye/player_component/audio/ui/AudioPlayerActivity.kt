@@ -350,9 +350,7 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
         }
         
         // 优先级3: 本地歌词查找
-        val localLrcPath = withContext(Dispatchers.IO) {
-            LrcManager.findLocalLrcFile(song)
-        }
+        val localLrcPath = LrcManager.findLocalLrcFile(song)
         if (localLrcPath != null) {
             dataBinding.lrcView.loadLrc(File(localLrcPath))
             updateSongLrcPath(localLrcPath)
@@ -360,9 +358,7 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
         }
 
         // 优先级4: 缓存歌词
-        val cachedLrcPath = withContext(Dispatchers.IO) {
-            LrcManager.findCachedLrcFile(song)
-        }
+        val cachedLrcPath = LrcManager.findCachedLrcFile(song)
         if (cachedLrcPath != null) {
             dataBinding.lrcView.loadLrc(File(cachedLrcPath))
             return
