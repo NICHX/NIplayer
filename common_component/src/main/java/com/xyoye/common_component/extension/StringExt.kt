@@ -47,6 +47,12 @@ fun String?.toMetadataFile(): File? {
     return File(PathHelper.getVideoCoverDirectory(), "${this}.meta")
 }
 
+fun String?.toAudioMetadataFile(): File? {
+    if (this.isNullOrEmpty())
+        return null
+    return File(PathHelper.getAudioCoverDirectory(), "${this}.meta")
+}
+
 fun String.addToClipboard() {
     val clipboard = BaseApplication.getAppContext()
         .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

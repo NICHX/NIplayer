@@ -1,5 +1,6 @@
 package com.xyoye.common_component.utils
 
+import com.xyoye.common_component.extension.toAudioMetadataFile
 import com.xyoye.common_component.extension.toMetadataFile
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -35,7 +36,7 @@ object AudioMetadataCache {
     }
 
     fun saveToDisk(uniqueKey: String, metadata: AudioMetadata) {
-        val metaFile = uniqueKey.toMetadataFile() ?: return
+        val metaFile = uniqueKey.toAudioMetadataFile() ?: return
         try {
             metaFile.parentFile?.mkdirs()
             DataOutputStream(FileOutputStream(metaFile)).use { dos ->
@@ -49,7 +50,7 @@ object AudioMetadataCache {
     }
 
     fun loadFromDisk(uniqueKey: String): AudioMetadata? {
-        val metaFile = uniqueKey.toMetadataFile() ?: return null
+        val metaFile = uniqueKey.toAudioMetadataFile() ?: return null
         if (!metaFile.exists() || metaFile.length() == 0L) return null
         try {
             DataInputStream(FileInputStream(metaFile)).use { dis ->

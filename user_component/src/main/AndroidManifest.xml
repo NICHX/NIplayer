@@ -32,6 +32,9 @@
         <activity
             android:name=".ui.activities.backup_manager.BackupManagerActivity"
             android:configChanges="orientation|screenSize" />
+        <activity
+            android:name=".ui.activities.music_metadata.MusicMetadataApiActivity"
+            android:configChanges="orientation|screenSize" />
         
     </application>
 
