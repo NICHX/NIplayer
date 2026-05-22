@@ -436,12 +436,8 @@ object AudioPlayManager {
 
     fun updateCurrentSong(updatedSong: AudioSong) {
         val current = _currentSong.value
-        if (current?.uniqueKey == updatedSong.uniqueKey) {
-            updatePlaylistItem(updatedSong)
-        } else {
-            _currentSong.value = updatedSong
-            updatePlaylistItem(updatedSong)
-        }
+        _currentSong.value = updatedSong
+        updatePlaylistItem(updatedSong)
     }
 
     private fun handleCompletion() {
