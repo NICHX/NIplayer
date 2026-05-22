@@ -28,6 +28,8 @@
                 android:id="@+id/storage_file_rv"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingBottom="56dp"
                 android:nestedScrollingEnabled="true" />
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 

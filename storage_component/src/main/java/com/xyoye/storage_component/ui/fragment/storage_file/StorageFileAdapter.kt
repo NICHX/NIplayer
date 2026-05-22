@@ -524,27 +524,35 @@ class StorageFileAdapter(
 
     private fun getMoreActions(file: StorageFile) =
         mutableListOf<SheetActionBean>().apply {
-            if (QuickAccessHelper.isQuickAccess(file)) {
-                add(ManageAction.UNFAVORITE.toAction())
+            if (file.isDirectory()) {
+                if (QuickAccessHelper.isQuickAccess(file)) {
+                    add(SheetActionBean(ManageAction.UNFAVORITE, "从快速访问移除", ManageAction.UNFAVORITE.icon))
+                } else {
+                    add(SheetActionBean(ManageAction.FAVORITE, "添加到快速访问", ManageAction.FAVORITE.icon))
+                }
             } else {
-                add(ManageAction.FAVORITE.toAction())
-            }
-            if (file.isImageFile().not() && file.isAudioFile().not()) {
-                add(ManageAction.BIND_SUBTITLE.toAction())
-                add(ManageAction.BIND_AUDIO.toAction())
-            }
-            if (file.subtitle != null) {
-                add(ManageAction.UNBIND_SUBTITLE.toAction())
-            }
-            if (file.playHistory?.audioPath != null) {
-                add(ManageAction.UNBIND_AUDIO.toAction())
-            }
-            if (file.isFile()) {
-                add(ManageAction.DOWNLOAD.toAction())
-            }
-            if (viewModel.storage is SmbStorage || viewModel.storage is WebDavStorage) {
-                add(ManageAction.FILE_INFO.toAction())
-                add(ManageAction.DELETE.toAction())
+                if (QuickAccessHelper.isQuickAccess(file)) {
+                    add(ManageAction.UNFAVORITE.toAction())
+                } else {
+                    add(ManageAction.FAVORITE.toAction())
+                }
+                if (file.isImageFile().not() && file.isAudioFile().not()) {
+                    add(ManageAction.BIND_SUBTITLE.toAction())
+                    add(ManageAction.BIND_AUDIO.toAction())
+                }
+                if (file.subtitle != null) {
+                    add(ManageAction.UNBIND_SUBTITLE.toAction())
+                }
+                if (file.playHistory?.audioPath != null) {
+                    add(ManageAction.UNBIND_AUDIO.toAction())
+                }
+                if (file.isFile()) {
+                    add(ManageAction.DOWNLOAD.toAction())
+                }
+                if (viewModel.storage is SmbStorage || viewModel.storage is WebDavStorage) {
+                    add(ManageAction.FILE_INFO.toAction())
+                    add(ManageAction.DELETE.toAction())
+                }
             }
         }
 

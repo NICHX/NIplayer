@@ -77,8 +77,10 @@
             android:layout_marginStart="20dp"
             android:layout_marginTop="8dp"
             android:layout_marginEnd="20dp"
-            android:text="设置音乐元数据API地址和密钥，用于获取音乐文件标签信息。"
+            android:autoLink="web"
+            android:text="设置音乐元数据API地址和密钥，用于获取音乐文件标签、歌词和封面信息。支持自部署或公开的 LrcApi（https://github.com/HisAtri/LrcApi） 。"
             android:textColor="@color/text_gray"
+            android:textColorLink="@color/text_theme"
             android:textSize="12sp" />
 
     </LinearLayout>
