@@ -32,9 +32,14 @@ import com.gyf.immersionbar.BarHide
 import com.gyf.immersionbar.ImmersionBar
 import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.config.RouteTable
-import com.xyoye.player_component.BR
 import com.xyoye.common_component.extension.toCoverFile
+import com.xyoye.common_component.extension.toMetadataFile
+import com.xyoye.common_component.network.MusicMetadataApiService
+import com.xyoye.common_component.utils.AudioMetadata
+import com.xyoye.common_component.utils.AudioMetadataCache
+import com.xyoye.common_component.utils.DDLog
 import com.xyoye.common_component.utils.ThumbnailMemoryCache
+import com.xyoye.player_component.BR
 import com.xyoye.player_component.R
 import com.xyoye.player_component.audio.lrc.LrcManager
 import com.xyoye.player_component.audio.manager.AudioPlayManager
@@ -374,7 +379,7 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
             val loaded = downloadLrcWithRetry(song.lrcUrl)
             if (loaded) return
         }
-        
+
         // 优先级3: 本地歌词查找
         val localLrcPath = withContext(Dispatchers.IO) {
             LrcManager.findLocalLrcFile(song)
@@ -394,9 +399,51 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
             return
         }
 
+        // 优先级5: 远程API获取歌词（仅在已配置API时启用）
+        if (!MusicMetadataApiService.isApiConfigured()) {
+            DDLog.i("AudioPlayer", "音乐元数据API未配置，跳过API歌词获取")
+        } else if (song.title.isNotEmpty()) {
+            val apiLoaded = loadLrcFromApi(song)
+            if (apiLoaded) return
+        }
+
         // 无歌词
         dataBinding.lrcView.loadLrc("")
         dataBinding.lrcView.setLabel("暂无歌词")
+    }
+
+    private suspend fun loadLrcFromApi(song: AudioSong): Boolean {
+        dataBinding.lrcView.loadLrc("")
+        dataBinding.lrcView.setLabel("歌词加载中…")
+
+        return try {
+            DDLog.i("AudioPlayer", "开始从API加载歌词: ${song.title} - ${song.artist}")
+
+            val result = MusicMetadataApiService.fetchLyrics(
+                title = song.title,
+                artist = song.artist,
+                path = if (song.uri.startsWith("/")) song.uri else ""
+            )
+
+            if (result.isSuccess) {
+                val content = result.getOrNull()
+                if (!content.isNullOrEmpty()) {
+                    val lrcFile = withContext(Dispatchers.IO) {
+                        saveLrcCache(content)
+                    }
+                    dataBinding.lrcView.loadLrc(lrcFile)
+                    updateSongLrcPath(lrcFile.absolutePath)
+                    DDLog.i("AudioPlayer", "从API加载歌词成功: ${song.title} - ${song.artist}, 长度: ${content.length}")
+                    return true
+                }
+            } else {
+                DDLog.i("AudioPlayer", "从API加载歌词失败: ${result.exceptionOrNull()?.message}")
+            }
+            false
+        } catch (e: Exception) {
+            DDLog.e("AudioPlayer", "从API加载歌词异常", e)
+            false
+        }
     }
 
     private suspend fun downloadLrcWithRetry(url: String): Boolean {
@@ -527,6 +574,90 @@ class AudioPlayerActivity : BaseActivity<AudioPlayerViewModel, ActivityAudioPlay
             } else {
                 dataBinding.albumCoverView.setCoverBitmap(defaultCoverBitmap)
             }
+
+            // 尝试从API获取封面（仅在已配置API时启用）
+            if (!MusicMetadataApiService.isApiConfigured()) {
+                DDLog.i("AudioPlayer", "音乐元数据API未配置，跳过API封面获取")
+            } else if (song.title.isNotEmpty()) {
+                loadCoverFromApi(song)
+            }
+        }
+    }
+
+    private fun loadCoverFromApi(song: AudioSong) {
+        lifecycleScope.launch {
+            try {
+                DDLog.i("AudioPlayer", "开始从API加载封面: ${song.title} - ${song.artist}")
+
+                val result = MusicMetadataApiService.fetchCover(
+                    title = song.title,
+                    artist = song.artist
+                )
+
+                if (result.isSuccess) {
+                    val coverBytes = result.getOrNull()
+                    if (coverBytes != null && coverBytes.isNotEmpty()) {
+                        val coverBitmap = BitmapFactory.decodeByteArray(coverBytes, 0, coverBytes.size)
+                        if (coverBitmap != null) {
+                            val saved = saveCoverAsThumbnail(song, coverBytes)
+                            if (saved) {
+                                DDLog.i("AudioPlayer", "封面已保存为缩略图: ${song.title} - ${song.artist}")
+                            }
+
+                            runOnUiThread {
+                                if (isFinishing || isDestroyed) return@runOnUiThread
+                                if (dataBinding.albumCoverView.isSwitchInProgress()) {
+                                    dataBinding.albumCoverView.setPendingCover(coverBitmap)
+                                } else {
+                                    dataBinding.albumCoverView.setCoverBitmap(coverBitmap)
+                                }
+                                setBlurBackground(coverBitmap)
+                                val cachedSong = song.copy(coverBytes = coverBytes)
+                                AudioPlayManager.updateCurrentSong(cachedSong)
+                            }
+                            DDLog.i("AudioPlayer", "从API加载封面成功: ${song.title} - ${song.artist}, 大小: ${coverBytes.size} bytes")
+                            return@launch
+                        }
+                    }
+                } else {
+                    DDLog.i("AudioPlayer", "从API加载封面失败: ${result.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                DDLog.e("AudioPlayer", "从API加载封面异常", e)
+            }
+        }
+    }
+
+    private suspend fun saveCoverAsThumbnail(song: AudioSong, coverBytes: ByteArray): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val uniqueKey = song.uniqueKey
+            val coverFile = uniqueKey.toCoverFile() ?: return@withContext false
+
+            coverFile.parentFile?.mkdirs()
+
+            coverFile.writeBytes(coverBytes)
+
+            ThumbnailMemoryCache.putCoverPath(uniqueKey, coverFile.absolutePath)
+
+            val existingMetadata = AudioMetadataCache.get(uniqueKey)
+            if (existingMetadata != null) {
+                val updatedMetadata = existingMetadata.copy(coverPath = coverFile.absolutePath)
+                AudioMetadataCache.put(uniqueKey, updatedMetadata)
+            } else {
+                val newMetadata = AudioMetadata(
+                    artist = song.artist,
+                    title = song.title,
+                    duration = 0L,
+                    coverPath = coverFile.absolutePath
+                )
+                AudioMetadataCache.put(uniqueKey, newMetadata)
+            }
+
+            DDLog.i("AudioPlayer", "封面已保存: $uniqueKey -> ${coverFile.absolutePath}")
+            true
+        } catch (e: Exception) {
+            DDLog.e("AudioPlayer", "保存封面失败", e)
+            false
         }
     }
 

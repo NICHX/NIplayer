@@ -81,11 +81,17 @@
     <style name="Bottom_Sheet_Dialog" parent="Theme.Design.BottomSheetDialog">
         <item name="android:windowIsFloating">false</item>
         <item name="bottomSheetStyle">@style/Bottom_Sheet_Modal</item>
+        <item name="android:windowAnimationStyle">@style/BottomSheetDialogAnimation</item>
     </style>
 
     <style name="Bottom_Sheet_Modal" parent="Widget.Design.BottomSheet.Modal">
         <item name="android:background">@color/transparent</item>
         <item name="behavior_skipCollapsed">true</item>
+    </style>
+
+    <style name="BottomSheetDialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/bottom_sheet_enter</item>
+        <item name="android:windowExitAnimation">@anim/bottom_sheet_exit</item>
     </style>
 
     <style name="UpdateDialog">

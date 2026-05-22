@@ -172,7 +172,7 @@
                 android:orientation="vertical">
 
                 <LinearLayout
-                    android:id="@+id/shooter_subtitle_ll"
+                    android:id="@+id/api_manager_ll"
                     android:layout_width="match_parent"
                     android:layout_height="64dp"
                     android:background="@drawable/background_item_press_corner"
@@ -191,7 +191,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="10dp"
-                        android:text="@string/action_shooter_subtitle_download"
+                        android:text="API管理"
                         android:textColor="@color/text_black"
                         android:textSize="16sp"
                         android:textStyle="bold" />
