@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
@@ -26,7 +27,7 @@ class AudioPlaylistDialog(
     private val lifecycleOwner: LifecycleOwner
 ) {
 
-    private val dialog: BottomSheetDialog = BottomSheetDialog(context)
+    private val dialog: BottomSheetDialog = BottomSheetDialog(context, com.xyoye.common_component.R.style.Bottom_Sheet_Dialog)
     private val adapter = PlaylistAdapter()
     private var recyclerView: RecyclerView? = null
     private var tvTitle: TextView? = null
@@ -178,7 +179,7 @@ class AudioPlaylistDialog(
                     context.getColor(R.color.text_black)
                 }
             )
-            holder.tvArtist.text = " · ${song.artist.ifEmpty { "未知艺术家" }}"
+            holder.tvArtist.isVisible = false
             holder.root.setOnClickListener {
                 AudioPlayManager.play(song)
             }

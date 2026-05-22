@@ -55,7 +55,7 @@
                 android:id="@+id/title_layout"
                 android:layout_width="0dp"
                 android:layout_height="@dimen/common_title_bar_size"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="40dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 app:layout_constraintLeft_toLeftOf="parent"
