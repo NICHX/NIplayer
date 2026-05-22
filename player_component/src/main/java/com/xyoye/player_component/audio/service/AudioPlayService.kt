@@ -8,6 +8,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
@@ -19,12 +21,19 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.xyoye.player_component.R
 import com.xyoye.player_component.audio.manager.AudioPlayManager
+import com.xyoye.player_component.audio.model.AudioSong
 import com.xyoye.player_component.audio.ui.AudioPlayerActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 @UnstableApi
 class AudioPlayService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     companion object {
         private var instance: AudioPlayService? = null
@@ -77,6 +86,13 @@ class AudioPlayService : MediaSessionService() {
                 addAction(ACTION_SKIP_NEXT)
                 addAction(ACTION_SKIP_PREV)
             }, RECEIVER_NOT_EXPORTED)
+
+            serviceScope.launch {
+                AudioPlayManager.currentSong.collectLatest {
+                    rebuildAndPushNotification()
+                }
+            }
+
             startForeground(NOTIFICATION_ID, buildNotification(mediaSession!!))
         }
     }
@@ -125,6 +141,9 @@ class AudioPlayService : MediaSessionService() {
         val artist = metadata?.artist?.toString() ?: ""
         val isPlaying = player.isPlaying
 
+        val currentSong = AudioPlayManager.currentSong.value
+        val coverBitmap = getCoverBitmap(currentSong)
+
         val openIntent = Intent(this, AudioPlayerActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -148,6 +167,10 @@ class AudioPlayService : MediaSessionService() {
                     .setShowActionsInCompactView(0, 1, 2)
             )
 
+        if (coverBitmap != null) {
+            builder.setLargeIcon(coverBitmap)
+        }
+
         val playIcon = if (isPlaying) R.drawable.ic_play_bar_pause
         else R.drawable.ic_play_bar_play
 
@@ -160,6 +183,27 @@ class AudioPlayService : MediaSessionService() {
         }
 
         return builder.build()
+    }
+
+    private fun getCoverBitmap(song: AudioSong?): Bitmap? {
+        if (song == null) return null
+
+        if (song.coverBytes != null) {
+            return try {
+                BitmapFactory.decodeByteArray(song.coverBytes, 0, song.coverBytes.size)
+            } catch (_: Exception) { null }
+        }
+
+        if (song.coverPath != null) {
+            return try {
+                val file = java.io.File(song.coverPath)
+                if (file.exists()) {
+                    BitmapFactory.decodeFile(song.coverPath)
+                } else null
+            } catch (_: Exception) { null }
+        }
+
+        return null
     }
 
     private fun buildActionIntent(action: String): PendingIntent {

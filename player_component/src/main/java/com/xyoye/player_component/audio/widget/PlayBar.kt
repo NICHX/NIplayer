@@ -29,6 +29,7 @@ import com.xyoye.common_component.extension.isNightMode
 import com.xyoye.player_component.R
 import com.xyoye.player_component.audio.manager.AudioPlayManager
 import com.xyoye.player_component.audio.model.AudioPlayState
+import com.xyoye.player_component.audio.model.AudioSong
 import com.xyoye.player_component.audio.ui.AudioPlaylistDialog
 import com.xyoye.player_component.databinding.LayoutPlayBarBinding
 import kotlinx.coroutines.flow.collectLatest
@@ -225,40 +226,7 @@ class PlayBar @JvmOverloads constructor(
                             }
                         }
                     }
-                    // 封面加载优先级: 嵌入字节 > 外部指定 > 内存缓存 > 磁盘缓存 > 音频URI
-                    var coverUri: Any? = null
-                    
-                    // 优先级1: 嵌入的封面字节数组
-                    if (song.coverBytes != null) {
-                        coverUri = song.coverBytes
-                    } else {
-                        // 优先级2: 外部指定的封面路径
-                        coverUri = song.coverPath
-                        
-                        // 优先级3: 内存缓存的封面
-                        if (coverUri == null) {
-                            coverUri = ThumbnailMemoryCache.getCoverPath(song.uniqueKey)
-                        }
-                        
-                        // 优先级4: 磁盘缓存的封面文件
-                        if (coverUri == null) {
-                            val cachedCoverFile = song.uniqueKey.toAudioCoverFile()
-                            if (cachedCoverFile != null && cachedCoverFile.exists() && cachedCoverFile.length() > 0) {
-                                coverUri = cachedCoverFile.absolutePath
-                                ThumbnailMemoryCache.putCoverPath(song.uniqueKey, coverUri as String)
-                            }
-                        }
-                        
-                        // 优先级5: 音频URI
-                        if (coverUri == null) {
-                            coverUri = song.uri
-                        }
-                    }
-                    Glide.with(viewBinding.ivCover)
-                        .load(coverUri)
-                        .centerCrop()
-                        .error(R.drawable.bg_playing_default_cover)
-                        .into(viewBinding.ivCover)
+                    loadCover(song)
                 } else {
                     isVisible = false
                 }
@@ -315,5 +283,37 @@ class PlayBar @JvmOverloads constructor(
                 null
             }
         }
+    }
+
+    private fun loadCover(song: AudioSong) {
+        var coverUri: Any? = null
+
+        if (song.coverBytes != null) {
+            coverUri = song.coverBytes
+        } else {
+            coverUri = song.coverPath
+
+            if (coverUri == null) {
+                coverUri = ThumbnailMemoryCache.getCoverPath(song.uniqueKey)
+            }
+
+            if (coverUri == null) {
+                val cachedCoverFile = song.uniqueKey.toAudioCoverFile()
+                if (cachedCoverFile != null && cachedCoverFile.exists() && cachedCoverFile.length() > 0) {
+                    coverUri = cachedCoverFile.absolutePath
+                    ThumbnailMemoryCache.putCoverPath(song.uniqueKey, coverUri as String)
+                }
+            }
+
+            if (coverUri == null) {
+                coverUri = song.uri
+            }
+        }
+
+        Glide.with(viewBinding.ivCover)
+            .load(coverUri)
+            .centerCrop()
+            .error(R.drawable.bg_playing_default_cover)
+            .into(viewBinding.ivCover)
     }
 }
