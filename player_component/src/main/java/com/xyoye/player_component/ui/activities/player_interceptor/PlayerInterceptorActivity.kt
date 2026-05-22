@@ -119,6 +119,9 @@ class PlayerInterceptorActivity :
                     }
                 }
             } else {
+                if (source is StorageVideoSource) {
+                    AudioPlayManager.setPendingSource(source)
+                }
                 AudioPlayManager.setPlaylist(listOf(
                     AudioSong(
                         uri = url,
