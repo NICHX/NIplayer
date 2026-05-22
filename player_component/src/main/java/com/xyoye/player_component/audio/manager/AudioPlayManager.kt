@@ -65,6 +65,9 @@ object AudioPlayManager {
 
     private var _pendingSource: StorageVideoSource? = null
 
+    private var lastSwitchTime = 0L
+    private val SWITCH_THROTTLE_MS = 500L
+
     fun setPendingSource(source: StorageVideoSource?) {
         _pendingSource = source
     }
@@ -493,6 +496,10 @@ object AudioPlayManager {
     }
 
     fun next() {
+        val now = System.currentTimeMillis()
+        if (now - lastSwitchTime < SWITCH_THROTTLE_MS) return
+        lastSwitchTime = now
+
         lastNavigationDirection = 1
         val list = _playlist.value
         if (list.isEmpty()) return
@@ -515,6 +522,10 @@ object AudioPlayManager {
     }
 
     fun prev() {
+        val now = System.currentTimeMillis()
+        if (now - lastSwitchTime < SWITCH_THROTTLE_MS) return
+        lastSwitchTime = now
+
         lastNavigationDirection = -1
         val list = _playlist.value
         if (list.isEmpty()) return
