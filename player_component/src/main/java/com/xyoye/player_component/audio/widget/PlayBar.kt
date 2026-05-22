@@ -81,10 +81,6 @@ class PlayBar @JvmOverloads constructor(
             com.alibaba.android.arouter.launcher.ARouter.getInstance()
                 .build(com.xyoye.common_component.config.RouteTable.Player.AudioPlayer)
                 .navigation()
-            (context as? Activity)?.overridePendingTransition(
-                com.xyoye.player_component.R.anim.slide_in_bottom,
-                0
-            )
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -189,7 +185,7 @@ class PlayBar @JvmOverloads constructor(
                         if (!isDragging) {
                             v.performClick()
                         }
-                        true
+                        false
                     }
                 }
                 MotionEvent.ACTION_CANCEL -> {
