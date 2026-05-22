@@ -31,7 +31,9 @@
         android:maxWidth="100dp"
         android:textColor="@color/gray"
         android:textSize="12sp"
-        tools:text=" · Artist" />
+        android:visibility="gone"
+        tools:text=" · Artist"
+        tools:visibility="visible" />
 
     <ImageView
         android:id="@+id/ivDelete"

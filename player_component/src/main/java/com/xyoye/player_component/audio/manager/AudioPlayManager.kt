@@ -299,6 +299,14 @@ object AudioPlayManager {
             }
         }
 
+        if (song.lrcUrl == null && _pendingSource != null) {
+            val resolved = resolveSongLrc(song, index)
+            if (resolved != null) {
+                song = resolved
+                updatePlaylistItem(song)
+            }
+        }
+
         if (song.uri.isEmpty()) return
 
         player.stop()
@@ -342,6 +350,17 @@ object AudioPlayManager {
                 storageFile.storage.createPlayUrl(storageFile)
             }
             playUrl?.let { song.copy(uri = it) }
+        } catch (_: Exception) { null }
+    }
+
+    private fun resolveSongLrc(song: AudioSong, index: Int): AudioSong? {
+        val source = _pendingSource ?: return null
+        return try {
+            val storageFile = source.indexStorageFile(index)
+            val lrcUrl = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                storageFile.storage.cacheLrc(storageFile)
+            }
+            lrcUrl?.let { song.copy(lrcUrl = it) }
         } catch (_: Exception) { null }
     }
 

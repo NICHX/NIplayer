@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
@@ -37,6 +38,12 @@ class AudioPlaylistDialog(
         val view = LayoutInflater.from(context).inflate(R.layout.fragment_audio_playlist, null)
         dialog.setContentView(view)
         dialog.behavior.isDraggable = true
+        dialog.behavior.addBottomSheetCallback(object : com.google.android.material.bottomsheet.BottomSheetBehavior.BottomSheetCallback() {
+            override fun onStateChanged(bottomSheet: View, newState: Int) {}
+            override fun onSlide(bottomSheet: View, slideOffset: Float) {}
+        })
+        dialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)
+            ?.setBackgroundColor(android.graphics.Color.TRANSPARENT)
 
         tvTitle = view.findViewById(R.id.tvTitle)
         tvPlayMode = view.findViewById(R.id.tvPlayMode)
@@ -178,7 +185,6 @@ class AudioPlaylistDialog(
                     context.getColor(R.color.text_black)
                 }
             )
-            holder.tvArtist.text = " · ${song.artist.ifEmpty { "未知艺术家" }}"
             holder.root.setOnClickListener {
                 AudioPlayManager.play(song)
             }
