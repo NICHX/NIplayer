@@ -2,8 +2,11 @@ package com.xyoye.local_component.ui.activities.play_history
 
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.widget.ImageView
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.resource.bitmap.RoundedCorners
 import com.xyoye.common_component.adapter.BaseAdapter
 import com.xyoye.common_component.adapter.BaseViewHolderCreator
 import com.xyoye.common_component.adapter.addEmptyView
@@ -17,11 +20,13 @@ import com.xyoye.common_component.extension.dp
 import com.xyoye.common_component.extension.horizontal
 import com.xyoye.common_component.extension.loadVideoCover
 import com.xyoye.common_component.extension.setData
+import com.xyoye.common_component.extension.toAudioCoverFile
 import com.xyoye.common_component.extension.toCoverFile
 import com.xyoye.common_component.extension.toResColor
 import com.xyoye.common_component.extension.toResDrawable
 import com.xyoye.common_component.utils.FastClickFilter
 import com.xyoye.common_component.utils.PlayHistoryUtils
+import com.xyoye.common_component.utils.ThumbnailMemoryCache
 import com.xyoye.common_component.utils.formatDuration
 import com.xyoye.common_component.utils.view.ItemDecorationOrientation
 import com.xyoye.common_component.weight.BottomActionDialog
@@ -77,8 +82,31 @@ class PlayHistoryAdapter(
 
     private fun BaseViewHolderCreator<ItemStorageVideoBinding>.historyItem() =
         { data: PlayHistoryEntity ->
-            data.uniqueKey.toCoverFile()?.let {
-                itemBinding.coverIv.loadVideoCover(it)
+            val coverFile = data.uniqueKey.toCoverFile()
+            val audioCoverFile = data.uniqueKey.toAudioCoverFile()
+            val cachedCoverPath = ThumbnailMemoryCache.getCoverPath(data.uniqueKey)
+
+            if (coverFile?.exists() == true) {
+                itemBinding.coverIv.loadVideoCover(coverFile)
+            } else if (audioCoverFile?.exists() == true) {
+                itemBinding.coverIv.scaleType = ImageView.ScaleType.CENTER_CROP
+                Glide.with(itemBinding.coverIv)
+                    .load(audioCoverFile)
+                    .centerCrop()
+                    .transform(RoundedCorners(5f.dp().toInt()))
+                    .error(com.xyoye.common_component.R.drawable.ic_audio_cover)
+                    .into(itemBinding.coverIv)
+            } else if (cachedCoverPath != null) {
+                itemBinding.coverIv.scaleType = ImageView.ScaleType.CENTER_CROP
+                Glide.with(itemBinding.coverIv)
+                    .load(cachedCoverPath)
+                    .centerCrop()
+                    .transform(RoundedCorners(5f.dp().toInt()))
+                    .error(com.xyoye.common_component.R.drawable.ic_audio_cover)
+                    .into(itemBinding.coverIv)
+            } else {
+                itemBinding.coverIv.scaleType = ImageView.ScaleType.CENTER_INSIDE
+                itemBinding.coverIv.setImageResource(com.xyoye.common_component.R.drawable.ic_audio_cover)
             }
 
             itemBinding.durationTv.text = getDuration(data)
