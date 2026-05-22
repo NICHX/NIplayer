@@ -135,7 +135,7 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
 
     private fun showAddStorageDialog() {
         val actionList = MediaType.values()
-            .filter { it.deletable && it != MediaType.EXTERNAL_STORAGE }
+            .filter { it.deletable }
             .map { it.toAction() }
 
         BottomActionDialog(
