@@ -73,9 +73,9 @@ class StorageFileFragmentViewModel : BaseViewModel() {
 
             _allFiles = fileList
 
-            _fileLiveData.postValue(fileList)
             ThumbnailGeneratorManager.preloadExistingThumbs(originalFileList, storage)
             ThumbnailGeneratorManager.preloadCoverPaths(originalFileList)
+            _fileLiveData.postValue(fileList)
             ThumbnailGeneratorManager.startGenerateThumbnails(fileList, storage, allFiles = originalFileList)
         }
     }
