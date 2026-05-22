@@ -1,6 +1,7 @@
 package com.xyoye.common_component.weight.dialog
 
 import android.app.Activity
+import android.text.method.PasswordTransformationMethod
 import com.xyoye.common_component.R
 import com.xyoye.common_component.databinding.DialogCommonEditDoubleBinding
 import com.xyoye.common_component.utils.hideKeyboard
@@ -14,6 +15,7 @@ class MusicMetadataEditDialog(
 ) : BaseBottomDialog<DialogCommonEditDoubleBinding>(activity) {
 
     private lateinit var binding: DialogCommonEditDoubleBinding
+    private var isPasswordVisible = false
 
     override fun getChildLayoutId() = R.layout.dialog_common_edit_double
 
@@ -26,6 +28,10 @@ class MusicMetadataEditDialog(
 
         binding.inputEtApiUrl.setText(apiUrl ?: "")
         binding.inputEtApiAuth.setText(apiAuth ?: "")
+
+        binding.btnTogglePassword.setOnClickListener {
+            togglePasswordVisibility()
+        }
 
         setPositiveListener {
             val url = binding.inputEtApiUrl.text.toString().trim()
@@ -42,6 +48,20 @@ class MusicMetadataEditDialog(
             binding.inputEtApiUrl.requestFocus()
             showKeyboard(binding.inputEtApiUrl)
         }, 300)
+    }
+
+    private fun togglePasswordVisibility() {
+        isPasswordVisible = !isPasswordVisible
+        if (isPasswordVisible) {
+            binding.inputEtApiAuth.transformationMethod = null
+            binding.btnTogglePassword.setImageResource(R.drawable.ic_eye_open)
+            binding.btnTogglePassword.contentDescription = "隐藏密码"
+        } else {
+            binding.inputEtApiAuth.transformationMethod = PasswordTransformationMethod.getInstance()
+            binding.btnTogglePassword.setImageResource(R.drawable.ic_eye_close)
+            binding.btnTogglePassword.contentDescription = "显示密码"
+        }
+        binding.inputEtApiAuth.setSelection(binding.inputEtApiAuth.text?.length ?: 0)
     }
 
     override fun dismiss() {

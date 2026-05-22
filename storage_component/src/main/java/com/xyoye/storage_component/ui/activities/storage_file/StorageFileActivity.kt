@@ -109,6 +109,11 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         super.onCreate(savedInstanceState)
     }
 
+    override fun onResume() {
+        super.onResume()
+        updateFabMargins()
+    }
+
     override fun initView() {
         mToolbarStyleHelper.observerChildScroll()
         dataBinding.coordinatorLayout.viewTreeObserver
@@ -136,6 +141,25 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
             ViewModeSync.gridViewChanged.collect {
                 applyViewMode()
             }
+        }
+    }
+
+    private fun updateFabMargins() {
+        val playBar = window.decorView.findViewWithTag<View>("play_bar_tag")
+        val isPlayBarVisible = playBar != null && playBar.visibility == View.VISIBLE
+        val bottomMargin = if (isPlayBarVisible) 62 + 56 else 62
+        val fabBottomMargin = if (isPlayBarVisible) 126 + 56 else 126
+
+        val scrollToTopParams = dataBinding.scrollToTopBt.layoutParams as? android.widget.FrameLayout.LayoutParams
+        scrollToTopParams?.let {
+            it.bottomMargin = (bottomMargin * resources.displayMetrics.density).toInt()
+            dataBinding.scrollToTopBt.layoutParams = it
+        }
+
+        val fabParams = dataBinding.expandableFab.layoutParams as? android.widget.FrameLayout.LayoutParams
+        fabParams?.let {
+            it.bottomMargin = (fabBottomMargin * resources.displayMetrics.density).toInt()
+            dataBinding.expandableFab.layoutParams = it
         }
     }
 
