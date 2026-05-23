@@ -22,7 +22,6 @@ import com.xyoye.common_component.utils.dp2px
 import com.xyoye.common_component.utils.getFileName
 import com.xyoye.common_component.utils.getFolderName
 import com.xyoye.common_component.utils.isAudioFile
-import com.xyoye.common_component.utils.isDanmuFile
 import com.xyoye.common_component.utils.isSubtitleFile
 import com.xyoye.common_component.utils.isVideoFile
 import com.xyoye.common_component.utils.view.FilePathItemDecoration
@@ -65,7 +64,6 @@ class FileManagerDialog(
 
         setTitle(
             when (action) {
-                FileManagerAction.ACTION_SELECT_DANMU -> "选择本地弹幕文件"
                 FileManagerAction.ACTION_SELECT_SUBTITLE -> "选择本地字幕文件"
                 FileManagerAction.ACTION_SELECT_VIDEO -> "选择视频文件"
                 FileManagerAction.ACTION_SELECT_DIRECTORY -> "选择文件夹"
@@ -291,8 +289,6 @@ class FileManagerDialog(
         return when (action) {
             FileManagerAction.ACTION_SELECT_VIDEO -> isVideoFile(filePath)
 
-            FileManagerAction.ACTION_SELECT_DANMU -> isDanmuFile(filePath)
-
             FileManagerAction.ACTION_SELECT_SUBTITLE -> isSubtitleFile(filePath)
 
             FileManagerAction.ACTION_SELECT_AUDIO -> isAudioFile(filePath)
@@ -342,8 +338,6 @@ class FileManagerDialog(
     private fun getFileCover(): Int {
         return when (action) {
             FileManagerAction.ACTION_SELECT_VIDEO -> R.drawable.ic_file_video
-
-            FileManagerAction.ACTION_SELECT_DANMU -> R.drawable.ic_file_xml
 
             FileManagerAction.ACTION_SELECT_SUBTITLE -> R.drawable.ic_file_subtitle
 

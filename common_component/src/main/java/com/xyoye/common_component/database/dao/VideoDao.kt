@@ -77,9 +77,6 @@ interface VideoDao {
     @Query("DELETE FROM video")
     suspend fun deleteAll()
 
-    @Query("UPDATE video SET danmu_path = (:danmuPath), danmu_id = (:danmuId) WHERE file_path = (:filePath)")
-    suspend fun updateDanmu(filePath: String, danmuPath: String?, danmuId: Int = 0)
-
     @Query("UPDATE video SET subtitle_path = (:subtitlePath) WHERE file_path = (:filePath)")
     suspend fun updateSubtitle(filePath: String, subtitlePath: String?)
 

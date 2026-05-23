@@ -16,8 +16,6 @@ import com.xyoye.common_component.config.UserConfig
 import com.xyoye.common_component.config.PlayHistorySyncConfig
 import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.extension.resumeWhenAlive
-import com.xyoye.common_component.network.repository.AnimeRepository
-import com.xyoye.common_component.network.repository.ResourceRepository
 import com.xyoye.common_component.source.base.BaseVideoSource
 import com.xyoye.common_component.utils.JsonHelper
 import com.xyoye.common_component.utils.MediaUtils
@@ -77,8 +75,6 @@ object PlayRecorder {
                     position,
                     duration,
                     Date(),
-                    null,
-                    null,
                     source.getSubtitlePath(),
                     null,
                     -1,
@@ -246,7 +242,6 @@ object PlayRecorder {
      * 上报剧集播放记录到云端
      */
     private suspend fun recordToCloud(videoSource: BaseVideoSource) {
-        // 弹幕功能已移除，云端上报功能也已移除
     }
 
     private fun triggerSyncIfNeeded(mediaType: MediaType) {

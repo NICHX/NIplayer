@@ -40,11 +40,6 @@ data class VideoTrackBean(
             return VideoTrackBean(name = name, type = TrackType.SUBTITLE, trackResource = subtitlePath)
         }
 
-        fun danmu(danmu: LocalDanmuBean): VideoTrackBean {
-            val name = Uri.parse(danmu.danmuPath).lastPathSegment.orEmpty()
-            return VideoTrackBean(name = name, type = TrackType.DANMU, trackResource = danmu)
-        }
-
         fun audio(audioPath: String): VideoTrackBean {
             val name = Uri.parse(audioPath).lastPathSegment.orEmpty()
             return VideoTrackBean(name = name, type = TrackType.AUDIO, trackResource = audioPath)

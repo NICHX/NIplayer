@@ -444,7 +444,16 @@ object ThumbnailGeneratorManager {
                 if (durationMs > 0 && durationMs < 5_000) return@withContext false
                 val targetTimeUs = if (durationMs > 0) durationMs * 100 else 0L
 
-                val rawBitmap = retriever.getFrameAtTime(targetTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                val positionsToTry = buildList {
+                    add(targetTimeUs)
+                    if (durationMs > 0) add(durationMs * 500)
+                    add(0L)
+                }
+                var rawBitmap: Bitmap? = null
+                for (pos in positionsToTry) {
+                    rawBitmap = retriever.getFrameAtTime(pos, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    if (rawBitmap != null) break
+                }
                 if (rawBitmap == null) {
                     nonRetryableFailures.add(file.uniqueKey())
                     return@withContext false
@@ -625,6 +634,11 @@ object ThumbnailGeneratorManager {
             val albumArtist = mediaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
             val title = mediaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
             val duration = mediaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+
+            if (duration > 0 && duration < 60_000) {
+                nonRetryableFailures.add(file.uniqueKey())
+                return@withContext false
+            }
 
             val resolvedArtist = artist?.takeIf { it.isNotEmpty() }
                 ?: albumArtist?.takeIf { it.isNotEmpty() }

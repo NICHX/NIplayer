@@ -44,12 +44,6 @@ data class PlayHistoryEntity(
     @ColumnInfo(name = "play_time")
     var playTime: Date = Date(),
 
-    @ColumnInfo(name = "danmu_path")
-    var danmuPath: String? = null,
-
-    @ColumnInfo(name = "episode_id")
-    var episodeId: String? = null,
-
     @ColumnInfo(name = "subtitle_path")
     var subtitlePath: String? = null,
 

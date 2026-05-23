@@ -2,7 +2,6 @@ package com.xyoye.user_component.ui.activities.web_view
 
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.net.Uri
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
@@ -19,7 +18,6 @@ import com.alibaba.android.arouter.launcher.ARouter
 import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.extension.toResColor
-import com.xyoye.common_component.network.config.Api
 import com.xyoye.common_component.utils.dp2px
 import com.xyoye.user_component.BR
 import com.xyoye.user_component.R
@@ -83,20 +81,6 @@ class WebViewActivity : BaseActivity<WebViewViewModel, ActivityWebViewBinding>()
             webViewClient = object : WebViewClient() {
 
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                    val uri = request?.url ?: return super.shouldOverrideUrlLoading(view, request)
-
-                    // 选取b站视频时，考虑将APP协议地址转换为普通番剧地址
-                    val bangumiUrl = considerMapBangumiUrl(uri)
-                    if (bangumiUrl != null && bangumiUrl != view?.url) {
-                        view?.loadUrl(bangumiUrl)
-                        return true
-                    }
-
-                    // 拦截BiliBili APP协议，避免在选取地址时打开外部APP
-                    if (uri.scheme == "bilibili") {
-                        return true
-                    }
-
                     return super.shouldOverrideUrlLoading(view, request)
                 }
             }
@@ -116,35 +100,6 @@ class WebViewActivity : BaseActivity<WebViewViewModel, ActivityWebViewBinding>()
         }
 
         dataBinding.webView.loadUrl(realUrl)
-    }
-
-    /**
-     * 将BiliBili APP协议地址转换为普通番剧地址
-     */
-    private fun considerMapBangumiUrl(schemeUri: Uri): String? {
-        if (isSelectMode.not()) {
-            return null
-        }
-
-        val isAppBangumiUrl = schemeUri.scheme == "bilibili"
-                && schemeUri.host == "bangumi"
-                && schemeUri.pathSegments.firstOrNull() == "season"
-        if (isAppBangumiUrl.not()) {
-            return null
-        }
-
-        val seasonId = schemeUri.pathSegments.lastOrNull()
-        if (seasonId.isNullOrEmpty()) {
-            return null
-        }
-
-        return Uri.parse(Api.BILI_BILI_M)
-            .buildUpon()
-            .appendPath("bangumi")
-            .appendPath("play")
-            .appendPath("ss$seasonId")
-            .build()
-            .toString()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

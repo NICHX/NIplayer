@@ -69,14 +69,6 @@ class PlayHistoryViewModel : BaseViewModel() {
         }
     }
 
-    fun unbindDanmu(history: PlayHistoryEntity) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val newHistory = history.copy(danmuPath = null, episodeId = null)
-            DatabaseManager.instance.getPlayHistoryDao().insert(newHistory)
-            updatePlayHistory()
-        }
-    }
-
     fun unbindSubtitle(history: PlayHistoryEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             val newHistory = history.copy(subtitlePath = null)

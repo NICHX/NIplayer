@@ -4,7 +4,6 @@ import com.xyoye.common_component.source.base.BaseVideoSource
 import com.xyoye.common_component.source.factory.StorageVideoSourceFactory
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.utils.getFileName
-import com.xyoye.data_component.bean.LocalDanmuBean
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import com.xyoye.data_component.enums.MediaType
 
@@ -16,21 +15,12 @@ class StorageVideoSource(
     private val playUrl: String,
     private val file: StorageFile,
     private val videoSources: List<StorageFile>,
-    private var danmu: LocalDanmuBean?,
     private var subtitlePath: String?,
     private var audioPath: String?,
 ) : BaseVideoSource(
     videoSources.indexOfFirst { it.uniqueKey() == file.uniqueKey() },
     videoSources
 ) {
-
-    override fun getDanmu(): LocalDanmuBean? {
-        return danmu
-    }
-
-    override fun setDanmu(danmu: LocalDanmuBean?) {
-        this.danmu = danmu
-    }
 
     override fun getSubtitlePath(): String? {
         return subtitlePath

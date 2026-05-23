@@ -90,9 +90,6 @@ object VideoItemLayout {
 
     private fun generateVideoTags(data: StorageFile): List<VideoTagBean> {
         val tagList = mutableListOf<VideoTagBean>()
-        if (isShowDanmu(data)) {
-            tagList.add(VideoTagBean("弹幕", R.color.theme.toResColor()))
-        }
         if (isShowSubtitle(data)) {
             tagList.add(VideoTagBean("字幕", R.color.orange.toResColor()))
         }
@@ -105,10 +102,6 @@ object VideoItemLayout {
             tagList.add(VideoTagBean(lastPlayTime, R.color.black_alpha.toResColor()))
         }
         return tagList
-    }
-
-    private fun isShowDanmu(file: StorageFile): Boolean {
-        return file.playHistory?.danmuPath?.isNotEmpty() == true
     }
 
     private fun isShowSubtitle(file: StorageFile): Boolean {

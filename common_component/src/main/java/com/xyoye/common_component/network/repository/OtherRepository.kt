@@ -9,22 +9,6 @@ import com.xyoye.common_component.network.Retrofit
 object OtherRepository : BaseRepository() {
 
     /**
-     * 获取首页Banner列表
-     */
-    suspend fun getHomeBanner() = request()
-        .doGet {
-            Retrofit.danDanService.getHomeBanner()
-        }
-
-    /**
-     * 获取云屏蔽数据
-     */
-    suspend fun getCloudFilters() = request()
-        .doGet {
-            Retrofit.danDanService.getCloudFilters()
-        }
-
-    /**
      * 获取分词结果
      */
     suspend fun getSegmentWords(text: String) = request()

@@ -2,14 +2,10 @@ package com.xyoye.common_component.network
 
 import com.xyoye.common_component.network.config.Api
 import com.xyoye.common_component.network.helper.AgentInterceptor
-import com.xyoye.common_component.network.helper.AuthInterceptor
-import com.xyoye.common_component.network.helper.BackupDomainInterceptor
 import com.xyoye.common_component.network.helper.DecompressInterceptor
 import com.xyoye.common_component.network.helper.DynamicBaseUrlInterceptor
 import com.xyoye.common_component.network.helper.LoggerInterceptor
-import com.xyoye.common_component.network.helper.SignatureInterceptor
 import com.xyoye.common_component.network.service.AlistService
-import com.xyoye.common_component.network.service.DanDanService
 import com.xyoye.common_component.network.service.ExtendedService
 import com.xyoye.common_component.utils.JsonHelper
 import okhttp3.OkHttpClient
@@ -23,7 +19,6 @@ import java.util.concurrent.TimeUnit
 
 class Retrofit private constructor() {
     companion object {
-        val danDanService: DanDanService by lazy { Holder.instance.danDanService }
         val extendedService: ExtendedService by lazy { Holder.instance.extendedService }
 
         val alistService: AlistService by lazy { Holder.instance.alistService }
@@ -31,21 +26,6 @@ class Retrofit private constructor() {
 
     private object Holder {
         val instance = Retrofit()
-    }
-
-    private val danDanClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .writeTimeout(4, TimeUnit.SECONDS)
-            .hostnameVerifier { _, _ -> true }
-            .addInterceptor(SignatureInterceptor())
-            .addInterceptor(AgentInterceptor())
-            .addInterceptor(AuthInterceptor())
-            .addInterceptor(DecompressInterceptor())
-            .addInterceptor(BackupDomainInterceptor())
-            .addInterceptor(LoggerInterceptor().retrofit())
-            .build()
     }
 
     private val commonClient: OkHttpClient by lazy {
@@ -62,15 +42,6 @@ class Retrofit private constructor() {
     }
 
     private val moshiConverterFactory = MoshiConverterFactory.create(JsonHelper.MO_SHI)
-
-    private val danDanService: DanDanService by lazy {
-        Retrofit.Builder()
-            .addConverterFactory(moshiConverterFactory)
-            .client(danDanClient)
-            .baseUrl(Api.DAN_DAN_OPEN)
-            .build()
-            .create(DanDanService::class.java)
-    }
 
     private val extendedService: ExtendedService by lazy {
         Retrofit.Builder()

@@ -159,7 +159,6 @@ class BackupManagerViewModel : BaseViewModel() {
             obj.put("smbSharePath", server.smbSharePath ?: "")
             obj.put("remoteSecret", encryptField(server.remoteSecret) ?: "")
             obj.put("webDavStrict", server.webDavStrict)
-            obj.put("remoteAnimeGrouping", server.remoteAnimeGrouping)
             arr.put(obj)
         }
         return arr
@@ -606,7 +605,6 @@ class BackupManagerViewModel : BaseViewModel() {
                 smbSharePath = obj.optString("smbSharePath"),
                 remoteSecret = decryptField(obj.optString("remoteSecret")),
                 webDavStrict = obj.optBoolean("webDavStrict", true),
-                remoteAnimeGrouping = obj.optBoolean("remoteAnimeGrouping")
             )
             val existing = dao.getByUrl(entity.url, entity.mediaType)
             if (existing == null) {

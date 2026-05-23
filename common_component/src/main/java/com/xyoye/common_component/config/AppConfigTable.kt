@@ -1,7 +1,6 @@
 package com.xyoye.common_component.config
 
 import androidx.appcompat.app.AppCompatDelegate
-import com.xyoye.common_component.network.config.Api
 import com.xyoye.common_component.utils.meida.VideoExtension
 import com.xyoye.data_component.enums.HistorySort
 import com.xyoye.data_component.enums.StorageSort
@@ -27,10 +26,6 @@ object AppConfigTable {
     var showFTPVideoTips = true
 
     @MMKVFiled
-    //最后一次更新云屏蔽信息的时间
-    var cloudBlockUpdateTime: Long = 0
-
-    @MMKVFiled
     //深色模式状态
     var darkMode: Int = AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
 
@@ -51,10 +46,6 @@ object AppConfigTable {
     var lastOpenFolderEnable: Boolean = true
 
     @MMKVFiled
-    //上次搜索弹幕记录
-    var lastSearchDanmuJson: String? = null
-
-    @MMKVFiled
     //文件排序类型
     var storageSortType: Int = StorageSort.NAME.value
 
@@ -73,14 +64,6 @@ object AppConfigTable {
     @MMKVFiled
     //播放历史排序升序
     var historySortAsc: Boolean = false
-
-    @MMKVFiled
-    //是否启用备用域名
-    var backupDomainEnable: Boolean = false
-
-    @MMKVFiled
-    //备用域名地址
-    var backupDomain: String = Api.DAN_DAN_SPARE
 
     @MMKVFiled
     //支持的视频后缀

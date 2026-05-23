@@ -46,9 +46,12 @@ class MediaResolver {
                 val size = cursor.getLong(2)
                 val duration = cursor.getLong(3)
                 videoList.add(
-                    VideoEntity(0, id, 0, filePath,
-                        getDirPath(filePath), null, null,
-                        duration, size
+                    VideoEntity(
+                        fileId = id,
+                        filePath = filePath,
+                        folderPath = getDirPath(filePath),
+                        videoDuration = duration,
+                        fileLength = size
                     )
                 )
             }

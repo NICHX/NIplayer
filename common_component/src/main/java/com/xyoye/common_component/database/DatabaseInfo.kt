@@ -2,15 +2,11 @@ package com.xyoye.common_component.database
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
-import com.xyoye.common_component.database.dao.AnimeSearchHistoryDao
-import com.xyoye.common_component.database.dao.DanmuBlockDao
 import com.xyoye.common_component.database.dao.DownloadTaskDao
 import com.xyoye.common_component.database.dao.ExtendFolderDao
 import com.xyoye.common_component.database.dao.MediaLibraryDao
 import com.xyoye.common_component.database.dao.PlayHistoryDao
 import com.xyoye.common_component.database.dao.VideoDao
-import com.xyoye.data_component.entity.AnimeSearchHistoryEntity
-import com.xyoye.data_component.entity.DanmuBlockEntity
 import com.xyoye.data_component.entity.DownloadTaskEntity
 import com.xyoye.data_component.entity.ExtendFolderEntity
 import com.xyoye.data_component.entity.MediaLibraryEntity
@@ -24,27 +20,21 @@ import com.xyoye.data_component.entity.VideoEntity
 @Database(
     entities =
     [VideoEntity::class,
-        AnimeSearchHistoryEntity::class,
         MediaLibraryEntity::class,
         PlayHistoryEntity::class,
-        DanmuBlockEntity::class,
         ExtendFolderEntity::class,
         DownloadTaskEntity::class
     ],
-    version = 15,
+    version = 17,
     exportSchema = false
 )
 abstract class DatabaseInfo : RoomDatabase() {
 
     abstract fun getVideoDao(): VideoDao
 
-    abstract fun getAnimeSearchHistoryDao(): AnimeSearchHistoryDao
-
     abstract fun getMediaLibraryDao(): MediaLibraryDao
 
     abstract fun getPlayHistoryDao(): PlayHistoryDao
-
-    abstract fun getDanmuBlockDao(): DanmuBlockDao
 
     abstract fun getExtendFolderDao(): ExtendFolderDao
 

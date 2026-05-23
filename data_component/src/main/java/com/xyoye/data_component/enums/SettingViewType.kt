@@ -15,17 +15,9 @@ enum class SettingViewType {
 
     SWITCH_VIDEO_SOURCE,
 
-    SEARCH_DANMU,
-
     VIDEO_SPEED,
 
     VIDEO_ASPECT,
-
-    DANMU_CONFIGURE,
-
-    DANMU_STYLE,
-
-    DANMU_OFFSET_TIME,
 
     SUBTITLE_STYLE,
 

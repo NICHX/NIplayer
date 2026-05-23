@@ -226,8 +226,6 @@ object PlayHistorySyncManager {
                     videoPosition = remoteJson.optLong("video_position"),
                     videoDuration = remoteJson.optLong("video_duration"),
                     playTime = Date(remotePlayTime),
-                    danmuPath = remoteJson.optString("danmu_path").ifEmpty { null },
-                    episodeId = remoteJson.optString("episode_id").ifEmpty { null },
                     subtitlePath = remoteJson.optString("subtitle_path").ifEmpty { null },
                     audioPath = remoteJson.optString("audio_path").ifEmpty { null },
                     torrentPath = remoteJson.optString("torrent_path").ifEmpty { null },
@@ -244,8 +242,6 @@ object PlayHistorySyncManager {
                     videoPosition = remoteJson.optLong("video_position"),
                     videoDuration = remoteJson.optLong("video_duration"),
                     playTime = Date(remotePlayTime),
-                    danmuPath = remoteJson.optString("danmu_path").ifEmpty { null },
-                    episodeId = remoteJson.optString("episode_id").ifEmpty { null },
                     subtitlePath = remoteJson.optString("subtitle_path").ifEmpty { null },
                     audioPath = remoteJson.optString("audio_path").ifEmpty { null },
                     torrentPath = remoteJson.optString("torrent_path").ifEmpty { null },
@@ -287,8 +283,6 @@ object PlayHistorySyncManager {
         json.put("play_time", isoFormat().format(entity.playTime))
         json.put("subtitle_path", entity.subtitlePath ?: "")
         json.put("audio_path", entity.audioPath ?: "")
-        json.put("danmu_path", entity.danmuPath ?: "")
-        json.put("episode_id", entity.episodeId ?: "")
         json.put("torrent_path", entity.torrentPath ?: "")
         json.put("torrent_index", entity.torrentIndex)
         json.put("http_header", entity.httpHeader ?: "")
