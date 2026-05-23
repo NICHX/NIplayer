@@ -21,10 +21,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.atomic.AtomicBoolean
 
 object PlayHistorySyncManager {
 
     private const val SYNC_FILE_NAME = "NIplayer_play_history.json"
+    private const val SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000L
     private val SYNC_MEDIA_TYPES = listOf(
         MediaType.SMB_SERVER,
         MediaType.FTP_SERVER,
@@ -38,7 +40,21 @@ object PlayHistorySyncManager {
         }
     }
 
+    private val isSyncing = AtomicBoolean(false)
+
     private fun isoFormat(): SimpleDateFormat = isoFormat.get()
+
+    sealed class SyncProgress {
+        object DownloadingCloud : SyncProgress()
+        data class Uploading(val recordCount: Int) : SyncProgress()
+        data class ApplyingRemote(val recordCount: Int) : SyncProgress()
+    }
+
+    sealed class SyncResult {
+        data class Success(val uploaded: Int, val downloaded: Int) : SyncResult()
+        data class Error(val message: String) : SyncResult()
+        object Skipped : SyncResult()
+    }
 
     private suspend fun buildStorageUrlMap(): Map<Int, String> {
         val libraryDao = DatabaseManager.instance.getMediaLibraryDao()
@@ -52,20 +68,44 @@ object PlayHistorySyncManager {
         return urlMap
     }
 
-    suspend fun sync(): SyncResult = withContext(Dispatchers.IO) {
+    suspend fun sync(
+        force: Boolean = false,
+        onProgress: ((SyncProgress) -> Unit)? = null
+    ): SyncResult = withContext(Dispatchers.IO) {
+        if (!isSyncing.compareAndSet(false, true)) {
+            return@withContext SyncResult.Error("正在同步中，请稍后再试")
+        }
         try {
             withTimeout(10000L) {
-                doSync()
+                doSync(force, onProgress)
             }
         } catch (e: TimeoutCancellationException) {
             SyncResult.Error("服务器不在线")
         } catch (e: Exception) {
             e.printStackTrace()
             SyncResult.Error("同步失败: ${e.message}")
+        } finally {
+            isSyncing.set(false)
         }
     }
 
-    private suspend fun doSync(): SyncResult {
+    private suspend fun doSync(
+        force: Boolean,
+        onProgress: ((SyncProgress) -> Unit)?
+    ): SyncResult {
+        if (!PlayHistorySyncConfig.enabled) {
+            return SyncResult.Error("播放记录同步未开启")
+        }
+
+        val now = System.currentTimeMillis()
+        if (!force) {
+            val lastAttempt = PlayHistorySyncConfig.lastSyncAttemptTime
+            if (now - lastAttempt < SYNC_MIN_INTERVAL_MS) {
+                return SyncResult.Skipped
+            }
+        }
+        PlayHistorySyncConfig.lastSyncAttemptTime = now
+
         val (serverUrl, account, password) = resolveWebDavServer()
         if (serverUrl.isNullOrEmpty()) {
             return SyncResult.Error("WebDAV服务器未配置")
@@ -82,15 +122,26 @@ object PlayHistorySyncManager {
         val localDirty = DatabaseManager.instance.getPlayHistoryDao()
             .getModifiedSince(SYNC_MEDIA_TYPES, lastSyncTime)
 
-        val cloudData = downloadFromWebDav(serverUrl, credential)
-
         val urlMap = buildStorageUrlMap()
+
+        onProgress?.invoke(SyncProgress.DownloadingCloud)
+        val cloudData = downloadWithCache(serverUrl, credential)
+
+        if (localDirty.isEmpty() && cloudData != null) {
+            val remoteDirty = filterNewRecords(cloudData, lastSyncTime)
+            val appliedCount = mergeCloudToLocal(remoteDirty)
+            config.lastSyncTime = now
+            return SyncResult.Success(0, appliedCount)
+        }
 
         val merged = if (cloudData != null) {
             mergeLocalToCloud(cloudData, localDirty, urlMap)
         } else {
             buildSyncData(localDirty, urlMap)
         }
+
+        val uploadCount = merged.optJSONArray("records")?.length() ?: 0
+        onProgress?.invoke(SyncProgress.Uploading(uploadCount))
 
         val uploadSuccess = uploadToWebDav(serverUrl, credential, merged)
         if (!uploadSuccess) {
@@ -103,16 +154,37 @@ object PlayHistorySyncManager {
             emptyList()
         }
 
+        onProgress?.invoke(SyncProgress.ApplyingRemote(remoteDirty.size))
         val appliedCount = mergeCloudToLocal(remoteDirty)
 
-        config.lastSyncTime = System.currentTimeMillis()
+        config.lastSyncTime = now
 
         return SyncResult.Success(localDirty.size, appliedCount)
     }
 
+    private suspend fun downloadWithCache(
+        serverUrl: String,
+        credential: String?
+    ): JSONObject? {
+        val freshData = downloadFromWebDav(serverUrl, credential)
+        if (freshData != null) {
+            PlayHistorySyncConfig.cachedCloudData = freshData.toString()
+            return freshData
+        }
+        val cached = PlayHistorySyncConfig.cachedCloudData
+        if (cached.isNotEmpty()) {
+            return try {
+                JSONObject(cached)
+            } catch (_: Exception) {
+                null
+            }
+        }
+        return null
+    }
+
     private fun buildSyncData(records: List<PlayHistoryEntity>, urlMap: Map<Int, String>): JSONObject {
         val root = JSONObject()
-        root.put("version", 1)
+        root.put("version", 2)
         root.put("device_id", PlayHistorySyncConfig.deviceId)
         root.put("last_sync_time", isoFormat().format(Date()))
         val arr = JSONArray()
@@ -153,7 +225,7 @@ object PlayHistorySyncManager {
         }
 
         val root = JSONObject()
-        root.put("version", 1)
+        root.put("version", 2)
         root.put("device_id", PlayHistorySyncConfig.deviceId)
         root.put("last_sync_time", isoFormat().format(Date()))
         val arr = JSONArray()
@@ -187,10 +259,12 @@ object PlayHistorySyncManager {
         val libraryDao = DatabaseManager.instance.getMediaLibraryDao()
 
         val urlToId = mutableMapOf<String, Int>()
+        val idToUrl = mutableMapOf<Int, String>()
         for (type in SYNC_MEDIA_TYPES) {
             val servers = libraryDao.getByMediaTypeSuspend(type)
             for (server in servers) {
                 urlToId[server.url.trimEnd('/')] = server.id
+                idToUrl[server.id] = server.url.trimEnd('/')
             }
         }
 
@@ -202,12 +276,7 @@ object PlayHistorySyncManager {
             val storagePath = remoteJson.optString("storage_path")
             if (storagePath.isEmpty()) continue
 
-            val serverUrl = remoteJson.optString("server_url")
-            val matchedStorageId = if (serverUrl.isNotEmpty()) {
-                urlToId[serverUrl]
-            } else {
-                null
-            }
+            val matchedStorageId = resolveStorageId(remoteJson, urlToId)
             if (matchedStorageId == null) continue
 
             val uniqueKey = buildUniqueKey(matchedStorageId, storagePath)
@@ -259,6 +328,25 @@ object PlayHistorySyncManager {
         return appliedCount
     }
 
+    private fun resolveStorageId(
+        remoteJson: JSONObject,
+        urlToId: Map<String, Int>
+    ): Int? {
+        val cloudStorageId = if (remoteJson.has("storage_id") && !remoteJson.isNull("storage_id")) {
+            remoteJson.optInt("storage_id", -1)
+        } else {
+            -1
+        }
+        if (cloudStorageId > 0 && cloudStorageId in urlToId.values) {
+            return cloudStorageId
+        }
+        val serverUrl = remoteJson.optString("server_url")
+        if (serverUrl.isNotEmpty()) {
+            return urlToId[serverUrl]
+        }
+        return null
+    }
+
     private fun buildSyncKey(entity: PlayHistoryEntity, urlMap: Map<Int, String>): String {
         val serverUrl = entity.storageId?.let { urlMap[it] } ?: ""
         val storagePath = entity.storagePath ?: ""
@@ -274,8 +362,9 @@ object PlayHistorySyncManager {
         val serverUrl = entity.storageId?.let { urlMap[it] } ?: ""
         json.put("sync_key", "$serverUrl:${entity.storagePath ?: ""}")
         json.put("server_url", serverUrl)
-        json.put("media_type", entity.mediaType.value)
+        json.put("storage_id", entity.storageId ?: -1)
         json.put("storage_path", entity.storagePath ?: "")
+        json.put("media_type", entity.mediaType.value)
         json.put("video_name", entity.videoName)
         json.put("url", entity.url)
         json.put("video_position", entity.videoPosition)
@@ -404,10 +493,5 @@ object PlayHistorySyncManager {
         } catch (e: Exception) {
             android.util.Log.e("PlayHistorySync", "ensureDirectoryExists failed: ${e.message}")
         }
-    }
-
-    sealed class SyncResult {
-        data class Success(val uploaded: Int, val downloaded: Int) : SyncResult()
-        data class Error(val message: String) : SyncResult()
     }
 }

@@ -2,6 +2,7 @@ package com.xyoye.common_component.utils
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import com.bumptech.glide.Glide
@@ -425,6 +426,7 @@ object ThumbnailGeneratorManager {
         if (tryCustomThumbnail(file, coverFile)) return@withContext true
 
         var success = false
+        var usedFallback = false
 
         try {
             val source = file.storage.createPlayUrl(file) ?: return@withContext false
@@ -435,10 +437,96 @@ object ThumbnailGeneratorManager {
                 if (playUri.scheme == "content") {
                     retriever.setDataSource(BaseApplication.getAppContext(), playUri)
                 } else {
-                    val headers = file.storage.getNetworkHeaders()
-                    if (headers != null) retriever.setDataSource(source, headers)
-                    else retriever.setDataSource(source)
+                    run {
+                        val headers = file.storage.getNetworkHeaders()
+                        if (headers != null) {
+                            try {
+                                retriever.setDataSource(source, headers)
+                            } catch (_: Exception) {
+                                if (usedFallback) return@run
+                                retriever.release()
+                                usedFallback = true
+                                return@run
+                            }
+                        } else {
+                            retriever.setDataSource(source)
+                        }
+                    }
+                    if (usedFallback) return@withContext fallbackVideoThumbnail(file, coverFile)
+
+                    val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                    if (durationMs > 0 && durationMs < 5_000) return@withContext false
+                    val targetTimeUs = if (durationMs > 0) durationMs * 100 else 0L
+
+                    val positionsToTry = buildList {
+                        add(targetTimeUs)
+                        if (durationMs > 0) add(durationMs * 500)
+                        add(0L)
+                    }
+                    var rawBitmap: Bitmap? = null
+                    for (pos in positionsToTry) {
+                        rawBitmap = retriever.getFrameAtTime(pos, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        if (rawBitmap != null) break
+                    }
+                    if (rawBitmap == null) {
+                        nonRetryableFailures.add(file.uniqueKey())
+                        return@withContext false
+                    }
+
+                    val bitmap = resizeBitmap(rawBitmap, THUMBNAIL_MAX_WIDTH)
+                    if (bitmap != rawBitmap) rawBitmap.recycle()
+
+                    val thumbBytes = toJpegBytes(bitmap)
+                    success = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
+                    bitmap.recycle()
+
+                    if (success && !isLocalStorage(file)) {
+                        val dotThumbPath = buildDotThumbPath(file)
+                        if (dotThumbPath != null) {
+                            val dotThumbDir = getDirPath(dotThumbPath)
+                            if (file.storage.createDirectory(dotThumbDir)) {
+                                file.storage.saveFile(dotThumbPath, thumbBytes)
+                            }
+                        }
+                    }
                 }
+            } finally {
+                try { retriever.release() } catch (_: Exception) {}
+            }
+        } catch (e: Exception) {
+            DDLog.e("ThumbnailGenerator", "视频缩略图生成失败: ${file.fileName()}", e)
+        } finally {
+            cleanupPlayUrl(file)
+        }
+        if (usedFallback) return@withContext fallbackVideoThumbnail(file, coverFile)
+        return@withContext success
+    }
+
+    private suspend fun fallbackVideoThumbnail(file: StorageFile, coverFile: File): Boolean = withContext(Dispatchers.IO) {
+        if (tryCustomThumbnail(file, coverFile)) return@withContext true
+
+        val fileInfo = file.storage.fileInfo(file) ?: return@withContext false
+        val fileSize = fileInfo.fileSize
+        if (fileSize <= 0 || fileSize > 50 * 1024 * 1024) return@withContext false
+
+        try {
+            val inputStream = file.storage.openFile(file) ?: return@withContext false
+            val videoBytes = inputStream.use { it.readBytes() }
+            if (videoBytes.isEmpty()) return@withContext false
+
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(object : MediaDataSource() {
+                    override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
+                        if (position >= videoBytes.size) return -1
+                        val count = minOf(size, videoBytes.size - position.toInt())
+                        System.arraycopy(videoBytes, position.toInt(), buffer, offset, count)
+                        return count
+                    }
+
+                    override fun getSize(): Long = videoBytes.size.toLong()
+                    override fun close() {}
+                })
 
                 val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
                 if (durationMs > 0 && durationMs < 5_000) return@withContext false
@@ -454,19 +542,16 @@ object ThumbnailGeneratorManager {
                     rawBitmap = retriever.getFrameAtTime(pos, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                     if (rawBitmap != null) break
                 }
-                if (rawBitmap == null) {
-                    nonRetryableFailures.add(file.uniqueKey())
-                    return@withContext false
-                }
+                if (rawBitmap == null) return@withContext false
 
                 val bitmap = resizeBitmap(rawBitmap, THUMBNAIL_MAX_WIDTH)
                 if (bitmap != rawBitmap) rawBitmap.recycle()
 
                 val thumbBytes = toJpegBytes(bitmap)
-                success = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
+                val saved = saveBitmapToFile(bitmap, coverFile, file.uniqueKey())
                 bitmap.recycle()
 
-                if (success && !isLocalStorage(file)) {
+                if (saved && !isLocalStorage(file)) {
                     val dotThumbPath = buildDotThumbPath(file)
                     if (dotThumbPath != null) {
                         val dotThumbDir = getDirPath(dotThumbPath)
@@ -475,15 +560,15 @@ object ThumbnailGeneratorManager {
                         }
                     }
                 }
+
+                return@withContext saved
             } finally {
                 try { retriever.release() } catch (_: Exception) {}
             }
         } catch (e: Exception) {
-            DDLog.e("ThumbnailGenerator", "视频缩略图生成失败: ${file.fileName()}", e)
-        } finally {
-            cleanupPlayUrl(file)
+            DDLog.e("ThumbnailGenerator", "视频缩略图生成fallback失败: ${file.fileName()}", e)
+            return@withContext false
         }
-        return@withContext success
     }
 
     private suspend fun tryCustomThumbnail(file: StorageFile, coverFile: File): Boolean {

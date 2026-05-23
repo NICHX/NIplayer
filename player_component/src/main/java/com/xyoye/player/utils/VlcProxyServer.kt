@@ -63,7 +63,15 @@ class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(p
             return newFixedLengthResponse(Status.NOT_FOUND, "*/*", "proxy url not found")
         }
 
-        val proxyResponse = getProxyResponse(proxyUrl, proxyHeaders, session)
+        val proxyResponse = try {
+            getProxyResponse(proxyUrl, proxyHeaders, session)
+        } catch (e: Exception) {
+            null
+        }
+        if (proxyResponse == null) {
+            return newFixedLengthResponse(Status.INTERNAL_ERROR, "*/*", "proxy request failed")
+        }
+
         val bodyStream = proxyResponse.body?.byteStream()
         val bufferedStream = if (bodyStream != null) {
             BufferedInputStream(bodyStream, STREAM_BUFFER_SIZE)
@@ -98,7 +106,7 @@ class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(p
         url: String,
         headers: Map<String, String>,
         session: IHTTPSession
-    ): okhttp3.Response {
+    ): okhttp3.Response? {
         val requestBuilder = Request.Builder()
         headers.forEach {
             requestBuilder.header(it.key, it.value)
@@ -114,7 +122,11 @@ class VlcProxyServer private constructor(port: Int = randomPort()) : NanoHTTPD(p
         val request = requestBuilder.url(url).build()
 
         val call = UnsafeOkHttpClient.client.newCall(request)
-        return call.execute()
+        return try {
+            call.execute()
+        } catch (e: java.io.IOException) {
+            null
+        }
     }
 
     fun release() {

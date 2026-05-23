@@ -247,6 +247,7 @@ class BackupManagerViewModel : BaseViewModel() {
                 restoreServerThumbnailConfigs(root.optJSONObject("server_thumbnail_configs"))
                 restoreWebDavBackupConfig(root.optJSONObject("webdav_backup_config"))
                 restoreMusicMetadataConfig(root.optJSONObject("music_metadata_config"), mmkv)
+                fixExistingServerId()
 
                 showLoading()
                 delay(500)
@@ -399,6 +400,7 @@ class BackupManagerViewModel : BaseViewModel() {
         restoreServerThumbnailConfigs(root.optJSONObject("server_thumbnail_configs"))
         restoreWebDavBackupConfig(root.optJSONObject("webdav_backup_config"))
         restoreMusicMetadataConfig(root.optJSONObject("music_metadata_config"), mmkv)
+        fixExistingServerId()
     }
 
     private suspend fun resolveWebDavServer(): Triple<String?, String?, String?> {
@@ -534,7 +536,7 @@ class BackupManagerViewModel : BaseViewModel() {
                 return@launch
             }
             showLoading()
-            when (val result = com.xyoye.common_component.utils.PlayHistorySyncManager.sync()) {
+            when (val result = com.xyoye.common_component.utils.PlayHistorySyncManager.sync(force = true)) {
                 is com.xyoye.common_component.utils.PlayHistorySyncManager.SyncResult.Success -> {
                     hideLoading()
                     com.xyoye.common_component.weight.ToastCenter.showSuccess(
@@ -544,6 +546,9 @@ class BackupManagerViewModel : BaseViewModel() {
                 is com.xyoye.common_component.utils.PlayHistorySyncManager.SyncResult.Error -> {
                     hideLoading()
                     com.xyoye.common_component.weight.ToastCenter.showError(result.message)
+                }
+                is com.xyoye.common_component.utils.PlayHistorySyncManager.SyncResult.Skipped -> {
+                    hideLoading()
                 }
             }
         }
@@ -606,11 +611,14 @@ class BackupManagerViewModel : BaseViewModel() {
         val dao = DatabaseManager.instance.getMediaLibraryDao()
         for (i in 0 until json.length()) {
             val obj = json.getJSONObject(i)
+            val url = obj.optString("url")
+            val mediaType = com.xyoye.data_component.enums.MediaType.fromValue(obj.optString("mediaType"))
+            val existing = dao.getByUrl(url, mediaType)
             val entity = MediaLibraryEntity(
-                id = 0,
+                id = existing?.id ?: 0,
                 displayName = obj.optString("displayName"),
-                url = obj.optString("url"),
-                mediaType = com.xyoye.data_component.enums.MediaType.fromValue(obj.optString("mediaType")),
+                url = url,
+                mediaType = mediaType,
                 describe = obj.optString("describe"),
                 account = decryptField(obj.optString("account")),
                 password = decryptField(obj.optString("password")),
@@ -624,10 +632,7 @@ class BackupManagerViewModel : BaseViewModel() {
                 remoteSecret = decryptField(obj.optString("remoteSecret")),
                 webDavStrict = obj.optBoolean("webDavStrict", true),
             )
-            val existing = dao.getByUrl(entity.url, entity.mediaType)
-            if (existing == null) {
-                dao.insert(entity)
-            }
+            dao.insert(entity)
         }
     }
 
@@ -662,6 +667,20 @@ class BackupManagerViewModel : BaseViewModel() {
         if (json.has("apiAuth")) {
             val auth = decryptField(json.optString("apiAuth"))
             if (auth != null) mmkv.encode("apiAuth", auth)
+        }
+    }
+
+    private suspend fun fixExistingServerId() {
+        val config = com.xyoye.common_component.config.WebDavBackupConfig
+        if (config.serverMode != "existing") return
+        val existingId = config.existingServerId
+        if (existingId <= 0) return
+        val dao = DatabaseManager.instance.getMediaLibraryDao()
+        val server = dao.getById(existingId)
+        if (server != null) return
+        val webdavServers = dao.getByMediaTypeSuspend(com.xyoye.data_component.enums.MediaType.WEBDAV_SERVER)
+        if (webdavServers.isNotEmpty()) {
+            config.existingServerId = webdavServers.first().id
         }
     }
 }

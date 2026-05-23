@@ -109,7 +109,7 @@ class PlayHistoryViewModel : BaseViewModel() {
                 return@launch
             }
             showLoading()
-            when (val result = PlayHistorySyncManager.sync()) {
+            when (val result = PlayHistorySyncManager.sync(force = true)) {
                 is PlayHistorySyncManager.SyncResult.Success -> {
                     hideLoading()
                     ToastCenter.showSuccess("同步完成，上传${result.uploaded}条，下载${result.downloaded}条")
@@ -118,6 +118,9 @@ class PlayHistoryViewModel : BaseViewModel() {
                 is PlayHistorySyncManager.SyncResult.Error -> {
                     hideLoading()
                     ToastCenter.showError(result.message)
+                }
+                is PlayHistorySyncManager.SyncResult.Skipped -> {
+                    hideLoading()
                 }
             }
         }
