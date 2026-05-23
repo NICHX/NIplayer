@@ -337,14 +337,20 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
     private fun getFileUri(task: DownloadTaskEntity): Uri? {
         val storageUrl = task.targetStorageUrl
         return if (storageUrl != null) {
-            val directFile = com.xyoye.common_component.utils.SafPathResolver.resolveTargetFile(
-                this, storageUrl, task.fileName
-            )
-            if (directFile != null && directFile.exists())
-                Uri.fromFile(directFile)
-            else
-                DocumentFile.fromTreeUri(this, Uri.parse(storageUrl))
-                    ?.findFile(task.fileName)?.uri
+            if (storageUrl.startsWith("file://")) {
+                val dirPath = storageUrl.removePrefix("file://")
+                val file = java.io.File(dirPath, task.fileName)
+                if (file.exists()) Uri.fromFile(file) else null
+            } else {
+                val directFile = com.xyoye.common_component.utils.SafPathResolver.resolveTargetFile(
+                    this, storageUrl, task.fileName
+                )
+                if (directFile != null && directFile.exists())
+                    Uri.fromFile(directFile)
+                else
+                    DocumentFile.fromTreeUri(this, Uri.parse(storageUrl))
+                        ?.findFile(task.fileName)?.uri
+            }
         } else {
             val file = java.io.File(PathHelper.getCachePath(), "download/${task.fileName}")
             if (file.exists()) Uri.fromFile(file) else null

@@ -56,7 +56,7 @@ object Dependencies {
         //ftp
         const val nano_http = "org.nanohttpd:nanohttpd:2.3.1"
         //smb
-        const val smbj = "com.hierynomus:smbj:0.10.0"
+        const val smbj = "com.hierynomus:smbj:0.14.0"
         const val dcerpc = "com.rapid7.client:dcerpc:0.10.0"
 
         //switch keyboard panel
