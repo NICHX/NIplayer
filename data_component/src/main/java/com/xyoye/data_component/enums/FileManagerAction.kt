@@ -6,7 +6,6 @@ package com.xyoye.data_component.enums
 
 enum class FileManagerAction {
     ACTION_SELECT_DIRECTORY,
-    ACTION_SELECT_DANMU,
     ACTION_SELECT_SUBTITLE,
     ACTION_SELECT_VIDEO,
     ACTION_SELECT_AUDIO

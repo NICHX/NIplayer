@@ -21,7 +21,7 @@ object ManualMigration {
     }
 
     /**
-     * V4.0.5, 将本地媒体库中视频的弹幕、字幕数据迁移至播放历史
+     * V4.0.5, 将本地媒体库中视频的字幕数据迁移至播放历史
      *
      * 由于数据迁移需要用到MD5，所以手动迁移数据
      */
@@ -33,7 +33,7 @@ object ManualMigration {
         withContext(Dispatchers.IO) {
             val videoList = DatabaseManager.instance.getVideoDao().getAll()
             val historyList = videoList.mapNotNull {
-                if (it.danmuPath.isNullOrEmpty() && it.subtitlePath.isNullOrEmpty()) {
+                if (it.subtitlePath.isNullOrEmpty()) {
                     null
                 } else {
                     PlayHistoryEntity(
@@ -41,8 +41,6 @@ object ManualMigration {
                         "",
                         "",
                         MediaType.LOCAL_STORAGE,
-                        danmuPath = it.danmuPath,
-                        episodeId = it.danmuId.toString(),
                         subtitlePath = it.subtitlePath,
                         uniqueKey = it.filePath.toMd5String()
                     )

@@ -161,7 +161,7 @@ class StorageFileFragmentViewModel : BaseViewModel() {
                 }
 
                 else -> {
-                    // DANMU track type is no longer supported
+                    // track type is no longer supported
                 }
             }
             updateHistory()
@@ -225,7 +225,7 @@ class StorageFileFragmentViewModel : BaseViewModel() {
             .getPlayHistory(file.uniqueKey(), file.storage.library.id)
         if (history == null) {
             //这是一步补救措施，数据库11版本之前，没有存储storageId字段
-            //因此为了避免弹幕等历史数据无法展示，依旧需要通过mediaType查询
+            //因此为了避免历史数据无法展示，依旧需要通过mediaType查询
             history = DatabaseManager.instance
                 .getPlayHistoryDao()
                 .getPlayHistory(file.uniqueKey(), file.storage.library.mediaType)

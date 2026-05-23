@@ -53,15 +53,11 @@ object VideoScan {
      */
     private fun generateVideoEntity(file: File): VideoEntity {
         return VideoEntity(
-            0,
-            0,
-            0,
-            file.absolutePath,
-            file.parentFile?.absolutePath.orEmpty(),
-            null,
-            null,
-            getVideoDuration(file),
-            file.length(),
+            fileId = 0,
+            filePath = file.absolutePath,
+            folderPath = file.parentFile?.absolutePath.orEmpty(),
+            videoDuration = getVideoDuration(file),
+            fileLength = file.length(),
             isFilter = false,
             isExtend = true
         )

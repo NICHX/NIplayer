@@ -14,19 +14,11 @@ data class VideoEntity(
     @ColumnInfo(name = "file_id")
     var fileId: Long,
 
-    @Deprecated("migrate to play_history")
-    @ColumnInfo(name = "danmu_id")
-    var danmuId: Int = 0,
-
     @ColumnInfo(name = "file_path")
     var filePath: String,
 
     @ColumnInfo(name = "folder_path")
     var folderPath: String,
-
-    @Deprecated("migrate to play_history")
-    @ColumnInfo(name = "danmu_path")
-    var danmuPath: String? = null,
 
     @Deprecated("migrate to play_history")
     @ColumnInfo(name = "subtitle_path")

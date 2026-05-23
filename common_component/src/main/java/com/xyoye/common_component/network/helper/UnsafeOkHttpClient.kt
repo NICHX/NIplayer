@@ -43,7 +43,6 @@ object UnsafeOkHttpClient {
             .hostnameVerifier { _, _ -> true }
             .readTimeout(60, TimeUnit.SECONDS)
             .retryOnConnectionFailure(false)
-            .addNetworkInterceptor(RedirectAuthorizationInterceptor())
         if (BuildConfig.DEBUG) {
             builder.addNetworkInterceptor(LoggerInterceptor().webDav())
         }

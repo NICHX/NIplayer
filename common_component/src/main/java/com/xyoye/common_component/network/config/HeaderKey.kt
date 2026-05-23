@@ -8,6 +8,4 @@ object HeaderKey {
     const val BASE_URL = "dynamic-base-url"
 
     const val AUTHORIZATION = "Authorization"
-
-    const val AUTH_REDIRECT = "Authorization-Redirect"
 }

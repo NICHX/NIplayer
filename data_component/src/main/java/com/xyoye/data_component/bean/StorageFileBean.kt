@@ -10,7 +10,6 @@ data class StorageFileBean(
     val isDirectory: Boolean,
     val filePath: String,
     val fileName: String,
-    val danmuPath: String? = null,
     val subtitlePath: String? = null,
     val position: Long = 0,
     val duration: Long = 0,

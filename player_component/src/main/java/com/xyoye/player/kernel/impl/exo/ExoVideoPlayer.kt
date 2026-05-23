@@ -75,7 +75,7 @@ class ExoVideoPlayer(private val mContext: Context) : AbstractVideoPlayer(), Pla
     private val trackNameProvider by lazy { DefaultTrackNameProvider(mContext.resources) }
 
     override fun initPlayer() {
-        //番剧，字幕优先使用中文，音频优先使用日语
+        //字幕优先使用中文，音频优先使用日语
         mTrackSelector.parameters = TrackSelectionParameters.Builder(mContext)
             .setPreferredTextLanguage("zh")
             .setPreferredAudioLanguage("jap")

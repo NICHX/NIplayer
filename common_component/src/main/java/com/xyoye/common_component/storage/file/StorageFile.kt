@@ -1,7 +1,9 @@
 package com.xyoye.common_component.storage.file
 
+import android.content.Context
+import android.net.Uri
 import com.xyoye.common_component.storage.Storage
-import com.xyoye.data_component.bean.LocalDanmuBean
+import com.xyoye.common_component.storage.file.helper.SmbPlayServer
 import com.xyoye.data_component.entity.PlayHistoryEntity
 
 /**
@@ -120,11 +122,6 @@ interface StorageFile {
      */
     fun videoDuration(): Long
 }
-
-val StorageFile.danmu: LocalDanmuBean?
-    get() = playHistory?.let {
-        if (it.danmuPath.isNullOrEmpty()) null else LocalDanmuBean(it.danmuPath!!, it.episodeId)
-    }
 
 val StorageFile.subtitle: String?
     get() = if (playHistory?.subtitlePath.isNullOrEmpty()) {

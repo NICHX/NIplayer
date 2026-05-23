@@ -197,6 +197,75 @@ class DatabaseManager private constructor() {
             }
         }
 
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("DROP TABLE IF EXISTS danmu_block")
+                database.execSQL("DROP TABLE IF EXISTS anime_search_history")
+                database.execSQL(
+                    "CREATE TABLE play_history_temp(" +
+                            "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT," +
+                            "video_name TEXT NOT NULL," +
+                            "url TEXT NOT NULL," +
+                            "media_type TEXT NOT NULL," +
+                            "video_position INTEGER NOT NULL," +
+                            "video_duration INTEGER NOT NULL," +
+                            "play_time INTEGER NOT NULL," +
+                            "subtitle_path TEXT," +
+                            "torrent_path TEXT," +
+                            "torrent_index INTEGER NOT NULL DEFAULT -1," +
+                            "http_header TEXT," +
+                            "unique_key TEXT NOT NULL DEFAULT ''," +
+                            "storage_path TEXT," +
+                            "storage_id INTEGER," +
+                            "audio_path TEXT" +
+                            ")"
+                )
+                database.execSQL(
+                    "INSERT INTO play_history_temp(" +
+                            "id, video_name, url, media_type, video_position, " +
+                            "video_duration, play_time, subtitle_path, " +
+                            "torrent_path, torrent_index, http_header, " +
+                            "unique_key, storage_path, storage_id, audio_path" +
+                            ") " +
+                            "SELECT " +
+                            "id, video_name, url, media_type, video_position," +
+                            "video_duration, play_time, subtitle_path," +
+                            "torrent_path, torrent_index, http_header," +
+                            "unique_key, storage_path, storage_id, audio_path" +
+                            " FROM play_history"
+                )
+                database.execSQL("DROP TABLE play_history")
+                database.execSQL("ALTER TABLE play_history_temp RENAME TO play_history")
+                database.execSQL("DROP INDEX IF EXISTS 'index_play_history_unique_key_storage_id'")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_play_history_unique_key_storage_id ON play_history(unique_key, storage_id)")
+            }
+        }
+
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS video_temp(" +
+                            "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT," +
+                            "file_id INTEGER NOT NULL," +
+                            "file_path TEXT NOT NULL," +
+                            "folder_path TEXT NOT NULL," +
+                            "subtitle_path TEXT," +
+                            "video_duration INTEGER NOT NULL DEFAULT 0," +
+                            "file_length INTEGER NOT NULL DEFAULT 0," +
+                            "filter INTEGER NOT NULL DEFAULT 0," +
+                            "extend INTEGER NOT NULL DEFAULT 0" +
+                            ")"
+                )
+                database.execSQL(
+                    "INSERT INTO video_temp(id, file_id, file_path, folder_path, subtitle_path, video_duration, file_length, filter, extend) " +
+                            "SELECT id, file_id, file_path, folder_path, subtitle_path, video_duration, file_length, filter, extend FROM video"
+                )
+                database.execSQL("DROP TABLE video")
+                database.execSQL("ALTER TABLE video_temp RENAME TO video")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_video_file_path ON video(file_path)")
+            }
+        }
+
         val instance = DatabaseManager.holder.database
     }
 
@@ -222,7 +291,9 @@ class DatabaseManager private constructor() {
         MIGRATION_11_12,
         MIGRATION_12_13,
         MIGRATION_13_14,
-        MIGRATION_14_15
+        MIGRATION_14_15,
+        MIGRATION_15_16,
+        MIGRATION_16_17
     ).build()
 
 }

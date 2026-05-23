@@ -2,7 +2,6 @@ package com.xyoye.common_component.source.base
 
 import com.xyoye.common_component.source.inter.ExtraSource
 import com.xyoye.common_component.source.inter.VideoSource
-import com.xyoye.data_component.bean.LocalDanmuBean
 import com.xyoye.data_component.entity.PlayHistoryEntity
 
 
@@ -13,14 +12,6 @@ abstract class BaseVideoSource(
     index: Int,
     videoSources: List<*>
 ) : GroupVideoSource(index, videoSources), VideoSource, ExtraSource {
-    override fun getDanmu(): LocalDanmuBean? {
-        return null
-    }
-
-    override fun setDanmu(danmu: LocalDanmuBean?) {
-
-    }
-
     override fun getSubtitlePath(): String? {
         return null
     }

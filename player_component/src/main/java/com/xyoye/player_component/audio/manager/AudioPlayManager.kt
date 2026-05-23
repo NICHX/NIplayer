@@ -32,6 +32,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@androidx.media3.common.util.UnstableApi
 object AudioPlayManager {
 
     private var exoPlayer: ExoPlayer? = null

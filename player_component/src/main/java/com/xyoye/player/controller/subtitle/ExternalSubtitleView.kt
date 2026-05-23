@@ -136,7 +136,7 @@ class ExternalSubtitleView(
         lifecycleScope.launch(Dispatchers.IO) {
             // 设置加载状态未完成
             mSubtitleLoaded = false
-            // 释放旧的已加载的弹幕数据
+            // 释放旧的已加载的字幕数据
             mSubtitleManager.release()
             // 发送一条空字幕，用于清空上一条显示的字幕
             sendEmptySubtitle()

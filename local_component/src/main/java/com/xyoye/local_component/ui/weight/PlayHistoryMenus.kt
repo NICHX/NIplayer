@@ -72,7 +72,7 @@ class PlayHistoryMenus private constructor(
     private fun showClearConfirmDialog() {
         CommonDialog.Builder(activity).run {
             tips = "清空播放记录"
-            content = "清空播放记录，将同时移除弹幕和字幕绑定记录，确定清空?"
+            content = "清空播放记录，将同时移除字幕绑定记录，确定清空?"
             addNegative()
             addPositive {
                 it.dismiss()

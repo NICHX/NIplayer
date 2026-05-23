@@ -78,8 +78,6 @@ fun String.aesEncode(key: String? = null) = EntropyUtils.aesEncode(key, this, Ba
 
 fun String.aesDecode(key: String? = null) = EntropyUtils.aesDecode(key, this, Base64.NO_WRAP)
 
-fun String.authorizationValue() = "Bearer $this"
-
 inline fun String?.ifNullOrBlank(defaultValue: () -> String): String =
     if (this.isNullOrBlank()) defaultValue() else this
 

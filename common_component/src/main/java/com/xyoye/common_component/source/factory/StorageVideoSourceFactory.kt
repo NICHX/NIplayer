@@ -23,7 +23,6 @@ object StorageVideoSourceFactory {
             playUrl,
             file,
             videoSources,
-            null,
             subtitlePath,
             audioPath
         )
