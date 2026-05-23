@@ -64,6 +64,7 @@ class BackupManagerViewModel : BaseViewModel() {
             root.put("servers", collectServers())
             root.put("server_thumbnail_configs", collectServerThumbnailConfigs())
             root.put("webdav_backup_config", collectWebDavBackupConfig())
+            root.put("music_metadata_config", collectMusicMetadataConfig(mmkv))
             root
         }
     }
@@ -77,6 +78,9 @@ class BackupManagerViewModel : BaseViewModel() {
         val folder2 = mmkv.decodeString("commonlyFolder2")
         if (folder2 != null) cfg.put("commonlyFolder2", folder2)
         cfg.put("lastOpenFolderEnable", mmkv.decodeBool("lastOpenFolderEnable"))
+        cfg.put("gridView", mmkv.decodeBool("gridView"))
+        val quickAccessItems = mmkv.decodeString("quickAccessItems")
+        if (quickAccessItems != null) cfg.put("quickAccessItems", quickAccessItems)
         return cfg
     }
 
@@ -191,6 +195,16 @@ class BackupManagerViewModel : BaseViewModel() {
         return cfg
     }
 
+    private fun collectMusicMetadataConfig(mmkv: MMKV): JSONObject {
+        val cfg = JSONObject()
+        cfg.put("apiUrl", mmkv.decodeString("apiUrl") ?: "")
+        val apiAuth = mmkv.decodeString("apiAuth")
+        if (!apiAuth.isNullOrEmpty()) {
+            cfg.put("apiAuth", encryptField(apiAuth) ?: "")
+        }
+        return cfg
+    }
+
     fun getBackupFileName(): String {
         val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
         val timestamp = dateFormat.format(Date())
@@ -232,6 +246,7 @@ class BackupManagerViewModel : BaseViewModel() {
                 restoreServers(root.optJSONArray("servers"))
                 restoreServerThumbnailConfigs(root.optJSONObject("server_thumbnail_configs"))
                 restoreWebDavBackupConfig(root.optJSONObject("webdav_backup_config"))
+                restoreMusicMetadataConfig(root.optJSONObject("music_metadata_config"), mmkv)
 
                 showLoading()
                 delay(500)
@@ -383,6 +398,7 @@ class BackupManagerViewModel : BaseViewModel() {
         restoreServers(root.optJSONArray("servers"))
         restoreServerThumbnailConfigs(root.optJSONObject("server_thumbnail_configs"))
         restoreWebDavBackupConfig(root.optJSONObject("webdav_backup_config"))
+        restoreMusicMetadataConfig(root.optJSONObject("music_metadata_config"), mmkv)
     }
 
     private suspend fun resolveWebDavServer(): Triple<String?, String?, String?> {
@@ -544,6 +560,8 @@ class BackupManagerViewModel : BaseViewModel() {
         if (json.has("commonlyFolder1")) mmkv.encode("commonlyFolder1", json.optString("commonlyFolder1"))
         if (json.has("commonlyFolder2")) mmkv.encode("commonlyFolder2", json.optString("commonlyFolder2"))
         if (json.has("lastOpenFolderEnable")) mmkv.encode("lastOpenFolderEnable", json.optBoolean("lastOpenFolderEnable"))
+        if (json.has("gridView")) mmkv.encode("gridView", json.optBoolean("gridView"))
+        if (json.has("quickAccessItems")) mmkv.encode("quickAccessItems", json.optString("quickAccessItems"))
     }
 
     private fun restorePlayerConfig(json: JSONObject?, mmkv: MMKV) {
@@ -636,5 +654,14 @@ class BackupManagerViewModel : BaseViewModel() {
         if (json.has("existingServerId")) config.existingServerId = json.optInt("existingServerId")
         if (json.has("directory")) config.directory = json.optString("directory")
         if (json.has("keepCount")) config.keepCount = json.optInt("keepCount")
+    }
+
+    private fun restoreMusicMetadataConfig(json: JSONObject?, mmkv: MMKV) {
+        if (json == null) return
+        if (json.has("apiUrl")) mmkv.encode("apiUrl", json.optString("apiUrl"))
+        if (json.has("apiAuth")) {
+            val auth = decryptField(json.optString("apiAuth"))
+            if (auth != null) mmkv.encode("apiAuth", auth)
+        }
     }
 }
