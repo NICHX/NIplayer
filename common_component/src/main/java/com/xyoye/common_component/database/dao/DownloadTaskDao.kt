@@ -23,6 +23,14 @@ interface DownloadTaskDao {
     @Query("SELECT * FROM download_task WHERE unique_key = :uniqueKey AND storage_id = :storageId")
     suspend fun getByUniqueKey(uniqueKey: String, storageId: Int): DownloadTaskEntity?
 
+    @Query("""
+        SELECT * FROM download_task 
+        WHERE unique_key = :uniqueKey 
+        AND storage_id = :storageId 
+        AND ((target_storage_url IS NULL AND :targetStorageUrl IS NULL) OR target_storage_url = :targetStorageUrl)
+    """)
+    suspend fun getByUniqueKeyAndTarget(uniqueKey: String, storageId: Int, targetStorageUrl: String?): DownloadTaskEntity?
+
     @Query("SELECT COUNT(*) FROM download_task WHERE state IN (:states)")
     fun countByStatesFlow(states: List<Int>): Flow<Int>
 

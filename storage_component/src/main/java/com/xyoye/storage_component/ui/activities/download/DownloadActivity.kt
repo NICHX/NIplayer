@@ -2,26 +2,18 @@ package com.xyoye.storage_component.ui.activities.download
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.SimpleItemAnimator
+import androidx.core.view.isVisible
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.extension.setData
 import com.xyoye.common_component.extension.vertical
-import com.xyoye.data_component.entity.DownloadState
-import com.xyoye.data_component.entity.DownloadTaskEntity
-import com.xyoye.storage_component.BR
-import com.xyoye.storage_component.R
-import com.xyoye.storage_component.databinding.ActivityDownloadBinding
-import com.xyoye.storage_component.databinding.ItemDownloadTaskBinding
-import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.SimpleItemAnimator
-import androidx.core.view.isVisible
 import com.xyoye.common_component.adapter.buildAdapter
 import com.xyoye.common_component.adapter.addItem
 import com.xyoye.common_component.adapter.setupDiffUtil
@@ -30,6 +22,13 @@ import com.xyoye.common_component.source.media.LocalFileVideoSource
 import com.xyoye.common_component.utils.PathHelper
 import com.xyoye.common_component.utils.formatFileSize
 import com.xyoye.common_component.weight.ToastCenter
+import com.xyoye.data_component.entity.DownloadState
+import com.xyoye.data_component.entity.DownloadTaskEntity
+import com.xyoye.storage_component.BR
+import com.xyoye.storage_component.R
+import com.xyoye.storage_component.databinding.ActivityDownloadBinding
+import com.xyoye.storage_component.databinding.ItemDownloadTaskBinding
+import com.xyoye.storage_component.databinding.ItemSectionHeaderBinding
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -56,15 +55,24 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
         (dataBinding.downloadRv.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
 
         lifecycleScope.launch {
-            viewModel.allTasks.collectLatest { tasks ->
-                dataBinding.downloadRv.setData(tasks)
-                updateEmptyView(tasks.isEmpty())
+            viewModel.displayItems.collectLatest { items ->
+                dataBinding.downloadRv.setData(items)
+                dataBinding.emptyTv.isVisible = items.isEmpty()
             }
         }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_download, menu)
+        menu.findItem(R.id.action_retry_failed)?.isVisible = false
+        lifecycleScope.launch {
+            viewModel.displayItems.collectLatest { items ->
+                val hasFailed = items.any {
+                    it is DownloadGroupedItem.Task && it.display.task.state == DownloadState.FAILED
+                }
+                menu.findItem(R.id.action_retry_failed)?.isVisible = hasFailed
+            }
+        }
         return super.onCreateOptionsMenu(menu)
     }
 
@@ -82,6 +90,10 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
                 viewModel.clearFailed()
                 true
             }
+            R.id.action_retry_failed -> {
+                viewModel.retryAllFailed()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -89,33 +101,41 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
     private fun createAdapter() = buildAdapter {
         setupDiffUtil {
             areItemsTheSame { old, new ->
-                (old as DownloadTaskEntity).id == (new as DownloadTaskEntity).id
+                when {
+                    old is DownloadGroupedItem.Section && new is DownloadGroupedItem.Section ->
+                        old.title == new.title
+                    old is DownloadGroupedItem.Task && new is DownloadGroupedItem.Task ->
+                        old.display.task.id == new.display.task.id
+                    else -> false
+                }
             }
             areContentsTheSame { old, new ->
-                (old as DownloadTaskEntity).state == (new as DownloadTaskEntity).state &&
-                        (old as DownloadTaskEntity).downloadedBytes == (new as DownloadTaskEntity).downloadedBytes
-            }
-            getChangePayload { old, new ->
-                val oldTask = old as DownloadTaskEntity
-                val newTask = new as DownloadTaskEntity
-                if (oldTask.state == newTask.state && oldTask.downloadedBytes != newTask.downloadedBytes) {
-                    "progress_only"
-                } else {
-                    null
+                when {
+                    old is DownloadGroupedItem.Section && new is DownloadGroupedItem.Section ->
+                        old.count == new.count
+                    old is DownloadGroupedItem.Task && new is DownloadGroupedItem.Task ->
+                        old.display.task.state == new.display.task.state &&
+                                old.display.task.downloadedBytes == new.display.task.downloadedBytes &&
+                                old.display.speed == new.display.speed &&
+                                old.display.eta == new.display.eta
+                    else -> false
                 }
             }
         }
-        addItem<DownloadTaskEntity, ItemDownloadTaskBinding>(R.layout.item_download_task) {
+        addItem<DownloadGroupedItem.Section, ItemSectionHeaderBinding>(R.layout.item_section_header) {
             initView { data, _, _ ->
-                itemBinding.bindTaskViews(data)
+                itemBinding.sectionTitleTv.text = "${data.title} (${data.count})"
             }
-            initViewForPayload { data, _, _ ->
-                itemBinding.bindProgressViews(data)
+        }
+        addItem<DownloadGroupedItem.Task, ItemDownloadTaskBinding>(R.layout.item_download_task) {
+            initView { data, _, _ ->
+                itemBinding.bindTaskViews(data.display)
             }
         }
     }
 
-    private fun ItemDownloadTaskBinding.bindTaskViews(data: DownloadTaskEntity) {
+    private fun ItemDownloadTaskBinding.bindTaskViews(display: DownloadTaskDisplay) {
+        val data = display.task
         fileNameTv.text = data.fileName
         bindProgressViews(data)
 
@@ -129,9 +149,16 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
             else -> ""
         }
 
+        speedTv.text = display.speed
+        speedTv.isVisible = display.speed.isNotEmpty()
+        etaTv.text = display.eta
+        etaTv.isVisible = display.eta.isNotEmpty()
+
         val isActive = data.state == DownloadState.WAITING || data.state == DownloadState.DOWNLOADING
         val isPaused = data.state == DownloadState.PAUSED
-        val isFinished = data.state == DownloadState.COMPLETED || data.state == DownloadState.CANCELLED || data.state == DownloadState.FAILED
+        val isCompleted = data.state == DownloadState.COMPLETED
+        val isFailed = data.state == DownloadState.FAILED
+        val isFinished = isCompleted || data.state == DownloadState.CANCELLED || isFailed
 
         pauseBt.isVisible = isActive || isPaused
         pauseBt.text = if (isPaused) "继续" else "暂停"
@@ -142,10 +169,22 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
 
         cancelBt.isVisible = isActive || isPaused
         cancelBt.setOnClickListener {
-            viewModel.cancelTask(data.id)
+            android.app.AlertDialog.Builder(this@DownloadActivity)
+                .setTitle("取消下载")
+                .setMessage("取消后已下载的部分文件将被删除，确定取消「${data.fileName}」吗？")
+                .setPositiveButton("确定取消") { _, _ ->
+                    viewModel.cancelTask(data.id)
+                }
+                .setNegativeButton("继续下载", null)
+                .show()
         }
 
-        openBt.isVisible = data.state == DownloadState.COMPLETED
+        retryBt.isVisible = isFailed
+        retryBt.setOnClickListener {
+            viewModel.retryTask(data.id)
+        }
+
+        openBt.isVisible = isCompleted
         openBt.setOnClickListener {
             openDownloadedFile(data, isLongPress = false)
         }
@@ -185,7 +224,6 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
     }
 
     private fun openDownloadedFile(task: DownloadTaskEntity, isLongPress: Boolean) {
-        val uri: Uri?
         val ext = task.fileName.substringAfterLast('.', "").lowercase()
         val isMediaType = ext in listOf("mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "ts",
             "mp3", "wav", "flac", "aac", "ogg", "wma", "m4a",
@@ -206,10 +244,16 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
     }
 
     private fun getFileUri(task: DownloadTaskEntity): Uri? {
-        return if (task.targetStorageUrl != null) {
-            val treeUri = Uri.parse(task.targetStorageUrl)
-            val treeDoc = DocumentFile.fromTreeUri(this, treeUri)
-            treeDoc?.findFile(task.fileName)?.uri
+        val storageUrl = task.targetStorageUrl
+        return if (storageUrl != null) {
+            val directFile = com.xyoye.common_component.utils.SafPathResolver.resolveTargetFile(
+                this, storageUrl, task.fileName
+            )
+            if (directFile != null && directFile.exists())
+                Uri.fromFile(directFile)
+            else
+                DocumentFile.fromTreeUri(this, Uri.parse(storageUrl))
+                    ?.findFile(task.fileName)?.uri
         } else {
             val file = java.io.File(PathHelper.getCachePath(), "download/${task.fileName}")
             if (file.exists()) Uri.fromFile(file) else null
@@ -266,9 +310,5 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
             "srt", "ass", "ssa", "vtt" -> "text/plain"
             else -> "*/*"
         }
-    }
-
-    private fun updateEmptyView(isEmpty: Boolean) {
-        dataBinding.emptyTv.visibility = if (isEmpty) android.view.View.VISIBLE else android.view.View.GONE
     }
 }

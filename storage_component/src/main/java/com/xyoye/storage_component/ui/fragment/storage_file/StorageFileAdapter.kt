@@ -1,5 +1,7 @@
 package com.xyoye.storage_component.ui.fragment.storage_file
 
+import android.content.Intent
+import android.provider.Settings
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.text.TextUtils
@@ -678,6 +680,19 @@ class StorageFileAdapter(
 
     private fun downloadFile(file: StorageFile) {
         viewModel.viewModelScope.launch(Dispatchers.IO) {
+            if (com.xyoye.common_component.utils.SafPathResolver.isExternalStorageManager()) {
+                withContext(Dispatchers.Main) {
+                    activity.startDownloadDirectoryPicker(
+                        storageId = viewModel.storage.library.id,
+                        filePath = file.storagePath(),
+                        fileName = file.fileName(),
+                        uniqueKey = file.uniqueKey(),
+                        totalBytes = file.fileLength()
+                    )
+                }
+                return@launch
+            }
+
             val externalLibraries = DatabaseManager.instance.getMediaLibraryDao()
                 .getByMediaTypeSuspend(MediaType.EXTERNAL_STORAGE)
 
@@ -699,16 +714,18 @@ class StorageFileAdapter(
             withContext(Dispatchers.Main) {
                 BottomActionDialog(activity, actions, "选择保存位置") {
                     val selectedLibrary = it.actionId as MediaLibraryEntity
-                    DownloadManager.addTask(
-                        storageId = viewModel.storage.library.id,
-                        filePath = file.storagePath(),
-                        fileName = file.fileName(),
-                        uniqueKey = file.uniqueKey(),
-                        totalBytes = file.fileLength(),
-                        targetStorageUrl = selectedLibrary.url,
-                        targetStorageName = selectedLibrary.displayName
-                    )
-                    ToastCenter.showSuccess("已添加到下载队列")
+                    maybeShowPermissionDialog {
+                        DownloadManager.addTask(
+                            storageId = viewModel.storage.library.id,
+                            filePath = file.storagePath(),
+                            fileName = file.fileName(),
+                            uniqueKey = file.uniqueKey(),
+                            totalBytes = file.fileLength(),
+                            targetStorageUrl = selectedLibrary.url,
+                            targetStorageName = selectedLibrary.displayName
+                        )
+                        ToastCenter.showSuccess("已添加到下载队列")
+                    }
                     return@BottomActionDialog true
                 }.show()
             }
@@ -744,5 +761,26 @@ class StorageFileAdapter(
             }
             viewModel.bindAudioSource(file, it)
         }.show()
+    }
+
+    private var permissionPrompted = false
+
+    private fun maybeShowPermissionDialog(onContinue: () -> Unit) {
+        if (permissionPrompted || com.xyoye.common_component.utils.SafPathResolver.isExternalStorageManager()) {
+            onContinue()
+            return
+        }
+        permissionPrompted = true
+        android.app.AlertDialog.Builder(activity)
+            .setTitle("提升下载速度")
+            .setMessage("启用「所有文件权限」后，下载速度可从当前约 20MB/s 提升至千兆带宽上限（约 100MB/s+）。")
+            .setPositiveButton("前往设置") { _, _ ->
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = android.net.Uri.parse("package:${activity.packageName}")
+                }
+                activity.startActivity(intent)
+            }
+            .setNegativeButton("继续（当前速度）") { _, _ -> onContinue() }
+            .show()
     }
 }
