@@ -1,7 +1,5 @@
 package com.xyoye.storage_component.ui.fragment.storage_file
 
-import android.content.Intent
-import android.provider.Settings
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.text.TextUtils
@@ -679,55 +677,90 @@ class StorageFileAdapter(
     }
 
     private fun downloadFile(file: StorageFile) {
-        viewModel.viewModelScope.launch(Dispatchers.IO) {
-            if (com.xyoye.common_component.utils.SafPathResolver.isExternalStorageManager()) {
-                withContext(Dispatchers.Main) {
-                    activity.startDownloadDirectoryPicker(
-                        storageId = viewModel.storage.library.id,
-                        filePath = file.storagePath(),
-                        fileName = file.fileName(),
-                        uniqueKey = file.uniqueKey(),
-                        totalBytes = file.fileLength()
-                    )
-                }
-                return@launch
-            }
+        if (com.xyoye.common_component.utils.SafPathResolver.isExternalStorageManager()) {
+            downloadWithDirectPath(file)
+            return
+        }
 
+        android.app.AlertDialog.Builder(activity)
+            .setTitle("选择下载方式")
+            .setMessage("授权「所有文件访问权限」可直接使用文件路径下载，速度更快且无需每次选择目录。")
+            .setPositiveButton("授权并下载") { _, _ ->
+                val intent = android.content.Intent(
+                    android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    android.net.Uri.parse("package:${activity.packageName}")
+                )
+                activity.startActivity(intent)
+            }
+            .setNeutralButton("使用SAF下载") { _, _ ->
+                downloadWithSaf(file)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun downloadWithDirectPath(file: StorageFile) {
+        FileManagerDialog(activity, FileManagerAction.ACTION_SELECT_DIRECTORY) { dirPath ->
+            DownloadManager.addTask(
+                storageId = viewModel.storage.library.id,
+                filePath = file.storagePath(),
+                fileName = file.fileName(),
+                uniqueKey = file.uniqueKey(),
+                totalBytes = file.fileLength(),
+                targetStorageUrl = "file://$dirPath",
+                targetStorageName = dirPath.substringAfterLast('/')
+            )
+            ToastCenter.showSuccess("已添加到下载队列")
+        }.show()
+    }
+
+    private fun downloadWithSaf(file: StorageFile) {
+        viewModel.viewModelScope.launch(Dispatchers.IO) {
             val externalLibraries = DatabaseManager.instance.getMediaLibraryDao()
                 .getByMediaTypeSuspend(MediaType.EXTERNAL_STORAGE)
 
-            if (externalLibraries.isEmpty()) {
+            if (externalLibraries.isNotEmpty()) {
+                val actions = externalLibraries.map { library ->
+                    SheetActionBean(library, library.displayName, library.mediaType.cover)
+                }
+                val safAction = SheetActionBean("saf_picker", "选择其它文件夹...", com.xyoye.common_component.R.drawable.ic_folder)
                 withContext(Dispatchers.Main) {
-                    android.app.AlertDialog.Builder(activity)
-                        .setTitle("无法下载")
-                        .setMessage("请先在「媒体」页面点击 + 号添加「设备存储库」，设置保存路径后才能下载文件")
-                        .setPositiveButton("确定", null)
-                        .show()
+                    BottomActionDialog(activity, actions + safAction, "选择保存位置") {
+                        if (it.actionId is String && it.actionId == "saf_picker") {
+                            activity.startDownloadDirectoryPicker(
+                                storageId = viewModel.storage.library.id,
+                                filePath = file.storagePath(),
+                                fileName = file.fileName(),
+                                uniqueKey = file.uniqueKey(),
+                                totalBytes = file.fileLength()
+                            )
+                        } else {
+                            val selectedLibrary = it.actionId as MediaLibraryEntity
+                            DownloadManager.addTask(
+                                storageId = viewModel.storage.library.id,
+                                filePath = file.storagePath(),
+                                fileName = file.fileName(),
+                                uniqueKey = file.uniqueKey(),
+                                totalBytes = file.fileLength(),
+                                targetStorageUrl = selectedLibrary.url,
+                                targetStorageName = selectedLibrary.displayName
+                            )
+                            ToastCenter.showSuccess("已添加到下载队列")
+                        }
+                        return@BottomActionDialog true
+                    }.show()
                 }
                 return@launch
             }
 
-            val actions = externalLibraries.map { library ->
-                SheetActionBean(library, library.displayName, library.mediaType.cover)
-            }
-
             withContext(Dispatchers.Main) {
-                BottomActionDialog(activity, actions, "选择保存位置") {
-                    val selectedLibrary = it.actionId as MediaLibraryEntity
-                    maybeShowPermissionDialog {
-                        DownloadManager.addTask(
-                            storageId = viewModel.storage.library.id,
-                            filePath = file.storagePath(),
-                            fileName = file.fileName(),
-                            uniqueKey = file.uniqueKey(),
-                            totalBytes = file.fileLength(),
-                            targetStorageUrl = selectedLibrary.url,
-                            targetStorageName = selectedLibrary.displayName
-                        )
-                        ToastCenter.showSuccess("已添加到下载队列")
-                    }
-                    return@BottomActionDialog true
-                }.show()
+                activity.startDownloadDirectoryPicker(
+                    storageId = viewModel.storage.library.id,
+                    filePath = file.storagePath(),
+                    fileName = file.fileName(),
+                    uniqueKey = file.uniqueKey(),
+                    totalBytes = file.fileLength()
+                )
             }
         }
     }
@@ -763,24 +796,4 @@ class StorageFileAdapter(
         }.show()
     }
 
-    private var permissionPrompted = false
-
-    private fun maybeShowPermissionDialog(onContinue: () -> Unit) {
-        if (permissionPrompted || com.xyoye.common_component.utils.SafPathResolver.isExternalStorageManager()) {
-            onContinue()
-            return
-        }
-        permissionPrompted = true
-        android.app.AlertDialog.Builder(activity)
-            .setTitle("提升下载速度")
-            .setMessage("启用「所有文件权限」后，下载速度可从当前约 20MB/s 提升至千兆带宽上限（约 100MB/s+）。")
-            .setPositiveButton("前往设置") { _, _ ->
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                    data = android.net.Uri.parse("package:${activity.packageName}")
-                }
-                activity.startActivity(intent)
-            }
-            .setNegativeButton("继续（当前速度）") { _, _ -> onContinue() }
-            .show()
-    }
 }

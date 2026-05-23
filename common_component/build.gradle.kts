@@ -72,6 +72,7 @@ dependencies {
     kapt(Dependencies.Github.glide_compiler)
     api(Dependencies.Github.nano_http)
     api(Dependencies.Github.smbj)
+    api("org.bouncycastle:bcprov-jdk15to18:1.70")
     api(Dependencies.Github.dcerpc)
 
     api(Dependencies.PhotoView.photo_view)

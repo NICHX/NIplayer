@@ -20,6 +20,10 @@ allprojects {
         mavenCentral()
         maven("https://jitpack.io")
     }
+
+    configurations.all {
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk18on")
+    }
 }
 
 tasks {

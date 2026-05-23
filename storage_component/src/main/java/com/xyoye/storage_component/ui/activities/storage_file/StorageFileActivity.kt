@@ -1,5 +1,6 @@
 package com.xyoye.storage_component.ui.activities.storage_file
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
@@ -108,6 +109,11 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         if (uri != null) {
             val info = pendingDownload ?: return@registerForActivityResult
             pendingDownload = null
+
+            try {
+                val modeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                contentResolver.takePersistableUriPermission(uri, modeFlags)
+            } catch (_: Exception) { }
 
             val realPath = com.xyoye.common_component.utils.SafPathResolver.resolveTreeUri(this, uri)
             val targetName = realPath ?: uri.lastPathSegment ?: "已选目录"
