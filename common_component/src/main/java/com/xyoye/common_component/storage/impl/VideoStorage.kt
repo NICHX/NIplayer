@@ -6,11 +6,13 @@ import com.xyoye.common_component.resolver.MediaResolver
 import com.xyoye.common_component.storage.AbstractStorage
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.file.impl.VideoStorageFile
+import com.xyoye.common_component.utils.MediaMetadataExtractor
 import com.xyoye.common_component.utils.getFileName
 import com.xyoye.common_component.utils.isSubtitleFile
 import com.xyoye.common_component.utils.meida.VideoScan
 import com.xyoye.common_component.utils.subtitle.SubtitleFinder
 import com.xyoye.data_component.bean.FolderBean
+import com.xyoye.data_component.bean.StorageFileInfo
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import com.xyoye.data_component.entity.VideoEntity
@@ -96,6 +98,31 @@ class VideoStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             ?.filter { it.isFile && isSubtitleFile(it.absolutePath) }
             ?.run { SubtitleFinder.preferred(this, file.fileName()) { getFileName(it) } }
             ?.absolutePath
+    }
+
+    override suspend fun fileInfo(file: StorageFile): StorageFileInfo? {
+        val filePath = file.filePath()
+        val javaFile = File(filePath)
+        if (!javaFile.exists()) return null
+
+        val baseInfo = StorageFileInfo(
+            name = file.fileName(),
+            path = filePath,
+            isDirectory = file.isDirectory(),
+            fileSize = javaFile.length(),
+            lastModified = javaFile.lastModified(),
+            isVideo = file.isVideoFile(),
+            isAudio = file.isAudioFile(),
+            isImage = file.isImageFile()
+        )
+
+        return if (file.isVideoFile() || file.isAudioFile()) {
+            withContext(Dispatchers.IO) {
+                MediaMetadataExtractor.extractFromLocalPath(filePath, baseInfo)
+            }
+        } else {
+            baseInfo
+        }
     }
 
     override fun supportSearch(): Boolean {

@@ -21,13 +21,15 @@ data class StorageFileInfo(
     val audioCodec: String? = null,
     val frameRate: String? = null,
     val sampleRate: Int = 0,
-    val audioChannelCount: Int = 0
-) {
-    val mimeType: String?
-        get() = when {
-            isVideo -> "video"
-            isAudio -> "audio"
-            isImage -> "image"
-            else -> null
-        }
-}
+    val audioChannelCount: Int = 0,
+    val mimeType: String? = null,
+    val rotation: Int = 0,
+    val videoBitrate: Long = 0,
+    val audioBitrate: Long = 0,
+    val videoCodecName: String? = null,
+    val audioCodecName: String? = null,
+    val audioSampleRate: Int = 0,
+    val audioChannels: Int = 0,
+    val colorPrimaries: String? = null,
+    val transferCharacteristics: String? = null
+)

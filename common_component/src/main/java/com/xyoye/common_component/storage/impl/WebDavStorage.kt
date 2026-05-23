@@ -1,6 +1,5 @@
 package com.xyoye.common_component.storage.impl
 
-import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import com.xyoye.common_component.base.app.BaseApplication
@@ -208,6 +207,8 @@ class WebDavStorage(
 
             if (file.isAudioFile()) {
                 extractAudioMetadataAndCache(file, baseInfo)
+            } else if (file.isVideoFile()) {
+                extractVideoMetadata(file, baseInfo)
             } else {
                 baseInfo
             }
@@ -225,67 +226,56 @@ class WebDavStorage(
             return base.copy(durationMs = existingMetadata.duration)
         }
 
-        val headers = getNetworkHeaders()
-        val requestBuilder = Request.Builder().url(file.fileUrl())
-        headers?.forEach { (key, value) -> requestBuilder.addHeader(key, value) }
-
         return try {
-            val response = UnsafeOkHttpClient.client.newCall(requestBuilder.build()).execute()
-            if (!response.isSuccessful) {
-                response.close()
-                return base
+            kotlinx.coroutines.withTimeout(8000) {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    val headers = getNetworkHeaders() ?: emptyMap()
+                    retriever.setDataSource(file.fileUrl(), headers)
+
+                    val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                    val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                    val albumArtist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
+                    val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    val duration = durationStr?.toLongOrNull() ?: 0L
+
+                    val resolvedTitle = title?.takeIf { it.isNotEmpty() }
+                        ?: file.fileName()?.substringBeforeLast(".")?.takeIf { it.isNotEmpty() }
+                        ?: ""
+                    val resolvedArtist = artist?.takeIf { it.isNotEmpty() }
+                        ?: albumArtist?.takeIf { it.isNotEmpty() }
+                        ?: ""
+
+                    val metadata = AudioMetadata(
+                        artist = resolvedArtist,
+                        title = resolvedTitle,
+                        duration = duration,
+                        coverPath = null
+                    )
+                    AudioMetadataCache.put(uniqueKey, metadata)
+
+                    base.copy(durationMs = duration)
+                } finally {
+                    retriever.release()
+                }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            base
+        }
+    }
 
-            val body = response.body ?: run {
-                response.close()
-                return base
-            }
-
-            val retriever = MediaMetadataRetriever()
-            try {
-                val inputStream = body.byteStream()
-                val bytes = inputStream.readBytes()
-                retriever.setDataSource(object : MediaDataSource() {
-                    override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
-                        val srcOffset = position.toInt()
-                        if (srcOffset >= bytes.size) {
-                            return -1
-                        }
-                        val count = minOf(size, bytes.size - srcOffset)
-                        System.arraycopy(bytes, srcOffset, buffer, offset, count)
-                        return count
-                    }
-
-                    override fun getSize(): Long = bytes.size.toLong()
-
-                    override fun close() {}
-                })
-
-                val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
-                val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
-                val albumArtist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
-                val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                val duration = durationStr?.toLongOrNull() ?: 0L
-
-                val resolvedTitle = title?.takeIf { it.isNotEmpty() }
-                    ?: file.fileName()?.substringBeforeLast(".")?.takeIf { it.isNotEmpty() }
-                    ?: ""
-                val resolvedArtist = artist?.takeIf { it.isNotEmpty() }
-                    ?: albumArtist?.takeIf { it.isNotEmpty() }
-                    ?: ""
-
-                val metadata = AudioMetadata(
-                    artist = resolvedArtist,
-                    title = resolvedTitle,
-                    duration = duration,
-                    coverPath = null
-                )
-                AudioMetadataCache.put(uniqueKey, metadata)
-
-                base.copy(durationMs = duration)
-            } finally {
-                retriever.release()
-                response.close()
+    private suspend fun extractVideoMetadata(file: WebDavStorageFile, base: StorageFileInfo): StorageFileInfo {
+        return try {
+            kotlinx.coroutines.withTimeout(8000) {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    val headers = getNetworkHeaders() ?: emptyMap()
+                    retriever.setDataSource(file.fileUrl(), headers)
+                    com.xyoye.common_component.utils.MediaMetadataExtractor.extractFromRetriever(retriever, base)
+                } finally {
+                    retriever.release()
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
