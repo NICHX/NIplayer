@@ -6,6 +6,8 @@ import com.xyoye.common_component.base.app.BaseApplication
 import com.xyoye.common_component.storage.AbstractStorage
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.file.impl.DocumentStorageFile
+import com.xyoye.common_component.utils.MediaMetadataExtractor
+import com.xyoye.data_component.bean.StorageFileInfo
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import java.io.InputStream
@@ -69,5 +71,37 @@ class DocumentFileStorage(
 
     override suspend fun createPlayUrl(file: StorageFile): String {
         return file.fileUrl()
+    }
+
+    override suspend fun fileInfo(file: StorageFile): StorageFileInfo? {
+        val documentFile = file.getFile<DocumentFile>() ?: return null
+
+        val baseInfo = StorageFileInfo(
+            name = file.fileName(),
+            path = file.storagePath(),
+            isDirectory = file.isDirectory(),
+            fileSize = documentFile.length(),
+            lastModified = documentFile.lastModified(),
+            isVideo = file.isVideoFile(),
+            isAudio = file.isAudioFile(),
+            isImage = file.isImageFile()
+        )
+
+        if (file.isVideoFile() || file.isAudioFile()) {
+            val fileUri = documentFile.uri
+            return try {
+                kotlinx.coroutines.withTimeout(5000) {
+                    val retriever = android.media.MediaMetadataRetriever()
+                    retriever.setDataSource(context, fileUri)
+                    val result = MediaMetadataExtractor.extractFromRetriever(retriever, baseInfo)
+                    retriever.release()
+                    result
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                baseInfo
+            }
+        }
+        return baseInfo
     }
 }

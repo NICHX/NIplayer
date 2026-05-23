@@ -527,30 +527,12 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         }
         val httpUrl = playServer.generatePlayUrl(this, file)
         return try {
-            withTimeout(3000) {
+            withTimeout(5000) {
                 val retriever = MediaMetadataRetriever()
                 retriever.setDataSource(httpUrl, emptyMap())
-
-                val widthStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
-                val heightStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-                val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                val bitrateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
-                val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
-                val frameRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
-                val sampleRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
-
+                val result = com.xyoye.common_component.utils.MediaMetadataExtractor.extractFromRetriever(retriever, base)
                 retriever.release()
-
-                base.copy(
-                    videoWidth = widthStr?.toIntOrNull() ?: 0,
-                    videoHeight = heightStr?.toIntOrNull() ?: 0,
-                    durationMs = durationStr?.toLongOrNull() ?: 0,
-                    bitrate = bitrateStr?.toLongOrNull() ?: 0,
-                    videoCodec = mimeType?.ifEmpty { null },
-                    audioCodec = null,
-                    frameRate = frameRateStr?.ifEmpty { null },
-                    sampleRate = sampleRateStr?.toIntOrNull() ?: 0
-                )
+                result
             }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.TimeoutCancellationException) {
@@ -568,30 +550,12 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             diskShare.openFile(file.filePath())
         } catch (_: Exception) { return base }
         return try {
-            withTimeout(3000) {
+            withTimeout(5000) {
                 val retriever = MediaMetadataRetriever()
                 retriever.setDataSource(SmbMediaDataSource(smbFile, base.fileSize))
-
-                val widthStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
-                val heightStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-                val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                val bitrateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
-                val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
-                val frameRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
-                val sampleRateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
-
+                val result = com.xyoye.common_component.utils.MediaMetadataExtractor.extractFromRetriever(retriever, base)
                 retriever.release()
-
-                base.copy(
-                    videoWidth = widthStr?.toIntOrNull() ?: 0,
-                    videoHeight = heightStr?.toIntOrNull() ?: 0,
-                    durationMs = durationStr?.toLongOrNull() ?: 0,
-                    bitrate = bitrateStr?.toLongOrNull() ?: 0,
-                    videoCodec = mimeType?.ifEmpty { null },
-                    audioCodec = null,
-                    frameRate = frameRateStr?.ifEmpty { null },
-                    sampleRate = sampleRateStr?.toIntOrNull() ?: 0
-                )
+                result
             }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.TimeoutCancellationException) {

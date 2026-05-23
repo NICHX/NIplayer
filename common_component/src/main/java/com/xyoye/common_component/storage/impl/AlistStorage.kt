@@ -7,7 +7,9 @@ import com.xyoye.common_component.network.repository.ResourceRepository
 import com.xyoye.common_component.storage.AbstractStorage
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.file.impl.AlistStorageFile
+import com.xyoye.common_component.utils.MediaMetadataExtractor
 import com.xyoye.common_component.weight.ToastCenter
+import com.xyoye.data_component.bean.StorageFileInfo
 import com.xyoye.data_component.data.alist.AlistFileData
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
@@ -102,6 +104,35 @@ class AlistStorage(
 
     override suspend fun createPlayUrl(file: StorageFile): String? {
         return getStorageFileUrl(file)
+    }
+
+    override suspend fun fileInfo(file: StorageFile): StorageFileInfo? {
+        if (file !is AlistStorageFile) return null
+
+        val fileData = file.getFile<AlistFileData>()
+        val baseInfo = StorageFileInfo(
+            name = file.fileName(),
+            path = file.storagePath(),
+            isDirectory = file.isDirectory(),
+            fileSize = fileData?.size ?: 0L,
+            lastModified = 0L,
+            isVideo = file.isVideoFile(),
+            isAudio = file.isAudioFile(),
+            isImage = file.isImageFile()
+        )
+
+        if (file.isVideoFile() || file.isAudioFile()) {
+            val playUrl = getStorageFileUrl(file) ?: return baseInfo
+            return try {
+                kotlinx.coroutines.withTimeout(5000) {
+                    MediaMetadataExtractor.extractFromUrl(playUrl, emptyMap(), baseInfo)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                baseInfo
+            }
+        }
+        return baseInfo
     }
 
     override suspend fun createDirectory(path: String): Boolean {

@@ -6,7 +6,9 @@ import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.file.helper.FtpPlayServer
 import com.xyoye.common_component.storage.file.impl.FtpStorageFile
 import com.xyoye.common_component.utils.IOUtils
+import com.xyoye.common_component.utils.MediaMetadataExtractor
 import com.xyoye.common_component.weight.ToastCenter
+import com.xyoye.data_component.bean.StorageFileInfo
 import com.xyoye.data_component.entity.MediaLibraryEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
 import org.apache.commons.net.ftp.FTP
@@ -142,6 +144,34 @@ class FtpStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
             return null
         }
         return playServer.generatePlayUrl(this, file)
+    }
+
+    override suspend fun fileInfo(file: StorageFile): StorageFileInfo? {
+        if (file !is FtpStorageFile) return null
+
+        val baseInfo = StorageFileInfo(
+            name = file.fileName(),
+            path = file.storagePath(),
+            isDirectory = file.isDirectory(),
+            fileSize = file.fileLength(),
+            lastModified = 0L,
+            isVideo = file.isVideoFile(),
+            isAudio = file.isAudioFile(),
+            isImage = file.isImageFile()
+        )
+
+        if (file.isVideoFile() || file.isAudioFile()) {
+            val playUrl = createPlayUrl(file) ?: return baseInfo
+            return try {
+                kotlinx.coroutines.withTimeout(5000) {
+                    MediaMetadataExtractor.extractFromUrl(playUrl, emptyMap(), baseInfo)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                baseInfo
+            }
+        }
+        return baseInfo
     }
 
     override suspend fun saveFile(path: String, data: ByteArray): Boolean {

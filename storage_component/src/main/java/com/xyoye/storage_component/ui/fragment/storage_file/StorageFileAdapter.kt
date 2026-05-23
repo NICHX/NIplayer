@@ -549,17 +549,23 @@ class StorageFileAdapter(
                 if (file.isFile()) {
                     add(ManageAction.DOWNLOAD.toAction())
                 }
+                add(ManageAction.FILE_INFO.toAction())
                 if (viewModel.storage is SmbStorage || viewModel.storage is WebDavStorage) {
-                    add(ManageAction.FILE_INFO.toAction())
                     add(ManageAction.DELETE.toAction())
                 }
             }
         }
 
     private fun showFileInfo(file: StorageFile) {
+        val dialog = android.app.AlertDialog.Builder(activity)
+            .setTitle("文件信息")
+            .setMessage("正在获取媒体信息...")
+            .setCancelable(true)
+            .show()
         viewModel.viewModelScope.launch(Dispatchers.IO) {
             val info = viewModel.storage.fileInfo(file)
             withContext(Dispatchers.Main) {
+                dialog.dismiss()
                 if (info != null) {
                     showFileInfoDialog(info)
                 } else {
@@ -591,9 +597,23 @@ class StorageFileAdapter(
             }
             append("类型: $typeLabel\n")
             append("大小: $sizeStr\n")
+            if (info.lastModified > 0) {
+                val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+                append("修改时间: ${dateFormat.format(java.util.Date(info.lastModified))}\n")
+            }
             if (info.isVideo) {
+                append("\n—— 视频信息 ——\n")
                 if (info.videoWidth > 0 && info.videoHeight > 0) {
-                    append("分辨率: ${info.videoWidth}×${info.videoHeight}\n")
+                    val resLabel = when {
+                        info.videoWidth >= 7680 -> "8K"
+                        info.videoWidth >= 3840 -> "4K"
+                        info.videoWidth >= 2560 -> "2K"
+                        info.videoWidth >= 1920 -> "FHD"
+                        info.videoWidth >= 1280 -> "HD"
+                        info.videoWidth >= 854 -> "FWVGA"
+                        else -> "SD"
+                    }
+                    append("分辨率: ${info.videoWidth}×${info.videoHeight} ($resLabel)\n")
                 }
                 if (info.durationMs > 0) {
                     val totalSec = info.durationMs / 1000
@@ -610,17 +630,53 @@ class StorageFileAdapter(
                 if (info.bitrate > 0) {
                     append("总码率: ${info.bitrate / 1000} kbps\n")
                 }
-                if (info.videoCodec != null) {
+                if (info.videoBitrate > 0) {
+                    append("视频码率: ${info.videoBitrate / 1000} kbps\n")
+                }
+                if (info.videoCodecName != null) {
+                    append("视频编码: ${info.videoCodecName}\n")
+                } else if (info.videoCodec != null) {
                     append("封装格式: ${info.videoCodec}\n")
+                }
+                if (info.mimeType != null) {
+                    append("MIME类型: ${info.mimeType}\n")
                 }
                 if (info.frameRate != null) {
                     append("帧率: ${info.frameRate} fps\n")
                 }
-                if (info.sampleRate > 0) {
-                    append("采样率: ${info.sampleRate / 1000} kHz\n")
+                if (info.rotation > 0) {
+                    append("旋转: ${info.rotation}°\n")
+                }
+                if (info.colorPrimaries != null) {
+                    append("色彩原色: ${info.colorPrimaries}\n")
+                }
+                if (info.transferCharacteristics != null) {
+                    append("传输特性: ${info.transferCharacteristics}\n")
+                }
+                if (info.audioCodecName != null) {
+                    append("音频编码: ${info.audioCodecName}\n")
+                } else if (info.audioCodec != null) {
+                    append("音频编码: ${info.audioCodec}\n")
+                }
+                if (info.audioSampleRate > 0) {
+                    append("采样率: ${info.audioSampleRate / 1000f} kHz\n")
+                }
+                if (info.audioChannels > 0) {
+                    val channelLabel = when (info.audioChannels) {
+                        1 -> "Mono"
+                        2 -> "Stereo"
+                        6 -> "5.1"
+                        8 -> "7.1"
+                        else -> "${info.audioChannels}ch"
+                    }
+                    append("声道数: $channelLabel (${info.audioChannels})\n")
+                }
+                if (info.audioBitrate > 0) {
+                    append("音频码率: ${info.audioBitrate / 1000} kbps\n")
                 }
             }
             if (info.isAudio) {
+                append("\n—— 音频信息 ——\n")
                 if (info.durationMs > 0) {
                     val totalSec = info.durationMs / 1000
                     val minutes = totalSec / 60
@@ -630,16 +686,37 @@ class StorageFileAdapter(
                 if (info.bitrate > 0) {
                     append("码率: ${info.bitrate / 1000} kbps\n")
                 }
-                if (info.audioCodec != null) {
+                if (info.audioCodecName != null) {
+                    append("音频编码: ${info.audioCodecName}\n")
+                } else if (info.audioCodec != null) {
                     append("音频编码: ${info.audioCodec}\n")
                 }
-                if (info.sampleRate > 0) {
-                    append("采样率: ${info.sampleRate / 1000} kHz\n")
+                if (info.mimeType != null) {
+                    append("MIME类型: ${info.mimeType}\n")
+                }
+                if (info.audioSampleRate > 0) {
+                    append("采样率: ${info.audioSampleRate / 1000f} kHz\n")
+                }
+                if (info.audioChannels > 0) {
+                    val channelLabel = when (info.audioChannels) {
+                        1 -> "Mono"
+                        2 -> "Stereo"
+                        6 -> "5.1"
+                        8 -> "7.1"
+                        else -> "${info.audioChannels}ch"
+                    }
+                    append("声道数: $channelLabel (${info.audioChannels})\n")
                 }
             }
             if (info.isImage) {
                 if (info.videoWidth > 0 && info.videoHeight > 0) {
                     append("分辨率: ${info.videoWidth}×${info.videoHeight}\n")
+                }
+                if (info.rotation > 0) {
+                    append("旋转: ${info.rotation}°\n")
+                }
+                if (info.mimeType != null) {
+                    append("MIME类型: ${info.mimeType}\n")
                 }
             }
         }
