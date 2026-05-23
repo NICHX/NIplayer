@@ -41,8 +41,10 @@ object UnsafeOkHttpClient {
         val builder = OkHttpClient.Builder()
             .sslSocketFactory(sslContext.socketFactory, unSafeTrustManager)
             .hostnameVerifier { _, _ -> true }
-            .readTimeout(60, TimeUnit.SECONDS)
-            .retryOnConnectionFailure(false)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
         if (BuildConfig.DEBUG) {
             builder.addNetworkInterceptor(LoggerInterceptor().webDav())
         }

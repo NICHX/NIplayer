@@ -62,9 +62,20 @@ class AlistStorage(
         val rawUrl = getStorageFileUrl(file)
             ?: return null
 
-        return ResourceRepository.getResourceResponseBody(rawUrl)
-            .getOrNull()
-            ?.byteStream()
+        return try {
+            val request = okhttp3.Request.Builder().url(rawUrl).build()
+            val response = com.xyoye.common_component.network.Retrofit.downloadClient
+                .newCall(request).execute()
+            if (response.isSuccessful) {
+                response.body?.byteStream()
+            } else {
+                response.close()
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
     override suspend fun pathFile(path: String, isDirectory: Boolean): StorageFile? {

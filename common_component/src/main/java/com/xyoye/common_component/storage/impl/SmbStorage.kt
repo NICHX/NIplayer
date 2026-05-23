@@ -43,7 +43,12 @@ import java.util.EnumSet
 
 class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
 
-    private var mSmbClient = SMBClient()
+    private var mSmbClient = SMBClient(
+        SmbConfig.builder()
+            .withNegotiatedBufferSize()
+            .withSoTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+    )
     private var mSmbSession: Session? = null
     private var mDiskShare: DiskShare? = null
 
@@ -138,41 +143,30 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
 
         return try {
             val smbFile = mDiskShare?.openFile(file.filePath()) ?: return null
-            OffsetSmbInputStream(smbFile, offset)
+            val stream = smbFile.inputStream
+            val skipped = stream.skip(offset)
+            if (skipped < offset) {
+                stream.close()
+                return null
+            }
+            stream
         } catch (e: Exception) {
             e.printStackTrace()
             closeDiskShare()
             if (switchShareDisk(shareName).not()) return null
             try {
                 val smbFile = mDiskShare?.openFile(file.filePath()) ?: return null
-                OffsetSmbInputStream(smbFile, offset)
+                val stream = smbFile.inputStream
+                val skipped = stream.skip(offset)
+                if (skipped < offset) {
+                    stream.close()
+                    return null
+                }
+                stream
             } catch (e: Exception) {
                 e.printStackTrace()
                 null
             }
-        }
-    }
-
-    private class OffsetSmbInputStream(
-        private val smbFile: File,
-        private val startOffset: Long
-    ) : InputStream() {
-        private var position = startOffset
-
-        override fun read(): Int {
-            val buf = ByteArray(1)
-            val bytesRead = smbFile.read(buf, position, 0, 1)
-            return if (bytesRead > 0) { position += bytesRead; buf[0].toInt() and 0xFF } else -1
-        }
-
-        override fun read(b: ByteArray, off: Int, len: Int): Int {
-            val bytesRead = smbFile.read(b, position, off, len)
-            if (bytesRead > 0) position += bytesRead
-            return bytesRead
-        }
-
-        override fun close() {
-            smbFile.close()
         }
     }
 
@@ -184,7 +178,7 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         return try {
             val shareName = file.getShareName() ?: return null
             val port = if (library.port == 0) SMBClient.DEFAULT_PORT else library.port
-            val client = SMBClient()
+            val client = createOptimizedSmbClient()
             val connection = client.connect(library.url, port)
             val session = connection.authenticate(getAuthenticationContext())
             val diskShare = session.connectShare(shareName) as DiskShare
@@ -221,7 +215,7 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         return try {
             val shareName = file.getShareName() ?: return null
             val port = if (library.port == 0) SMBClient.DEFAULT_PORT else library.port
-            val client = SMBClient()
+            val client = createOptimizedSmbClient()
             val connection = client.connect(library.url, port)
             val session = connection.authenticate(getAuthenticationContext())
             val diskShare = session.connectShare(shareName) as DiskShare
@@ -896,6 +890,15 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    private fun createOptimizedSmbClient(): SMBClient {
+        return SMBClient(
+            SmbConfig.builder()
+                .withNegotiatedBufferSize()
+                .withSoTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+        )
     }
 
     private fun generateChildPath(parent: String, child: String): String {

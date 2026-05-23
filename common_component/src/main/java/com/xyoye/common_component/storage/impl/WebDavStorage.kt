@@ -51,7 +51,18 @@ class WebDavStorage(
 
     override suspend fun openFile(file: StorageFile): InputStream? {
         return try {
-            sardine.get(file.fileUrl())
+            val requestBuilder = okhttp3.Request.Builder().url(file.fileUrl())
+            getNetworkHeaders()?.forEach { (key, value) ->
+                requestBuilder.addHeader(key, value)
+            }
+            val response = com.xyoye.common_component.network.Retrofit.downloadClient
+                .newCall(requestBuilder.build()).execute()
+            if (response.isSuccessful) {
+                response.body?.byteStream()
+            } else {
+                response.close()
+                null
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             null

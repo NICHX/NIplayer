@@ -137,7 +137,7 @@ class BaseAdapter : AnimatedAdapter<RecyclerView.ViewHolder>() {
             newItems.add(EMPTY_ITEM)
         }
         val diffCallBack = AdapterDiffCallBack(items, newItems, diffCreator)
-        val diffResult = DiffUtil.calculateDiff(diffCallBack)
+        val diffResult = DiffUtil.calculateDiff(diffCallBack, false)
         items.clear()
         items.addAll(newItems)
         diffResult.dispatchUpdatesTo(this)

@@ -4,19 +4,16 @@ import android.content.Intent
 import android.net.Uri
 import android.view.Menu
 import android.view.MenuItem
+import android.view.ViewGroup
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.SimpleItemAnimator
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.core.view.isVisible
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import com.xyoye.common_component.base.BaseActivity
 import com.xyoye.common_component.config.RouteTable
-import com.xyoye.common_component.extension.setData
-import com.xyoye.common_component.extension.vertical
-import com.xyoye.common_component.adapter.buildAdapter
-import com.xyoye.common_component.adapter.addItem
-import com.xyoye.common_component.adapter.setupDiffUtil
 import com.xyoye.common_component.source.VideoSourceManager
 import com.xyoye.common_component.source.media.LocalFileVideoSource
 import com.xyoye.common_component.utils.PathHelper
@@ -50,13 +47,15 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
         title = "下载管理"
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-        dataBinding.downloadRv.layoutManager = dataBinding.downloadRv.vertical()
-        dataBinding.downloadRv.adapter = createAdapter()
-        (dataBinding.downloadRv.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
+        val adapter = DownloadListAdapter()
+        dataBinding.downloadRv.layoutManager = LinearLayoutManager(this)
+        dataBinding.downloadRv.adapter = adapter
+        (dataBinding.downloadRv.itemAnimator as? androidx.recyclerview.widget.SimpleItemAnimator)?.supportsChangeAnimations = false
+        dataBinding.downloadRv.itemAnimator = null
 
         lifecycleScope.launch {
             viewModel.displayItems.collectLatest { items ->
-                dataBinding.downloadRv.setData(items)
+                adapter.submitList(items)
                 dataBinding.emptyTv.isVisible = items.isEmpty()
             }
         }
@@ -98,130 +97,222 @@ class DownloadActivity : BaseActivity<DownloadViewModel, ActivityDownloadBinding
         }
     }
 
-    private fun createAdapter() = buildAdapter {
-        setupDiffUtil {
-            areItemsTheSame { old, new ->
-                when {
-                    old is DownloadGroupedItem.Section && new is DownloadGroupedItem.Section ->
-                        old.title == new.title
-                    old is DownloadGroupedItem.Task && new is DownloadGroupedItem.Task ->
-                        old.display.task.id == new.display.task.id
-                    else -> false
+    private inner class DownloadListAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+        private val VIEW_TYPE_SECTION = 0
+        private val VIEW_TYPE_TASK = 1
+
+        private var items: List<DownloadGroupedItem> = emptyList()
+
+        fun submitList(newItems: List<DownloadGroupedItem>) {
+            val oldItems = items
+            items = newItems
+            if (oldItems.isEmpty()) {
+                notifyDataSetChanged()
+                return
+            }
+
+            val diffCallback = object : androidx.recyclerview.widget.DiffUtil.Callback() {
+                override fun getOldListSize() = oldItems.size
+                override fun getNewListSize() = newItems.size
+
+                override fun areItemsTheSame(oldPos: Int, newPos: Int): Boolean {
+                    val oldItem = oldItems[oldPos]
+                    val newItem = newItems[newPos]
+                    return when {
+                        oldItem is DownloadGroupedItem.Section && newItem is DownloadGroupedItem.Section ->
+                            oldItem.title == newItem.title
+                        oldItem is DownloadGroupedItem.Task && newItem is DownloadGroupedItem.Task ->
+                            oldItem.display.task.id == newItem.display.task.id
+                        else -> false
+                    }
+                }
+
+                override fun areContentsTheSame(oldPos: Int, newPos: Int): Boolean {
+                    val oldItem = oldItems[oldPos]
+                    val newItem = newItems[newPos]
+                    return when {
+                        oldItem is DownloadGroupedItem.Section && newItem is DownloadGroupedItem.Section ->
+                            oldItem == newItem
+                        oldItem is DownloadGroupedItem.Task && newItem is DownloadGroupedItem.Task ->
+                            oldItem.display.task.state == newItem.display.task.state &&
+                            oldItem.display.downloadedBytes == newItem.display.downloadedBytes &&
+                            oldItem.display.speed == newItem.display.speed &&
+                            oldItem.display.eta == newItem.display.eta &&
+                            oldItem.display.progress == newItem.display.progress
+                        else -> false
+                    }
+                }
+
+                override fun getChangePayload(oldPos: Int, newPos: Int): Any? {
+                    val oldItem = oldItems[oldPos]
+                    val newItem = newItems[newPos]
+                    if (oldItem is DownloadGroupedItem.Task && newItem is DownloadGroupedItem.Task) {
+                        return newItem.display
+                    }
+                    return null
                 }
             }
-            areContentsTheSame { old, new ->
-                when {
-                    old is DownloadGroupedItem.Section && new is DownloadGroupedItem.Section ->
-                        old.count == new.count
-                    old is DownloadGroupedItem.Task && new is DownloadGroupedItem.Task ->
-                        old.display.task.state == new.display.task.state &&
-                                old.display.task.downloadedBytes == new.display.task.downloadedBytes &&
-                                old.display.speed == new.display.speed &&
-                                old.display.eta == new.display.eta
-                    else -> false
+
+            val diffResult = androidx.recyclerview.widget.DiffUtil.calculateDiff(diffCallback, false)
+            diffResult.dispatchUpdatesTo(this)
+        }
+
+        override fun getItemViewType(position: Int): Int {
+            return when (items[position]) {
+                is DownloadGroupedItem.Section -> VIEW_TYPE_SECTION
+                is DownloadGroupedItem.Task -> VIEW_TYPE_TASK
+            }
+        }
+
+        override fun getItemCount() = items.size
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val inflater = android.view.LayoutInflater.from(parent.context)
+            return when (viewType) {
+                VIEW_TYPE_SECTION -> {
+                    val binding = ItemSectionHeaderBinding.inflate(inflater, parent, false)
+                    SectionViewHolder(binding)
+                }
+                else -> {
+                    val binding = ItemDownloadTaskBinding.inflate(inflater, parent, false)
+                    TaskViewHolder(binding)
                 }
             }
         }
-        addItem<DownloadGroupedItem.Section, ItemSectionHeaderBinding>(R.layout.item_section_header) {
-            initView { data, _, _ ->
-                itemBinding.sectionTitleTv.text = "${data.title} (${data.count})"
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            when (holder) {
+                is SectionViewHolder -> {
+                    val item = items[position] as DownloadGroupedItem.Section
+                    holder.binding.sectionTitleTv.text = "${item.title} (${item.count})"
+                }
+                is TaskViewHolder -> {
+                    val item = items[position] as DownloadGroupedItem.Task
+                    bindTask(holder.binding, item.display)
+                }
             }
         }
-        addItem<DownloadGroupedItem.Task, ItemDownloadTaskBinding>(R.layout.item_download_task) {
-            initView { data, _, _ ->
-                itemBinding.bindTaskViews(data.display)
+
+        override fun onBindViewHolder(
+            holder: RecyclerView.ViewHolder,
+            position: Int,
+            payloads: MutableList<Any>
+        ) {
+            if (payloads.isEmpty() || holder !is TaskViewHolder) {
+                super.onBindViewHolder(holder, position, payloads)
+                return
+            }
+
+            val display = payloads.firstOrNull() as? DownloadTaskDisplay
+            if (display != null) {
+                bindTaskProgress(holder.binding, display)
+                bindActionButtons(holder.binding, display.task)
+            } else {
+                super.onBindViewHolder(holder, position, payloads)
+            }
+        }
+
+        private fun bindTask(binding: ItemDownloadTaskBinding, display: DownloadTaskDisplay) {
+            val task = display.task
+            binding.fileNameTv.text = task.fileName
+            bindTaskProgress(binding, display)
+
+            binding.statusTv.text = getStateText(task)
+            bindActionButtons(binding, task)
+        }
+
+        private fun bindTaskProgress(binding: ItemDownloadTaskBinding, display: DownloadTaskDisplay) {
+            val task = display.task
+            val progress = display.progress
+            binding.progressBar.progress = progress
+            binding.progressTv.text = "$progress%"
+
+            val downloadedStr = formatFileSize(display.downloadedBytes)
+            val totalStr = formatFileSize(task.totalBytes)
+            binding.sizeTv.text = "$downloadedStr / $totalStr"
+
+            binding.speedTv.text = display.speed
+            binding.speedTv.isVisible = display.speed.isNotEmpty()
+            binding.etaTv.text = display.eta
+            binding.etaTv.isVisible = display.eta.isNotEmpty()
+
+            binding.statusTv.text = getStateText(task)
+        }
+
+        private fun getStateText(task: DownloadTaskEntity): String {
+            return when (task.state) {
+                DownloadState.WAITING -> "等待中"
+                DownloadState.DOWNLOADING -> "下载中"
+                DownloadState.PAUSED -> "已暂停"
+                DownloadState.COMPLETED -> "已完成"
+                DownloadState.FAILED -> "失败: ${task.errorMessage ?: "未知错误"}"
+                DownloadState.CANCELLED -> "已取消"
+                else -> ""
+            }
+        }
+
+        private fun bindActionButtons(binding: ItemDownloadTaskBinding, task: DownloadTaskEntity) {
+            val isActive = task.state == DownloadState.WAITING || task.state == DownloadState.DOWNLOADING
+            val isPaused = task.state == DownloadState.PAUSED
+            val isCompleted = task.state == DownloadState.COMPLETED
+            val isFailed = task.state == DownloadState.FAILED
+            val isFinished = isCompleted || task.state == DownloadState.CANCELLED || isFailed
+
+            binding.pauseBt.isVisible = isActive || isPaused
+            binding.pauseBt.text = if (isPaused) "继续" else "暂停"
+            binding.pauseBt.setOnClickListener {
+                if (isActive) viewModel.pauseTask(task.id)
+                else if (isPaused) viewModel.resumeTask(task.id)
+            }
+
+            binding.cancelBt.isVisible = isActive || isPaused
+            binding.cancelBt.setOnClickListener {
+                android.app.AlertDialog.Builder(this@DownloadActivity)
+                    .setTitle("取消下载")
+                    .setMessage("取消后已下载的部分文件将被删除，确定取消「${task.fileName}」吗？")
+                    .setPositiveButton("确定取消") { _, _ ->
+                        viewModel.cancelTask(task.id)
+                    }
+                    .setNegativeButton("继续下载", null)
+                    .show()
+            }
+
+            binding.retryBt.isVisible = isFailed
+            binding.retryBt.setOnClickListener {
+                viewModel.retryTask(task.id)
+            }
+
+            binding.openBt.isVisible = isCompleted
+            binding.openBt.setOnClickListener {
+                openDownloadedFile(task, isLongPress = false)
+            }
+            binding.openBt.setOnLongClickListener {
+                openDownloadedFile(task, isLongPress = true)
+                true
+            }
+
+            binding.clearRecordBt.isVisible = isFinished
+            binding.clearRecordBt.setOnClickListener {
+                viewModel.clearRecord(task.id)
+            }
+
+            binding.deleteBt.isVisible = isFinished
+            binding.deleteBt.setOnClickListener {
+                android.app.AlertDialog.Builder(this@DownloadActivity)
+                    .setTitle("删除文件")
+                    .setMessage("确定要删除文件「${task.fileName}」吗？")
+                    .setPositiveButton("删除") { _, _ ->
+                        viewModel.deleteTask(task.id)
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
             }
         }
     }
 
-    private fun ItemDownloadTaskBinding.bindTaskViews(display: DownloadTaskDisplay) {
-        val data = display.task
-        fileNameTv.text = data.fileName
-        bindProgressViews(data)
-
-        statusTv.text = when (data.state) {
-            DownloadState.WAITING -> "等待中"
-            DownloadState.DOWNLOADING -> "下载中"
-            DownloadState.PAUSED -> "已暂停"
-            DownloadState.COMPLETED -> "已完成"
-            DownloadState.FAILED -> "失败: ${data.errorMessage ?: "未知错误"}"
-            DownloadState.CANCELLED -> "已取消"
-            else -> ""
-        }
-
-        speedTv.text = display.speed
-        speedTv.isVisible = display.speed.isNotEmpty()
-        etaTv.text = display.eta
-        etaTv.isVisible = display.eta.isNotEmpty()
-
-        val isActive = data.state == DownloadState.WAITING || data.state == DownloadState.DOWNLOADING
-        val isPaused = data.state == DownloadState.PAUSED
-        val isCompleted = data.state == DownloadState.COMPLETED
-        val isFailed = data.state == DownloadState.FAILED
-        val isFinished = isCompleted || data.state == DownloadState.CANCELLED || isFailed
-
-        pauseBt.isVisible = isActive || isPaused
-        pauseBt.text = if (isPaused) "继续" else "暂停"
-        pauseBt.setOnClickListener {
-            if (isActive) viewModel.pauseTask(data.id)
-            else if (isPaused) viewModel.resumeTask(data.id)
-        }
-
-        cancelBt.isVisible = isActive || isPaused
-        cancelBt.setOnClickListener {
-            android.app.AlertDialog.Builder(this@DownloadActivity)
-                .setTitle("取消下载")
-                .setMessage("取消后已下载的部分文件将被删除，确定取消「${data.fileName}」吗？")
-                .setPositiveButton("确定取消") { _, _ ->
-                    viewModel.cancelTask(data.id)
-                }
-                .setNegativeButton("继续下载", null)
-                .show()
-        }
-
-        retryBt.isVisible = isFailed
-        retryBt.setOnClickListener {
-            viewModel.retryTask(data.id)
-        }
-
-        openBt.isVisible = isCompleted
-        openBt.setOnClickListener {
-            openDownloadedFile(data, isLongPress = false)
-        }
-        openBt.setOnLongClickListener {
-            openDownloadedFile(data, isLongPress = true)
-            true
-        }
-
-        clearRecordBt.isVisible = isFinished
-        clearRecordBt.setOnClickListener {
-            viewModel.clearRecord(data.id)
-        }
-
-        deleteBt.isVisible = isFinished
-        deleteBt.setOnClickListener {
-            android.app.AlertDialog.Builder(this@DownloadActivity)
-                .setTitle("删除文件")
-                .setMessage("确定要删除文件「${data.fileName}」吗？")
-                .setPositiveButton("删除") { _, _ ->
-                    viewModel.deleteTask(data.id)
-                }
-                .setNegativeButton("取消", null)
-                .show()
-        }
-    }
-
-    private fun ItemDownloadTaskBinding.bindProgressViews(data: DownloadTaskEntity) {
-        val progress = if (data.totalBytes > 0) {
-            (data.downloadedBytes * 100 / data.totalBytes).toInt()
-        } else 0
-        progressBar.progress = progress
-        progressTv.text = "$progress%"
-
-        val downloadedStr = formatFileSize(data.downloadedBytes)
-        val totalStr = formatFileSize(data.totalBytes)
-        sizeTv.text = "$downloadedStr / $totalStr"
-    }
+    private class SectionViewHolder(val binding: ItemSectionHeaderBinding) : RecyclerView.ViewHolder(binding.root)
+    private class TaskViewHolder(val binding: ItemDownloadTaskBinding) : RecyclerView.ViewHolder(binding.root)
 
     private fun openDownloadedFile(task: DownloadTaskEntity, isLongPress: Boolean) {
         val ext = task.fileName.substringAfterLast('.', "").lowercase()
