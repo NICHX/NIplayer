@@ -17,6 +17,13 @@ object RouteTable {
         const val ShooterSubtitle = "/local/shooter_subtitle"
     }
 
+    object Scrape {
+        const val ScrapeMedia = "/scrape/media"
+        const val ScrapeDetail = "/scrape/detail"
+        const val MuluSetting = "/scrape/mulu_setting"
+        const val SearchMatch = "/scrape/search_match"
+    }
+
     object User {
         const val PersonalFragment = "/user/personal_fragment"
         const val SettingPlayer = "/user/setting_player"

@@ -49,6 +49,18 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
     private fun setupExpandableFab() {
         dataBinding.expandableFab.addAction(
             ExpandableFabMenu.FabAction(
+                id = 1,
+                icon = R.drawable.ic_local_file,
+                label = "海报墙",
+                onClick = {
+                    ARouter.getInstance()
+                        .build(RouteTable.Scrape.ScrapeMedia)
+                        .navigation()
+                }
+            )
+        )
+        dataBinding.expandableFab.addAction(
+            ExpandableFabMenu.FabAction(
                 id = 2,
                 icon = R.drawable.ic_download,
                 label = "下载管理",

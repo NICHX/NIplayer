@@ -266,6 +266,39 @@ class DatabaseManager private constructor() {
             }
         }
 
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `scrape_media` (" +
+                            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "`name` TEXT NOT NULL, " +
+                            "`path` TEXT NOT NULL, " +
+                            "`media_type` TEXT NOT NULL, " +
+                            "`poster` TEXT, " +
+                            "`backdrop` TEXT, " +
+                            "`tmdb_id` INTEGER, " +
+                            "`genre_ids` TEXT NOT NULL, " +
+                            "`vote_average` REAL NOT NULL, " +
+                            "`release_time` TEXT, " +
+                            "`overview` TEXT, " +
+                            "`season` TEXT NOT NULL, " +
+                            "`source_json` TEXT NOT NULL, " +
+                            "`update_time` INTEGER NOT NULL)"
+                )
+                database.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_scrape_media_path_media_type` " +
+                            "ON `scrape_media` (`path`, `media_type`)"
+                )
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `scrape_mulu_config` (" +
+                            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "`media_library_id` INTEGER NOT NULL, " +
+                            "`mulu_type` TEXT NOT NULL, " +
+                            "`path` TEXT NOT NULL)"
+                )
+            }
+        }
+
         val instance = DatabaseManager.holder.database
     }
 
@@ -293,7 +326,8 @@ class DatabaseManager private constructor() {
         MIGRATION_13_14,
         MIGRATION_14_15,
         MIGRATION_15_16,
-        MIGRATION_16_17
+        MIGRATION_16_17,
+        MIGRATION_17_18
     ).build()
 
 }

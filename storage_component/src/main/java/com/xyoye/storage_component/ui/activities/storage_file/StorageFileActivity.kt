@@ -61,6 +61,10 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     @JvmField
     var initialStoragePath: String = ""
 
+    @Autowired
+    @JvmField
+    var pickerMode: String = ""
+
     lateinit var storage: Storage
         private set
 
@@ -204,6 +208,19 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     }
 
     private fun initExpandableFab() {
+        if (pickerMode == "mulu") {
+            dataBinding.expandableFab.addAction(
+                ExpandableFabMenu.FabAction(
+                    id = 100,
+                    icon = R.drawable.ic_sort,
+                    label = "选择此目录",
+                    onClick = {
+                        pickCurrentDirectory()
+                    }
+                )
+            )
+            return
+        }
         dataBinding.expandableFab.addAction(
             ExpandableFabMenu.FabAction(
                 id = 2,
@@ -216,6 +233,16 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
                 }
             )
         )
+    }
+
+    private fun pickCurrentDirectory() {
+        val currentPath = directory?.filePath() ?: "/"
+        val resultIntent = Intent().apply {
+            putExtra("picked_directory_path", currentPath)
+            putExtra("picked_library_id", storageLibrary?.id ?: -1)
+        }
+        setResult(RESULT_OK, resultIntent)
+        finish()
     }
 
     private fun toggleViewMode() {

@@ -16,6 +16,22 @@
         <activity android:name=".ui.activities.bind_source.BindExtraSourceActivity"
             android:theme="@style/ShareElementActivityTheme"
             android:configChanges="orientation|screenSize" />
+
+        <activity
+            android:name=".ui.activities.scrape.ScrapeMediaActivity"
+            android:configChanges="orientation|screenSize" />
+
+        <activity
+            android:name=".ui.activities.scrape.MuluSettingActivity"
+            android:configChanges="orientation|screenSize" />
+
+        <activity
+            android:name=".ui.activities.scrape.ScrapeDetailActivity"
+            android:configChanges="orientation|screenSize" />
+
+        <activity
+            android:name=".ui.activities.scrape.SearchMatchActivity"
+            android:configChanges="orientation|screenSize" />
     </application>
 
 </manifest>

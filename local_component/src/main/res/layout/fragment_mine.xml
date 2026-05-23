@@ -16,12 +16,31 @@
         android:layout_height="match_parent"
         android:background="@color/item_bg_color">
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/media_lib_rv"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:descendantFocusability="afterDescendants"
-            app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+            android:orientation="vertical">
+
+            <com.google.android.material.tabs.TabLayout
+                android:id="@+id/tab_layout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:tabMode="fixed" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/scrape_media_rv"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:descendantFocusability="afterDescendants" />
+        </LinearLayout>
+
+        <com.xyoye.common_component.weight.ExpandableFabMenu
+            android:id="@+id/expandable_fab"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end|bottom"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="40dp" />
 
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 </layout>

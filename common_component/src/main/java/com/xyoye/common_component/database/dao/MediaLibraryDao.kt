@@ -16,6 +16,9 @@ interface MediaLibraryDao {
     @Query("SELECT * FROM media_library ORDER BY id ASC")
     fun getAll(): LiveData<MutableList<MediaLibraryEntity>>
 
+    @Query("SELECT * FROM media_library ORDER BY id ASC")
+    suspend fun getAllSuspend(): MutableList<MediaLibraryEntity>
+
     @Query("SELECT * FROM media_library WHERE media_type = (:mediaType)")
     @TypeConverters(MediaTypeConverter::class)
     fun getByMediaType(mediaType: MediaType): LiveData<MediaLibraryEntity>

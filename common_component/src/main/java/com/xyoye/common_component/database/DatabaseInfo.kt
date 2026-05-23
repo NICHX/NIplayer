@@ -5,12 +5,16 @@ import androidx.room.RoomDatabase
 import com.xyoye.common_component.database.dao.DownloadTaskDao
 import com.xyoye.common_component.database.dao.ExtendFolderDao
 import com.xyoye.common_component.database.dao.MediaLibraryDao
+import com.xyoye.common_component.database.dao.MuluConfigDao
 import com.xyoye.common_component.database.dao.PlayHistoryDao
+import com.xyoye.common_component.database.dao.ScrapeMediaDao
 import com.xyoye.common_component.database.dao.VideoDao
 import com.xyoye.data_component.entity.DownloadTaskEntity
 import com.xyoye.data_component.entity.ExtendFolderEntity
 import com.xyoye.data_component.entity.MediaLibraryEntity
+import com.xyoye.data_component.entity.MuluConfigEntity
 import com.xyoye.data_component.entity.PlayHistoryEntity
+import com.xyoye.data_component.entity.ScrapeMediaEntity
 import com.xyoye.data_component.entity.VideoEntity
 
 /**
@@ -23,9 +27,11 @@ import com.xyoye.data_component.entity.VideoEntity
         MediaLibraryEntity::class,
         PlayHistoryEntity::class,
         ExtendFolderEntity::class,
-        DownloadTaskEntity::class
+        DownloadTaskEntity::class,
+        ScrapeMediaEntity::class,
+        MuluConfigEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class DatabaseInfo : RoomDatabase() {
@@ -39,4 +45,8 @@ abstract class DatabaseInfo : RoomDatabase() {
     abstract fun getExtendFolderDao(): ExtendFolderDao
 
     abstract fun getDownloadTaskDao(): DownloadTaskDao
+
+    abstract fun getScrapeMediaDao(): ScrapeMediaDao
+
+    abstract fun getMuluConfigDao(): MuluConfigDao
 }
