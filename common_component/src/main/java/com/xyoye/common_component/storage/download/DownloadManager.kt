@@ -8,111 +8,72 @@ import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.StorageFactory
 import com.xyoye.common_component.utils.IOUtils
 import com.xyoye.common_component.utils.PathHelper
+import com.xyoye.common_component.utils.SafPathResolver
 import com.xyoye.data_component.entity.DownloadState
 import com.xyoye.data_component.entity.DownloadTaskEntity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.concurrent.ConcurrentHashMap
 
 object DownloadManager {
 
     private const val MAX_CONCURRENT = 3
+    private const val BUFFER_SIZE = 4 * 1024 * 1024
+    private const val DB_FLUSH_INTERVAL_MS = 1500L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    private val _taskCount = MutableStateFlow(0)
-    val taskCount: StateFlow<Int> = _taskCount
-
-    private val processingJobs = ConcurrentHashMap<Long, Job>()
-    private var processingLoop: Job? = null
 
     private val _allTasks = MutableStateFlow<List<DownloadTaskEntity>>(emptyList())
     val allTasks: StateFlow<List<DownloadTaskEntity>> = _allTasks
 
-    private val _progressUpdates = MutableSharedFlow<Map<Long, Long>>(extraBufferCapacity = 64, replay = 1)
-    val progressUpdates: SharedFlow<Map<Long, Long>> = _progressUpdates
-
-    private val currentProgress = ConcurrentHashMap<Long, Long>()
+    private val activeJobs = ConcurrentHashMap<Long, Job>()
 
     init {
         scope.launch {
             DatabaseManager.instance.getDownloadTaskDao().getAllFlow().collect { tasks ->
-                val patched = tasks.map { task ->
-                    currentProgress[task.id]?.let { task.copy(downloadedBytes = it) } ?: task
-                }
-                _allTasks.value = patched
-                _taskCount.value = tasks.size
+                _allTasks.value = tasks
             }
         }
-        scope.launch {
-            _progressUpdates.collect { progress ->
-                val current = _allTasks.value
-                val patched = current.map { task ->
-                    progress[task.id]?.let { task.copy(downloadedBytes = it) } ?: task
-                }
-                _allTasks.value = patched
-            }
-        }
-        startProcessingLoop()
-        startProgressFlusher()
+        startDispatchLoop()
     }
 
-    private fun startProcessingLoop() {
-        processingLoop = scope.launch {
+    private fun startDispatchLoop() {
+        scope.launch {
             while (true) {
-                val dao = DatabaseManager.instance.getDownloadTaskDao()
-                val activeCount = processingJobs.size
-                val waitingTasks = dao.getByStates(
-                    listOf(DownloadState.WAITING)
-                ).sortedBy { it.id }
-
-                if (waitingTasks.isEmpty() || activeCount >= MAX_CONCURRENT) {
+                val activeCount = activeJobs.size
+                if (activeCount >= MAX_CONCURRENT) {
                     delay(1000)
                     continue
                 }
-
-                val slotsAvailable = MAX_CONCURRENT - activeCount
-                val toProcess = waitingTasks.take(slotsAvailable)
-
-                for (task in toProcess) {
-                    if (processingJobs.containsKey(task.id)) continue
+                val waitingTasks = DatabaseManager.instance.getDownloadTaskDao()
+                    .getByStates(listOf(DownloadState.WAITING))
+                    .sortedBy { it.id }
+                if (waitingTasks.isEmpty()) {
+                    delay(1000)
+                    continue
+                }
+                for (task in waitingTasks.take(MAX_CONCURRENT - activeCount)) {
+                    if (activeJobs.containsKey(task.id)) continue
                     val job = scope.launch {
                         processTask(task)
                     }
-                    processingJobs[task.id] = job
+                    activeJobs[task.id] = job
                     job.invokeOnCompletion {
-                        processingJobs.remove(task.id)
-                        currentProgress.remove(task.id)
+                        activeJobs.remove(task.id)
                     }
                 }
                 delay(500)
-            }
-        }
-    }
-
-    private fun startProgressFlusher() {
-        scope.launch {
-            while (true) {
-                delay(3000)
-                if (currentProgress.isEmpty()) continue
-                val snapshot = currentProgress.toMap()
-                val dao = DatabaseManager.instance.getDownloadTaskDao()
-                for ((taskId, bytes) in snapshot) {
-                    try {
-                        dao.updateProgress(taskId, bytes, DownloadState.DOWNLOADING)
-                    } catch (_: Exception) { }
-                }
             }
         }
     }
@@ -128,42 +89,42 @@ object DownloadManager {
     ) {
         scope.launch {
             val dao = DatabaseManager.instance.getDownloadTaskDao()
-            val existing = dao.getByUniqueKey(uniqueKey, storageId)
+            val existing = dao.getByUniqueKeyAndTarget(uniqueKey, storageId, targetStorageUrl)
             if (existing != null) {
-                if (existing.state == DownloadState.COMPLETED || existing.state == DownloadState.CANCELLED || existing.state == DownloadState.FAILED) {
+                if (existing.state in listOf(DownloadState.COMPLETED, DownloadState.CANCELLED, DownloadState.FAILED)) {
                     dao.deleteById(existing.id)
                 } else {
                     return@launch
                 }
             }
 
-            val activeTasks = dao.getByStates(
-                listOf(DownloadState.WAITING, DownloadState.DOWNLOADING)
-            ).sortedBy { it.id }
+            val activeTasks = dao.getByStates(listOf(DownloadState.WAITING, DownloadState.DOWNLOADING))
+                .sortedBy { it.id }
             if (activeTasks.size >= MAX_CONCURRENT) {
                 val oldest = activeTasks.first()
                 if (oldest.state == DownloadState.WAITING) {
-                    processingJobs[oldest.id]?.cancel()
+                    activeJobs[oldest.id]?.cancel()
                     dao.updateState(oldest.id, DownloadState.PAUSED)
                 }
             }
 
-            val task = DownloadTaskEntity(
-                storageId = storageId,
-                fileName = fileName,
-                filePath = filePath,
-                uniqueKey = uniqueKey,
-                totalBytes = totalBytes,
-                state = DownloadState.WAITING,
-                targetStorageUrl = targetStorageUrl,
-                targetStorageName = targetStorageName
+            dao.insert(
+                DownloadTaskEntity(
+                    storageId = storageId,
+                    fileName = fileName,
+                    filePath = filePath,
+                    uniqueKey = uniqueKey,
+                    totalBytes = totalBytes,
+                    state = DownloadState.WAITING,
+                    targetStorageUrl = targetStorageUrl,
+                    targetStorageName = targetStorageName
+                )
             )
-            dao.insert(task)
         }
     }
 
     fun pauseTask(taskId: Long) {
-        processingJobs[taskId]?.cancel()
+        activeJobs[taskId]?.cancel()
         scope.launch {
             DatabaseManager.instance.getDownloadTaskDao().updateState(taskId, DownloadState.PAUSED)
         }
@@ -179,26 +140,25 @@ object DownloadManager {
     }
 
     fun cancelTask(taskId: Long) {
-        processingJobs[taskId]?.cancel()
+        activeJobs[taskId]?.cancel()
         scope.launch {
             val dao = DatabaseManager.instance.getDownloadTaskDao()
             val task = dao.getById(taskId) ?: return@launch
-            if (task.targetStorageUrl != null) {
-                cleanUpSafFile(task)
-            } else {
-                val downloadDir = File(PathHelper.getCachePath(), "download")
-                val targetFile = File(downloadDir, task.fileName)
-                if (targetFile.exists()) {
-                    targetFile.delete()
+            val storageUrl = task.targetStorageUrl
+            if (storageUrl != null) {
+                val context = BaseApplication.getAppContext()
+                val directFile = SafPathResolver.resolveTargetFile(context, storageUrl, task.fileName)
+                if (directFile != null && directFile.exists() && directFile.delete()) {
+                } else {
+                    try {
+                        val treeDoc = DocumentFile.fromTreeUri(context, Uri.parse(storageUrl))
+                        treeDoc?.findFile(task.fileName)?.delete()
+                    } catch (_: Exception) { }
                 }
+            } else {
+                File(PathHelper.getCachePath(), "download/${task.fileName}").delete()
             }
             dao.updateState(taskId, DownloadState.CANCELLED)
-        }
-    }
-
-    fun removeCompletedTasks() {
-        scope.launch {
-            DatabaseManager.instance.getDownloadTaskDao().deleteByState(DownloadState.COMPLETED)
         }
     }
 
@@ -215,14 +175,19 @@ object DownloadManager {
         }
     }
 
-    private suspend fun cleanUpSafFile(task: DownloadTaskEntity) {
-        try {
-            val context = BaseApplication.getAppContext()
-            val treeUri = Uri.parse(task.targetStorageUrl)
-            val treeDoc = DocumentFile.fromTreeUri(context, treeUri) ?: return
-            val targetDoc = treeDoc.findFile(task.fileName) ?: return
-            targetDoc.delete()
-        } catch (_: Exception) { }
+    fun removeCompletedTasks() {
+        scope.launch {
+            DatabaseManager.instance.getDownloadTaskDao().deleteByState(DownloadState.COMPLETED)
+        }
+    }
+
+    fun retryTask(taskId: Long) {
+        scope.launch {
+            val dao = DatabaseManager.instance.getDownloadTaskDao()
+            val task = dao.getById(taskId) ?: return@launch
+            if (task.state != DownloadState.FAILED) return@launch
+            dao.updateProgress(taskId, 0, DownloadState.WAITING)
+        }
     }
 
     private suspend fun processTask(task: DownloadTaskEntity) {
@@ -241,9 +206,7 @@ object DownloadManager {
 
         val storageFile = try {
             storage.pathFile(task.filePath, isDirectory = false)
-        } catch (e: Exception) {
-            null
-        }
+        } catch (_: Exception) { null }
 
         if (storageFile == null) {
             dao.updateState(task.id, DownloadState.FAILED, "找不到文件")
@@ -262,10 +225,19 @@ object DownloadManager {
 
         dao.updateState(task.id, DownloadState.DOWNLOADING)
 
-        val offset = task.downloadedBytes
-
-        val inputStream = if (offset > 0) {
-            storage.openFile(storageFile, offset)
+        var actualOffset = task.downloadedBytes
+        val inputStream = if (actualOffset > 0) {
+            val stream = storage.openFile(storageFile, actualOffset)
+            if (stream == null) {
+                val fullStream = storage.openFile(storageFile)
+                if (fullStream != null) {
+                    actualOffset = 0
+                    dao.updateProgress(task.id, 0, DownloadState.DOWNLOADING)
+                }
+                fullStream
+            } else {
+                stream
+            }
         } else {
             storage.openFile(storageFile)
         }
@@ -278,154 +250,103 @@ object DownloadManager {
 
         try {
             if (task.targetStorageUrl != null) {
-                processToSaf(task, inputStream, offset, totalBytes, dao)
+                processToSaf(task, inputStream, actualOffset, totalBytes)
             } else {
-                processToCache(task, inputStream, offset, totalBytes, dao)
+                processToCache(task, inputStream, actualOffset, totalBytes)
             }
-        } catch (e: Exception) {
-            if (e !is kotlinx.coroutines.CancellationException) {
-                e.printStackTrace()
-                dao.updateState(task.id, DownloadState.FAILED, e.message)
-            }
-        } finally {
+        } catch (_: CancellationException) { } finally {
             IOUtils.closeIO(inputStream)
             storage.close()
         }
     }
 
-    private suspend fun processToCache(
+    private suspend fun processToSaf(
         task: DownloadTaskEntity,
-        inputStream: java.io.InputStream,
+        inputStream: InputStream,
         offset: Long,
-        totalBytes: Long,
-        dao: com.xyoye.common_component.database.dao.DownloadTaskDao
+        totalBytes: Long
     ) {
-        val downloadDir = File(PathHelper.getCachePath(), "download")
-        if (!downloadDir.exists()) {
-            downloadDir.mkdirs()
+        val context = BaseApplication.getAppContext()
+        val storageUrl = task.targetStorageUrl ?: throw Exception("目标存储路径为空")
+
+        val directFile = SafPathResolver.resolveTargetFile(context, storageUrl, task.fileName)
+        if (directFile != null) {
+            try {
+                val fos = if (offset > 0) FileOutputStream(directFile, true) else FileOutputStream(directFile)
+                fos.use { writeLoop(task.id, inputStream, fos, offset, totalBytes) }
+                return
+            } catch (_: Exception) { }
         }
-        val targetFile = File(downloadDir, task.fileName)
 
-        var outputStream: BufferedOutputStream? = null
-        try {
-            if (offset > 0) {
-                if (!targetFile.exists()) {
-                    targetFile.createNewFile()
-                }
-            } else {
-                if (targetFile.exists()) {
-                    targetFile.delete()
-                }
-                targetFile.createNewFile()
-            }
+        val treeDoc = DocumentFile.fromTreeUri(context, Uri.parse(storageUrl))
+            ?: throw Exception("无法访问目标存储")
+        var targetDoc = treeDoc.findFile(task.fileName)
+            ?: treeDoc.createFile("application/octet-stream", task.fileName)
+            ?: throw Exception("无法在目标存储创建文件")
 
-            outputStream = BufferedOutputStream(
-                if (offset > 0) FileOutputStream(targetFile, true)
-                else FileOutputStream(targetFile, false)
-            )
-
-            val buffer = ByteArray(512 * 1024)
-            var len: Int
-            var totalRead = offset
-            var emitCounter = 0
-            while (inputStream.read(buffer).also { len = it } != -1) {
-                if (!processingJobs.containsKey(task.id)) {
-                    dao.updateProgress(task.id, totalRead, DownloadState.PAUSED)
-                    return
-                }
-                outputStream.write(buffer, 0, len)
-                totalRead += len
-                emitCounter++
-                if (emitCounter >= 3) {
-                    currentProgress[task.id] = totalRead
-                    _progressUpdates.tryEmit(currentProgress.toMap())
-                    emitCounter = 0
-                }
+        val pfd = context.contentResolver.openFileDescriptor(targetDoc.uri, if (offset > 0) "rw" else "w")
+            ?: throw Exception("无法打开文件描述符")
+        pfd.use {
+            FileOutputStream(it.fileDescriptor).use { fos ->
+                if (offset > 0) fos.channel.position(offset)
+                writeLoop(task.id, inputStream, fos, offset, totalBytes)
             }
-            outputStream.flush()
-
-            currentProgress.remove(task.id)
-            if (processingJobs.containsKey(task.id)) {
-                dao.updateProgress(task.id, totalRead, DownloadState.COMPLETED)
-            }
-        } catch (e: Exception) {
-            if (e !is kotlinx.coroutines.CancellationException) {
-                if (targetFile.exists()) targetFile.delete()
-                throw e
-            }
-        } finally {
-            IOUtils.closeIO(outputStream)
         }
     }
 
-    private suspend fun processToSaf(
+    private suspend fun processToCache(
         task: DownloadTaskEntity,
-        inputStream: java.io.InputStream,
+        inputStream: InputStream,
         offset: Long,
-        totalBytes: Long,
-        dao: com.xyoye.common_component.database.dao.DownloadTaskDao
+        totalBytes: Long
     ) {
-        val context = BaseApplication.getAppContext()
-        val treeUri = Uri.parse(task.targetStorageUrl)
-        val treeDoc = DocumentFile.fromTreeUri(context, treeUri)
-            ?: run {
-                dao.updateState(task.id, DownloadState.FAILED, "无法访问目标存储")
-                return
-            }
-
-        var targetDoc = treeDoc.findFile(task.fileName)
-        if (targetDoc == null) {
-            targetDoc = treeDoc.createFile("application/octet-stream", task.fileName)
-        }
-        if (targetDoc == null) {
-            dao.updateState(task.id, DownloadState.FAILED, "无法在目标存储创建文件")
-            return
-        }
-
-        val outputStream = if (offset > 0) {
-            context.contentResolver.openOutputStream(targetDoc.uri, "wa")
+        val targetFile = File(PathHelper.getCachePath(), "download/${task.fileName}")
+        targetFile.parentFile?.mkdirs()
+        if (offset > 0) {
+            if (!targetFile.exists()) targetFile.createNewFile()
         } else {
-            context.contentResolver.openOutputStream(targetDoc.uri, "w")
+            targetFile.delete()
+            targetFile.createNewFile()
         }
-
-        if (outputStream == null) {
-            dao.updateState(task.id, DownloadState.FAILED, "无法写入目标存储")
-            return
-        }
-
         try {
-            val buffer = ByteArray(512 * 1024)
-            var len: Int
-            var totalRead = offset
-            var emitCounter = 0
-            val bufferedOut = BufferedOutputStream(outputStream)
-            while (inputStream.read(buffer).also { len = it } != -1) {
-                if (!processingJobs.containsKey(task.id)) {
-                    dao.updateProgress(task.id, totalRead, DownloadState.PAUSED)
-                    return
-                }
-                bufferedOut.write(buffer, 0, len)
-                totalRead += len
-                emitCounter++
-                if (emitCounter >= 3) {
-                    currentProgress[task.id] = totalRead
-                    _progressUpdates.tryEmit(currentProgress.toMap())
-                    emitCounter = 0
-                }
-            }
-            bufferedOut.flush()
-
-            currentProgress.remove(task.id)
-            if (processingJobs.containsKey(task.id)) {
-                dao.updateProgress(task.id, totalRead, DownloadState.COMPLETED)
+            FileOutputStream(targetFile, offset > 0).use { fos ->
+                writeLoop(task.id, inputStream, fos, offset, totalBytes)
             }
         } catch (e: Exception) {
-            if (e !is kotlinx.coroutines.CancellationException) {
-                targetDoc.delete()
-                throw e
-            }
-        } finally {
-            IOUtils.closeIO(outputStream)
+            if (e !is CancellationException && targetFile.exists()) targetFile.delete()
+            throw e
         }
+    }
+
+    private suspend fun writeLoop(
+        taskId: Long,
+        inputStream: InputStream,
+        outputStream: OutputStream,
+        offset: Long,
+        totalBytes: Long
+    ) {
+        val dao = DatabaseManager.instance.getDownloadTaskDao()
+        val buffer = ByteArray(BUFFER_SIZE)
+        var totalRead = offset
+        var lastFlushTime = System.currentTimeMillis()
+
+        while (true) {
+            val len = inputStream.read(buffer)
+            if (len == -1) break
+            outputStream.write(buffer, 0, len)
+            totalRead += len
+
+            val now = System.currentTimeMillis()
+            if (now - lastFlushTime >= DB_FLUSH_INTERVAL_MS) {
+                dao.updateProgress(taskId, totalRead, DownloadState.DOWNLOADING)
+                lastFlushTime = now
+            }
+        }
+        outputStream.flush()
+
+        _allTasks.value = _allTasks.value.map {
+            if (it.id == taskId) it.copy(downloadedBytes = totalRead, state = DownloadState.COMPLETED) else it
+        }
+        dao.updateProgress(taskId, totalRead, DownloadState.COMPLETED)
     }
 }

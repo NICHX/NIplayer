@@ -9,6 +9,12 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/action_retry_failed"
+        android:orderInCategory="100"
+        android:title="全部重试"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/action_clear_failed"
         android:orderInCategory="100"
         android:title="清除失败项"

@@ -73,6 +73,19 @@
                 tools:text="50MB / 100MB" />
 
             <TextView
+                android:id="@+id/speed_tv"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:textColor="@color/text_theme"
+                android:textSize="13sp"
+                app:layout_constraintBottom_toBottomOf="@+id/progress_tv"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@+id/size_tv"
+                app:layout_constraintTop_toTopOf="@+id/progress_tv"
+                tools:text="45.2 MB/s" />
+
+            <TextView
                 android:id="@+id/status_tv"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -81,10 +94,21 @@
                 android:maxLines="1"
                 android:textColor="@color/text_gray"
                 android:textSize="12sp"
-                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/eta_tv"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toBottomOf="@+id/progress_tv"
                 tools:text="下载中" />
+
+            <TextView
+                android:id="@+id/eta_tv"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_gray"
+                android:textSize="12sp"
+                app:layout_constraintBottom_toBottomOf="@+id/status_tv"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="@+id/status_tv"
+                tools:text="剩余 2分30秒" />
 
             <LinearLayout
                 android:id="@+id/action_layout"
@@ -122,6 +146,21 @@
                     android:text="取消"
                     android:textColor="@color/text_red"
                     android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/retry_bt"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="?android:attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:minWidth="72dp"
+                    android:paddingHorizontal="16dp"
+                    android:text="重试"
+                    android:textColor="@color/text_theme"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/open_bt"

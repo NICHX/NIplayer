@@ -1,11 +1,13 @@
 package com.xyoye.storage_component.ui.activities.storage_file
 
+import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewTreeObserver
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentTransaction
 import androidx.lifecycle.Lifecycle
@@ -89,6 +91,38 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     }
 
     var shareStorageFile: StorageFile? = null
+
+    data class PendingDownloadInfo(
+        val storageId: Int,
+        val filePath: String,
+        val fileName: String,
+        val uniqueKey: String,
+        val totalBytes: Long
+    )
+
+    var pendingDownload: PendingDownloadInfo? = null
+
+    private val directoryPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val info = pendingDownload ?: return@registerForActivityResult
+            pendingDownload = null
+
+            val realPath = com.xyoye.common_component.utils.SafPathResolver.resolveTreeUri(this, uri)
+            val targetName = realPath ?: uri.lastPathSegment ?: "已选目录"
+            com.xyoye.common_component.storage.download.DownloadManager.addTask(
+                storageId = info.storageId,
+                filePath = info.filePath,
+                fileName = info.fileName,
+                uniqueKey = info.uniqueKey,
+                totalBytes = info.totalBytes,
+                targetStorageUrl = uri.toString(),
+                targetStorageName = targetName
+            )
+            com.xyoye.common_component.weight.ToastCenter.showSuccess("已添加到下载队列")
+        }
+    }
 
     override fun initViewModel() =
         ViewModelInit(
@@ -472,6 +506,23 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         val route = file?.filePath() ?: "/"
         val name = file?.fileName() ?: "根目录"
         pushFragment(StorageFilePath(name, route))
+    }
+
+    fun startDownloadDirectoryPicker(
+        storageId: Int,
+        filePath: String,
+        fileName: String,
+        uniqueKey: String,
+        totalBytes: Long
+    ) {
+        pendingDownload = PendingDownloadInfo(
+            storageId = storageId,
+            filePath = filePath,
+            fileName = fileName,
+            uniqueKey = uniqueKey,
+            totalBytes = totalBytes
+        )
+        directoryPickerLauncher.launch(null)
     }
 
     fun onDirectoryOpened(fileList: List<StorageFile>) {
