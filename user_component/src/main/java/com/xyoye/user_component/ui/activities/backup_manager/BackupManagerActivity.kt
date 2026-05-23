@@ -187,6 +187,12 @@ class BackupManagerActivity :
 
         updateWebDavServerStatus()
         updateWebDavSectionVisibility()
+
+        if (!PlayHistorySyncConfig.enabled) {
+            PlayHistorySyncConfig.enabled = true
+            dataBinding.syncHistoryEnableSwitch.isChecked = true
+            updateSyncStatusText()
+        }
     }
 
     private fun updateWebDavServerStatus() {

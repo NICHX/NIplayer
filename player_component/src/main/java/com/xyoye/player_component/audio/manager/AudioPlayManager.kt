@@ -181,6 +181,10 @@ object AudioPlayManager {
         }
     }
 
+    private fun getPendingStorage(): com.xyoye.common_component.storage.Storage? {
+        return _pendingSource?.getStorageFile()?.storage
+    }
+
     fun setPlaylist(songs: List<AudioSong>, startIndex: Int) {
         _playlist.value = songs.toList()
         if (songs.isEmpty()) return
@@ -188,9 +192,7 @@ object AudioPlayManager {
         val context = appContext ?: return
         val player = ensurePlayer(context)
 
-        val headers = if (_pendingSource != null) {
-            _pendingSource!!.indexStorageFile(startIndex).storage.getNetworkHeaders()
-        } else null
+        val headers = getPendingStorage()?.getNetworkHeaders()
 
         val dataSourceFactory = if (headers != null && headers.isNotEmpty()) {
             val httpDataSourceFactory = DefaultHttpDataSource.Factory()
@@ -238,9 +240,7 @@ object AudioPlayManager {
         val context = appContext ?: return
         val player = exoPlayer ?: return
 
-        val headers = if (_pendingSource != null) {
-            _pendingSource!!.indexStorageFile(0).storage.getNetworkHeaders()
-        } else null
+        val headers = getPendingStorage()?.getNetworkHeaders()
 
         val dataSourceFactory = if (headers != null && headers.isNotEmpty()) {
             val httpDataSourceFactory = DefaultHttpDataSource.Factory()
@@ -353,8 +353,7 @@ object AudioPlayManager {
         }
 
         val dataSourceFactory = if (_pendingSource != null) {
-            val storageFile = _pendingSource!!.indexStorageFile(currentIndex)
-            val headers = storageFile.storage.getNetworkHeaders()
+            val headers = getPendingStorage()?.getNetworkHeaders()
             if (headers != null && headers.isNotEmpty()) {
                 val httpDataSourceFactory = DefaultHttpDataSource.Factory()
                     .setDefaultRequestProperties(headers)
@@ -520,11 +519,7 @@ object AudioPlayManager {
             song.duration == 0L && cachedMetadata.duration > 0
         
         if (needsReload) {
-            val headers = if (_pendingSource != null) {
-                try {
-                    _pendingSource!!.indexStorageFile(index).storage.getNetworkHeaders()
-                } catch (_: Exception) { null }
-            } else null
+            val headers = getPendingStorage()?.getNetworkHeaders()
 
             val metadataResult = AudioMetadataLoader.loadMetadata(
                 context = context,

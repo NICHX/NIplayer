@@ -17,6 +17,14 @@ object PlayHistorySyncConfig {
         get() = mmkv.decodeString("play_history_sync_device_id", "") ?: ""
         set(value) { mmkv.encode("play_history_sync_device_id", value) }
 
+    var lastSyncAttemptTime: Long
+        get() = mmkv.decodeLong("play_history_sync_last_attempt_time", 0L)
+        set(value) { mmkv.encode("play_history_sync_last_attempt_time", value) }
+
+    var cachedCloudData: String
+        get() = mmkv.decodeString("play_history_sync_cached_data", "") ?: ""
+        set(value) { mmkv.encode("play_history_sync_cached_data", value) }
+
     fun ensureDeviceId(): String {
         val id = deviceId
         if (id.isNotEmpty()) return id
