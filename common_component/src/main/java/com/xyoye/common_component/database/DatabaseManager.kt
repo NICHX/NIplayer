@@ -299,6 +299,67 @@ class DatabaseManager private constructor() {
             }
         }
 
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `episode` (" +
+                            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "`media_id` INTEGER NOT NULL, " +
+                            "`season_number` INTEGER NOT NULL DEFAULT 1, " +
+                            "`episode_number` INTEGER NOT NULL, " +
+                            "`title` TEXT, " +
+                            "`file_path` TEXT NOT NULL, " +
+                            "`file_name` TEXT NOT NULL, " +
+                            "`file_size` INTEGER NOT NULL DEFAULT 0, " +
+                            "`overview` TEXT, " +
+                            "`still_url` TEXT, " +
+                            "`duration` INTEGER NOT NULL DEFAULT 0, " +
+                            "`update_time` INTEGER NOT NULL, " +
+                            "FOREIGN KEY (`media_id`) REFERENCES `scrape_media`(`id`) ON DELETE CASCADE" +
+                            ")"
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_episode_media_id` ON `episode` (`media_id`)"
+                )
+                database.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_episode_media_id_season_number_episode_number` " +
+                            "ON `episode` (`media_id`, `season_number`, `episode_number`)"
+                )
+            }
+        }
+
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `tmdb_sync_queue` (" +
+                            "`key` TEXT NOT NULL PRIMARY KEY, " +
+                            "`tmdb_id` INTEGER NOT NULL, " +
+                            "`task_type` TEXT NOT NULL, " +
+                            "`season_number` INTEGER, " +
+                            "`priority` INTEGER NOT NULL DEFAULT 0, " +
+                            "`state` TEXT NOT NULL DEFAULT 'PENDING', " +
+                            "`attempt_count` INTEGER NOT NULL DEFAULT 0, " +
+                            "`last_error` TEXT, " +
+                            "`update_time` INTEGER NOT NULL)"
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_tmdb_sync_queue_state` ON `tmdb_sync_queue` (`state`)"
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_tmdb_sync_queue_task_type` ON `tmdb_sync_queue` (`task_type`)"
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_tmdb_sync_queue_update_time` ON `tmdb_sync_queue` (`update_time`)"
+                )
+            }
+        }
+
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE scrape_media ADD COLUMN play_key TEXT")
+            }
+        }
+
         val instance = DatabaseManager.holder.database
     }
 
@@ -327,7 +388,13 @@ class DatabaseManager private constructor() {
         MIGRATION_14_15,
         MIGRATION_15_16,
         MIGRATION_16_17,
-        MIGRATION_17_18
+        MIGRATION_17_18,
+        MIGRATION_18_19,
+        MIGRATION_19_20,
+        MIGRATION_20_21
     ).build()
 
+    fun getEpisodeDao() = database.getEpisodeDao()
+
+    fun getTmdbSyncQueueDao() = database.getTmdbSyncQueueDao()
 }

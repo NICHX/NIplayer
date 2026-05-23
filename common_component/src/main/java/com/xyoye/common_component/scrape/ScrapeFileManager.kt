@@ -1,5 +1,6 @@
 package com.xyoye.common_component.scrape
 
+import android.util.Log
 import com.xyoye.common_component.network.repository.TmdbRepository
 import com.xyoye.common_component.storage.Storage
 import kotlinx.coroutines.Dispatchers
@@ -92,14 +93,30 @@ object ScrapeFileManager {
             val inputStream = storage.openFile(nfoFile) ?: return@withContext null
             inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
         } catch (e: Exception) {
+            Log.e("ScrapeFileManager", "readNfo failed: $nfoPath", e)
             null
         }
     }
 
     private fun extractSaveDirectory(entityPath: String, mediaType: String): String {
-        if (mediaType == "tv") return entityPath
-        val lastSlash = entityPath.trimEnd('/').lastIndexOf('/')
-        return if (lastSlash > 0) entityPath.substring(0, lastSlash) else entityPath
+        val trimmed = entityPath.trimEnd('/')
+        val lastSlash = trimmed.lastIndexOf('/')
+        val parentDir = if (lastSlash > 0) trimmed.substring(0, lastSlash) else trimmed
+        if (mediaType == "tv") {
+            val folderName = trimmed.substringAfterLast('/')
+            return if (SeasonExtractor.startsWithSeasonFormat(folderName)) {
+                parentDir
+            } else {
+                val lastDot = folderName.lastIndexOf('.')
+                val folderLooksLikeFile = lastDot > 0 && folderName.length - lastDot in 2..5
+                if (folderLooksLikeFile) {
+                    parentDir
+                } else {
+                    trimmed
+                }
+            }
+        }
+        return parentDir
     }
 
     private fun downloadImage(url: String): ByteArray? {
@@ -112,6 +129,7 @@ object ScrapeFileManager {
                 null
             }
         } catch (e: Exception) {
+            Log.e("ScrapeFileManager", "downloadImage failed: $url", e)
             null
         }
     }

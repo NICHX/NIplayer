@@ -21,26 +21,25 @@
             android:layout_height="match_parent"
             android:orientation="vertical">
 
-            <com.google.android.material.tabs.TabLayout
-                android:id="@+id/tab_layout"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:tabMode="fixed" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/scrape_media_rv"
+            <TextView
+                android:id="@+id/empty_hint"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:descendantFocusability="afterDescendants" />
-        </LinearLayout>
+                android:gravity="center"
+                android:lineSpacingExtra="6dp"
+                android:text="暂无媒体信息\n请点击右上角刷新按钮开始刮削"
+                android:textColor="@color/text_gray"
+                android:textSize="15sp"
+                android:visibility="visible" />
 
-        <com.xyoye.common_component.weight.ExpandableFabMenu
-            android:id="@+id/expandable_fab"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="end|bottom"
-            android:layout_marginEnd="20dp"
-            android:layout_marginBottom="40dp" />
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/wall_rv"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingBottom="8dp"
+                android:visibility="gone" />
+        </LinearLayout>
 
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 </layout>

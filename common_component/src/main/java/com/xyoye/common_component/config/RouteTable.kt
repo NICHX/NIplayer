@@ -22,6 +22,7 @@ object RouteTable {
         const val ScrapeDetail = "/scrape/detail"
         const val MuluSetting = "/scrape/mulu_setting"
         const val SearchMatch = "/scrape/search_match"
+        const val ScrapeMediaLegacy = "/scrape/media_legacy"
     }
 
     object User {

@@ -22,6 +22,10 @@
             android:configChanges="orientation|screenSize" />
 
         <activity
+            android:name=".ui.activities.scrape.MediaWallActivity"
+            android:configChanges="orientation|screenSize" />
+
+        <activity
             android:name=".ui.activities.scrape.MuluSettingActivity"
             android:configChanges="orientation|screenSize" />
 

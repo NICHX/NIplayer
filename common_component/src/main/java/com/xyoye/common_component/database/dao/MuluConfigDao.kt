@@ -10,6 +10,9 @@ interface MuluConfigDao {
     @Query("SELECT * FROM scrape_mulu_config ORDER BY id ASC")
     fun getAll(): LiveData<MutableList<MuluConfigEntity>>
 
+    @Query("SELECT * FROM scrape_mulu_config ORDER BY id ASC")
+    suspend fun getAllSuspend(): MutableList<MuluConfigEntity>
+
     @Query("SELECT * FROM scrape_mulu_config WHERE mulu_type = (:muluType)")
     fun getByMuluType(muluType: String): LiveData<MutableList<MuluConfigEntity>>
 

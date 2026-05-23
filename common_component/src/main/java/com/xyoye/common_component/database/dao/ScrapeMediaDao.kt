@@ -10,6 +10,9 @@ interface ScrapeMediaDao {
     @Query("SELECT * FROM scrape_media ORDER BY update_time DESC")
     fun getAll(): LiveData<MutableList<ScrapeMediaEntity>>
 
+    @Query("SELECT * FROM scrape_media ORDER BY update_time DESC")
+    suspend fun getAllSuspend(): MutableList<ScrapeMediaEntity>
+
     @Query("SELECT * FROM scrape_media WHERE media_type = (:mediaType) ORDER BY update_time DESC")
     fun getByMediaType(mediaType: String): LiveData<MutableList<ScrapeMediaEntity>>
 
@@ -22,6 +25,9 @@ interface ScrapeMediaDao {
     @Query("SELECT * FROM scrape_media WHERE path = (:path) AND media_type = (:mediaType)")
     suspend fun getByPath(path: String, mediaType: String): ScrapeMediaEntity?
 
+    @Query("SELECT * FROM scrape_media WHERE tmdb_id = (:tmdbId) LIMIT 1")
+    suspend fun getByTmdbId(tmdbId: Int): ScrapeMediaEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(vararg entities: ScrapeMediaEntity)
 
@@ -32,5 +38,5 @@ interface ScrapeMediaDao {
     suspend fun deleteById(id: Int)
 
     @Query("DELETE FROM scrape_media WHERE media_type = (:mediaType)")
-    suspend fun deleteByMediaType(mediaType: String)
+    suspend fun deleteByMediaType(mediaType: String): Int
 }

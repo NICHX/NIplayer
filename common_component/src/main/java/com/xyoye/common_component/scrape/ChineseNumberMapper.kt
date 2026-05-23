@@ -15,6 +15,7 @@ object ChineseNumberMapper {
         val n = number.toIntOrNull() ?: return number
         if (n == 0) return "零"
         if (n < 10) return digitMap.entries.first { it.value == n }.key.toString()
+        if (n >= 1000) return number
         val result = StringBuilder()
         if (n >= 100) {
             result.append(digitMap.entries.first { it.value == n / 100 }.key)

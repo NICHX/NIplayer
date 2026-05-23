@@ -5,11 +5,15 @@ import com.xyoye.common_component.network.repository.TmdbRepository
 import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.utils.JsonHelper
+import com.xyoye.data_component.entity.EpisodeEntity
 import com.xyoye.data_component.entity.ScrapeMediaEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import android.util.Log
 
 data class ScrapeProgress(
     val found: Int = 0,
@@ -23,7 +27,8 @@ data class ScrapeFileItem(
     val season: String = "1",
     val seasonPath: String = "",
     val provider: String = "",
-    val size: Long = 0
+    val size: Long = 0,
+    val uniqueKey: String = ""
 )
 
 data class ScrapeSourceItem(
@@ -41,15 +46,27 @@ data class SeasonItem(
     val folderFileId: Int? = null
 )
 
+data class EpisodeFileInfo(
+    val fileName: String,
+    val filePath: String,
+    val seasonNumber: Int,
+    val episodeNumber: Int = 0,
+    val fileSize: Long = 0
+)
+
 class ScrapeEngine(
     private val tmdbRepository: TmdbRepository = TmdbRepository()
 ) {
 
     companion object {
+        private const val TAG = "ScrapeEngine"
+
         private val VIDEO_EXTENSIONS = setOf(
             "mp4", "mkv", "m2ts", "avi", "mov", "ts", "m3u8", "iso",
             "flv", "wmv", "rmvb", "3gp", "webm"
         )
+
+        private val tmdbSemaphore = Semaphore(5)
     }
 
     suspend fun scanMovies(
@@ -72,8 +89,9 @@ class ScrapeEngine(
                 movieArr.add(
                     ScrapeFileItem(
                         name = movieName,
-                        path = normalizePath(rootPath, movieName),
-                        size = file.fileLength()
+                        path = file.storagePath(),
+                        size = file.fileLength(),
+                        uniqueKey = file.uniqueKey()
                     )
                 )
                 progress(ScrapeProgress(found = foundCount))
@@ -99,7 +117,7 @@ class ScrapeEngine(
             movieArr.add(
                 ScrapeFileItem(
                     name = stripExtension(dir.fileName()),
-                    path = dir.filePath(),
+                    path = dir.storagePath(),
                     size = videoFiles.first().fileLength()
                 )
             )
@@ -137,8 +155,24 @@ class ScrapeEngine(
         val rootFile = storage.pathFile(rootPath, true) ?: return@coroutineScope emptyList()
         val files = storage.openDirectory(rootFile, false)
 
-        files.filter { it.isDirectory() }.forEach { dir ->
-            foundCount = recursionTv(storage, dir, null, tvArr, foundCount, progress)
+        files.forEach { file ->
+            if (file.isDirectory()) {
+                foundCount = recursionTv(storage, file, null, tvArr, foundCount, progress)
+            } else if (isVideoFile(file.fileName())) {
+                foundCount++
+                val tvName = stripExtension(file.fileName())
+                val season = SeasonExtractor.extractSeasonNumber(tvName)
+                tvArr.add(
+                    ScrapeFileItem(
+                        name = tvName,
+                        path = rootPath,
+                        season = season,
+                        seasonPath = rootPath,
+                        size = file.fileLength()
+                    )
+                )
+                progress(ScrapeProgress(found = foundCount))
+            }
         }
 
         tvArr
@@ -155,21 +189,20 @@ class ScrapeEngine(
         var count = foundCount
         val children = storage.openDirectory(dir, false)
 
-        var foundVideo = false
+        var seasonItemAdded = false
         for (child in children) {
-            if (foundVideo) break
             if (child.isDirectory()) {
                 count = recursionTv(storage, child, dir, tvArr, count, progress)
-            } else if (isVideoFile(child.fileName())) {
-                foundVideo = true
+            } else if (!seasonItemAdded && isVideoFile(child.fileName())) {
+                seasonItemAdded = true
                 val effectiveParent = parent ?: dir
                 val season = SeasonExtractor.extractSeasonNumber(dir.fileName())
 
                 val item = ScrapeFileItem(
                     name = dir.fileName(),
-                    path = dir.filePath(),
+                    path = dir.storagePath(),
                     season = season,
-                    seasonPath = effectiveParent.filePath() + "/" + dir.fileName(),
+                    seasonPath = effectiveParent.storagePath() + "/" + dir.fileName(),
                     size = child.fileLength()
                 )
 
@@ -195,7 +228,8 @@ class ScrapeEngine(
             ScrapeMediaEntity(
                 name = item.name,
                 path = item.path,
-                mediaType = "movie"
+                mediaType = "movie",
+                playKey = item.uniqueKey.ifEmpty { null }
             )
         }
     }
@@ -209,12 +243,31 @@ class ScrapeEngine(
         val map = linkedMapOf<String, ScrapeMediaEntity>()
 
         sorted.forEach { item ->
-            val key = FileNameParser.handleSeasonName(item.name, reserve = true) ?: return@forEach
+            val showInfo = FileNameParser.handleSeasonName(item.name)?.let {
+                Pair(it, item.path)
+            } ?: kotlin.run {
+                val pathTrimmed = item.path.trimEnd('/')
+                val lastSlash = pathTrimmed.lastIndexOf('/')
+                if (lastSlash > 0) {
+                    val dirName = pathTrimmed.substringAfterLast('/')
+                    if (SeasonExtractor.startsWithSeasonFormat(dirName)) {
+                        val parentPath = pathTrimmed.substring(0, lastSlash)
+                        Pair(parentPath.substringAfterLast('/'), parentPath)
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } ?: return@forEach
+
+            val key = showInfo.first
+            val showPath = showInfo.second
 
             if (!map.containsKey(key)) {
                 map[key] = ScrapeMediaEntity(
                     name = key,
-                    path = item.path,
+                    path = showPath,
                     mediaType = "tv"
                 )
             }
@@ -259,11 +312,13 @@ class ScrapeEngine(
         existingData: List<ScrapeMediaEntity> = emptyList(),
         storage: Storage? = null
     ): List<ScrapeMediaEntity> = coroutineScope {
+        Log.d(TAG, "matchTmdbMetadata: type=$type, items=${items.size}, apiKey=${tmdbKey.take(8)}...")
         items.map { item ->
             async(Dispatchers.IO) {
                 try {
                     val existing = existingData.find { it.path == item.path }
                     if (existing != null && existing.tmdbId != null) {
+                        Log.d(TAG, "Already exists: ${item.name}, tmdbId=${existing.tmdbId}")
                         return@async item.copy(
                             poster = existing.poster,
                             backdrop = existing.backdrop,
@@ -280,6 +335,7 @@ class ScrapeEngine(
                         if (nfoContent != null) {
                             val nfoData = NfoReader.parseNfo(nfoContent)
                             if (nfoData != null && nfoData.tmdbId != null) {
+                                Log.d(TAG, "Found NFO: ${item.name}, tmdbId=${nfoData.tmdbId}")
                                 return@async item.copy(
                                     poster = nfoData.thumb,
                                     backdrop = nfoData.fanart,
@@ -295,31 +351,50 @@ class ScrapeEngine(
 
                     val query = FileNameParser.handleSeasonName(item.name) ?: item.name
                     val year = FileNameParser.handleNameYear(item.name)
-                    val searchResult = tmdbRepository.search(query, year, type, tmdbKey)
-
-                    val matched = when {
-                        searchResult.results.size == 1 -> searchResult.results[0]
-                        searchResult.results.size > 1 -> searchResult.results.find {
-                            it.name?.contains(query) == true || it.title?.contains(query) == true
-                        } ?: searchResult.results[0]
-                        else -> null
+                    Log.d(TAG, "Searching TMDB: query=$query, year=$year, type=$type")
+                    val (detectedType, searchResult) = tmdbSemaphore.withPermit {
+                        tmdbRepository.searchWithFallback(query, year, tmdbKey)
                     }
+                    val effectiveType = MediaTypeDetector.detectFromPath(item.path)
+                        ?: detectedType
+
+                    val matched = tmdbRepository.findBestMatch(
+                        searchResult.results, query, effectiveType
+                    )
 
                     if (matched != null) {
-                        var poster = matched.poster_path
+                        Log.d(TAG, "TMDB matched: ${item.name} -> id=${matched.id}, poster=${matched.poster_path}")
+
+                        var posterUrl = matched.poster_path?.let {
+                            TmdbRepository.TMDB_IMG_DOMAIN + "/t/p/w500$it"
+                        }
                         var releaseTime: String? = null
 
-                        if (type == "tv" && item.season != "1") {
-                            val seasonDetail = tmdbRepository.getSeasonDetail(
-                                matched.id, item.season.toInt(), tmdbKey
-                            )
-                            poster = seasonDetail.poster_path ?: poster
-                            releaseTime = seasonDetail.air_date
+                        if (effectiveType == "tv") {
+                            val seasonNumber = item.season.toIntOrNull() ?: 1
+                            if (seasonNumber > 1) {
+                                try {
+                                    val seasonDetail = tmdbSemaphore.withPermit {
+                                        tmdbRepository.getSeasonDetail(
+                                            matched.id, seasonNumber, tmdbKey
+                                        )
+                                    }
+                                    posterUrl = seasonDetail.poster_path?.let {
+                                        TmdbRepository.TMDB_IMG_DOMAIN + "/t/p/w500$it"
+                                    } ?: posterUrl
+                                    releaseTime = seasonDetail.air_date
+                                    Log.d(TAG, "Season $seasonNumber poster: ${seasonDetail.poster_path}")
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Failed to get season detail for $seasonNumber", e)
+                                }
+                            }
                         }
 
                         val result = item.copy(
-                            poster = poster,
-                            backdrop = matched.backdrop_path,
+                            poster = posterUrl ?: "",
+                            backdrop = matched.backdrop_path?.let {
+                                TmdbRepository.TMDB_IMG_DOMAIN + "/t/p/w500$it"
+                            },
                             tmdbId = matched.id,
                             genreIds = JsonHelper.toJson(matched.genre_ids) ?: "[]",
                             voteAverage = matched.vote_average,
@@ -329,29 +404,32 @@ class ScrapeEngine(
                         )
 
                         if (storage != null) {
-                            try {
-                                val detail = tmdbRepository.getMediaDetail(matched.id, type, tmdbKey)
-                                val nfoContent = if (type == "movie") {
+                            runCatching {
+                                val detail = tmdbSemaphore.withPermit {
+                                    tmdbRepository.getMediaDetail(matched.id, effectiveType, tmdbKey)
+                                }
+                                val nfoContent = if (effectiveType == "movie") {
                                     NfoWriter.generateMovieNfo(result, detail)
                                 } else {
                                     NfoWriter.generateTvShowNfo(result, detail)
                                 }
-                                ScrapeFileManager.saveNfo(storage, item.path, item.name, nfoContent, type)
-                                ScrapeFileManager.savePoster(storage, item.path, item.name, poster, type)
-                                ScrapeFileManager.saveBackdrop(storage, item.path, item.name, matched.backdrop_path, type)
-                            } catch (_: Exception) {
+                                ScrapeFileManager.saveNfo(storage, item.path, item.name, nfoContent, effectiveType)
+                                ScrapeFileManager.savePoster(storage, item.path, item.name, matched.poster_path, effectiveType)
+                                ScrapeFileManager.saveBackdrop(storage, item.path, item.name, matched.backdrop_path, effectiveType)
                             }
                         }
 
                         result
                     } else {
+                        Log.w(TAG, "No TMDB match for: $item.name (query=$query)")
                         item.copy(mediaType = type)
                     }
                 } catch (e: Exception) {
+                    Log.e(TAG, "matchTmdbMetadata failed for: ${item.name}", e)
                     item.copy(mediaType = type)
                 }
             }
-        }.awaitAll().filterNotNull()
+        }.awaitAll()
     }
 
     private fun isVideoFile(name: String): Boolean {
@@ -385,5 +463,71 @@ class ScrapeEngine(
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    fun extractEpisodeNumber(fileName: String): Int {
+        val name = fileName.substringBeforeLast('.')
+        val patterns = listOf(
+            Regex("""[Ss](\d{1,2})[Ee](\d{1,3})"""),
+            Regex("""[Ee](\d{2,3})"""),
+            Regex("""第(\d{1,3})[集话話]"""),
+            Regex("""[Ee]pisode\s*(\d{1,3})"""),
+            Regex("""(\d{1,3})\s*[Vv][Oo][Ll]""")
+        )
+        for (pattern in patterns) {
+            val match = pattern.find(name)
+            if (match != null) {
+                val groups = match.groupValues
+                val num = if (groups.size >= 3) groups[2] else groups[1]
+                return num.toIntOrNull() ?: continue
+            }
+        }
+        val digits = Regex("""(\d{2,3})$""").find(name)
+        return digits?.groupValues?.get(1)?.toIntOrNull() ?: 0
+    }
+
+    suspend fun scanTvEpisodeFiles(
+        storage: Storage,
+        seriesPath: String
+    ): List<EpisodeFileInfo> = coroutineScope {
+        val episodes = mutableListOf<EpisodeFileInfo>()
+
+        val seriesDir = storage.pathFile(seriesPath, true) ?: return@coroutineScope emptyList()
+        val children = storage.openDirectory(seriesDir, false)
+
+        val videoFiles = children.filter { !it.isDirectory() && isVideoFile(it.fileName()) }
+        videoFiles.forEach { file ->
+            val fileName = file.fileName()
+            val epNumber = extractEpisodeNumber(fileName)
+            episodes.add(
+                EpisodeFileInfo(
+                    fileName = fileName,
+                    filePath = file.storagePath(),
+                    seasonNumber = 1,
+                    episodeNumber = epNumber,
+                    fileSize = file.fileLength()
+                )
+            )
+        }
+
+        children.filter { it.isDirectory() }.forEach { seasonDir ->
+            val seasonNumber = SeasonExtractor.extractSeasonNumber(seasonDir.fileName()).toIntOrNull() ?: 1
+            val seasonFiles = storage.openDirectory(seasonDir, false)
+            seasonFiles.filter { isVideoFile(it.fileName()) }.forEach { file ->
+                val fileName = file.fileName()
+                val epNumber = extractEpisodeNumber(fileName)
+                episodes.add(
+                    EpisodeFileInfo(
+                        fileName = fileName,
+                        filePath = file.storagePath(),
+                        seasonNumber = seasonNumber,
+                        episodeNumber = epNumber,
+                        fileSize = file.fileLength()
+                    )
+                )
+            }
+        }
+
+        episodes
     }
 }

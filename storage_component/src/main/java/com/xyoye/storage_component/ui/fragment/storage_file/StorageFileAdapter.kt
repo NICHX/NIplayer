@@ -35,11 +35,16 @@ import com.xyoye.common_component.extension.toFile
 import com.xyoye.common_component.extension.toResColor
 import com.xyoye.common_component.extension.toResDrawable
 import com.xyoye.common_component.extension.toResString
+import com.xyoye.common_component.scrape.FileNameParser
+import com.xyoye.common_component.scrape.ScrapeEngine
+import com.xyoye.common_component.config.TmdbApiConfig
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.storage.download.DownloadManager
 import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.utils.QuickAccessHelper
 import com.xyoye.data_component.entity.MediaLibraryEntity
+import com.xyoye.data_component.entity.MuluConfigEntity
+import com.xyoye.data_component.entity.EpisodeEntity
 import com.xyoye.data_component.enums.MediaType
 import com.xyoye.common_component.storage.file.subtitle
 import com.xyoye.common_component.storage.impl.SmbStorage
@@ -61,6 +66,7 @@ import com.xyoye.storage_component.R
 import com.xyoye.storage_component.ui.activities.storage_file.StorageFileActivity
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -77,6 +83,8 @@ class StorageFileAdapter(
     private enum class ManageAction(val title: String, val icon: Int) {
         FAVORITE("收藏", com.xyoye.common_component.R.drawable.ic_tag),
         UNFAVORITE("取消收藏", com.xyoye.common_component.R.drawable.ic_tag),
+        ADD_TO_LIBRARY("添加到媒体库", com.xyoye.common_component.R.drawable.ic_tag),
+        REMOVE_FROM_LIBRARY("移出媒体库", com.xyoye.common_component.R.drawable.ic_tag),
         BIND_SUBTITLE("手动查找字幕", com.xyoye.common_component.R.drawable.ic_bind_subtitle),
         BIND_AUDIO("添加音频文件", com.xyoye.common_component.R.drawable.ic_bind_audio),
         UNBIND_SUBTITLE("移除字幕绑定", com.xyoye.common_component.R.drawable.ic_unbind_subtitle),
@@ -493,7 +501,15 @@ class StorageFileAdapter(
     }
 
     private fun showMoreAction(file: StorageFile, options: ActivityOptionsCompat?) {
-        BottomActionDialog(activity, getMoreActions(file)) {
+        val isInLibrary = file.isDirectory() && kotlinx.coroutines.runBlocking {
+            try {
+                val existing = DatabaseManager.instance.getMuluConfigDao()
+                    .getByLibraryId(viewModel.storage.library.id)
+                existing.any { it.path == file.storagePath() }
+            } catch (_: Exception) { false }
+        }
+
+        BottomActionDialog(activity, getMoreActions(file, isInLibrary)) {
             when (it.actionId) {
                 ManageAction.FAVORITE -> {
                     QuickAccessHelper.addQuickAccess(file)
@@ -503,6 +519,8 @@ class StorageFileAdapter(
                     QuickAccessHelper.removeQuickAccess(file)
                     ToastCenter.showSuccess("已取消收藏")
                 }
+                ManageAction.ADD_TO_LIBRARY -> addFolderToLibrary(file)
+                ManageAction.REMOVE_FROM_LIBRARY -> removeFromLibrary(file)
                 ManageAction.BIND_SUBTITLE -> {
                     if (options != null) {
                         bindExtraSource(file, options)
@@ -522,9 +540,14 @@ class StorageFileAdapter(
     }
 
 
-    private fun getMoreActions(file: StorageFile) =
+    private fun getMoreActions(file: StorageFile, isInLibrary: Boolean = false) =
         mutableListOf<SheetActionBean>().apply {
             if (file.isDirectory()) {
+                if (isInLibrary) {
+                    add(SheetActionBean(ManageAction.REMOVE_FROM_LIBRARY, "移出媒体库", ManageAction.REMOVE_FROM_LIBRARY.icon))
+                } else {
+                    add(SheetActionBean(ManageAction.ADD_TO_LIBRARY, "添加到媒体库", ManageAction.ADD_TO_LIBRARY.icon))
+                }
                 if (QuickAccessHelper.isQuickAccess(file)) {
                     add(SheetActionBean(ManageAction.UNFAVORITE, "从快速访问移除", ManageAction.UNFAVORITE.icon))
                 } else {
@@ -571,6 +594,163 @@ class StorageFileAdapter(
                 } else {
                     ToastCenter.showError("获取文件信息失败")
                 }
+            }
+        }
+    }
+
+    private suspend fun hasTvContentInDirectory(storage: com.xyoye.common_component.storage.Storage, dir: StorageFile, depth: Int = 0): Boolean {
+        if (depth > 5) return false
+        return try {
+            val children = storage.openDirectory(dir, false)
+            for (child in children) {
+                if (FileNameParser.detectMediaType(child.fileName()) == "tv") return true
+                if (child.isDirectory()) {
+                    if (hasTvContentInDirectory(storage, child, depth + 1)) return true
+                }
+            }
+            false
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun addFolderToLibrary(file: StorageFile) {
+        val library = viewModel.storage.library
+        val path = file.storagePath()
+        val fileName = file.fileName()
+        viewModel.viewModelScope.launch(Dispatchers.IO) {
+            var muluType = FileNameParser.detectMediaType(fileName)
+            android.util.Log.d("StorageFileAdapter", "addFolderToLibrary: name=$fileName, initialType=$muluType, isDir=${file.isDirectory()}")
+            if (muluType == "movie" && file.isDirectory()) {
+                try {
+                    val hasEpisodeContent = hasTvContentInDirectory(viewModel.storage, file)
+                    android.util.Log.d("StorageFileAdapter", "  child scan result: hasEpisodeContent=$hasEpisodeContent")
+                    if (hasEpisodeContent) muluType = "tv"
+                } catch (e: Exception) {
+                    android.util.Log.e("StorageFileAdapter", "  child scan failed", e)
+                }
+            }
+            android.util.Log.d("StorageFileAdapter", "  finalType=$muluType, path=$path")
+            val existing = DatabaseManager.instance.getMuluConfigDao()
+                .getByLibraryId(library.id)
+            val alreadyAdded = existing.any { it.path == path && it.muluType == muluType }
+            if (alreadyAdded) {
+                withContext(Dispatchers.Main) {
+                    ToastCenter.showInfo("该路径已添加到媒体库")
+                }
+                return@launch
+            }
+            val entity = MuluConfigEntity(
+                mediaLibraryId = library.id,
+                muluType = muluType,
+                path = path
+            )
+            DatabaseManager.instance.getMuluConfigDao().insert(entity)
+            val typeLabel = if (muluType == "tv") "电视剧" else "电影"
+
+            withContext(Dispatchers.Main) {
+                ToastCenter.showSuccess("已添加「${fileName}」($typeLabel)，正在刮削...")
+            }
+
+            withContext(NonCancellable) {
+                try {
+                    val scrapeEngine = ScrapeEngine()
+                    val storage = viewModel.storage
+                val items = if (muluType == "movie") {
+                    scrapeEngine.scanMovies(storage, path) { }
+                } else {
+                    scrapeEngine.scanTv(storage, path) { }
+                }
+                if (items.isNotEmpty()) {
+                    val grouped = if (muluType == "movie") {
+                        scrapeEngine.convertMovieItems(items)
+                    } else {
+                        scrapeEngine.groupBySource(items)
+                    }
+                    val tmdbKey = TmdbApiConfig.apiKey
+                    val existingList = DatabaseManager.instance.getScrapeMediaDao()
+                        .getByMediaTypeSuspend(muluType)
+                    val matched = if (tmdbKey.isNotEmpty()) {
+                        scrapeEngine.matchTmdbMetadata(grouped, muluType, tmdbKey, existingList, storage)
+                    } else {
+                        grouped
+                    }
+                    for (media in matched) {
+                        val existing = DatabaseManager.instance.getScrapeMediaDao()
+                            .getByPath(media.path, media.mediaType)
+                        if (existing != null) {
+                            DatabaseManager.instance.getScrapeMediaDao().update(
+                                media.copy(id = existing.id)
+                            )
+                        } else {
+                            DatabaseManager.instance.getScrapeMediaDao().insert(media)
+                        }
+                    }
+                    if (muluType == "tv") {
+                        for (media in matched) {
+                            val insertedMedia = DatabaseManager.instance.getScrapeMediaDao()
+                                .getByPath(media.path, "tv")
+                            if (insertedMedia != null) {
+                                var episodeFiles = scrapeEngine.scanTvEpisodeFiles(storage, media.path)
+                                if (episodeFiles.isEmpty()) {
+                                    val parentDir = media.path.trimEnd('/').substringBeforeLast('/')
+                                    if (parentDir.isNotEmpty()) {
+                                        episodeFiles = scrapeEngine.scanTvEpisodeFiles(storage, parentDir)
+                                    }
+                                }
+                                if (episodeFiles.isNotEmpty()) {
+                                    val episodeEntities = episodeFiles.map { ep ->
+                                        EpisodeEntity(
+                                            mediaId = insertedMedia.id,
+                                            seasonNumber = ep.seasonNumber,
+                                            episodeNumber = if (ep.episodeNumber > 0) ep.episodeNumber else 1,
+                                            filePath = ep.filePath,
+                                            fileName = ep.fileName,
+                                            fileSize = ep.fileSize
+                                        )
+                                    }
+                                    DatabaseManager.instance.getEpisodeDao().insertEpisodes(episodeEntities)
+                                }
+                            }
+                        }
+                    }
+                    val total = matched.size
+                    android.util.Log.d("StorageFileAdapter", "Auto-scrape: $total $typeLabel entries saved")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("StorageFileAdapter", "Auto-scrape failed", e)
+                }
+            }
+        }
+    }
+
+    private fun removeFromLibrary(file: StorageFile) {
+        val library = viewModel.storage.library ?: run {
+            android.util.Log.e("StorageFileAdapter", "removeFromLibrary: library is null")
+            return
+        }
+        val path = file.storagePath()
+        android.util.Log.d("StorageFileAdapter", "removeFromLibrary: path=$path")
+        viewModel.viewModelScope.launch(Dispatchers.IO) {
+            val existing = DatabaseManager.instance.getMuluConfigDao()
+                .getByLibraryId(library.id)
+            android.util.Log.d("StorageFileAdapter", "  existing mulu configs: ${existing.size}")
+            val entityToDelete = existing.find { it.path == path }
+            if (entityToDelete != null) {
+                android.util.Log.d("StorageFileAdapter", "  found mulu config id=${entityToDelete.id}")
+                DatabaseManager.instance.getMuluConfigDao().deleteById(entityToDelete.id)
+                val scrapeEntities = DatabaseManager.instance.getScrapeMediaDao().getAllSuspend()
+                val matchedScrape = scrapeEntities.filter { it.path == path || it.path.startsWith("$path/") }
+                android.util.Log.d("StorageFileAdapter", "  matched scrape entities: ${matchedScrape.size}")
+                for (media in matchedScrape) {
+                    DatabaseManager.instance.getEpisodeDao().deleteEpisodesByMediaId(media.id)
+                    DatabaseManager.instance.getScrapeMediaDao().deleteById(media.id)
+                }
+            } else {
+                android.util.Log.w("StorageFileAdapter", "  no mulu config matched for path=$path")
+            }
+            withContext(Dispatchers.Main) {
+                ToastCenter.showSuccess("已从媒体库移除")
             }
         }
     }

@@ -1,28 +1,28 @@
 package com.xyoye.local_component.ui.fragment.mine
 
+import android.os.Bundle
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
+import androidx.lifecycle.ViewModelProvider
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
-import com.bumptech.glide.Glide
-import com.xyoye.common_component.adapter.addItem
-import com.xyoye.common_component.adapter.buildAdapter
 import com.xyoye.common_component.base.BaseFragment
 import com.xyoye.common_component.config.RouteTable
-import com.xyoye.common_component.extension.grid
-import com.xyoye.common_component.extension.setData
-import com.xyoye.common_component.network.repository.TmdbRepository
-import com.xyoye.common_component.weight.ExpandableFabMenu
+import com.xyoye.common_component.config.TmdbApiConfig
+import com.xyoye.common_component.weight.BottomActionDialog
+import com.xyoye.common_component.weight.ToastCenter
+import com.xyoye.data_component.bean.SheetActionBean
 import com.xyoye.data_component.entity.ScrapeMediaEntity
 import com.xyoye.local_component.BR
 import com.xyoye.local_component.R
 import com.xyoye.local_component.databinding.FragmentMineBinding
-import com.xyoye.local_component.databinding.ItemScrapeMediaBinding
-import com.google.android.material.tabs.TabLayout
+import com.xyoye.local_component.ui.activities.scrape.MediaWallAdapter
+import com.xyoye.local_component.ui.activities.scrape.MediaWallViewModel
 
 @Route(path = RouteTable.Local.MineFragment)
 class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() {
-
-    private val tmdbRepository = TmdbRepository()
-    private var needRefresh = false
 
     override fun initViewModel() = ViewModelInit(
         BR.viewModel,
@@ -31,126 +31,80 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
 
     override fun getLayoutId() = R.layout.fragment_mine
 
-    override fun initView() {
-        initRv()
-        initTab()
-        setupExpandableFab()
+    private val mediaWallViewModel: MediaWallViewModel by lazy {
+        ViewModelProvider(this)[MediaWallViewModel::class.java]
+    }
 
-        viewModel.scrapeMediaLiveData.observe(this) {
-            dataBinding.scrapeMediaRv.setData(it)
-        }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setHasOptionsMenu(true)
+    }
+
+    override fun initView() {
+        initMediaWall()
     }
 
     override fun onResume() {
         super.onResume()
-        if (needRefresh) {
-            needRefresh = false
-            viewModel.refreshScrapeData()
-        }
+        mediaWallViewModel.loadMedia()
     }
 
-    private fun initTab() {
-        dataBinding.tabLayout.addTab(dataBinding.tabLayout.newTab().setText("电影"))
-        dataBinding.tabLayout.addTab(dataBinding.tabLayout.newTab().setText("电视剧"))
-
-        dataBinding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: TabLayout.Tab) {
-                viewModel.switchType(if (tab.position == 0) "movie" else "tv")
-            }
-
-            override fun onTabUnselected(tab: TabLayout.Tab) {}
-
-            override fun onTabReselected(tab: TabLayout.Tab) {}
-        })
+    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
+        super.onCreateOptionsMenu(menu, inflater)
+        inflater.inflate(R.menu.menu_mine, menu)
     }
 
-    private fun initRv() {
-        dataBinding.scrapeMediaRv.apply {
-            layoutManager = grid(3)
-            adapter = createAdapter()
-        }
-    }
-
-    private fun createAdapter() = buildAdapter {
-        addItem<ScrapeMediaEntity, ItemScrapeMediaBinding>(R.layout.item_scrape_media) {
-            initView { data, _, _ ->
-                itemBinding.apply {
-                    nameTv.text = data.name
-                    if (data.voteAverage > 0) {
-                        ratingTv.text = String.format("%.1f", data.voteAverage)
-                        ratingTv.visibility = android.view.View.VISIBLE
-                    } else {
-                        ratingTv.visibility = android.view.View.GONE
-                    }
-
-                    val posterUrl = tmdbRepository.buildImageUrl(data.poster)
-                    Glide.with(this@MineFragment)
-                        .load(posterUrl)
-                        .placeholder(R.drawable.ic_video_cover)
-                        .into(coverIv)
-
-                    itemLayout.setOnClickListener {
-                        ARouter.getInstance()
-                            .build(RouteTable.Scrape.ScrapeDetail)
-                            .withInt("mediaId", data.id)
-                            .navigation()
-                    }
-
-                    itemLayout.setOnLongClickListener {
-                        showMediaOptionsDialog(data)
-                        true
-                    }
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_refresh -> {
+                val tmdbKey = TmdbApiConfig.apiKey
+                if (tmdbKey.isEmpty()) {
+                    ToastCenter.showWarning("请先在「我」→ API管理 中填写TMDB API密钥")
+                } else {
+                    mediaWallViewModel.refreshScrapeData()
                 }
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun initMediaWall() {
+        mediaWallViewModel.sections.observe(this) { sections ->
+            val isEmpty = sections.isEmpty()
+            dataBinding.emptyHint.visibility = if (isEmpty) android.view.View.VISIBLE else android.view.View.GONE
+            dataBinding.wallRv.visibility = if (isEmpty) android.view.View.GONE else android.view.View.VISIBLE
+            if (!isEmpty) {
+                val adapter = MediaWallAdapter(
+                    sections = sections,
+                    onItemClick = { media -> navigateToDetail(media) },
+                    onItemLongClick = { media -> showMediaOptionsDialog(media) }
+                )
+                dataBinding.wallRv.layoutManager = LinearLayoutManager(requireContext())
+                dataBinding.wallRv.adapter = adapter
             }
         }
-    }
-
-    private fun setupExpandableFab() {
-        dataBinding.expandableFab.addAction(
-            ExpandableFabMenu.FabAction(
-                id = 1,
-                icon = R.drawable.ic_add_white,
-                label = "目录设置",
-                onClick = {
-                    val currentType = viewModel.currentType.value ?: "movie"
-                    needRefresh = true
-                    ARouter.getInstance()
-                        .build(RouteTable.Scrape.MuluSetting)
-                        .withString("muluType", currentType)
-                        .navigation()
-                }
-            )
-        )
-        dataBinding.expandableFab.addAction(
-            ExpandableFabMenu.FabAction(
-                id = 2,
-                icon = R.drawable.ic_sort,
-                label = "刷新刮削",
-                onClick = {
-                    viewModel.refreshScrapeData()
-                }
-            )
-        )
+        mediaWallViewModel.loadMedia()
     }
 
     private fun showMediaOptionsDialog(data: ScrapeMediaEntity) {
-        val actions = mutableListOf<com.xyoye.data_component.bean.SheetActionBean>()
+        val actions = mutableListOf<SheetActionBean>()
         actions.add(
-            com.xyoye.data_component.bean.SheetActionBean(
+            SheetActionBean(
                 MediaAction.SearchMatch,
                 "手动匹配",
                 R.drawable.ic_danmu_search
             )
         )
         actions.add(
-            com.xyoye.data_component.bean.SheetActionBean(
+            SheetActionBean(
                 MediaAction.Delete,
                 "删除",
                 R.drawable.ic_delete_storage
             )
         )
 
-        com.xyoye.common_component.weight.BottomActionDialog(requireActivity(), actions) {
+        BottomActionDialog(requireActivity(), actions) {
             when (it.actionId) {
                 MediaAction.SearchMatch -> {
                     ARouter.getInstance()
@@ -161,11 +115,18 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
                 }
 
                 MediaAction.Delete -> {
-                    viewModel.deleteScrapeMedia(data)
+                    mediaWallViewModel.deleteMedia(data)
                 }
             }
             return@BottomActionDialog true
         }.show()
+    }
+
+    private fun navigateToDetail(media: ScrapeMediaEntity) {
+        ARouter.getInstance()
+            .build(RouteTable.Scrape.ScrapeDetail)
+            .withInt("mediaId", media.id)
+            .navigation()
     }
 
     private enum class MediaAction {

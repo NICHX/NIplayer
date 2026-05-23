@@ -3,6 +3,7 @@ package com.xyoye.storage_component.ui.activities.storage_file
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
@@ -53,6 +54,10 @@ import java.util.ArrayList
 @Route(path = RouteTable.Stream.StorageFile)
 class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFileBinding>() {
 
+    companion object {
+        private const val TAG = "StorageFileActivity"
+    }
+
     @Autowired
     @JvmField
     var storageLibrary: MediaLibraryEntity? = null
@@ -65,8 +70,20 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     @JvmField
     var pickerMode: String = ""
 
+    @Autowired
+    @JvmField
+    var autoPlay: Boolean = false
+
+    @Autowired
+    @JvmField
+    var playKey: String = ""
+
     lateinit var storage: Storage
         private set
+
+    private var shouldSkipInit = false
+
+    private var pendingAutoPlayPath: String? = null
 
     // 当前所处文件夹
     var directory: StorageFile? = null
@@ -144,8 +161,9 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
 
     override fun onCreate(savedInstanceState: Bundle?) {
         ARouter.getInstance().inject(this)
-
+        Log.d(TAG, "onCreate: autoPlay=$autoPlay, playKey=$playKey, initialStoragePath=$initialStoragePath")
         if (checkBundle().not()) {
+            shouldSkipInit = true
             super.onCreate(savedInstanceState)
             finish()
             return
@@ -159,6 +177,8 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     }
 
     override fun initView() {
+        if (shouldSkipInit) return
+
         mToolbarStyleHelper.observerChildScroll()
         dataBinding.coordinatorLayout.viewTreeObserver
             .addOnGlobalFocusChangeListener(focusChangeListener)
@@ -170,12 +190,70 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         initExpandableFab()
         openDirectory(null)
 
+        if (this::storage.isInitialized && storage is FtpStorage) {
+            lifecycle.coroutineScope.launchWhenResumed {
+                withContext(Dispatchers.IO) {
+                    (storage as FtpStorage).completePending()
+                }
+            }
+        }
+
         if (initialStoragePath.isNotEmpty()) {
             lifecycleScope.launch(Dispatchers.IO) {
-                val targetFile = storage.pathFile(initialStoragePath, true)
-                if (targetFile != null) {
-                    withContext(Dispatchers.Main) {
-                        openDirectory(targetFile)
+                try {
+                    val targetFile = storage.pathFile(initialStoragePath, false)
+                    if (targetFile != null) {
+                        val dirToOpen = if (targetFile.isDirectory()) {
+                            targetFile
+                        } else {
+                            val parentPath = targetFile.storagePath().trimEnd('/')
+                                .substringBeforeLast('/', "")
+                            if (parentPath.isEmpty()) null
+                            else storage.pathFile(parentPath, true)
+                        }
+                        if (dirToOpen != null) {
+                            withContext(Dispatchers.Main) {
+                                openDirectory(dirToOpen)
+                                if (autoPlay) {
+                                    Log.d(TAG, "Setting pendingAutoPlayPath=$initialStoragePath")
+                                    pendingAutoPlayPath = initialStoragePath
+                                }
+                            }
+                        } else {
+                            Log.w(TAG, "autoPlay: dirToOpen is null for path=$initialStoragePath")
+                        }
+                    } else {
+                        Log.w(TAG, "autoPlay: targetFile is null for path=$initialStoragePath")
+                        val parentPath = initialStoragePath.trimEnd('/')
+                            .substringBeforeLast('/', "")
+                        if (parentPath.isNotEmpty()) {
+                            val dirFile = storage.pathFile(parentPath, true)
+                            if (dirFile != null) {
+                                withContext(Dispatchers.Main) {
+                                    openDirectory(dirFile)
+                                    if (autoPlay) {
+                                        Log.d(TAG, "Setting pendingAutoPlayPath(else)=$initialStoragePath")
+                                        pendingAutoPlayPath = initialStoragePath
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "autoPlay: error accessing initialStoragePath=$initialStoragePath", e)
+                    val parentPath = initialStoragePath.trimEnd('/')
+                        .substringBeforeLast('/', "")
+                    if (parentPath.isNotEmpty()) {
+                        val dirFile = storage.pathFile(parentPath, true)
+                        if (dirFile != null) {
+                            withContext(Dispatchers.Main) {
+                                openDirectory(dirFile)
+                                if (autoPlay) {
+                                    Log.d(TAG, "Setting pendingAutoPlayPath(catch)=$initialStoragePath")
+                                    pendingAutoPlayPath = initialStoragePath
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -277,7 +355,6 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
 
         dataBinding.pathRv.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
-                // 将RecyclerView焦点转移到子View
                 currentFocus?.requestFocus(View.FOCUS_UP)
             }
         }
@@ -286,14 +363,6 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
             ARouter.getInstance()
                 .build(RouteTable.Player.Player)
                 .navigation()
-        }
-
-        if (storage is FtpStorage) {
-            lifecycle.coroutineScope.launchWhenResumed {
-                withContext(Dispatchers.IO) {
-                    (storage as FtpStorage).completePending()
-                }
-            }
         }
     }
 
@@ -562,6 +631,54 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
         val videoCount = fileList.count { it.isFile() }
         val directoryCount = fileList.count { it.isDirectory() }
         updateToolbarSubtitle(videoCount, directoryCount)
+
+        if (playKey.isNotEmpty()) {
+            Log.d(TAG, "onDirectoryOpened: matching by playKey=$playKey, files=${fileList.size}")
+            val match = fileList.firstOrNull { it.uniqueKey() == playKey }
+            Log.d(TAG, "onDirectoryOpened: playKey match=${match?.fileName()}")
+            if (match != null) {
+                playKey = ""
+                openFile(match)
+                return
+            }
+        }
+
+        val pendingPath = pendingAutoPlayPath
+        Log.d(TAG, "onDirectoryOpened: files=${fileList.size}, pendingPath=$pendingPath")
+        if (pendingPath != null) {
+            pendingAutoPlayPath = null
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val isDir = storage.pathFile(pendingPath, false)?.isDirectory() == true
+                    withContext(Dispatchers.Main) {
+                        if (isDir) {
+                            val firstVideo = fileList.firstOrNull { it.isVideoFile() }
+                            Log.d(TAG, "autoPlay: isDir=true, firstVideo=${firstVideo?.fileName()}")
+                            if (firstVideo != null) {
+                                openFile(firstVideo)
+                            }
+                        } else {
+                            tryMatchFromList(fileList, pendingPath)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "autoPlay: pathFile failed, trying prefix match", e)
+                    withContext(Dispatchers.Main) {
+                        tryMatchFromList(fileList, pendingPath)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun tryMatchFromList(fileList: List<StorageFile>, pendingPath: String) {
+        val match = fileList.firstOrNull {
+            it.storagePath() == pendingPath || it.storagePath().startsWith("$pendingPath.")
+        }
+        Log.d(TAG, "autoPlay: match=${match?.fileName()}, pendingPath=$pendingPath")
+        if (match != null) {
+            openFile(match)
+        }
     }
 
     fun openFile(file: StorageFile) {

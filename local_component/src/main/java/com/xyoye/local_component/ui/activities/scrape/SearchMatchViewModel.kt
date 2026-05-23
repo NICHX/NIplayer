@@ -1,5 +1,6 @@
 package com.xyoye.local_component.ui.activities.scrape
 
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
@@ -28,6 +29,7 @@ class SearchMatchViewModel : BaseViewModel() {
                 val result = tmdbRepository.searchMulti(query, tmdbKey)
                 _searchResultLiveData.postValue(result.results.toMutableList())
             } catch (e: Exception) {
+                Log.e("SearchMatchVM", "searchMulti failed: $query", e)
                 _searchResultLiveData.postValue(mutableListOf())
             }
         }
@@ -37,9 +39,16 @@ class SearchMatchViewModel : BaseViewModel() {
         viewModelScope.launch(context = Dispatchers.IO) {
             val existing = DatabaseManager.instance.getScrapeMediaDao().getById(mediaId) ?: return@launch
 
+            val posterUrl = item.poster_path?.let {
+                TmdbRepository.TMDB_IMG_DOMAIN + "/t/p/w500$it"
+            }
+            val backdropUrl = item.backdrop_path?.let {
+                TmdbRepository.TMDB_IMG_DOMAIN + "/t/p/w500$it"
+            }
+
             val updated = existing.copy(
-                poster = item.poster_path,
-                backdrop = item.backdrop_path,
+                poster = posterUrl ?: "",
+                backdrop = backdropUrl,
                 tmdbId = item.id,
                 genreIds = JsonHelper.toJson(item.genre_ids) ?: "[]",
                 voteAverage = item.vote_average,
@@ -52,7 +61,6 @@ class SearchMatchViewModel : BaseViewModel() {
     }
 
     private fun getTmdbApiKey(): String {
-        return com.tencent.mmkv.MMKV.defaultMMKV()
-            ?.decodeString("tmdb_api_key", "") ?: ""
+        return com.xyoye.common_component.config.TmdbApiConfig.apiKey
     }
 }

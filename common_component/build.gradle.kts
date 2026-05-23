@@ -65,6 +65,8 @@ dependencies {
     implementation(Dependencies.Tencent.bugly)
 
     api(Dependencies.Square.okhttp)
+    api(Dependencies.Square.moshi)
+    api(Dependencies.Square.moshi_kotlin)
     api(Dependencies.Square.retrofit)
     implementation(Dependencies.Square.retrofit_moshi)
 

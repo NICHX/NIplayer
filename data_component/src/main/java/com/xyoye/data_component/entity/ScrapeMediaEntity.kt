@@ -50,5 +50,8 @@ data class ScrapeMediaEntity(
     val sourceJson: String = "[]",
 
     @ColumnInfo(name = "update_time")
-    val updateTime: Long = System.currentTimeMillis()
+    val updateTime: Long = System.currentTimeMillis(),
+
+    @ColumnInfo(name = "play_key")
+    val playKey: String? = null
 )

@@ -7,9 +7,12 @@ import androidx.lifecycle.viewModelScope
 import com.xyoye.common_component.base.BaseViewModel
 import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.scrape.ScrapeEngine
+import com.xyoye.common_component.scrape.TmdbMetadataSyncManager
 import com.xyoye.common_component.storage.StorageFactory
 import com.xyoye.common_component.weight.ToastCenter
+import com.xyoye.data_component.entity.EpisodeEntity
 import com.xyoye.data_component.entity.ScrapeMediaEntity
+import com.xyoye.data_component.entity.TmdbSyncQueueEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -23,11 +26,18 @@ class MineFragmentViewModel : BaseViewModel() {
     private var currentMediaSource: LiveData<MutableList<ScrapeMediaEntity>>? = null
 
     private val scrapeEngine = ScrapeEngine()
+    private val metadataSyncManager = TmdbMetadataSyncManager()
 
     init {
         currentType.observeForever { type ->
             switchMediaSource(type)
         }
+        metadataSyncManager.start()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        metadataSyncManager.destroy()
     }
 
     private fun switchMediaSource(type: String) {
@@ -103,6 +113,42 @@ class MineFragmentViewModel : BaseViewModel() {
 
                     DatabaseManager.instance.getScrapeMediaDao().insert(*matched.toTypedArray())
                     ToastCenter.showSuccess("刮削完成，共${matched.size}个${if (type == "movie") "电影" else "电视剧"}")
+
+                    for (media in matched) {
+                        // 对电视剧，扫描并保存剧集文件到独立的 episode 表
+                        if (type == "tv") {
+                            val insertedMedia = DatabaseManager.instance.getScrapeMediaDao()
+                                .getByPath(media.path, "tv") ?: continue
+
+                            var episodeFiles = scrapeEngine.scanTvEpisodeFiles(storage, media.path)
+                            if (episodeFiles.isEmpty()) {
+                                val parentDir = media.path.trimEnd('/').substringBeforeLast('/')
+                                if (parentDir.isNotEmpty()) {
+                                    episodeFiles = scrapeEngine.scanTvEpisodeFiles(storage, parentDir)
+                                }
+                            }
+
+                            if (episodeFiles.isNotEmpty()) {
+                                val episodeEntities = episodeFiles.map { ep ->
+                                    EpisodeEntity(
+                                        mediaId = insertedMedia.id,
+                                        seasonNumber = ep.seasonNumber,
+                                        episodeNumber = if (ep.episodeNumber > 0) ep.episodeNumber else 1,
+                                        filePath = ep.filePath,
+                                        fileName = ep.fileName,
+                                        fileSize = ep.fileSize
+                                    )
+                                }
+                                DatabaseManager.instance.getEpisodeDao().insertEpisodes(episodeEntities)
+                            }
+                        }
+
+                        // 如果有 TMDB ID，则入队异步元数据补全
+                        val tmdbId = media.tmdbId
+                        if (tmdbId != null && tmdbId > 0) {
+                            metadataSyncManager.enqueueMedia(tmdbId)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 ToastCenter.showError("刮削失败: ${e.message}")
@@ -117,7 +163,6 @@ class MineFragmentViewModel : BaseViewModel() {
     }
 
     private fun getTmdbApiKey(): String {
-        return com.tencent.mmkv.MMKV.defaultMMKV()
-            ?.decodeString("tmdb_api_key", "") ?: ""
+        return com.xyoye.common_component.config.TmdbApiConfig.apiKey
     }
 }

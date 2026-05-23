@@ -1,5 +1,7 @@
 package com.xyoye.common_component.scrape
 
+import android.util.Log
+
 data class NfoData(
     val title: String? = null,
     val plot: String? = null,
@@ -24,6 +26,7 @@ object NfoReader {
                 fanart = extractFanartThumb(nfoContent)
             )
         } catch (e: Exception) {
+            Log.e("NfoReader", "parseNfo failed", e)
             null
         }
     }
