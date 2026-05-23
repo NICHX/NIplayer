@@ -8,6 +8,7 @@ import com.xyoye.common_component.base.BaseViewModel
 import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.scrape.ScrapeEngine
 import com.xyoye.common_component.storage.StorageFactory
+import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.entity.ScrapeMediaEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -48,40 +49,63 @@ class MineFragmentViewModel : BaseViewModel() {
     fun refreshScrapeData() {
         val type = currentType.value ?: "movie"
         viewModelScope.launch(context = Dispatchers.IO) {
-            val configs = DatabaseManager.instance.getMuluConfigDao()
-                .getByMuluTypeSuspend(type)
+            try {
+                val configs = DatabaseManager.instance.getMuluConfigDao()
+                    .getByMuluTypeSuspend(type)
 
-            if (configs.isEmpty()) return@launch
-
-            for (config in configs) {
-                val library = DatabaseManager.instance.getMediaLibraryDao()
-                    .getById(config.mediaLibraryId) ?: continue
-
-                val storage = StorageFactory.createStorage(library) ?: continue
-
-                val items = if (type == "movie") {
-                    scrapeEngine.scanMovies(storage, config.path) { }
-                } else {
-                    scrapeEngine.scanTv(storage, config.path) { }
+                if (configs.isEmpty()) {
+                    ToastCenter.showWarning("未找到刮削目录配置，请先添加目录")
+                    return@launch
                 }
 
-                val grouped = if (type == "movie") {
-                    scrapeEngine.convertMovieItems(items)
-                } else {
-                    scrapeEngine.groupBySource(items)
+                for (config in configs) {
+                    val library = DatabaseManager.instance.getMediaLibraryDao()
+                        .getById(config.mediaLibraryId)
+
+                    if (library == null) {
+                        ToastCenter.showError("媒体库不存在: id=${config.mediaLibraryId}")
+                        continue
+                    }
+
+                    val storage = StorageFactory.createStorage(library)
+
+                    if (storage == null) {
+                        ToastCenter.showError("无法创建存储: ${library.displayName}")
+                        continue
+                    }
+
+                    val items = if (type == "movie") {
+                        scrapeEngine.scanMovies(storage, config.path) { }
+                    } else {
+                        scrapeEngine.scanTv(storage, config.path) { }
+                    }
+
+                    if (items.isEmpty()) {
+                        ToastCenter.showWarning("目录中未找到视频文件: ${config.path}")
+                        continue
+                    }
+
+                    val grouped = if (type == "movie") {
+                        scrapeEngine.convertMovieItems(items)
+                    } else {
+                        scrapeEngine.groupBySource(items)
+                    }
+
+                    val existingList = DatabaseManager.instance.getScrapeMediaDao()
+                        .getByMediaTypeSuspend(type)
+
+                    val tmdbKey = getTmdbApiKey()
+                    val matched = if (tmdbKey.isNotEmpty()) {
+                        scrapeEngine.matchTmdbMetadata(grouped, type, tmdbKey, existingList, storage)
+                    } else {
+                        grouped
+                    }
+
+                    DatabaseManager.instance.getScrapeMediaDao().insert(*matched.toTypedArray())
+                    ToastCenter.showSuccess("刮削完成，共${matched.size}个${if (type == "movie") "电影" else "电视剧"}")
                 }
-
-                val existingList = DatabaseManager.instance.getScrapeMediaDao()
-                    .getByMediaTypeSuspend(type)
-
-                val tmdbKey = getTmdbApiKey()
-                val matched = if (tmdbKey.isNotEmpty()) {
-                    scrapeEngine.matchTmdbMetadata(grouped, type, tmdbKey, existingList, storage)
-                } else {
-                    grouped
-                }
-
-                DatabaseManager.instance.getScrapeMediaDao().insert(*matched.toTypedArray())
+            } catch (e: Exception) {
+                ToastCenter.showError("刮削失败: ${e.message}")
             }
         }
     }

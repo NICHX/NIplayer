@@ -68,10 +68,11 @@ class ScrapeEngine(
                 foundCount = recursionMovie(storage, file, movieArr, foundCount, progress)
             } else if (isVideoFile(file.fileName())) {
                 foundCount++
+                val movieName = stripExtension(file.fileName())
                 movieArr.add(
                     ScrapeFileItem(
-                        name = stripExtension(file.fileName()),
-                        path = rootPath,
+                        name = movieName,
+                        path = normalizePath(rootPath, movieName),
                         size = file.fileLength()
                     )
                 )
@@ -79,7 +80,7 @@ class ScrapeEngine(
             }
         }
 
-        movieArr
+        deduplicateMovieItems(movieArr)
     }
 
     private suspend fun recursionMovie(
@@ -91,22 +92,38 @@ class ScrapeEngine(
     ): Int {
         var count = foundCount
         val files = storage.openDirectory(dir, false)
-        files.forEach { file ->
-            if (file.isDirectory()) {
-                count = recursionMovie(storage, file, movieArr, count, progress)
-            } else if (isVideoFile(file.fileName())) {
-                count++
-                movieArr.add(
-                    ScrapeFileItem(
-                        name = dir.fileName(),
-                        path = dir.filePath(),
-                        size = file.fileLength()
-                    )
+        val videoFiles = files.filter { !it.isDirectory() && isVideoFile(it.fileName()) }
+
+        if (videoFiles.isNotEmpty()) {
+            count++
+            movieArr.add(
+                ScrapeFileItem(
+                    name = stripExtension(dir.fileName()),
+                    path = dir.filePath(),
+                    size = videoFiles.first().fileLength()
                 )
-                progress(ScrapeProgress(found = count))
+            )
+            progress(ScrapeProgress(found = count))
+        }
+
+        files.filter { it.isDirectory() }.forEach { subDir ->
+            count = recursionMovie(storage, subDir, movieArr, count, progress)
+        }
+
+        return count
+    }
+
+    private fun deduplicateMovieItems(items: MutableList<ScrapeFileItem>): List<ScrapeFileItem> {
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<ScrapeFileItem>()
+        for (item in items) {
+            val key = "${item.path}::${item.name}"
+            if (key !in seen) {
+                seen.add(key)
+                result.add(item)
             }
         }
-        return count
+        return result
     }
 
     suspend fun scanTv(
@@ -259,7 +276,7 @@ class ScrapeEngine(
                     }
 
                     if (storage != null) {
-                        val nfoContent = ScrapeFileManager.readNfo(storage, item.path, type)
+                        val nfoContent = ScrapeFileManager.readNfo(storage, item.path, item.name, type)
                         if (nfoContent != null) {
                             val nfoData = NfoReader.parseNfo(nfoContent)
                             if (nfoData != null && nfoData.tmdbId != null) {
@@ -319,9 +336,9 @@ class ScrapeEngine(
                                 } else {
                                     NfoWriter.generateTvShowNfo(result, detail)
                                 }
-                                ScrapeFileManager.saveNfo(storage, item.path, nfoContent, type)
-                                ScrapeFileManager.savePoster(storage, item.path, poster)
-                                ScrapeFileManager.saveBackdrop(storage, item.path, matched.backdrop_path)
+                                ScrapeFileManager.saveNfo(storage, item.path, item.name, nfoContent, type)
+                                ScrapeFileManager.savePoster(storage, item.path, item.name, poster, type)
+                                ScrapeFileManager.saveBackdrop(storage, item.path, item.name, matched.backdrop_path, type)
                             } catch (_: Exception) {
                             }
                         }
@@ -345,6 +362,10 @@ class ScrapeEngine(
     private fun stripExtension(name: String): String {
         val dotIndex = name.lastIndexOf('.')
         return if (dotIndex > 0) name.substring(0, dotIndex) else name
+    }
+
+    private fun normalizePath(base: String, name: String): String {
+        return "${base.trimEnd('/')}/$name"
     }
 
     private fun formatSize(size: Long): String {

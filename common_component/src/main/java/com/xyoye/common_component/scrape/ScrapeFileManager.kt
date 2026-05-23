@@ -17,55 +17,73 @@ object ScrapeFileManager {
 
     suspend fun saveNfo(
         storage: Storage,
-        folderPath: String,
+        entityPath: String,
+        movieName: String,
         nfoContent: String,
         mediaType: String
     ): Boolean = withContext(Dispatchers.IO) {
-        val nfoFileName = if (mediaType == "movie") "movie.nfo" else "tvshow.nfo"
-        val nfoPath = normalizePath(folderPath, nfoFileName)
+        val nfoFileName = if (mediaType == "movie") {
+            "${movieName}.nfo"
+        } else {
+            "tvshow.nfo"
+        }
+        val saveDir = extractSaveDirectory(entityPath, mediaType)
+        val nfoPath = normalizePath(saveDir, nfoFileName)
         storage.saveFile(nfoPath, nfoContent.toByteArray(Charsets.UTF_8))
     }
 
     suspend fun savePoster(
         storage: Storage,
-        folderPath: String,
-        posterPath: String?
+        entityPath: String,
+        movieName: String,
+        posterPath: String?,
+        mediaType: String
     ): Boolean = withContext(Dispatchers.IO) {
         if (posterPath == null) return@withContext false
 
         val imageUrl = TmdbRepository().buildImageUrl(posterPath, "w780") ?: return@withContext false
         val imageData = downloadImage(imageUrl) ?: return@withContext false
 
-        val posterFilePath = normalizePath(folderPath, "poster.jpg")
-        val folderFilePath = normalizePath(folderPath, "folder.jpg")
+        val saveDir = extractSaveDirectory(entityPath, mediaType)
+        val posterFileName = if (mediaType == "movie") "${movieName}-poster.jpg" else "poster.jpg"
+        val folderFileName = if (mediaType == "movie") "${movieName}-folder.jpg" else "folder.jpg"
 
-        val result1 = storage.saveFile(posterFilePath, imageData)
-        val result2 = storage.saveFile(folderFilePath, imageData)
+        val result1 = storage.saveFile(normalizePath(saveDir, posterFileName), imageData)
+        val result2 = storage.saveFile(normalizePath(saveDir, folderFileName), imageData)
 
         result1 && result2
     }
 
     suspend fun saveBackdrop(
         storage: Storage,
-        folderPath: String,
-        backdropPath: String?
+        entityPath: String,
+        movieName: String,
+        backdropPath: String?,
+        mediaType: String
     ): Boolean = withContext(Dispatchers.IO) {
         if (backdropPath == null) return@withContext false
 
         val imageUrl = TmdbRepository().buildImageUrl(backdropPath, "w1280") ?: return@withContext false
         val imageData = downloadImage(imageUrl) ?: return@withContext false
 
-        val filePath = normalizePath(folderPath, "fanart.jpg")
-        storage.saveFile(filePath, imageData)
+        val saveDir = extractSaveDirectory(entityPath, mediaType)
+        val fileName = if (mediaType == "movie") "${movieName}-fanart.jpg" else "fanart.jpg"
+        storage.saveFile(normalizePath(saveDir, fileName), imageData)
     }
 
     suspend fun readNfo(
         storage: Storage,
-        folderPath: String,
+        entityPath: String,
+        movieName: String,
         mediaType: String
     ): String? = withContext(Dispatchers.IO) {
-        val nfoFileName = if (mediaType == "movie") "movie.nfo" else "tvshow.nfo"
-        val nfoPath = normalizePath(folderPath, nfoFileName)
+        val nfoFileName = if (mediaType == "movie") {
+            "${movieName}.nfo"
+        } else {
+            "tvshow.nfo"
+        }
+        val saveDir = extractSaveDirectory(entityPath, mediaType)
+        val nfoPath = normalizePath(saveDir, nfoFileName)
 
         if (!storage.fileExists(nfoPath)) return@withContext null
 
@@ -76,6 +94,12 @@ object ScrapeFileManager {
         } catch (e: Exception) {
             null
         }
+    }
+
+    private fun extractSaveDirectory(entityPath: String, mediaType: String): String {
+        if (mediaType == "tv") return entityPath
+        val lastSlash = entityPath.trimEnd('/').lastIndexOf('/')
+        return if (lastSlash > 0) entityPath.substring(0, lastSlash) else entityPath
     }
 
     private fun downloadImage(url: String): ByteArray? {

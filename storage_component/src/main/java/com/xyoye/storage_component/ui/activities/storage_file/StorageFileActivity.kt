@@ -236,7 +236,7 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
     }
 
     private fun pickCurrentDirectory() {
-        val currentPath = directory?.filePath() ?: "/"
+        val currentPath = directory?.storagePath() ?: "/"
         val resultIntent = Intent().apply {
             putExtra("picked_directory_path", currentPath)
             putExtra("picked_library_id", storageLibrary?.id ?: -1)

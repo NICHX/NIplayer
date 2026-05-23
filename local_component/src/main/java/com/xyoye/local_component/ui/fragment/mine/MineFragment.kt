@@ -22,6 +22,7 @@ import com.google.android.material.tabs.TabLayout
 class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() {
 
     private val tmdbRepository = TmdbRepository()
+    private var needRefresh = false
 
     override fun initViewModel() = ViewModelInit(
         BR.viewModel,
@@ -37,6 +38,14 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
 
         viewModel.scrapeMediaLiveData.observe(this) {
             dataBinding.scrapeMediaRv.setData(it)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (needRefresh) {
+            needRefresh = false
+            viewModel.refreshScrapeData()
         }
     }
 
@@ -103,7 +112,8 @@ class MineFragment : BaseFragment<MineFragmentViewModel, FragmentMineBinding>() 
                 icon = R.drawable.ic_add_white,
                 label = "目录设置",
                 onClick = {
-                    val currentType = viewModel.currentType.value ?: "tv"
+                    val currentType = viewModel.currentType.value ?: "movie"
+                    needRefresh = true
                     ARouter.getInstance()
                         .build(RouteTable.Scrape.MuluSetting)
                         .withString("muluType", currentType)
