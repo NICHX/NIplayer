@@ -173,7 +173,7 @@ class ExternalStorageEditDialog(
 
     private fun takePersistableUriPermission(uri: Uri): Boolean {
         try {
-            val modeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+            val modeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             activity.contentResolver.takePersistableUriPermission(uri, modeFlags)
             return true
         } catch (e: Exception) {

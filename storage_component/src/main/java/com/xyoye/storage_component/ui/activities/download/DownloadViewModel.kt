@@ -6,19 +6,37 @@ import com.xyoye.common_component.storage.download.DownloadManager
 import com.xyoye.data_component.entity.DownloadState
 import com.xyoye.data_component.entity.DownloadTaskEntity
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class DownloadTaskDisplay(
     val task: DownloadTaskEntity,
     val speed: String = "",
-    val eta: String = ""
-)
+    val eta: String = "",
+    val progress: Int = 0,
+    val downloadedBytes: Long = task.downloadedBytes
+) {
+    companion object {
+        fun from(task: DownloadTaskEntity, liveBytes: Long = task.downloadedBytes, speed: String = "", eta: String = ""): DownloadTaskDisplay {
+            val progress = if (task.totalBytes > 0) {
+                ((liveBytes.toDouble() / task.totalBytes) * 100).toInt().coerceIn(0, 100)
+            } else 0
+            return DownloadTaskDisplay(
+                task = task,
+                speed = speed,
+                eta = eta,
+                progress = progress,
+                downloadedBytes = liveBytes
+            )
+        }
+    }
+}
 
 sealed class DownloadGroupedItem {
     data class Section(val title: String, val count: Int) : DownloadGroupedItem()
@@ -27,61 +45,94 @@ sealed class DownloadGroupedItem {
 
 class DownloadViewModel : BaseViewModel() {
 
-    private val _taskSpeeds = MutableStateFlow<Map<Long, String>>(emptyMap())
-    private val _taskEtas = MutableStateFlow<Map<Long, String>>(emptyMap())
+    private data class SpeedInfo(
+        val bytesPerSec: Long,
+        val formattedSpeed: String,
+        val formattedEta: String
+    )
+
+    private data class SpeedSample(val bytes: Long, val timeMs: Long)
+
+    private val speedSamples = mutableMapOf<Long, MutableList<SpeedSample>>()
+    private var speedCalculationJob: Job? = null
+
+    private val _taskSpeeds = MutableStateFlow<Map<Long, SpeedInfo>>(emptyMap())
 
     val displayItems: StateFlow<List<DownloadGroupedItem>> by lazy {
         combine(
             DownloadManager.allTasks,
-            _taskSpeeds,
-            _taskEtas
-        ) { tasks, speeds, etas ->
+            DownloadManager.taskProgress,
+            _taskSpeeds
+        ) { tasks, progressMap, speeds ->
             val displays = tasks.map { task ->
-                DownloadTaskDisplay(
+                val liveBytes = progressMap[task.id] ?: task.downloadedBytes
+                val speedInfo = speeds[task.id]
+                DownloadTaskDisplay.from(
                     task = task,
-                    speed = speeds[task.id] ?: "",
-                    eta = etas[task.id] ?: ""
+                    liveBytes = liveBytes,
+                    speed = speedInfo?.formattedSpeed ?: "",
+                    eta = speedInfo?.formattedEta ?: ""
                 )
             }
             groupByState(displays)
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
     }
 
-    private val speedSamples = mutableMapOf<Long, MutableList<SpeedSample>>()
-
     init {
-        viewModelScope.launch {
-            DownloadManager.allTasks.collect { tasks ->
-                val now = System.currentTimeMillis()
-                for (task in tasks) {
-                    if (task.state == DownloadState.DOWNLOADING && task.totalBytes > 0) {
-                        val samples = speedSamples.getOrPut(task.id) { mutableListOf() }
-                        samples.add(SpeedSample(task.downloadedBytes, now))
-                        while (samples.size > 5) samples.removeAt(0)
+        startSpeedCalculation()
+    }
 
-                        if (samples.size >= 2) {
-                            val first = samples.first()
-                            val last = samples.last()
-                            val elapsed = last.timeMs - first.timeMs
-                            if (elapsed > 0) {
-                                val bytesPerSec = ((last.bytes - first.bytes) * 1000L) / elapsed
-                                _taskSpeeds.value = _taskSpeeds.value + (task.id to formatSpeed(bytesPerSec))
-
-                                val remaining = task.totalBytes - task.downloadedBytes
-                                if (bytesPerSec > 0) {
-                                    val etaSecs = remaining / bytesPerSec
-                                    _taskEtas.value = _taskEtas.value + (task.id to formatEta(etaSecs))
-                                }
-                            }
-                        }
-                    } else {
-                        speedSamples.remove(task.id)
-                        _taskSpeeds.value = _taskSpeeds.value - task.id
-                        _taskEtas.value = _taskEtas.value - task.id
-                    }
-                }
+    private fun startSpeedCalculation() {
+        speedCalculationJob?.cancel()
+        speedCalculationJob = viewModelScope.launch {
+            while (true) {
+                calculateSpeeds()
+                delay(300)
             }
         }
+    }
+
+    private suspend fun calculateSpeeds() = withContext(Dispatchers.Default) {
+        val tasks = DownloadManager.allTasks.value
+        val progressMap = DownloadManager.taskProgress.value
+        val now = System.currentTimeMillis()
+        val newSpeeds = mutableMapOf<Long, SpeedInfo>()
+
+        for (task in tasks) {
+            if (task.state == DownloadState.DOWNLOADING && task.totalBytes > 0) {
+                val liveBytes = progressMap[task.id] ?: task.downloadedBytes
+                val samples = speedSamples.getOrPut(task.id) { mutableListOf() }
+                samples.add(SpeedSample(liveBytes, now))
+
+                val cutoffTime = now - 3000
+                while (samples.size > 1 && samples.first().timeMs < cutoffTime) {
+                    samples.removeAt(0)
+                }
+
+                if (samples.size >= 2) {
+                    val first = samples.first()
+                    val last = samples.last()
+                    val elapsed = last.timeMs - first.timeMs
+
+                    if (elapsed >= 500) {
+                        val bytesPerSec = ((last.bytes - first.bytes) * 1000L) / elapsed
+                        if (bytesPerSec >= 0) {
+                            val remaining = task.totalBytes - liveBytes
+                            val etaSecs = if (bytesPerSec > 0) remaining / bytesPerSec else 0
+                            newSpeeds[task.id] = SpeedInfo(
+                                bytesPerSec,
+                                formatSpeed(bytesPerSec),
+                                formatEta(etaSecs)
+                            )
+                        }
+                    }
+                }
+            } else {
+                speedSamples.remove(task.id)
+            }
+        }
+
+        _taskSpeeds.value = newSpeeds
     }
 
     fun pauseTask(taskId: Long) = DownloadManager.pauseTask(taskId)
@@ -98,27 +149,9 @@ class DownloadViewModel : BaseViewModel() {
 
     fun removeCompleted() = DownloadManager.removeCompletedTasks()
 
-    fun retryAllFailed() {
-        viewModelScope.launch {
-            val dao = com.xyoye.common_component.database.DatabaseManager.instance.getDownloadTaskDao()
-            withContext(Dispatchers.IO) {
-                val failed = dao.getByStates(listOf(DownloadState.FAILED))
-                for (task in failed) {
-                    dao.updateProgress(task.id, 0, DownloadState.WAITING)
-                }
-            }
-        }
-    }
+    fun retryAllFailed() = DownloadManager.retryAllFailed()
 
-    fun clearFailed() {
-        viewModelScope.launch {
-            val dao = com.xyoye.common_component.database.DatabaseManager.instance.getDownloadTaskDao()
-            withContext(Dispatchers.IO) {
-                dao.deleteByState(DownloadState.FAILED)
-                dao.deleteByState(DownloadState.CANCELLED)
-            }
-        }
-    }
+    fun clearFailed() = DownloadManager.clearFailed()
 
     private fun groupByState(displays: List<DownloadTaskDisplay>): List<DownloadGroupedItem> {
         val sections = mutableListOf<DownloadGroupedItem>()
@@ -177,6 +210,4 @@ class DownloadViewModel : BaseViewModel() {
             else -> "${s}秒"
         }
     }
-
-    private data class SpeedSample(val bytes: Long, val timeMs: Long)
 }

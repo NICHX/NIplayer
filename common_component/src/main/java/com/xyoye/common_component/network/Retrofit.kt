@@ -22,6 +22,8 @@ class Retrofit private constructor() {
         val extendedService: ExtendedService by lazy { Holder.instance.extendedService }
 
         val alistService: AlistService by lazy { Holder.instance.alistService }
+
+        val downloadClient: OkHttpClient by lazy { Holder.instance.downloadClient }
     }
 
     private object Holder {
@@ -38,6 +40,18 @@ class Retrofit private constructor() {
             .addInterceptor(DecompressInterceptor())
             .addInterceptor(DynamicBaseUrlInterceptor())
             .addInterceptor(LoggerInterceptor().retrofit())
+            .build()
+    }
+
+    private val downloadClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .hostnameVerifier { _, _ -> true }
+            .retryOnConnectionFailure(true)
+            .addInterceptor(AgentInterceptor())
+            .addInterceptor(DynamicBaseUrlInterceptor())
             .build()
     }
 

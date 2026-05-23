@@ -20,7 +20,12 @@ import java.io.InputStream
  */
 
 class FtpStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
-    private val mFtpClient = FTPClient()
+    private val mFtpClient = FTPClient().apply {
+        bufferSize = 512 * 1024
+        defaultTimeout = 30 * 1000
+        connectTimeout = 10 * 1000
+        dataTimeout = java.time.Duration.ofSeconds(60)
+    }
     private var playingInputStream: InputStream? = null
 
     override suspend fun listFiles(file: StorageFile): List<StorageFile> {
