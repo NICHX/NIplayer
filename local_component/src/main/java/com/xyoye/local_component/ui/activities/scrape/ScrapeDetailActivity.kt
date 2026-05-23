@@ -15,7 +15,9 @@ import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.network.repository.TmdbRepository
 import com.xyoye.common_component.source.VideoSourceManager
 import com.xyoye.common_component.source.factory.StorageVideoSourceFactory
+import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.StorageFactory
+import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.weight.ToastCenter
 import com.xyoye.data_component.entity.EpisodeEntity
 import com.xyoye.data_component.entity.MediaLibraryEntity
@@ -132,13 +134,7 @@ class ScrapeDetailActivity : BaseActivity<ScrapeDetailViewModel, ActivityScrapeD
                     }
 
                     val storage = StorageFactory.createStorage(library) ?: return@launch
-                    var file = try { storage.pathFile(data.path, false) } catch (_: Exception) { null }
-                    if (file == null) {
-                        for (ext in listOf("mkv", "mp4", "avi", "wmv", "mov", "ts", "flv", "webm")) {
-                            file = try { storage.pathFile("${data.path}.$ext", false) } catch (_: Exception) { null }
-                            if (file != null) break
-                        }
-                    }
+                    val file = resolveFile(storage, data.path)
                     if (file == null) {
                         withContext(Dispatchers.Main) {
                             ToastCenter.showError("找不到播放文件")
@@ -146,19 +142,7 @@ class ScrapeDetailActivity : BaseActivity<ScrapeDetailViewModel, ActivityScrapeD
                         return@launch
                     }
 
-                    val playHistory = DatabaseManager.instance.getPlayHistoryDao()
-                        .getPlayHistory(file.uniqueKey(), library.id)
-                    file.playHistory = playHistory
-
-                    val source = StorageVideoSourceFactory.create(file)
-                    if (source != null) {
-                        VideoSourceManager.getInstance().setSource(source)
-                        withContext(Dispatchers.Main) {
-                            ARouter.getInstance()
-                                .build(RouteTable.Player.Player)
-                                .navigation()
-                        }
-                    }
+                    resolveAndPlay(file, library)
                 } catch (e: Exception) {
                     Log.e(TAG, "playVideo error", e)
                     withContext(Dispatchers.Main) {
@@ -181,13 +165,7 @@ class ScrapeDetailActivity : BaseActivity<ScrapeDetailViewModel, ActivityScrapeD
                 }
 
                 val storage = StorageFactory.createStorage(library) ?: return@launch
-                var file = try { storage.pathFile(episode.filePath, false) } catch (_: Exception) { null }
-                if (file == null) {
-                    for (ext in listOf("mkv", "mp4", "avi", "wmv", "mov", "ts", "flv", "webm")) {
-                        file = try { storage.pathFile("${episode.filePath}.$ext", false) } catch (_: Exception) { null }
-                        if (file != null) break
-                    }
-                }
+                val file = resolveFile(storage, episode.filePath, episode)
                 if (file == null) {
                     withContext(Dispatchers.Main) {
                         ToastCenter.showError("找不到播放文件")
@@ -195,24 +173,65 @@ class ScrapeDetailActivity : BaseActivity<ScrapeDetailViewModel, ActivityScrapeD
                     return@launch
                 }
 
-                val playHistory = DatabaseManager.instance.getPlayHistoryDao()
-                    .getPlayHistory(file.uniqueKey(), library.id)
-                file.playHistory = playHistory
-
-                val source = StorageVideoSourceFactory.create(file)
-                if (source != null) {
-                    VideoSourceManager.getInstance().setSource(source)
-                    withContext(Dispatchers.Main) {
-                        ARouter.getInstance()
-                            .build(RouteTable.Player.Player)
-                            .navigation()
-                    }
-                }
+                resolveAndPlay(file, library)
             } catch (e: Exception) {
                 Log.e(TAG, "playEpisode error", e)
                 withContext(Dispatchers.Main) {
                     ToastCenter.showError("播放失败: ${e.message}")
                 }
+            }
+        }
+    }
+
+    private suspend fun resolveFile(
+        storage: Storage,
+        path: String,
+        episode: EpisodeEntity? = null
+    ): StorageFile? {
+        var file = try { storage.pathFile(path, false) } catch (_: Exception) { null }
+        if (file != null) return file
+
+        for (ext in listOf("mkv", "mp4", "avi", "wmv", "mov", "ts", "flv", "webm")) {
+            file = try { storage.pathFile("$path.$ext", false) } catch (_: Exception) { null }
+            if (file != null) return file
+        }
+
+        if (episode != null) {
+            val dirFile = try { storage.pathFile(path, true) } catch (_: Exception) { null }
+            if (dirFile != null) {
+                val children = try { storage.openDirectory(dirFile, false) } catch (_: Exception) { emptyList() }
+                val seasonDirs = children.filter { it.isDirectory() }
+                val directVideos = children.filter { it.isVideoFile() }
+                val seasonStr = "s${episode.seasonNumber.toString().padStart(2, '0')}e${episode.episodeNumber.toString().padStart(2, '0')}"
+
+                val matchInRoot = directVideos.find { it.fileName().lowercase().contains(seasonStr) }
+                if (matchInRoot != null) return matchInRoot
+                if (directVideos.isNotEmpty()) return directVideos.first()
+
+                for (seasonDir in seasonDirs) {
+                    val seasonFiles = try { storage.openDirectory(seasonDir, false).filter { it.isVideoFile() } } catch (_: Exception) { emptyList() }
+                    val matchInSeason = seasonFiles.find { it.fileName().lowercase().contains(seasonStr) }
+                    if (matchInSeason != null) return matchInSeason
+                    if (seasonFiles.isNotEmpty()) return seasonFiles.first()
+                }
+            }
+        }
+
+        return null
+    }
+
+    private suspend fun resolveAndPlay(file: StorageFile, library: MediaLibraryEntity) {
+        val playHistory = DatabaseManager.instance.getPlayHistoryDao()
+            .getPlayHistory(file.uniqueKey(), library.id)
+        file.playHistory = playHistory
+
+        val source = StorageVideoSourceFactory.create(file)
+        if (source != null) {
+            VideoSourceManager.getInstance().setSource(source)
+            withContext(Dispatchers.Main) {
+                ARouter.getInstance()
+                    .build(RouteTable.Player.Player)
+                    .navigation()
             }
         }
     }
