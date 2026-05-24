@@ -12,7 +12,7 @@ class AgentInterceptor : Interceptor{
     override fun intercept(chain: Interceptor.Chain): Response {
         return chain.proceed(
             chain.request().newBuilder()
-                .header("User-Agent", "dandanplay/android ${AppUtils.getVersionName()}")
+                .header("User-Agent", "niplayer/android ${AppUtils.getVersionName()}")
                 .build()
         )
     }

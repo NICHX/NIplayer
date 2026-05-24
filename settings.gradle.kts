@@ -1,4 +1,4 @@
-rootProject.name="DanDanPlayForAndroid"
+rootProject.name="NIplayer"
 
 include(":app")
 include(":local_component")

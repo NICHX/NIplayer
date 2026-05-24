@@ -4,7 +4,7 @@ import com.alibaba.android.arouter.facade.annotation.Route
 import com.alibaba.android.arouter.launcher.ARouter
 import com.xyoye.common_component.adapter.addItem
 import com.xyoye.common_component.adapter.buildAdapter
-import com.xyoye.common_component.application.DanDanPlay
+import com.xyoye.common_component.application.NIplayer
 import com.xyoye.common_component.base.BaseFragment
 import com.xyoye.common_component.config.RouteTable
 import com.xyoye.common_component.extension.deletable
@@ -84,7 +84,7 @@ class MediaFragment : BaseFragment<MediaViewModel, FragmentMediaBinding>() {
                     libraryCoverIv.setImageResource(data.mediaType.cover)
 
                     itemLayout.setOnClickListener {
-                        DanDanPlay.permission.storage.request(this@MediaFragment) {
+                        NIplayer.permission.storage.request(this@MediaFragment) {
                             onGranted {
                                 launchMediaStorage(data)
                             }

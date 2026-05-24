@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.xyoye.dandanplay.utils.image_anim.svg
+package com.xyoye.niplayer.utils.image_anim.svg
 
 import android.graphics.Path
 import android.util.Log

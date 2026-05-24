@@ -12,7 +12,7 @@
             android:id="@+id/track_select_cb"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:theme="@style/Theme.DanDanPlay.RadioButton" />
+            app:theme="@style/Theme.NIplayer.RadioButton" />
 
         <TextView
             android:id="@+id/track_name_tv"
