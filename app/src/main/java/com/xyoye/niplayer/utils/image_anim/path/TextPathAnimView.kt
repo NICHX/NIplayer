@@ -1,4 +1,4 @@
-package com.xyoye.dandanplay.utils.image_anim.path
+package com.xyoye.niplayer.utils.image_anim.path
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
@@ -9,7 +9,7 @@ import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
-import com.xyoye.dandanplay.R
+import com.xyoye.niplayer.R
 
 /**
  * Created by xyoye on 2019/9/15.

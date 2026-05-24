@@ -1,4 +1,4 @@
-package com.xyoye.dandanplay.ui.splash
+package com.xyoye.niplayer.ui.splash
 
 import android.content.Intent
 import android.graphics.Color
@@ -13,10 +13,10 @@ import androidx.appcompat.app.AppCompatDelegate
 import com.gyf.immersionbar.ImmersionBar
 import com.xyoye.common_component.base.BaseAppCompatActivity
 import com.xyoye.common_component.config.AppConfig
-import com.xyoye.dandanplay.R
-import com.xyoye.dandanplay.databinding.ActivitySplashBinding
-import com.xyoye.dandanplay.ui.main.MainActivity
-import com.xyoye.dandanplay.utils.image_anim.path.TextPathAnimView
+import com.xyoye.niplayer.R
+import com.xyoye.niplayer.databinding.ActivitySplashBinding
+import com.xyoye.niplayer.ui.main.MainActivity
+import com.xyoye.niplayer.utils.image_anim.path.TextPathAnimView
 
 class SplashActivity : BaseAppCompatActivity<ActivitySplashBinding>() {
     override fun getLayoutId() = R.layout.activity_splash

@@ -9,7 +9,7 @@ plugins {
 applicationSetup()
 
 android {
-    namespace = "com.xyoye.dandanplay"
+    namespace = "com.xyoye.niplayer"
     compileSdk = Versions.compileSdkVersion
     defaultConfig {
         applicationId = Versions.applicationId

@@ -1,4 +1,4 @@
-package com.xyoye.dandanplay.app
+package com.xyoye.niplayer.app
 
 import android.app.Activity
 import android.app.Application

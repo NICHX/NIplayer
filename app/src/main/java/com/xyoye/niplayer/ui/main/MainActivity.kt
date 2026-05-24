@@ -1,4 +1,4 @@
-package com.xyoye.dandanplay.ui.main
+package com.xyoye.niplayer.ui.main
 
 import android.view.KeyEvent
 import android.view.Menu
@@ -13,9 +13,9 @@ import com.xyoye.common_component.extension.findAndRemoveFragment
 import com.xyoye.common_component.extension.hideFragment
 import com.xyoye.common_component.extension.showFragment
 import com.xyoye.common_component.weight.ToastCenter
-import com.xyoye.dandanplay.BR
-import com.xyoye.dandanplay.R
-import com.xyoye.dandanplay.databinding.ActivityMainBinding
+import com.xyoye.niplayer.BR
+import com.xyoye.niplayer.R
+import com.xyoye.niplayer.databinding.ActivityMainBinding
 import kotlin.random.Random
 import kotlin.system.exitProcess
 
