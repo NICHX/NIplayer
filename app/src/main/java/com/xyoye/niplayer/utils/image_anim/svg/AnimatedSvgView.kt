@@ -14,7 +14,7 @@
  * limitations under the License.
  *
  */
-package com.xyoye.dandanplay.utils.image_anim.svg
+package com.xyoye.niplayer.utils.image_anim.svg
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -28,7 +28,7 @@ import android.view.animation.Interpolator
 import androidx.annotation.ColorInt
 import androidx.annotation.IntDef
 import androidx.core.view.ViewCompat
-import com.xyoye.dandanplay.R
+import com.xyoye.niplayer.R
 
 /**
  * Animated SVG Drawing for Android

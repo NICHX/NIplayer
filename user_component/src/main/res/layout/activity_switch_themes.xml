@@ -62,7 +62,7 @@
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent"
-                app:theme="@style/Theme.DanDanPlay.SwitchCompat" />
+                app:theme="@style/Theme.NIplayer.SwitchCompat" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
 

@@ -8,7 +8,7 @@ import com.xyoye.player.info.PlayerInitializer
  */
 
 object VideoLog {
-    const val TAG = "DanDanPlay.VideoPlayer"
+    const val TAG = "NIplayer.VideoPlayer"
 
     fun e(message: String?) {
         log(Log.ERROR, message)

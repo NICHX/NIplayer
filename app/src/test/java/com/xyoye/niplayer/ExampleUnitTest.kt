@@ -1,4 +1,4 @@
-package com.xyoye.dandanplay
+package com.xyoye.niplayer
 
 import org.junit.Test
 
