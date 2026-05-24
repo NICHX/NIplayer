@@ -228,8 +228,6 @@ object ThumbnailGeneratorManager {
                 preloadDotThumbExistence(allFiles, storage)
             }
         }
-
-        processNextBatch()
     }
 
     fun pauseGenerateThumbnails() {
