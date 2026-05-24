@@ -125,6 +125,7 @@ class StorageFileFragment :
             dataBinding.storageFileRv.post {
                 val visibleKeys = getVisibleFileKeys()
                 ThumbnailGeneratorManager.reprioritize(visibleKeys)
+                ThumbnailGeneratorManager.continueGenerateThumbnails()
             }
             dataBinding.storageFileRv.postDelayed({ requestFocus() }, 500)
         }
