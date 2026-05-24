@@ -94,7 +94,7 @@ class PlayHistoryAdapter(
                     .load(audioCoverFile)
                     .centerCrop()
                     .transform(RoundedCorners(5f.dp().toInt()))
-                    .error(com.xyoye.common_component.R.drawable.ic_audio_cover)
+                    .error(com.xyoye.common_component.R.drawable.ic_video_cover)
                     .into(itemBinding.coverIv)
             } else if (cachedCoverPath != null) {
                 itemBinding.coverIv.scaleType = ImageView.ScaleType.CENTER_CROP
@@ -102,11 +102,11 @@ class PlayHistoryAdapter(
                     .load(cachedCoverPath)
                     .centerCrop()
                     .transform(RoundedCorners(5f.dp().toInt()))
-                    .error(com.xyoye.common_component.R.drawable.ic_audio_cover)
+                    .error(com.xyoye.common_component.R.drawable.ic_video_cover)
                     .into(itemBinding.coverIv)
             } else {
                 itemBinding.coverIv.scaleType = ImageView.ScaleType.CENTER_INSIDE
-                itemBinding.coverIv.setImageResource(com.xyoye.common_component.R.drawable.ic_audio_cover)
+                itemBinding.coverIv.setImageResource(com.xyoye.common_component.R.drawable.ic_video_cover)
             }
 
             itemBinding.durationTv.text = getDuration(data)
