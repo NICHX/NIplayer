@@ -23,26 +23,30 @@ object SignConfig {
     fun release(project: Project, config: SigningConfig) {
         val properties = loadLocalProperties(project) ?: loadProperties(project)
         
+        val storeFile: File
+        val storePassword: String
+        val keyAlias: String
+        val keyPassword: String
+        
         if (properties != null) {
-            val storeFile = properties["storeFile"]?.toString()?.let {
+            storeFile = properties["storeFile"]?.toString()?.let {
                 if (it.startsWith("/")) File(it) else project.getAssembleFile(it)
             } ?: project.getAssembleFile("dandanplay.jks")
             
-            config.apply {
-                storeFile = storeFile
-                storePassword = properties["storePassword"]?.toString() ?: System.getenv("KEYSTORE_PASS") ?: ""
-                keyAlias = properties["keyAlias"]?.toString() ?: System.getenv("ALIAS_NAME") ?: ""
-                keyPassword = properties["keyPassword"]?.toString() ?: System.getenv("ALIAS_PASS") ?: ""
-            }
+            storePassword = properties["storePassword"]?.toString() ?: System.getenv("KEYSTORE_PASS") ?: ""
+            keyAlias = properties["keyAlias"]?.toString() ?: System.getenv("ALIAS_NAME") ?: ""
+            keyPassword = properties["keyPassword"]?.toString() ?: System.getenv("KEY_PASSWORD") ?: ""
         } else {
-            val keystoreFile = project.getAssembleFile("dandanplay.jks")
-            config.apply {
-                storeFile = keystoreFile
-                storePassword = System.getenv("KEYSTORE_PASS") ?: ""
-                keyAlias = System.getenv("ALIAS_NAME") ?: ""
-                keyPassword = System.getenv("ALIAS_PASS") ?: ""
-            }
+            storeFile = project.getAssembleFile("dandanplay.jks")
+            storePassword = System.getenv("KEYSTORE_PASS") ?: ""
+            keyAlias = System.getenv("ALIAS_NAME") ?: ""
+            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
         }
+        
+        config.storeFile = storeFile
+        config.storePassword = storePassword
+        config.keyAlias = keyAlias
+        config.keyPassword = keyPassword
     }
 
     private fun loadLocalProperties(project: Project): Properties? {
