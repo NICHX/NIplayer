@@ -375,14 +375,28 @@ class SmbStorage(library: MediaLibraryEntity) : AbstractStorage(library) {
         val diskShare = mDiskShare ?: return false
         val filePath = pathSegments.takeLast(pathSegments.size - 1).joinToString(separator = "/")
         return try {
-            val smbFile = diskShare.openFile(
-                filePath,
-                EnumSet.of(AccessMask.GENERIC_WRITE),
-                setOf(FileAttributes.FILE_ATTRIBUTE_NORMAL),
-                setOf(SMB2ShareAccess.FILE_SHARE_WRITE),
-                SMB2CreateDisposition.FILE_OPEN_IF,
-                setOf(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE)
-            )
+            val smbFile = try {
+                diskShare.openFile(
+                    filePath,
+                    EnumSet.of(AccessMask.GENERIC_WRITE),
+                    setOf(FileAttributes.FILE_ATTRIBUTE_NORMAL),
+                    setOf(SMB2ShareAccess.FILE_SHARE_READ, SMB2ShareAccess.FILE_SHARE_WRITE, SMB2ShareAccess.FILE_SHARE_DELETE),
+                    SMB2CreateDisposition.FILE_OVERWRITE_IF,
+                    setOf(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE)
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("SmbStorage", "First write open failed: ${e.message}")
+                // 等待一小段时间，让可能存在的异步关闭操作完成
+                kotlinx.coroutines.delay(500)
+                diskShare.openFile(
+                    filePath,
+                    EnumSet.of(AccessMask.GENERIC_WRITE),
+                    setOf(FileAttributes.FILE_ATTRIBUTE_NORMAL),
+                    setOf(SMB2ShareAccess.FILE_SHARE_READ, SMB2ShareAccess.FILE_SHARE_WRITE, SMB2ShareAccess.FILE_SHARE_DELETE),
+                    SMB2CreateDisposition.FILE_OVERWRITE_IF,
+                    setOf(SMB2CreateOptions.FILE_NON_DIRECTORY_FILE)
+                )
+            }
             if (smbFile != null) {
                 smbFile.write(data, 0L)
                 smbFile.close()

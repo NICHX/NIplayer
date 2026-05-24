@@ -7,9 +7,11 @@ import com.xyoye.data_component.entity.TmdbMediaDetail
 import com.xyoye.data_component.entity.TmdbSearchItem
 import com.xyoye.data_component.entity.TmdbSearchResponse
 import com.xyoye.data_component.entity.TmdbSeasonDetail
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 class TmdbRepository {
@@ -21,12 +23,36 @@ class TmdbRepository {
     }
 
     private val tmdbApiService: TmdbApiService by lazy {
+        val tmdbDnsIps = listOf(
+            "3.169.231.119",
+            "108.156.91.119",
+            "108.156.91.128"
+        )
         Retrofit.Builder()
             .baseUrl(TMDB_BASE_URL)
             .client(
                 OkHttpClient.Builder()
                     .connectTimeout(10, TimeUnit.SECONDS)
                     .readTimeout(10, TimeUnit.SECONDS)
+                    .dns(object : Dns {
+                        override fun lookup(hostname: String): List<InetAddress> {
+                            if (hostname != "api.themoviedb.org") {
+                                return Dns.SYSTEM.lookup(hostname)
+                            }
+                            val systemIps = try {
+                                Dns.SYSTEM.lookup(hostname)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "System DNS failed for $hostname, fallback to hardcoded IPs")
+                                emptyList()
+                            }
+                            val hardcodedIps = tmdbDnsIps.mapNotNull { ip ->
+                                runCatching { InetAddress.getByName(ip) }.getOrNull()
+                            }
+                            val allIps = (systemIps + hardcodedIps).distinct()
+                            Log.d(TAG, "DNS $hostname: ${allIps.size} addresses (${systemIps.size} system + ${hardcodedIps.size} hardcoded)")
+                            return allIps.ifEmpty { Dns.SYSTEM.lookup(hostname) }
+                        }
+                    })
                     .build()
             )
             .addConverterFactory(MoshiConverterFactory.create(JsonHelper.MO_SHI))
@@ -63,100 +89,150 @@ class TmdbRepository {
         }
     }
 
+    private val searchLanguages = listOf("zh-CN", "en-US")
+
     suspend fun searchWithFallback(
         query: String,
         year: String?,
-        apiKey: String
+        apiKey: String,
+        preferredType: String? = null
     ): Pair<String, TmdbSearchResponse> {
-        Log.d(TAG, "searchWithFallback: query=$query, year=$year")
+        Log.d(TAG, "searchWithFallback: query=$query, year=$year, preferredType=$preferredType")
         val cleanQuery = query.trim()
 
-        if (year != null) {
+        // 1) 根据 preferredType 直接搜索（movie 或 tv），尝试多种语言
+        if (preferredType != null) {
+            for (lang in searchLanguages) {
+                try {
+                    val result = if (preferredType == "movie") {
+                        tmdbApiService.searchMovie(cleanQuery, year, lang, apiKey = apiKey)
+                    } else {
+                        tmdbApiService.searchTv(cleanQuery, year, lang, apiKey = apiKey)
+                    }
+                    if (result.results?.isNotEmpty() == true) {
+                        Log.d(TAG, "Type-specific($preferredType, lang=$lang) found ${result.results.size} results")
+                        return preferredType to result
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Type-specific($preferredType, lang=$lang) failed: ${e.message}")
+                }
+            }
+        }
+
+        // 2) searchMulti 尝试多种语言
+        for (lang in searchLanguages) {
             try {
-                val result = tmdbApiService.searchMulti(cleanQuery, "zh-CN", apiKey = apiKey)
+                val result = tmdbApiService.searchMulti(cleanQuery, lang, apiKey = apiKey)
                 val matched = result.results?.firstOrNull {
                     it.media_type == "movie" || it.media_type == "tv"
                 }
                 if (matched != null) {
-                    Log.d(TAG, "Found result with year: ${matched.title ?: matched.name}")
+                    Log.d(TAG, "Multi-search(lang=$lang) found: ${matched.title ?: matched.name}")
                     return (matched.media_type ?: "movie") to result
                 }
-                Log.d(TAG, "Attempt 1 (zh-CN+year): no results returned for query=$cleanQuery")
+                Log.d(TAG, "Multi-search(lang=$lang): no results")
             } catch (e: Exception) {
-                Log.w(TAG, "Attempt 1 (zh-CN+year) failed: ${e.message}", e)
+                Log.w(TAG, "Multi-search(lang=$lang) failed: ${e.message}")
             }
         }
 
-        try {
-            val result = tmdbApiService.searchMulti(cleanQuery, "zh-CN", apiKey = apiKey)
-            val matched = result.results?.firstOrNull {
-                it.media_type == "movie" || it.media_type == "tv"
-            }
-            if (matched != null) {
-                Log.d(TAG, "Found result without year: ${matched.title ?: matched.name}")
-                return (matched.media_type ?: "movie") to result
-            }
-            Log.d(TAG, "Attempt 2 (zh-CN): no results returned for query=$cleanQuery")
-        } catch (e: Exception) {
-            Log.w(TAG, "Attempt 2 (zh-CN) failed: ${e.message}", e)
-        }
-
-        val titleWithoutYear = cleanQuery.replace(Regex("""[\(\[（]?(19\d{2}|20\d{2})[\)\]）]?"""), "").trim()
+        // 3) 去除年份后再搜（多语言）
+        val titleWithoutYear = cleanQuery
+            .replace(Regex("""[\(\[（]?(19\d{2}|20\d{2})[\)\]）]?"""), "")
+            .trim()
         if (titleWithoutYear.isNotEmpty() && titleWithoutYear != cleanQuery) {
-            try {
-                val result = tmdbApiService.searchMulti(titleWithoutYear, "zh-CN", apiKey = apiKey)
-                val matched = result.results?.firstOrNull {
-                    it.media_type == "movie" || it.media_type == "tv"
+            for (lang in searchLanguages) {
+                try {
+                    val result = tmdbApiService.searchMulti(titleWithoutYear, lang, apiKey = apiKey)
+                    val matched = result.results?.firstOrNull {
+                        it.media_type == "movie" || it.media_type == "tv"
+                    }
+                    if (matched != null) {
+                        Log.d(TAG, "No-year search(lang=$lang) found: ${matched.title ?: matched.name}")
+                        return (matched.media_type ?: "movie") to result
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "No-year search(lang=$lang) failed: ${e.message}")
                 }
-                if (matched != null) {
-                    Log.d(TAG, "Found result with cleaned title: ${matched.title ?: matched.name}")
-                    return (matched.media_type ?: "movie") to result
-                }
-                Log.d(TAG, "Attempt 3 (cleaned title): no results returned for query=$titleWithoutYear")
-            } catch (e: Exception) {
-                Log.w(TAG, "Attempt 3 (cleaned title) failed: ${e.message}", e)
             }
         }
 
-        try {
-            val result = tmdbApiService.searchMulti(cleanQuery, "en-US", apiKey = apiKey)
-            val matched = result.results?.firstOrNull {
-                it.media_type == "movie" || it.media_type == "tv"
+        // 4) 如果标题很长，尝试截取前几个单词（避免过长的文件名导致搜索无结果）
+        val words = cleanQuery.split(Regex("""[\s,.\-]+""")).filter { it.length >= 3 }
+        if (words.size > 3) {
+            val shortQuery = words.take(3).joinToString(" ")
+            if (shortQuery.length >= 3) {
+                try {
+                    val result = tmdbApiService.searchMulti(shortQuery, "en-US", apiKey = apiKey)
+                    val matched = result.results?.firstOrNull {
+                        it.media_type == "movie" || it.media_type == "tv"
+                    }
+                    if (matched != null) {
+                        Log.d(TAG, "Short query search found: ${matched.title ?: matched.name}")
+                        return (matched.media_type ?: "movie") to result
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Short query search failed: ${e.message}")
+                }
             }
-            if (matched != null) {
-                Log.d(TAG, "Found result with en-US: ${matched.title ?: matched.name}")
-                return (matched.media_type ?: "movie") to result
-            }
-            Log.d(TAG, "Attempt 4 (en-US): no results returned for query=$cleanQuery")
-        } catch (e: Exception) {
-            Log.w(TAG, "Attempt 4 (en-US) failed: ${e.message}", e)
         }
 
-        Log.w(TAG, "All 4 search attempts failed for query=$cleanQuery, year=$year")
+        Log.w(TAG, "All search attempts failed for query=$cleanQuery, year=$year")
         return "movie" to TmdbSearchResponse(results = emptyList())
     }
 
     fun findBestMatch(results: List<TmdbSearchItem>?, query: String, preferredType: String?): TmdbSearchItem? {
         if (results.isNullOrEmpty()) return null
 
-        val candidates = if (preferredType != null) {
-            val exact = results.filter { it.media_type == preferredType }
-            if (exact.isNotEmpty()) exact else results
-        } else {
-            results
+        // 1) 精确类型 + 精确名称匹配
+        if (preferredType != null) {
+            val exactTypeExactName = results.firstOrNull { item ->
+                item.media_type == preferredType && item.name.equals(query, ignoreCase = true) ||
+                    item.media_type == preferredType && (item.title ?: "").equals(query, ignoreCase = true)
+            }
+            if (exactTypeExactName != null) return exactTypeExactName
         }
 
-        return candidates.firstOrNull { item ->
+        // 2) 任意类型 + 精确名称匹配
+        val anyTypeExactName = results.firstOrNull { item ->
             val name = item.name ?: item.title ?: ""
             name.equals(query, ignoreCase = true)
-        } ?: candidates.firstOrNull { item ->
+        }
+        if (anyTypeExactName != null) return anyTypeExactName
+
+        // 3) 精确类型 + 包含匹配
+        if (preferredType != null) {
+            val exactTypePartial = results.firstOrNull { item ->
+                val name = item.name ?: item.title ?: ""
+                item.media_type == preferredType && (name.contains(query, ignoreCase = true) || query.contains(name, ignoreCase = true))
+            }
+            if (exactTypePartial != null) return exactTypePartial
+        }
+
+        // 4) 任意类型 + 包含匹配
+        val anyTypePartial = results.firstOrNull { item ->
             val name = item.name ?: item.title ?: ""
             name.contains(query, ignoreCase = true) || query.contains(name, ignoreCase = true)
-        } ?: candidates.firstOrNull { item ->
-            item.media_type == "tv"
-        } ?: candidates.firstOrNull { item ->
-            item.media_type == "movie"
-        } ?: results.firstOrNull()
+        }
+        if (anyTypePartial != null) return anyTypePartial
+
+        // 5) 过滤出 preferredType 的结果，取第一个
+        if (preferredType != null) {
+            val typeResults = results.filter { it.media_type == preferredType }
+            if (typeResults.isNotEmpty()) {
+                Log.d(TAG, "No name match, returning first $preferredType result: ${typeResults.first().title ?: typeResults.first().name}")
+                return typeResults.first()
+            }
+        }
+
+        // 6) 最后手段：返回第一个符合 movie/tv 的结果
+        val firstValid = results.firstOrNull { it.media_type == "movie" || it.media_type == "tv" }
+        if (firstValid != null) {
+            Log.d(TAG, "Last resort: returning first valid result: ${firstValid.title ?: firstValid.name}")
+            return firstValid
+        }
+
+        return null
     }
 
     fun buildImageUrl(path: String?, width: String = "w300_and_h450_bestv2"): String? {

@@ -55,6 +55,15 @@ class AppSettingFragment : PreferenceFragmentCompat() {
             }
         }
 
+        findPreference<Preference>("cache_manager")?.apply {
+            setOnPreferenceClickListener {
+                ARouter.getInstance()
+                    .build(RouteTable.User.CacheManager)
+                    .navigation()
+                return@setOnPreferenceClickListener true
+            }
+        }
+
         findPreference<Preference>("app_version")?.apply {
             summary = AppUtils.getVersionName()
         }

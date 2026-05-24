@@ -18,6 +18,11 @@
             app:icon="@drawable/ic_dark_mode_system" />
 
         <Preference
+            android:key="cache_manager"
+            android:title="@string/action_cache_manager"
+            app:icon="@drawable/ic_app_setting_cache_manager" />
+
+        <Preference
             android:key="backup_manager"
             android:title="备份管理"
             android:summary="导出或导入软件配置信息"

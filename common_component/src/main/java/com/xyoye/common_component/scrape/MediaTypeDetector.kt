@@ -11,6 +11,7 @@ object MediaTypeDetector {
         putAll("variety", listOf("综艺", "variety", "variety show", "真人秀"))
         putAll("documentary", listOf("纪录片", "纪实", "documentary", "documentaries"))
         putAll("anime", listOf("动漫", "动画", "番剧", "anime", "animation"))
+        putAll("concert", listOf("演唱会", "音乐会", "concert", "concerts", "live show", "live"))
     }
 
     fun detectFromPath(filePath: String): String? {

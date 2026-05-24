@@ -46,32 +46,21 @@ class PersonalFragment : BaseFragment<PersonalFragmentViewModel, FragmentPersona
                 .navigation()
         }
 
-        dataBinding.scanManagerLl.setOnClickListener {
+        dataBinding.fileBrowserSettingLl?.setOnClickListener {
             ARouter.getInstance()
-                .build(RouteTable.User.ScanManager)
+                .build(RouteTable.User.FileBrowserSetting)
                 .navigation()
         }
 
-        dataBinding.cacheManagerLl.setOnClickListener {
+        dataBinding.mediaLibrarySettingLl?.setOnClickListener {
             ARouter.getInstance()
-                .build(RouteTable.User.CacheManager)
-                .navigation()
-        }
-
-        dataBinding.commonlyManagerLl.setOnClickListener {
-            ARouter.getInstance()
-                .build(RouteTable.User.CommonManager)
+                .build(RouteTable.User.MediaLibrarySetting)
+                .withString("content_type", "movie")
                 .navigation()
         }
 
         dataBinding.apiManagerLl?.setOnClickListener {
             showApiManagerDialog()
-        }
-
-        dataBinding.thumbnailSettingLl?.setOnClickListener {
-            ARouter.getInstance()
-                .build(RouteTable.User.ThumbnailSetting)
-                .navigation()
         }
 
         dataBinding.appSettingLl.setOnClickListener {

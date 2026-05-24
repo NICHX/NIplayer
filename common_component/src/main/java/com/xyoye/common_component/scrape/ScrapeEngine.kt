@@ -1,7 +1,9 @@
 package com.xyoye.common_component.scrape
 
+import android.util.Log
 import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.network.repository.TmdbRepository
+import com.xyoye.common_component.scrape.DoubanScraper
 import com.xyoye.common_component.storage.Storage
 import com.xyoye.common_component.storage.file.StorageFile
 import com.xyoye.common_component.utils.JsonHelper
@@ -11,9 +13,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
-import android.util.Log
+import java.util.concurrent.atomic.AtomicInteger
 
 data class ScrapeProgress(
     val found: Int = 0,
@@ -55,7 +59,9 @@ data class EpisodeFileInfo(
 )
 
 class ScrapeEngine(
-    private val tmdbRepository: TmdbRepository = TmdbRepository()
+    private val tmdbRepository: TmdbRepository = TmdbRepository(),
+    private val cacheManager: ScrapeCacheManager = ScrapeCacheManager(),
+    private val doubanScraper: DoubanScraper = DoubanScraper()
 ) {
 
     companion object {
@@ -328,15 +334,28 @@ class ScrapeEngine(
                             val nfoData = NfoReader.parseNfo(nfoContent)
                             if (nfoData != null) {
                                 Log.d(TAG, "Found NFO: ${item.name}, tmdbId=${nfoData.tmdbId}")
-                                return@async item.copy(
-                                    poster = nfoData.thumb,
-                                    backdrop = nfoData.fanart,
-                                    tmdbId = nfoData.tmdbId,
-                                    voteAverage = nfoData.rating,
-                                    releaseTime = nfoData.premiered,
-                                    overview = nfoData.plot,
-                                    mediaType = type
-                                )
+                                val nfoTmdbId = nfoData.tmdbId
+                                if (nfoTmdbId != null) {
+                                    try {
+                                        tmdbSemaphore.withPermit {
+                                            tmdbRepository.getMediaDetail(nfoTmdbId, type, tmdbKey)
+                                        }
+                                        Log.d(TAG, "NFO tmdbId verified: $nfoTmdbId")
+                                        return@async item.copy(
+                                            poster = nfoData.thumb,
+                                            backdrop = nfoData.fanart,
+                                            tmdbId = nfoTmdbId,
+                                            voteAverage = nfoData.rating,
+                                            releaseTime = nfoData.premiered,
+                                            overview = nfoData.plot,
+                                            mediaType = type
+                                        )
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "NFO tmdbId=$nfoTmdbId verification failed (${e.message}), re-searching")
+                                    }
+                                } else {
+                                    Log.w(TAG, "NFO has no tmdbId, re-searching")
+                                }
                             }
                         }
                     }
@@ -359,14 +378,26 @@ class ScrapeEngine(
                     val year = FileNameParser.handleNameYear(item.name)
                     Log.d(TAG, "Searching TMDB: query=$query, year=$year, type=$type")
                     val (detectedType, searchResult) = tmdbSemaphore.withPermit {
-                        tmdbRepository.searchWithFallback(query, year, tmdbKey)
+                        tmdbRepository.searchWithFallback(query, year, tmdbKey, type)
                     }
                     val effectiveType = MediaTypeDetector.detectFromPath(item.path)
                         ?: detectedType
 
-                    val matched = tmdbRepository.findBestMatch(
+                    var matched = tmdbRepository.findBestMatch(
                         searchResult.results, query, effectiveType
                     )
+
+                    // 如果清洗后的标题搜索无结果，用原始文件名重试
+                    if (matched == null && query != item.name) {
+                        val rawName = item.name.substringBeforeLast('.').trim()
+                        Log.d(TAG, "Retrying with raw name: $rawName")
+                        val (_, retryResult) = tmdbSemaphore.withPermit {
+                            tmdbRepository.searchWithFallback(rawName, null, tmdbKey, effectiveType)
+                        }
+                        matched = tmdbRepository.findBestMatch(
+                            retryResult.results, rawName, effectiveType
+                        )
+                    }
 
                     if (matched != null) {
                         Log.d(TAG, "TMDB matched: ${item.name} -> id=${matched.id}, poster=${matched.poster_path}")
@@ -434,6 +465,58 @@ class ScrapeEngine(
                     Log.e(TAG, "matchTmdbMetadata failed for: ${item.name}", e)
                     item.copy(mediaType = type)
                 }
+            }
+        }.awaitAll()
+    }
+
+    suspend fun matchWithDoubanFallback(
+        items: List<ScrapeMediaEntity>,
+        type: String,
+        tmdbKey: String,
+        existingData: List<ScrapeMediaEntity> = emptyList(),
+        storage: Storage? = null
+    ): List<ScrapeMediaEntity> = coroutineScope {
+        Log.d(TAG, "matchWithDoubanFallback: type=$type, items=${items.size}")
+        items.map { item ->
+            async(Dispatchers.IO) {
+                val tmdbResult = try {
+                    matchTmdbMetadata(
+                        listOf(item), type, tmdbKey, existingData, storage
+                    ).firstOrNull()
+                } catch (e: Exception) {
+                    Log.w(TAG, "TMDB attempt failed for: ${item.name}", e)
+                    null
+                }
+
+                if (tmdbResult != null && tmdbResult.tmdbId != null) {
+                    return@async tmdbResult
+                }
+
+                try {
+                    val query = FileNameParser.handleSeasonName(item.name) ?: item.name
+                    val year = FileNameParser.handleNameYear(item.name)?.toIntOrNull()
+                    Log.d(TAG, "TMDB miss, trying Douban: query=$query, year=$year")
+
+                    val doubanResult = doubanScraper.searchWithDetail(query, year)
+                    if (doubanResult != null) {
+                        Log.d(TAG, "Douban matched: ${item.name} -> id=${doubanResult.id}")
+                        return@async item.copy(
+                            poster = doubanResult.posterUrl ?: "",
+                            backdrop = doubanResult.backdropUrl,
+                            genreIds = if (doubanResult.genres.isNotEmpty())
+                                JsonHelper.toJson(doubanResult.genres) ?: "[]"
+                            else item.genreIds,
+                            voteAverage = (doubanResult.rating?.toDouble() ?: 0.0) / 2.0,
+                            releaseTime = doubanResult.year?.toString(),
+                            overview = doubanResult.overview ?: "",
+                            mediaType = if (doubanResult.isMovie) "movie" else type
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Douban fallback failed for: ${item.name}", e)
+                }
+
+                item.copy(mediaType = type)
             }
         }.awaitAll()
     }
@@ -558,5 +641,125 @@ class ScrapeEngine(
         }
 
         episodes
+    }
+
+    suspend fun smartBatchScrape(
+        files: List<ScrapeFileItem>,
+        type: String,
+        tmdbKey: String,
+        existingData: List<ScrapeMediaEntity> = emptyList(),
+        storage: Storage? = null,
+        progress: (ScrapeProgress) -> Unit,
+        onItemReady: suspend (ScrapeMediaEntity) -> Unit = {}
+    ): List<ScrapeMediaEntity> = coroutineScope {
+        val total = files.size
+        Log.d(TAG, "smartBatchScrape: type=$type, files=$total")
+
+        val clusters = clusterBySeries(files, type)
+        Log.d(TAG, "Clustered into ${clusters.size} series/movies")
+
+        val processedCount = AtomicInteger(0)
+        val seriesResultsLock = Mutex()
+        val seriesResults = mutableMapOf<String, ScrapeMediaEntity?>()
+
+        clusters.entries.map { (seriesKey, clusterFiles) ->
+            async {
+                tmdbSemaphore.withPermit {
+                    try {
+                        val cached = cacheManager.get(seriesKey)
+                        if (cached != null) {
+                            Log.d(TAG, "Cache hit: $seriesKey")
+                            val cachedEntity = ScrapeMediaEntity(
+                                name = cached.title,
+                                path = clusterFiles.first().path,
+                                mediaType = type,
+                                poster = cached.poster ?: "",
+                                backdrop = cached.backdrop ?: "",
+                                tmdbId = cached.tmdbId
+                            )
+                            seriesResultsLock.withLock { seriesResults[seriesKey] = cachedEntity }
+                        } else {
+                            val firstItem = clusterFiles.first()
+                            val name = firstItem.name
+                            val existing = existingData.find { it.path == firstItem.path }
+
+                            if (existing != null && existing.tmdbId != null) {
+                                seriesResultsLock.withLock { seriesResults[seriesKey] = existing }
+                            } else {
+                                val result = matchTmdbMetadata(
+                                    listOf(
+                                        ScrapeMediaEntity(
+                                            name = name,
+                                            path = firstItem.path,
+                                            mediaType = type
+                                        )
+                                    ),
+                                    type, tmdbKey, existingData, storage
+                                )
+                                val matched = result.firstOrNull()
+
+                                if (matched != null && matched.tmdbId != null) {
+                                    cacheManager.put(
+                                        seriesKey = seriesKey,
+                                        title = matched.name,
+                                        poster = matched.poster,
+                                        backdrop = matched.backdrop,
+                                        tmdbId = matched.tmdbId
+                                    )
+                                }
+
+                                seriesResultsLock.withLock { seriesResults[seriesKey] = matched }
+                            }
+                        }
+
+                        seriesResultsLock.withLock { seriesResults[seriesKey] }?.let { entity ->
+                            clusterFiles.forEach { file ->
+                                val episodeEntity = entity.copy(
+                                    path = file.path,
+                                    name = file.name,
+                                    season = file.season
+                                )
+                                onItemReady(episodeEntity)
+                            }
+                        }
+
+                        val current = processedCount.addAndGet(clusterFiles.size).coerceAtMost(total)
+                        progress(ScrapeProgress(found = current, matched = seriesResults.size, total = total))
+                    } catch (e: Exception) {
+                        Log.e(TAG, "smartBatchScrape failed for cluster: $seriesKey", e)
+                        val current = processedCount.addAndGet(clusterFiles.size).coerceAtMost(total)
+                        progress(ScrapeProgress(found = current, matched = seriesResults.size, total = total))
+                    }
+                }
+            }
+        }.awaitAll()
+
+        files.mapNotNull { file ->
+            seriesResults.entries.find { (key, _) ->
+                file.path.startsWith(key.split("::").first()) || key.contains(file.name)
+            }?.value?.copy(
+                name = file.name,
+                path = file.path,
+                season = file.season,
+                playKey = file.uniqueKey.ifEmpty { null }
+            )
+        }
+    }
+
+    private fun clusterBySeries(
+        files: List<ScrapeFileItem>,
+        type: String
+    ): Map<String, List<ScrapeFileItem>> {
+        return if (type == "tv") {
+            files.groupBy { item ->
+                val mediaInfo = MediaInfoExtractor.extract(item.name, item.seasonPath)
+                "${mediaInfo.title}_S${mediaInfo.season ?: 1}"
+            }
+        } else {
+            files.associateBy { item ->
+                val mediaInfo = MediaInfoExtractor.extract(item.name)
+                "${item.path}_${mediaInfo.title}_${mediaInfo.year ?: ""}"
+            }.mapKeys { it.key }.map { it.key to listOf(it.value) }.toMap()
+        }
     }
 }

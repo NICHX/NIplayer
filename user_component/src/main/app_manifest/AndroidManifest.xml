@@ -22,6 +22,7 @@
         <activity android:name=".ui.activities.forgot.ForgotActivity"/>
         <activity android:name=".ui.activities.user_info.UserInfoActivity"/>
         <activity android:name=".ui.activities.setting_player.SettingPlayerActivity"/>
+        <activity android:name=".ui.activities.file_browser_setting.FileBrowserSettingActivity"/>
     </application>
 
 </manifest>

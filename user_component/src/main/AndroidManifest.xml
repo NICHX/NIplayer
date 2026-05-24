@@ -35,6 +35,15 @@
         <activity
             android:name=".ui.activities.music_metadata.MusicMetadataApiActivity"
             android:configChanges="orientation|screenSize" />
+        <activity
+            android:name=".ui.activities.file_browser_setting.FileBrowserSettingActivity"
+            android:configChanges="orientation|screenSize" />
+        <activity
+            android:name=".ui.activities.media_library_setting.MediaLibrarySettingActivity"
+            android:configChanges="orientation|screenSize" />
+        <activity
+            android:name=".ui.activities.media_library_setting.MediaLibraryDetailActivity"
+            android:configChanges="orientation|screenSize" />
         
     </application>
 

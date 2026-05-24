@@ -3,6 +3,7 @@ package com.xyoye.common_component.scrape
 import android.util.Log
 import com.xyoye.common_component.database.DatabaseManager
 import com.xyoye.common_component.network.repository.TmdbRepository
+import com.xyoye.data_component.entity.TmdbMediaDetail
 import com.xyoye.data_component.entity.TmdbSyncQueueEntity
 import com.xyoye.data_component.entity.TmdbSyncQueueEntity.State
 import com.xyoye.data_component.entity.TmdbSyncQueueEntity.TaskType
@@ -140,8 +141,49 @@ class TmdbMetadataSyncManager {
             ?: throw Exception("Media not found for tmdbId=${task.tmdbId}")
 
         Log.d(TAG, "  Media: name=${media.name}, type=${media.mediaType}")
-        val type = media.mediaType
-        val detail = TmdbRepository().getMediaDetail(task.tmdbId, type, apiKey)
+        val repository = TmdbRepository()
+        var type = media.mediaType
+        val detail: TmdbMediaDetail
+
+        try {
+            detail = repository.getMediaDetail(task.tmdbId, type, apiKey)
+        } catch (firstError: Exception) {
+            val msg = firstError.message ?: ""
+            if (msg.contains("404") || msg.contains("HTTP 404") || msg.contains("HTTP 404")) {
+                val altType = if (type == "tv") "movie" else "tv"
+                Log.w(TAG, "  404 for type=$type, retrying as $altType")
+                try {
+                    val altDetail = repository.getMediaDetail(task.tmdbId, altType, apiKey)
+                    Log.i(TAG, "  Success with type=$altType, updating media type")
+                    val typeUpdate = media.copy(mediaType = altType)
+                    DatabaseManager.instance.getScrapeMediaDao().update(typeUpdate)
+                    type = altType
+                    val updatedEntity = media.copy(
+                        overview = altDetail.overview ?: media.overview,
+                        voteAverage = altDetail.vote_average,
+                        poster = altDetail.poster_path?.let { TmdbRepository.TMDB_IMG_DOMAIN + "/t/p/w500$it" } ?: media.poster,
+                        backdrop = altDetail.backdrop_path?.let { TmdbRepository.TMDB_IMG_DOMAIN + "/t/p/w500$it" } ?: media.backdrop,
+                        releaseTime = (altDetail.release_date ?: altDetail.first_air_date) ?: media.releaseTime,
+                        mediaType = altType,
+                        updateTime = System.currentTimeMillis()
+                    )
+                    DatabaseManager.instance.getScrapeMediaDao().update(updatedEntity)
+                    Log.d(TAG, "  Updated media with alt type: poster=${updatedEntity.poster?.take(60)}")
+
+                    if (altType == "tv" && altDetail.number_of_seasons > 0) {
+                        Log.d(TAG, "  Enqueueing ${altDetail.number_of_seasons} seasons for sync")
+                        (1..altDetail.number_of_seasons).forEach { seasonNum ->
+                            enqueue(task.tmdbId, TaskType.SEASON_EPISODES, seasonNum, priority = 1)
+                        }
+                    }
+                    return
+                } catch (_: Exception) {
+                    throw firstError
+                }
+            }
+            throw firstError
+        }
+
         Log.d(TAG, "  Detail: poster=${detail.poster_path}, overview=${detail.overview?.take(50)}")
 
         val updateEntity = media.copy(

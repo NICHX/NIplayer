@@ -1,5 +1,6 @@
 package com.xyoye.storage_component.ui.activities.storage_file
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -287,16 +288,7 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
 
     private fun initExpandableFab() {
         if (pickerMode == "mulu") {
-            dataBinding.expandableFab.addAction(
-                ExpandableFabMenu.FabAction(
-                    id = 100,
-                    icon = R.drawable.ic_sort,
-                    label = "选择此目录",
-                    onClick = {
-                        pickCurrentDirectory()
-                    }
-                )
-            )
+            dataBinding.expandableFab.visibility = View.GONE
             return
         }
         dataBinding.expandableFab.addAction(
@@ -373,10 +365,26 @@ class StorageFileActivity : BaseActivity<StorageFileViewModel, ActivityStorageFi
             onFilterChanged { onFilterOptionChanged(it) }
             onToggleView { toggleViewMode() }
         }
+        if (pickerMode == "mulu") {
+            menu.add(Menu.NONE, Menu.FIRST, Menu.NONE, "确认选择")
+                .setIcon(R.drawable.ic_checked)
+                .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
         return super.onCreateOptionsMenu(menu)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == Menu.FIRST && pickerMode == "mulu") {
+            AlertDialog.Builder(this)
+                .setTitle("确认选择")
+                .setMessage("选择当前目录作为媒体库路径？")
+                .setPositiveButton("确认") { _, _ ->
+                    pickCurrentDirectory()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+            return true
+        }
         mMenus?.onOptionsItemSelected(item)
         return super.onOptionsItemSelected(item)
     }
