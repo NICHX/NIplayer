@@ -55,6 +55,7 @@ fun AppExtension.setupSignConfigs(project: Project) = apply {
         getByName("debug") {
             signingConfig = signingConfigs.findByName(this.name)
             isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -63,7 +64,9 @@ fun AppExtension.setupSignConfigs(project: Project) = apply {
 
         getByName("release") {
             signingConfig = signingConfigs.findByName(this.name)
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            isZipAlignEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
