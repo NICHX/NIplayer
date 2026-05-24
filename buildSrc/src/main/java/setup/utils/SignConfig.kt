@@ -21,13 +21,40 @@ object SignConfig {
     }
 
     fun release(project: Project, config: SigningConfig) {
-        val keystoreFile = project.getAssembleFile("dandanplay.jks")
-        config.apply {
-            storeFile = keystoreFile
-            storePassword(System.getenv("KEYSTORE_PASS"))
-            keyAlias(System.getenv("ALIAS_NAME"))
-            keyPassword(System.getenv("ALIAS_PASS"))
+        val properties = loadLocalProperties(project) ?: loadProperties(project)
+        
+        if (properties != null) {
+            val storeFile = properties["storeFile"]?.toString()?.let {
+                if (it.startsWith("/")) File(it) else project.getAssembleFile(it)
+            } ?: project.getAssembleFile("dandanplay.jks")
+            
+            config.apply {
+                storeFile = storeFile
+                storePassword = properties["storePassword"]?.toString() ?: System.getenv("KEYSTORE_PASS") ?: ""
+                keyAlias = properties["keyAlias"]?.toString() ?: System.getenv("ALIAS_NAME") ?: ""
+                keyPassword = properties["keyPassword"]?.toString() ?: System.getenv("ALIAS_PASS") ?: ""
+            }
+        } else {
+            val keystoreFile = project.getAssembleFile("dandanplay.jks")
+            config.apply {
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEYSTORE_PASS") ?: ""
+                keyAlias = System.getenv("ALIAS_NAME") ?: ""
+                keyPassword = System.getenv("ALIAS_PASS") ?: ""
+            }
         }
+    }
+
+    private fun loadLocalProperties(project: Project): Properties? {
+        val propertiesFile = File(project.rootDir, "local.properties")
+        if (propertiesFile.exists()) {
+            val properties = Properties()
+            properties.load(FileInputStream(propertiesFile))
+            if (properties.containsKey("storeFile")) {
+                return properties
+            }
+        }
+        return null
     }
 
     private fun loadProperties(project: Project): Properties? {

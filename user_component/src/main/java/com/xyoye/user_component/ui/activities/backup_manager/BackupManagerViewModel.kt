@@ -137,8 +137,7 @@ class BackupManagerViewModel : BaseViewModel() {
             com.xyoye.data_component.enums.MediaType.SMB_SERVER,
             com.xyoye.data_component.enums.MediaType.FTP_SERVER,
             com.xyoye.data_component.enums.MediaType.WEBDAV_SERVER,
-            com.xyoye.data_component.enums.MediaType.ALSIT_STORAGE,
-            com.xyoye.data_component.enums.MediaType.EXTERNAL_STORAGE
+            com.xyoye.data_component.enums.MediaType.ALSIT_STORAGE
         )
         val allServers = mutableListOf<MediaLibraryEntity>()
         for (type in serverTypes) {

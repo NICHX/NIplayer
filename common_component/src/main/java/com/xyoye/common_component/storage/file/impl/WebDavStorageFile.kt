@@ -49,10 +49,4 @@ class WebDavStorageFile(
             storage as WebDavStorage
         ).also { it.playHistory = playHistory }
     }
-
-    override fun uniqueKey(): String {
-        val baseUri = URI(storage.rootUri.toString()).resolve("/")
-        val baseUrl = baseUri.toString().removeSuffix("/")
-        return (baseUrl + "_" + davResource.href.toASCIIString()).toMd5String()
-    }
 }

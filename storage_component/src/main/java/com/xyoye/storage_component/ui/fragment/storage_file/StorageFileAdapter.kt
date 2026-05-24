@@ -75,13 +75,11 @@ class StorageFileAdapter(
 ) {
 
     private enum class ManageAction(val title: String, val icon: Int) {
-        FAVORITE("收藏", com.xyoye.common_component.R.drawable.ic_tag),
-        UNFAVORITE("取消收藏", com.xyoye.common_component.R.drawable.ic_tag),
         BIND_SUBTITLE("手动查找字幕", com.xyoye.common_component.R.drawable.ic_bind_subtitle),
         BIND_AUDIO("添加音频文件", com.xyoye.common_component.R.drawable.ic_bind_audio),
         UNBIND_SUBTITLE("移除字幕绑定", com.xyoye.common_component.R.drawable.ic_unbind_subtitle),
         UNBIND_AUDIO("移除音频绑定", com.xyoye.common_component.R.drawable.ic_unbind_subtitle),
-        DOWNLOAD("下载", com.xyoye.common_component.R.drawable.ic_arrow_down),
+        DOWNLOAD("下载", com.xyoye.common_component.R.drawable.ic_download),
         FILE_INFO("文件信息", com.xyoye.common_component.R.drawable.ic_tag),
         DELETE("删除", com.xyoye.common_component.R.drawable.ic_delete_red);
 
@@ -495,13 +493,13 @@ class StorageFileAdapter(
     private fun showMoreAction(file: StorageFile, options: ActivityOptionsCompat?) {
         BottomActionDialog(activity, getMoreActions(file)) {
             when (it.actionId) {
-                ManageAction.FAVORITE -> {
+                "add_quick_access" -> {
                     QuickAccessHelper.addQuickAccess(file)
-                    ToastCenter.showSuccess("已收藏")
+                    ToastCenter.showSuccess("已添加到快速访问")
                 }
-                ManageAction.UNFAVORITE -> {
+                "remove_quick_access" -> {
                     QuickAccessHelper.removeQuickAccess(file)
-                    ToastCenter.showSuccess("已取消收藏")
+                    ToastCenter.showSuccess("已从快速访问移除")
                 }
                 ManageAction.BIND_SUBTITLE -> {
                     if (options != null) {
@@ -526,16 +524,11 @@ class StorageFileAdapter(
         mutableListOf<SheetActionBean>().apply {
             if (file.isDirectory()) {
                 if (QuickAccessHelper.isQuickAccess(file)) {
-                    add(SheetActionBean(ManageAction.UNFAVORITE, "从快速访问移除", ManageAction.UNFAVORITE.icon))
+                    add(SheetActionBean("remove_quick_access", "从快速访问移除", com.xyoye.common_component.R.drawable.ic_tag))
                 } else {
-                    add(SheetActionBean(ManageAction.FAVORITE, "添加到快速访问", ManageAction.FAVORITE.icon))
+                    add(SheetActionBean("add_quick_access", "添加到快速访问", com.xyoye.common_component.R.drawable.ic_tag))
                 }
             } else {
-                if (QuickAccessHelper.isQuickAccess(file)) {
-                    add(ManageAction.UNFAVORITE.toAction())
-                } else {
-                    add(ManageAction.FAVORITE.toAction())
-                }
                 if (file.isImageFile().not() && file.isAudioFile().not()) {
                     add(ManageAction.BIND_SUBTITLE.toAction())
                     add(ManageAction.BIND_AUDIO.toAction())
