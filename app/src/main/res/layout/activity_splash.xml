@@ -6,7 +6,7 @@
         android:layout_height="match_parent"
         android:background="@drawable/background_splash">
 
-        <com.xyoye.dandanplay.utils.image_anim.svg.AnimatedSvgView
+        <com.xyoye.niplayer.utils.image_anim.svg.AnimatedSvgView
             android:id="@+id/icon_svg_view"
             android:layout_width="150dp"
             android:layout_height="150dp"
@@ -26,7 +26,7 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
-        <com.xyoye.dandanplay.utils.image_anim.path.TextPathAnimView
+        <com.xyoye.niplayer.utils.image_anim.path.TextPathAnimView
             android:id="@+id/text_path_view"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -36,7 +36,7 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/icon_svg_view"
             app:loop="false"
-            app:text="DanDanPlay"
+            app:text="NIplayer"
             app:text_bg_color="@color/splash_text_bg_color"
             app:text_fg_color="@color/splash_text_fg_color"
             app:text_interval="8dp"

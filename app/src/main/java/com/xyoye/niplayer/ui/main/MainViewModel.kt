@@ -1,4 +1,4 @@
-package com.xyoye.dandanplay.ui.main
+package com.xyoye.niplayer.ui.main
 
 import androidx.lifecycle.viewModelScope
 import com.xyoye.common_component.base.BaseViewModel

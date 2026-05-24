@@ -1,4 +1,4 @@
-package com.xyoye.dandanplay.utils.image_anim.path
+package com.xyoye.niplayer.utils.image_anim.path
 
 import android.util.SparseArray
 

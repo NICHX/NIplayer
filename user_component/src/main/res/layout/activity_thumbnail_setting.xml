@@ -74,7 +74,7 @@
                             android:layout_height="wrap_content"
                             android:checked="@{viewModel.generateThumbnail}"
                             android:onCheckedChanged="@{(buttonView, isChecked) -> viewModel.onGenerateThumbnailChanged(isChecked)}"
-                            app:theme="@style/Theme.DanDanPlay.SwitchCompat" />
+                            app:theme="@style/Theme.NIplayer.SwitchCompat" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -163,7 +163,7 @@
                             android:layout_height="wrap_content"
                             android:checked="@{viewModel.saveInSameDir}"
                             android:onCheckedChanged="@{(buttonView, isChecked) -> viewModel.onSaveInSameDirChanged(isChecked)}"
-                            app:theme="@style/Theme.DanDanPlay.SwitchCompat" />
+                            app:theme="@style/Theme.NIplayer.SwitchCompat" />
                     </LinearLayout>
 
                 </LinearLayout>

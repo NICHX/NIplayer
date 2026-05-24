@@ -12,7 +12,7 @@
         <item name="android:textColorPrimary">@color/text_black</item>
         <!-- TODO: Activity切换动画会导致底部FAB按钮跟随渐隐渐现，如有更好的方案再移除或替换 -->
         <item name="android:windowAnimationStyle">@style/ActivityAnimStyle</item>
-        <item name="searchViewStyle">@style/Widget.DanDanPlay.SearchView</item>
+        <item name="searchViewStyle">@style/Widget.NIplayer.SearchView</item>
         <item name="actionOverflowMenuStyle">@style/OverflowMenuStyle</item>
     </style>
 
@@ -107,7 +107,7 @@
         <item name="android:windowTranslucentStatus">true</item>
     </style>
 
-    <style name="Theme.DanDanPlay.Widget" parent="Theme.Material3.DayNight">
+    <style name="Theme.NIplayer.Widget" parent="Theme.Material3.DayNight">
         <item name="colorPrimary">@color/theme</item>
         <item name="colorPrimaryDark">@color/white</item>
         <item name="colorAccent">@color/colorAccent</item>
@@ -116,23 +116,23 @@
         <item name="colorControlHighlight">@color/theme</item>
     </style>
 
-    <style name="Theme.DanDanPlay.CheckBox" parent="Theme.DanDanPlay.Widget" />
+    <style name="Theme.NIplayer.CheckBox" parent="Theme.NIplayer.Widget" />
 
-    <style name="Theme.DanDanPlay.SwitchCompat" parent="Theme.DanDanPlay.Widget" />
+    <style name="Theme.NIplayer.SwitchCompat" parent="Theme.NIplayer.Widget" />
 
-    <style name="Theme.DanDanPlay.RadioButton" parent="Theme.DanDanPlay.Widget" />
+    <style name="Theme.NIplayer.RadioButton" parent="Theme.NIplayer.Widget" />
 
-    <style name="Theme.DanDanPlay.Slider" parent="Theme.DanDanPlay.Widget" />
+    <style name="Theme.NIplayer.Slider" parent="Theme.NIplayer.Widget" />
 
-    <style name="Theme.DanDanPlay.SeekBar" parent="Theme.DanDanPlay.Widget">
+    <style name="Theme.NIplayer.SeekBar" parent="Theme.NIplayer.Widget">
         <item name="colorControlHighlight">@color/theme_light</item>
     </style>
 
-    <style name="Theme.DanDanPlay.Toolbar.Subtitle" parent="TextAppearance.Widget.AppCompat.Toolbar.Subtitle">
+    <style name="Theme.NIplayer.Toolbar.Subtitle" parent="TextAppearance.Widget.AppCompat.Toolbar.Subtitle">
         <item name="android:textSize">12sp</item>
     </style>
 
-    <style name="Widget.DanDanPlay.SearchView" parent="Widget.AppCompat.SearchView">
+    <style name="Widget.NIplayer.SearchView" parent="Widget.AppCompat.SearchView">
         <item name="searchIcon">@drawable/ic_search</item>
         <item name="searchHintIcon">@null</item>
         <item name="queryBackground">@null</item>

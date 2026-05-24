@@ -21,7 +21,7 @@
         <item name="colorControlActivated">@color/colorAccent</item>
     </style>
 
-    <style name="Theme.DanDanPlay.PlayerActivity" parent="AppTheme">
+    <style name="Theme.NIplayer.PlayerActivity" parent="AppTheme">
         <item name="android:windowBackground">@color/transparent</item>
     </style>
 

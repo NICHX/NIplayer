@@ -28,6 +28,6 @@
             android:textColor="@color/text_gray"
             android:textSize="14sp"
             android:visibility="gone"
-            app:theme="@style/Theme.DanDanPlay.CheckBox" />
+            app:theme="@style/Theme.NIplayer.CheckBox" />
     </LinearLayout>
 </layout>

@@ -54,8 +54,8 @@
     <string name="tips_github_issues">GitHub Issues</string>
     <string name="action_edit_issues">编辑</string>
     <string name="text_app_name">弹弹play 概念版</string>
-    <string name="text_github_project_name">Github：DanDanPlayForAndroid</string>
-    <string name="text_official_address">官网：www.dandanplay.com</string>
+    <string name="text_github_project_name">Github：NIplayerForAndroid</string>
+    <string name="text_official_address">官网：www.niplayer.com</string>
     <string name="action_save_theme">完成</string>
     <string name="text_theme_follow_system">跟随系统</string>
     <string name="tips_theme_follow_system">开启后，将跟随系统打开或关闭深色模式</string>
@@ -82,9 +82,9 @@
 
     <string name="app_id">App Id</string>
     <string name="app_secret">App Secret</string>
-    <string name="dandanplay_certificate_tips">应弹弹play开放平台要求，请开发者完善AppId与AppSecret，没有相关凭证的应用在使用弹弹play API相关功能时可能受到限制，如番剧列表、弹幕匹配、用户信息等。</string>
-    <string name="dandanplay_local_tips">* 此配置仅用于弹弹play API相关功能，不影响其他本地功能的使用，媒体库视频播放、弹/字幕文件加载仍可正常使用</string>
-    <string name="read_dandanplay_document">详细信息请查看弹弹play开放平台文档</string>
+    <string name="niplayer_certificate_tips">应弹弹play开放平台要求，请开发者完善AppId与AppSecret，没有相关凭证的应用在使用弹弹play API相关功能时可能受到限制，如番剧列表、弹幕匹配、用户信息等。</string>
+    <string name="niplayer_local_tips">* 此配置仅用于弹弹play API相关功能，不影响其他本地功能的使用，媒体库视频播放、弹/字幕文件加载仍可正常使用</string>
+    <string name="read_niplayer_document">详细信息请查看弹弹play开放平台文档</string>
 
     <integer-array name="cover">
         <item>@drawable/ic_bailitusu</item>
