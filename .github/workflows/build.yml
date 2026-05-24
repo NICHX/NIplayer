@@ -2,15 +2,12 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ master, main ]
     tags: [ v* ]
-  pull_request:
-    branches: [ master, main ]
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build APK
+    name: Build Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -24,40 +21,27 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: Decode Keystore File
+        env:
+          KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_FILE" | base64 -d > gradle/assemble/niplayer.jks
+          echo "storeFile=niplayer.jks" > local.properties
+          echo "storePassword=$KEYSTORE_PASSWORD" >> local.properties
+          echo "keyAlias=$KEY_ALIAS" >> local.properties
+          echo "keyPassword=$KEY_PASSWORD" >> local.properties
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
-
       - name: Build Release APK
-        env:
-          # 签名配置（可选，需要在 GitHub Secrets 中配置）
-          KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          # 如果配置了签名，则构建带签名的 Release APK
-          if [ -n "$KEYSTORE_FILE" ]; then
-            echo "$KEYSTORE_FILE" | base64 -d > keystore.jks
-            echo "storeFile=keystore.jks" > local.properties
-            echo "storePassword=$KEYSTORE_PASSWORD" >> local.properties
-            echo "keyAlias=$KEY_ALIAS" >> local.properties
-            echo "keyPassword=$KEY_PASSWORD" >> local.properties
-            ./gradlew assembleRelease
-          else
-            ./gradlew assembleRelease
-          fi
-
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+        run: ./gradlew assembleRelease
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
