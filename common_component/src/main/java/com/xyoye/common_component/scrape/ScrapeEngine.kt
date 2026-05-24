@@ -243,9 +243,9 @@ class ScrapeEngine(
         val map = linkedMapOf<String, ScrapeMediaEntity>()
 
         sorted.forEach { item ->
-            val showInfo = FileNameParser.handleSeasonName(item.name)?.let {
-                Pair(it, item.path)
-            } ?: kotlin.run {
+            val isSeasonDirName = SeasonExtractor.startsWithSeasonFormat(item.name)
+
+            val pathBasedInfo = run {
                 val pathTrimmed = item.path.trimEnd('/')
                 val lastSlash = pathTrimmed.lastIndexOf('/')
                 if (lastSlash > 0) {
@@ -253,13 +253,19 @@ class ScrapeEngine(
                     if (SeasonExtractor.startsWithSeasonFormat(dirName)) {
                         val parentPath = pathTrimmed.substring(0, lastSlash)
                         Pair(parentPath.substringAfterLast('/'), parentPath)
-                    } else {
-                        null
-                    }
-                } else {
-                    null
-                }
-            } ?: return@forEach
+                    } else null
+                } else null
+            }
+
+            val nameBasedInfo = FileNameParser.handleSeasonName(item.name)?.let {
+                Pair(it, item.path)
+            }
+
+            val showInfo = if (isSeasonDirName && pathBasedInfo != null) {
+                pathBasedInfo
+            } else {
+                nameBasedInfo ?: pathBasedInfo ?: return@forEach
+            }
 
             val key = showInfo.first
             val showPath = showInfo.second
@@ -316,25 +322,11 @@ class ScrapeEngine(
         items.map { item ->
             async(Dispatchers.IO) {
                 try {
-                    val existing = existingData.find { it.path == item.path }
-                    if (existing != null && existing.tmdbId != null) {
-                        Log.d(TAG, "Already exists: ${item.name}, tmdbId=${existing.tmdbId}")
-                        return@async item.copy(
-                            poster = existing.poster,
-                            backdrop = existing.backdrop,
-                            tmdbId = existing.tmdbId,
-                            genreIds = existing.genreIds,
-                            voteAverage = existing.voteAverage,
-                            releaseTime = existing.releaseTime,
-                            overview = existing.overview
-                        )
-                    }
-
                     if (storage != null) {
                         val nfoContent = ScrapeFileManager.readNfo(storage, item.path, item.name, type)
                         if (nfoContent != null) {
                             val nfoData = NfoReader.parseNfo(nfoContent)
-                            if (nfoData != null && nfoData.tmdbId != null) {
+                            if (nfoData != null) {
                                 Log.d(TAG, "Found NFO: ${item.name}, tmdbId=${nfoData.tmdbId}")
                                 return@async item.copy(
                                     poster = nfoData.thumb,
@@ -347,6 +339,20 @@ class ScrapeEngine(
                                 )
                             }
                         }
+                    }
+
+                    val existing = existingData.find { it.path == item.path }
+                    if (existing != null && existing.tmdbId != null) {
+                        Log.d(TAG, "Already exists: ${item.name}, tmdbId=${existing.tmdbId}")
+                        return@async item.copy(
+                            poster = existing.poster,
+                            backdrop = existing.backdrop,
+                            tmdbId = existing.tmdbId,
+                            genreIds = existing.genreIds,
+                            voteAverage = existing.voteAverage,
+                            releaseTime = existing.releaseTime,
+                            overview = existing.overview
+                        )
                     }
 
                     val query = FileNameParser.handleSeasonName(item.name) ?: item.name
@@ -465,6 +471,28 @@ class ScrapeEngine(
         }
     }
 
+    fun extractSeasonNumberFromFileName(fileName: String): Int {
+        val name = fileName.substringBeforeLast('.')
+        val patterns = listOf(
+            Regex("""[Ss](\d{1,2})[Ee]\d{1,3}"""),
+            Regex("""(\d{1,2})x(\d{1,3})""")
+        )
+        for (pattern in patterns) {
+            val match = pattern.find(name)
+            if (match != null) {
+                val season = match.groupValues[1].toIntOrNull()
+                if (season != null && season in 1..99) return season
+            }
+        }
+        val seasonPattern = Regex("""[Ss](\d{1,2})(?:\b|[^Ee])""")
+        val seasonMatch = seasonPattern.find(name)
+        if (seasonMatch != null) {
+            val season = seasonMatch.groupValues[1].toIntOrNull()
+            if (season != null && season in 1..99) return season
+        }
+        return 1
+    }
+
     fun extractEpisodeNumber(fileName: String): Int {
         val name = fileName.substringBeforeLast('.')
         val patterns = listOf(
@@ -499,11 +527,12 @@ class ScrapeEngine(
         videoFiles.forEach { file ->
             val fileName = file.fileName()
             val epNumber = extractEpisodeNumber(fileName)
+            val seasonNumber = extractSeasonNumberFromFileName(fileName)
             episodes.add(
                 EpisodeFileInfo(
                     fileName = fileName,
                     filePath = file.storagePath(),
-                    seasonNumber = 1,
+                    seasonNumber = seasonNumber,
                     episodeNumber = epNumber,
                     fileSize = file.fileLength()
                 )

@@ -81,7 +81,10 @@ class TmdbRepository {
                     Log.d(TAG, "Found result with year: ${matched.title ?: matched.name}")
                     return (matched.media_type ?: "movie") to result
                 }
-            } catch (_: Exception) { }
+                Log.d(TAG, "Attempt 1 (zh-CN+year): no results returned for query=$cleanQuery")
+            } catch (e: Exception) {
+                Log.w(TAG, "Attempt 1 (zh-CN+year) failed: ${e.message}", e)
+            }
         }
 
         try {
@@ -93,7 +96,10 @@ class TmdbRepository {
                 Log.d(TAG, "Found result without year: ${matched.title ?: matched.name}")
                 return (matched.media_type ?: "movie") to result
             }
-        } catch (_: Exception) { }
+            Log.d(TAG, "Attempt 2 (zh-CN): no results returned for query=$cleanQuery")
+        } catch (e: Exception) {
+            Log.w(TAG, "Attempt 2 (zh-CN) failed: ${e.message}", e)
+        }
 
         val titleWithoutYear = cleanQuery.replace(Regex("""[\(\[（]?(19\d{2}|20\d{2})[\)\]）]?"""), "").trim()
         if (titleWithoutYear.isNotEmpty() && titleWithoutYear != cleanQuery) {
@@ -106,7 +112,10 @@ class TmdbRepository {
                     Log.d(TAG, "Found result with cleaned title: ${matched.title ?: matched.name}")
                     return (matched.media_type ?: "movie") to result
                 }
-            } catch (_: Exception) { }
+                Log.d(TAG, "Attempt 3 (cleaned title): no results returned for query=$titleWithoutYear")
+            } catch (e: Exception) {
+                Log.w(TAG, "Attempt 3 (cleaned title) failed: ${e.message}", e)
+            }
         }
 
         try {
@@ -118,8 +127,12 @@ class TmdbRepository {
                 Log.d(TAG, "Found result with en-US: ${matched.title ?: matched.name}")
                 return (matched.media_type ?: "movie") to result
             }
-        } catch (_: Exception) { }
+            Log.d(TAG, "Attempt 4 (en-US): no results returned for query=$cleanQuery")
+        } catch (e: Exception) {
+            Log.w(TAG, "Attempt 4 (en-US) failed: ${e.message}", e)
+        }
 
+        Log.w(TAG, "All 4 search attempts failed for query=$cleanQuery, year=$year")
         return "movie" to TmdbSearchResponse(results = emptyList())
     }
 
@@ -147,7 +160,13 @@ class TmdbRepository {
     }
 
     fun buildImageUrl(path: String?, width: String = "w300_and_h450_bestv2"): String? {
-        return path?.let { "$TMDB_IMG_DOMAIN/t/p/$width$it" }
+        return path?.let {
+            if (it.startsWith("http://") || it.startsWith("https://")) {
+                it
+            } else {
+                "$TMDB_IMG_DOMAIN/t/p/$width$it"
+            }
+        }
     }
 
     suspend fun testConnection(apiKey: String): String {

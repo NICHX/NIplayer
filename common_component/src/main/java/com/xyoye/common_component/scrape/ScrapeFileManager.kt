@@ -9,6 +9,11 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
+data class LocalImageResult(
+    val posterPath: String?,
+    val fanartPath: String?
+)
+
 object ScrapeFileManager {
 
     private val httpClient = OkHttpClient.Builder()
@@ -78,24 +83,61 @@ object ScrapeFileManager {
         movieName: String,
         mediaType: String
     ): String? = withContext(Dispatchers.IO) {
-        val nfoFileName = if (mediaType == "movie") {
-            "${movieName}.nfo"
-        } else {
-            "tvshow.nfo"
-        }
         val saveDir = extractSaveDirectory(entityPath, mediaType)
-        val nfoPath = normalizePath(saveDir, nfoFileName)
+        val candidates = mutableListOf<String>()
 
-        if (!storage.fileExists(nfoPath)) return@withContext null
-
-        try {
-            val nfoFile = storage.pathFile(nfoPath, false) ?: return@withContext null
-            val inputStream = storage.openFile(nfoFile) ?: return@withContext null
-            inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        } catch (e: Exception) {
-            Log.e("ScrapeFileManager", "readNfo failed: $nfoPath", e)
-            null
+        if (mediaType == "movie") {
+            candidates.add("${movieName}.nfo")
+            candidates.add("movie.nfo")
+        } else {
+            candidates.add("tvshow.nfo")
         }
+
+        for (nfoFileName in candidates) {
+            val nfoPath = normalizePath(saveDir, nfoFileName)
+            if (!storage.fileExists(nfoPath)) continue
+            try {
+                val nfoFile = storage.pathFile(nfoPath, false) ?: continue
+                val inputStream = storage.openFile(nfoFile) ?: continue
+                return@withContext inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            } catch (e: Exception) {
+                Log.w("ScrapeFileManager", "readNfo attempt failed: $nfoPath", e)
+            }
+        }
+        return@withContext null
+    }
+
+    suspend fun findLocalImages(
+        storage: Storage,
+        entityPath: String,
+        movieName: String,
+        mediaType: String
+    ): LocalImageResult = withContext(Dispatchers.IO) {
+        val saveDir = extractSaveDirectory(entityPath, mediaType)
+
+        val posterNames = if (mediaType == "movie") {
+            listOf("${movieName}-poster.jpg", "${movieName}-folder.jpg", "poster.jpg", "folder.jpg")
+        } else {
+            listOf("poster.jpg", "folder.jpg")
+        }
+
+        val fanartNames = if (mediaType == "movie") {
+            listOf("${movieName}-fanart.jpg", "fanart.jpg")
+        } else {
+            listOf("fanart.jpg")
+        }
+
+        val posterPath = posterNames.firstOrNull { name ->
+            val path = normalizePath(saveDir, name)
+            storage.fileExists(path)
+        }?.let { normalizePath(saveDir, it) }
+
+        val fanartPath = fanartNames.firstOrNull { name ->
+            val path = normalizePath(saveDir, name)
+            storage.fileExists(path)
+        }?.let { normalizePath(saveDir, it) }
+
+        LocalImageResult(posterPath, fanartPath)
     }
 
     private fun extractSaveDirectory(entityPath: String, mediaType: String): String {
