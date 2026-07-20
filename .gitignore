@@ -16,3 +16,4 @@ keystore.properties
 CODE_WIKI.md
 /docs
 /gradle/cert
+.DS_Store
