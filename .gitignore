@@ -17,3 +17,6 @@ CODE_WIKI.md
 /docs
 /gradle/cert
 .DS_Store
+
+# 重构新仓库（v2）独立 git 仓库，不纳入旧仓库跟踪
+/v2/
