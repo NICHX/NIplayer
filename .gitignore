@@ -20,3 +20,6 @@ CODE_WIKI.md
 
 # 重构新仓库（v2）独立 git 仓库，不纳入旧仓库跟踪
 /v2/
+
+# media3 FFmpeg 扩展编译工作区（临时）
+/.media3-build/
