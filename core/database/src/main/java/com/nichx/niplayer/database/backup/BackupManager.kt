@@ -12,6 +12,8 @@ import com.nichx.niplayer.database.entity.ExtendFolderEntity
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.entity.QuickAccessEntity
 import com.nichx.niplayer.database.entity.VideoBookmarkEntity
+import com.nichx.niplayer.datastore.LrcApiSettings
+import com.nichx.niplayer.datastore.SubtitleSettings
 import com.squareup.moshi.FromJson
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
@@ -30,6 +32,11 @@ data class BackupData(
     val videoBookmarks: List<VideoBookmarkEntity> = emptyList(),
     val extendFolders: List<ExtendFolderEntity> = emptyList(),
     val encryptedFolders: List<EncryptedFolderEntity> = emptyList(),
+    // 在线歌词/音乐 API 配置（LrcApiSettings）
+    val lrcApiUrl: String = "",
+    val lrcApiAuth: String = "",
+    // Assrt 字幕搜索 API token（SubtitleSettings.assrtToken）
+    val assrtToken: String = "",
 )
 
 /** 备份摘要，供 UI 展示。 */
@@ -39,6 +46,8 @@ data class BackupSummary(
     val videoBookmarks: Int,
     val extendFolders: Int,
     val encryptedFolders: Int,
+    val lrcApiConfigured: Boolean = false,
+    val assrtConfigured: Boolean = false,
 )
 
 /** Date <-> Long 时间戳适配器。 */
@@ -73,6 +82,10 @@ class BackupManager @Inject constructor(
             videoBookmarks = videoBookmarkDao.getAll(),
             extendFolders = extendFolderDao.getAll(),
             encryptedFolders = encryptedFolderDao.getAll(),
+            // MMKV 设置随备份导出：音乐/LRC API 与 Assrt token
+            lrcApiUrl = LrcApiSettings.apiUrl,
+            lrcApiAuth = LrcApiSettings.apiAuth,
+            assrtToken = SubtitleSettings.assrtToken,
         )
         return adapter.toJson(data)
     }
@@ -98,7 +111,10 @@ class BackupManager @Inject constructor(
             data.quickAccesses.isEmpty() &&
             data.videoBookmarks.isEmpty() &&
             data.extendFolders.isEmpty() &&
-            data.encryptedFolders.isEmpty()
+            data.encryptedFolders.isEmpty() &&
+            data.lrcApiUrl.isBlank() &&
+            data.lrcApiAuth.isBlank() &&
+            data.assrtToken.isBlank()
         ) {
             throw IllegalArgumentException("备份文件为空或内容无效")
         }
@@ -142,12 +158,26 @@ class BackupManager @Inject constructor(
             }
         }
 
+        // MMKV 设置恢复：仅当备份内配置非空时覆盖，避免旧版备份（无这些字段）
+        // 恢复时误清空当前设备上已配置的音乐 API 与 Assrt token
+        if (data.lrcApiUrl.isNotBlank()) {
+            LrcApiSettings.apiUrl = data.lrcApiUrl
+        }
+        if (data.lrcApiAuth.isNotBlank()) {
+            LrcApiSettings.apiAuth = data.lrcApiAuth
+        }
+        if (data.assrtToken.isNotBlank()) {
+            SubtitleSettings.assrtToken = data.assrtToken
+        }
+
         return BackupSummary(
             mediaLibraries = data.mediaLibraries.size,
             quickAccesses = data.quickAccesses.size,
             videoBookmarks = data.videoBookmarks.size,
             extendFolders = data.extendFolders.size,
             encryptedFolders = data.encryptedFolders.size,
+            lrcApiConfigured = data.lrcApiUrl.isNotBlank() || data.lrcApiAuth.isNotBlank(),
+            assrtConfigured = data.assrtToken.isNotBlank(),
         )
     }
 

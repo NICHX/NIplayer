@@ -57,8 +57,27 @@
 -keep class coil3.** { *; }
 
 # -----------------------------------------------------------------------------
+# Moshi（备份/恢复 JSON 序列化）
+# -----------------------------------------------------------------------------
+# codegen 生成的适配器在运行时通过反射调用 @FromJson/@ToJson 方法（如 BackupManager 的
+# DateAdapter），需保留这些方法及其宿主类，否则 Moshi 序列化备份数据时找不到适配器。
+-keepclasseswithmembers class * {
+    @com.squareup.moshi.FromJson <methods>;
+    @com.squareup.moshi.ToJson <methods>;
+}
+-keepclasseswithmembers class * {
+    @com.squareup.moshi.JsonQualifier *;
+}
+
+# -----------------------------------------------------------------------------
 # 第三方杂项
 # -----------------------------------------------------------------------------
+# BouncyCastle（jcifs SMB：NTLM 认证 MD4、SMB3 签名 AES-CMAC、SMB3 加密 AES-CCM/GCM）
+# Android 系统内置 BC 为裁剪版（无 MD4），jcifs 依赖完整版 bcprov 的 JCA provider 与
+# low-level crypto API（AESEngine/CCMBlockCipher/HMac 等直接 new），必须完整保留，
+# 否则 SMB 连接抛 NoSuchAlgorithmException: MD4 / AESCMAC 或 NoClassDefFoundError。
+-keep class org.bouncycastle.** { *; }
+-dontwarn org.bouncycastle.**
 # jsoup（字幕/歌词 HTML 解析）
 -keep class org.jsoup.** { *; }
 -dontwarn org.jsoup.**
@@ -85,8 +104,12 @@
 # -----------------------------------------------------------------------------
 # 枚举
 # -----------------------------------------------------------------------------
-# 枚举的 values()/valueOf() 依赖反射，保留以避免 EnumFieldNotFoundException
+# 枚举的 values()/valueOf() 依赖反射，保留以避免 EnumFieldNotFoundException。
+# 枚举常量字段（<fields>）同样必须保留：Moshi EnumJsonAdapter 会按源码常量名
+# （Class.getField）反射解析枚举（如 MediaType.LOCAL_STORAGE），R8 若重命名常量
+# 会在启动时抛 NoSuchFieldException: LOCAL_STORAGE 导致闪退。
 -keepclassmembers enum * {
+    <fields>;
     public static **[] values();
     public static ** valueOf(java.lang.String);
 }
