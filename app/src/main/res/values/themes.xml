@@ -1,0 +1,5 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 应用主主题 -->
+    <style name="Theme.NIplayer" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

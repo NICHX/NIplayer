@@ -1,0 +1,1 @@
+# NIplayer consumer ProGuard rules
