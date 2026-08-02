@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -87,7 +88,7 @@ fun PlayHistoryScreen(
     }
 
     val grouped = displayHistory.groupBy {
-        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it.playTime.time))
+        SimpleDateFormat("yyyy-MM-dd", LocalConfiguration.current.locales[0]).format(Date(it.playTime.time))
     }
 
     val hasHistory = allHistory.isNotEmpty()
