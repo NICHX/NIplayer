@@ -1,6 +1,8 @@
 package com.nichx.niplayer.player.kernel.media3
 
 import android.content.Context
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 
 /**
@@ -19,6 +21,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
  * 会导致重复注册。ExoPlayer 按顺序选第一个支持的，第二个永远不启用，浪费对象与初始化成本。
  * 现移除手动 add，仅依赖父类的 EXTENSION_RENDERER_MODE_PREFER 自动注册。
  */
+@OptIn(UnstableApi::class)
 class FfmpegRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
 
     init {
