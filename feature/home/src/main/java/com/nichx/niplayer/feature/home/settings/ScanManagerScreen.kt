@@ -1,0 +1,375 @@
+package com.nichx.niplayer.feature.home.settings
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.FloatingActionButton
+import com.nichx.niplayer.designsystem.components.NiConfirmDialog
+import com.nichx.niplayer.designsystem.components.NiInfoDialog
+import com.nichx.niplayer.designsystem.components.NiTextField
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHostState
+import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nichx.niplayer.datastore.VideoExtensionSettings
+import com.nichx.niplayer.designsystem.components.NiTopBar
+import com.nichx.niplayer.designsystem.theme.NiExtraColors
+
+/**
+ * 扫描目录管理页。
+ *
+ * 替代旧仓库 `ScanManagerActivity`（ViewPager + FragmentPagerAdapter + 两个 Fragment），
+ * v2 用 Compose [TabRow] + 单一 [ScanManagerViewModel] 实现。
+ *
+ * 两个 Tab：
+ * - **扫描目录**：管理用户手动添加的扩展扫描目录（extend_folder 表）。添加时输入路径，
+ *   [VideoScanner] 扫描入库；删除时清理该目录视频并重新扫描剩余目录。
+ * - **屏蔽目录**：按 folder_path 屏蔽/取消屏蔽（更新 video 表 filter 字段，filter=true
+ *   的目录不在 [com.nichx.niplayer.storage.impl.VideoStorage] 根目录列表中显示）。
+ *
+ * 顶栏右侧提供视频扩展名配置入口（[VideoExtensionSettings]），影响扩展目录扫描的
+ * 文件识别。
+ *
+ * @param onBack 返回回调
+ */
+@Composable
+fun ScanManagerScreen(
+    onBack: () -> Unit = {},
+) {
+    val viewModel: ScanManagerViewModel = hiltViewModel()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val toastMessage by viewModel.toastMessage.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showExtensionDialog by remember { mutableStateOf(false) }
+    var folderToDelete by remember { mutableStateOf<com.nichx.niplayer.database.entity.ExtendFolderEntity?>(null) }
+
+    // Toast 消息 → Snackbar
+    LaunchedEffect(toastMessage) {
+        toastMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.consumeToast()
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            NiTopBar(
+                title = "扫描目录管理",
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showExtensionDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = "视频扩展名配置",
+                        )
+                    }
+                },
+            )
+        },
+        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState) },
+        floatingActionButton = {
+            if (selectedTab == 0) {
+                FloatingActionButton(onClick = { showAddDialog = true }) {
+                    Icon(Icons.Filled.Add, contentDescription = "添加扫描目录")
+                }
+            }
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            PrimaryTabRow(selectedTabIndex = selectedTab) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("扫描目录") },
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("屏蔽目录") },
+                )
+            }
+
+            when (selectedTab) {
+                0 -> ExtendFolderTab(
+                    folders = uiState.extendFolders,
+                    onDelete = { folderToDelete = it },
+                )
+                1 -> FilterFolderTab(
+                    folders = uiState.filterFolders,
+                    onToggle = viewModel::toggleFolderFilter,
+                )
+            }
+        }
+    }
+
+    // ---- 添加扩展目录对话框 ----
+    if (showAddDialog) {
+        var path by rememberSaveable { mutableStateOf("") }
+        NiInfoDialog(
+            title = "添加扫描目录",
+            onDismiss = { showAddDialog = false },
+            actions = {
+                TextButton(onClick = { showAddDialog = false }) { Text("取消") }
+                TextButton(
+                    onClick = {
+                        viewModel.addExtendFolder(path)
+                        showAddDialog = false
+                    },
+                ) { Text("添加") }
+            },
+        ) {
+            Text(
+                text = "输入要扫描的目录绝对路径，如 /sdcard/Movies/anime",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.size(8.dp))
+            NiTextField(
+                value = path,
+                onValueChange = { path = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = "目录路径",
+            )
+        }
+    }
+
+    // ---- 删除确认对话框 ----
+    folderToDelete?.let { entity ->
+        NiConfirmDialog(
+            title = "移除扫描目录",
+            text = "确定移除以下目录吗？该目录下的视频将从本地媒体库中删除。\n\n${entity.folderPath}",
+            onConfirm = {
+                viewModel.removeExtendFolder(entity)
+                folderToDelete = null
+            },
+            onDismiss = { folderToDelete = null },
+            confirmText = "移除",
+        )
+    }
+
+    // ---- 视频扩展名配置对话框 ----
+    if (showExtensionDialog) {
+        var extensionText by rememberSaveable {
+            mutableStateOf(VideoExtensionSettings.supportText)
+        }
+        NiInfoDialog(
+            title = "支持的视频扩展名",
+            onDismiss = { showExtensionDialog = false },
+            actions = {
+                TextButton(onClick = {
+                    VideoExtensionSettings.resetDefault()
+                    extensionText = VideoExtensionSettings.supportText
+                }) { Text("重置") }
+                TextButton(onClick = { showExtensionDialog = false }) { Text("取消") }
+                TextButton(
+                    onClick = {
+                        VideoExtensionSettings.supportText = extensionText
+                        showExtensionDialog = false
+                    },
+                ) { Text("保存") }
+            },
+        ) {
+            Text(
+                text = "逗号分隔，不含点号。影响扩展目录扫描的文件识别。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.size(8.dp))
+            NiTextField(
+                value = extensionText,
+                onValueChange = { extensionText = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = "如：mp4,mkv,avi",
+            )
+        }
+    }
+}
+
+/** 扫描目录 Tab：展示扩展目录列表。 */
+@Composable
+private fun ExtendFolderTab(
+    folders: List<com.nichx.niplayer.database.entity.ExtendFolderEntity>,
+    onDelete: (com.nichx.niplayer.database.entity.ExtendFolderEntity) -> Unit,
+) {
+    if (folders.isEmpty()) {
+        EmptyStateHint(text = "暂无扫描目录\n点击右下角 + 添加要扫描的目录")
+        return
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+    ) {
+        items(
+            count = folders.size,
+            key = { index -> folders[index].folderPath },
+        ) { index ->
+            val folder = folders[index]
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NiExtraColors.current.surfaceLevel2),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = folder.folderPath,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = "${folder.childCount} 个视频",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(onClick = { onDelete(folder) }) {
+                        Icon(
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = "移除",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+            if (index < folders.size - 1) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 56.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                )
+            }
+        }
+    }
+}
+
+/** 屏蔽目录 Tab：展示所有扫描到的目录，Switch 切换屏蔽状态。 */
+@Composable
+private fun FilterFolderTab(
+    folders: List<com.nichx.niplayer.database.bean.FolderBean>,
+    onToggle: (com.nichx.niplayer.database.bean.FolderBean) -> Unit,
+) {
+    if (folders.isEmpty()) {
+        EmptyStateHint(text = "暂无扫描结果\n扫描本地视频后可在此屏蔽目录")
+        return
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+    ) {
+        items(
+            count = folders.size,
+            key = { index -> folders[index].folderPath },
+        ) { index ->
+            val folder = folders[index]
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NiExtraColors.current.surfaceLevel2),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = folder.folderPath,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = "${folder.fileCount} 个视频",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = folder.isFilter,
+                        onCheckedChange = { onToggle(folder) },
+                    )
+                }
+            }
+            if (index < folders.size - 1) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 56.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                )
+            }
+        }
+    }
+}
+
+/** 空状态提示。 */
+@Composable
+private fun EmptyStateHint(text: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+    }
+}

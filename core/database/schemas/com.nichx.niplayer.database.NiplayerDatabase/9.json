@@ -1,0 +1,653 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 9,
+    "identityHash": "6bb7e671b3014cb64406eb243206c5b1",
+    "entities": [
+      {
+        "tableName": "video",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `file_id` INTEGER NOT NULL, `file_path` TEXT NOT NULL, `folder_path` TEXT NOT NULL, `subtitle_path` TEXT, `video_duration` INTEGER NOT NULL, `file_length` INTEGER NOT NULL, `filter` INTEGER NOT NULL, `extend` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileId",
+            "columnName": "file_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "filePath",
+            "columnName": "file_path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "folderPath",
+            "columnName": "folder_path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subtitlePath",
+            "columnName": "subtitle_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "videoDuration",
+            "columnName": "video_duration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileLength",
+            "columnName": "file_length",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isFilter",
+            "columnName": "filter",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isExtend",
+            "columnName": "extend",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_video_file_path",
+            "unique": true,
+            "columnNames": [
+              "file_path"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_video_file_path` ON `${TABLE_NAME}` (`file_path`)"
+          }
+        ]
+      },
+      {
+        "tableName": "media_library",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `display_name` TEXT NOT NULL, `url` TEXT NOT NULL, `media_type` TEXT NOT NULL, `account` TEXT, `password` TEXT, `domain` TEXT, `is_anonymous` INTEGER NOT NULL, `port` INTEGER NOT NULL, `describe` TEXT, `smb_v2` INTEGER NOT NULL, `smb_share_path` TEXT, `smb_encryption` INTEGER NOT NULL, `remote_secret` TEXT, `web_dav_strict` INTEGER NOT NULL, `screencast_address` TEXT NOT NULL, `updated_at` INTEGER NOT NULL DEFAULT 0)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mediaType",
+            "columnName": "media_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "account",
+            "columnName": "account",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "password",
+            "columnName": "password",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "domain",
+            "columnName": "domain",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isAnonymous",
+            "columnName": "is_anonymous",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "port",
+            "columnName": "port",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "describe",
+            "columnName": "describe",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "smbV2",
+            "columnName": "smb_v2",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "smbSharePath",
+            "columnName": "smb_share_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "smbEncryption",
+            "columnName": "smb_encryption",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteSecret",
+            "columnName": "remote_secret",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "webDavStrict",
+            "columnName": "web_dav_strict",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "screencastAddress",
+            "columnName": "screencast_address",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_media_library_url_media_type",
+            "unique": true,
+            "columnNames": [
+              "url",
+              "media_type"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_media_library_url_media_type` ON `${TABLE_NAME}` (`url`, `media_type`)"
+          }
+        ]
+      },
+      {
+        "tableName": "play_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `video_name` TEXT NOT NULL, `url` TEXT NOT NULL, `media_type` TEXT NOT NULL, `video_position` INTEGER NOT NULL, `video_duration` INTEGER NOT NULL, `play_time` INTEGER NOT NULL, `subtitle_path` TEXT, `torrent_path` TEXT, `torrent_index` INTEGER NOT NULL, `http_header` TEXT, `unique_key` TEXT NOT NULL, `storage_path` TEXT, `storage_id` INTEGER, `audio_path` TEXT, `updated_at` INTEGER NOT NULL DEFAULT 0)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "videoName",
+            "columnName": "video_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mediaType",
+            "columnName": "media_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "videoPosition",
+            "columnName": "video_position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "videoDuration",
+            "columnName": "video_duration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playTime",
+            "columnName": "play_time",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subtitlePath",
+            "columnName": "subtitle_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "torrentPath",
+            "columnName": "torrent_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "torrentIndex",
+            "columnName": "torrent_index",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "httpHeader",
+            "columnName": "http_header",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "uniqueKey",
+            "columnName": "unique_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "storagePath",
+            "columnName": "storage_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "storageId",
+            "columnName": "storage_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "audioPath",
+            "columnName": "audio_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_play_history_unique_key_storage_id",
+            "unique": true,
+            "columnNames": [
+              "unique_key",
+              "storage_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_play_history_unique_key_storage_id` ON `${TABLE_NAME}` (`unique_key`, `storage_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "extend_folder",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`folder_path` TEXT NOT NULL, `child_count` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`folder_path`))",
+        "fields": [
+          {
+            "fieldPath": "folderPath",
+            "columnName": "folder_path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "childCount",
+            "columnName": "child_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "folder_path"
+          ]
+        }
+      },
+      {
+        "tableName": "download_task",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `storage_id` INTEGER NOT NULL, `file_name` TEXT NOT NULL, `file_path` TEXT NOT NULL, `unique_key` TEXT NOT NULL, `total_bytes` INTEGER NOT NULL, `downloaded_bytes` INTEGER NOT NULL, `state` INTEGER NOT NULL, `error_message` TEXT, `target_storage_url` TEXT, `target_storage_name` TEXT, `create_time` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL DEFAULT 0)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "storageId",
+            "columnName": "storage_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "file_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "filePath",
+            "columnName": "file_path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uniqueKey",
+            "columnName": "unique_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalBytes",
+            "columnName": "total_bytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downloadedBytes",
+            "columnName": "downloaded_bytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "errorMessage",
+            "columnName": "error_message",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "targetStorageUrl",
+            "columnName": "target_storage_url",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "targetStorageName",
+            "columnName": "target_storage_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createTime",
+            "columnName": "create_time",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "quick_access",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `storage_path` TEXT NOT NULL, `is_directory` INTEGER NOT NULL, `library_id` INTEGER NOT NULL, `add_time` INTEGER NOT NULL, `sort_index` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL DEFAULT 0)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "storagePath",
+            "columnName": "storage_path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDirectory",
+            "columnName": "is_directory",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "libraryId",
+            "columnName": "library_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addTime",
+            "columnName": "add_time",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortIndex",
+            "columnName": "sort_index",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_quick_access_library_id_storage_path",
+            "unique": true,
+            "columnNames": [
+              "library_id",
+              "storage_path"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_quick_access_library_id_storage_path` ON `${TABLE_NAME}` (`library_id`, `storage_path`)"
+          }
+        ]
+      },
+      {
+        "tableName": "sync_delete_log",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `table_name` TEXT NOT NULL, `record_key` TEXT NOT NULL, `deleted_at` INTEGER NOT NULL, `synced` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tableName",
+            "columnName": "table_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordKey",
+            "columnName": "record_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deletedAt",
+            "columnName": "deleted_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "synced",
+            "columnName": "synced",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sync_delete_log_table_name_record_key",
+            "unique": true,
+            "columnNames": [
+              "table_name",
+              "record_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_delete_log_table_name_record_key` ON `${TABLE_NAME}` (`table_name`, `record_key`)"
+          }
+        ]
+      },
+      {
+        "tableName": "video_bookmark",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `unique_key` TEXT NOT NULL, `storage_id` INTEGER, `video_name` TEXT NOT NULL, `position_ms` INTEGER NOT NULL, `label` TEXT, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL DEFAULT 0)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uniqueKey",
+            "columnName": "unique_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "storageId",
+            "columnName": "storage_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "videoName",
+            "columnName": "video_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "positionMs",
+            "columnName": "position_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "label",
+            "columnName": "label",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_video_bookmark_unique_key_storage_id_position_ms",
+            "unique": true,
+            "columnNames": [
+              "unique_key",
+              "storage_id",
+              "position_ms"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_video_bookmark_unique_key_storage_id_position_ms` ON `${TABLE_NAME}` (`unique_key`, `storage_id`, `position_ms`)"
+          },
+          {
+            "name": "index_video_bookmark_unique_key_storage_id",
+            "unique": false,
+            "columnNames": [
+              "unique_key",
+              "storage_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_video_bookmark_unique_key_storage_id` ON `${TABLE_NAME}` (`unique_key`, `storage_id`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6bb7e671b3014cb64406eb243206c5b1')"
+    ]
+  }
+}
