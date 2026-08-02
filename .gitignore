@@ -15,3 +15,4 @@ keystore.properties
 *.jks
 !app/debug.keystore
 !gradle/wrapper/gradle-wrapper.jar
+/docs
