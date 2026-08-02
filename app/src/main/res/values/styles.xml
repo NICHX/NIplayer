@@ -1,9 +1,0 @@
-<resources>
-
-    <style name="SplashTheme" parent="@style/Theme.AppCompat.Light.NoActionBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowContentOverlay">@null</item>
-        <item name="android:windowShowWallpaper">true</item>
-        <item name="android:windowAnimationStyle">@style/ActivityAnimStyle</item>
-    </style>
-</resources>

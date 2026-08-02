@@ -1,3 +1,0 @@
-#https://github.com/bilibili/DanmakuFlameMaster
-Copyright (C) 2013-2015 Chen Hui <calmer91@gmail.com>
-Licensed under the Apache License, Version 2.0 (the "License");
