@@ -20,6 +20,7 @@ import android.view.Window
 import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -152,6 +153,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.SubtitleView
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
@@ -177,6 +179,7 @@ private val AbLoopColorB = Color(0xFFFF5252)
 private val ThumbRadius = 8.dp
 
 @Composable
+@OptIn(UnstableApi::class)
 fun PlayerScreen(
     onBack: () -> Unit = {},
     viewModel: PlayerViewModel = hiltViewModel(),

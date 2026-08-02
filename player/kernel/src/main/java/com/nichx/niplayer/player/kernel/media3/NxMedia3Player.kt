@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.view.Surface
+import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -16,6 +17,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize as M3VideoSize
 import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
@@ -79,6 +81,7 @@ import javax.net.ssl.X509TrustManager
  *
  * 生命周期：实例由调用方持有（通常 PlayerViewModel 在 onCleared 中调用 [release]）。
  */
+@OptIn(UnstableApi::class)
 class NxMedia3Player @Inject constructor(
     @ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient,

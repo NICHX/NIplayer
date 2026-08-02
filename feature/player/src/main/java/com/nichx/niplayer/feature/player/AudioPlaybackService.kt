@@ -11,17 +11,20 @@ import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
+import androidx.annotation.OptIn
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import android.support.v4.media.session.MediaSessionCompat
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
+@OptIn(UnstableApi::class)
 @AndroidEntryPoint
 class AudioPlaybackService : MediaSessionService() {
 
