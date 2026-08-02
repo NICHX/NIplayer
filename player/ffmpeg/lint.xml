@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  lint 配置：本模块为 media3 官方 FFmpeg 扩展（androidx.media3.decoder.ffmpeg）的上游代码移植，
+  大量使用 @UnstableApi 声明。上游代码已按官方约定使用 @OptIn 处理，lint 的 UnsafeOptInUsageError
+  对官方扩展属于误报，此处禁用；其余 lint 规则保持开启。
+-->
+<lint>
+    <issue id="UnsafeOptInUsageError">
+        <ignore path="src/main/java/androidx/media3/decoder/ffmpeg" />
+    </issue>
+</lint>
