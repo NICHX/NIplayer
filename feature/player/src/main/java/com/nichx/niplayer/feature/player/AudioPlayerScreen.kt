@@ -1,7 +1,7 @@
 package com.nichx.niplayer.feature.player
 
 import android.content.pm.ActivityInfo
-import android.app.Activity
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -124,7 +124,7 @@ fun AudioPlayerScreen(
     var showPlaylist by remember { mutableStateOf(false) }
 
     // 锁定竖屏，进入音频播放页时强制竖屏，退出时恢复原始方向
-    val activity = LocalContext.current as? Activity
+    val activity = LocalActivity.current
     DisposableEffect(activity) {
         val originalOrientation = activity?.requestedOrientation
             ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
