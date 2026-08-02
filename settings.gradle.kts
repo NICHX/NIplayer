@@ -1,12 +1,38 @@
-rootProject.name="NIplayer"
+pluginManagement {
+    repositories {
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}
 
+rootProject.name = "NIplayer-v2"
 include(":app")
-include(":local_component")
-include(":user_component")
-include(":storage_component")
-include(":player_component")
-include(":common_component")
-include(":data_component")
+include(":core:subtitle")
+include(":core:common")
+include(":core:database")
+include(":core:network")
+include(":core:datastore")
+include(":core:navigation")
+include(":core:storage")
+include(":core:designsystem")
+include(":core:thumbnail")
+include(":player:kernel")
+include(":player:ffmpeg")
+include(":feature:player")
+include(":feature:home")
 
-include(":repository:panel_switch")
-include(":repository:seven_zip")
