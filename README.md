@@ -4,7 +4,7 @@
 ![Language](https://img.shields.io/badge/Language-Kotlin-7F52FF)
 ![UI](https://img.shields.io/badge/UI-Compose%20%2B%20Material%203-4285F4)
 ![Player](https://img.shields.io/badge/Player-Media3-1DB954)
-![API](https://img.shields.io/badge/API-26%2B-brightgreen)
+![Android](https://img.shields.io/badge/Android-8.0%2B-orange)
 ![License](https://img.shields.io/badge/License-Apache%202.0-red)
 
 > **一站式媒体播放体验** —— 统一访问本地 / SAF / SMB / WebDAV 四类存储，轻松播放视频、音频与图片，内置专业级播放控制、ASS 特效字幕引擎与后台音频服务。完全重构自 [NIplayer v1.x](https://github.com/nichx/NIplayer)。
@@ -108,6 +108,7 @@
 
 | 类别 | 选型 |
 |------|------|
+| 支持版本 | Android 8.0（API 26）及以上 |
 | 语言 | Kotlin + Coroutines |
 | UI | Jetpack Compose (Material 3) |
 | 播放器 | Media3 (ExoPlayer) + FFmpeg 软解扩展 |
