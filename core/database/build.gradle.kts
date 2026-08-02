@@ -38,6 +38,9 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
 
+    // MMKV 设置持久化（备份/恢复需导出 LRC API、Assrt 等设置）
+    implementation(project(":core:datastore"))
+
     // Room
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

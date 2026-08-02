@@ -50,7 +50,9 @@ import com.nichx.niplayer.designsystem.theme.NiExtraColors
  * v2 合并为单一页面：顶部展示应用版本，下方按分组列出所有开源依赖及其 license。
  *
  * 依赖列表硬编码（随 libs.versions.toml 同步更新），不读 assets 文件——
- * 大部分依赖为 Apache 2.0，完整 license 文本可通过依赖项的 URL 在线查看。
+ * 许可证以 Apache 2.0 为主（另有 jcifs 的 LGPL 2.1、jsoup/BouncyCastle/SLF4J 的 MIT、
+ * MMKV 的 BSD 3-Clause、juniversalchardet 的 MPL 1.1），
+ * 完整 license 文本可通过依赖项的 URL 在线查看。
  *
  * @param onBack 返回回调
  */
@@ -227,9 +229,10 @@ data class LicenseDependency(
 /**
  * 依赖分组（按功能域聚合）。
  *
- * 列表随 libs.versions.toml 同步更新。移除旧仓库的 Arouter / DanmakuFlameMaster /
- * ImmersionBar / PanelSwitchHelper / banner / nanohttpd / sardine-android / 7-Zip-JBinding
- * / glide（v2 不再使用），新增 media3 / Coil / Hilt / OkHttp / MMKV。
+ * 列表随 libs.versions.toml 同步更新。v2 相比旧仓库：移除 Arouter / DanmakuFlameMaster /
+ * ImmersionBar / PanelSwitchHelper / banner / nanohttpd / sardine-android / 7-Zip-JBinding /
+ * glide / smbj（不再使用），SMB 协议改用 jcifs + BouncyCastle；新增 media3 / Coil 3 /
+ * Hilt / OkHttp / MMKV / ComposeReorderable。
  */
 enum class LicenseGroup(
     val dependencies: List<LicenseDependency>,
@@ -238,35 +241,63 @@ enum class LicenseGroup(
         dependencies = listOf(
             LicenseDependency(
                 name = "AndroidX Media3",
-                version = "1.4.1",
+                version = "1.10.1",
                 license = "Apache 2.0",
                 url = "https://github.com/androidx/media",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
             ),
             LicenseDependency(
                 name = "AndroidX Compose",
-                version = "BOM 2024.09.02",
+                version = "BOM 2026.06.00",
                 license = "Apache 2.0",
                 url = "https://developer.android.com/jetpack/compose",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
             ),
             LicenseDependency(
                 name = "AndroidX Navigation Compose",
-                version = "2.8.1",
+                version = "2.9.8",
                 license = "Apache 2.0",
                 url = "https://developer.android.com/guide/navigation",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
             ),
             LicenseDependency(
                 name = "AndroidX Room",
-                version = "2.6.1",
+                version = "2.8.4",
                 license = "Apache 2.0",
                 url = "https://developer.android.com/jetpack/androidx/releases/room",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
             ),
             LicenseDependency(
+                name = "AndroidX Core KTX",
+                version = "1.17.0",
+                license = "Apache 2.0",
+                url = "https://developer.android.com/jetpack/androidx/releases/core",
+                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
+            ),
+            LicenseDependency(
+                name = "AndroidX Activity Compose",
+                version = "1.13.0",
+                license = "Apache 2.0",
+                url = "https://developer.android.com/jetpack/androidx/releases/activity",
+                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
+            ),
+            LicenseDependency(
+                name = "AndroidX Lifecycle",
+                version = "2.9.4",
+                license = "Apache 2.0",
+                url = "https://developer.android.com/jetpack/androidx/releases/lifecycle",
+                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
+            ),
+            LicenseDependency(
+                name = "AndroidX Media",
+                version = "1.7.0",
+                license = "Apache 2.0",
+                url = "https://developer.android.com/jetpack/androidx/releases/media",
+                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
+            ),
+            LicenseDependency(
                 name = "AndroidX DocumentFile",
-                version = "1.0.1",
+                version = "1.1.0",
                 license = "Apache 2.0",
                 url = "https://developer.android.com/reference/androidx/documentfile/provider/DocumentFile",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
@@ -277,14 +308,14 @@ enum class LicenseGroup(
         dependencies = listOf(
             LicenseDependency(
                 name = "Kotlin Coroutines",
-                version = "1.8.1",
+                version = "1.10.2",
                 license = "Apache 2.0",
                 url = "https://github.com/Kotlin/kotlinx.coroutines",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
             ),
             LicenseDependency(
                 name = "Moshi",
-                version = "1.15.1",
+                version = "1.15.2",
                 license = "Apache 2.0",
                 url = "https://github.com/square/moshi",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
@@ -312,19 +343,33 @@ enum class LicenseGroup(
     STORAGE(
         dependencies = listOf(
             LicenseDependency(
-                name = "smbj",
-                version = "0.14.0",
-                license = "Apache 2.0",
-                url = "https://github.com/hierynomus/smbj",
-                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
+                name = "jcifs",
+                version = "3.0.0",
+                license = "LGPL 2.1",
+                url = "https://github.com/codelibs/jcifs",
+                licenseUrl = "https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html",
+            ),
+            LicenseDependency(
+                name = "BouncyCastle (bcprov)",
+                version = "1.80",
+                license = "MIT",
+                url = "https://github.com/bcgit/bc-java",
+                licenseUrl = "https://www.bouncycastle.org/about/license/",
+            ),
+            LicenseDependency(
+                name = "SLF4J",
+                version = "1.7.36",
+                license = "MIT",
+                url = "https://www.slf4j.org/",
+                licenseUrl = "https://www.slf4j.org/license.html",
             ),
         ),
     ),
     MEDIA(
         dependencies = listOf(
             LicenseDependency(
-                name = "Coil",
-                version = "2.7.0",
+                name = "Coil 3",
+                version = "3.5.0",
                 license = "Apache 2.0",
                 url = "https://github.com/coil-kt/coil",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
@@ -338,10 +383,21 @@ enum class LicenseGroup(
             ),
             LicenseDependency(
                 name = "jsoup",
-                version = "1.18.1",
+                version = "1.18.3",
                 license = "MIT",
                 url = "https://github.com/jhy/jsoup",
                 licenseUrl = "https://opensource.org/licenses/MIT",
+            ),
+        ),
+    ),
+    UI(
+        dependencies = listOf(
+            LicenseDependency(
+                name = "ComposeReorderable",
+                version = "0.9.6",
+                license = "Apache 2.0",
+                url = "https://github.com/yannickpulver/ComposeReorderable",
+                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
             ),
         ),
     ),
@@ -349,14 +405,21 @@ enum class LicenseGroup(
         dependencies = listOf(
             LicenseDependency(
                 name = "Hilt / Dagger",
-                version = "2.51.1",
+                version = "2.60.1",
                 license = "Apache 2.0",
                 url = "https://github.com/google/dagger",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
             ),
             LicenseDependency(
+                name = "Hilt Navigation Compose",
+                version = "1.4.0",
+                license = "Apache 2.0",
+                url = "https://developer.android.com/jetpack/androidx/releases/hilt",
+                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
+            ),
+            LicenseDependency(
                 name = "MMKV",
-                version = "1.3.9",
+                version = "1.3.14",
                 license = "BSD 3-Clause",
                 url = "https://github.com/Tencent/MMKV",
                 licenseUrl = "https://opensource.org/licenses/BSD-3-Clause",

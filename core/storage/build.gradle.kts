@@ -43,6 +43,14 @@ dependencies {
         exclude(group = "jakarta.servlet")
         exclude(group = "jakarta.annotation")
     }
+    // jcifs 的 NTLM 认证（MD4）、SMB3 加密（AES-CCM/AES-CMAC）依赖完整版 BouncyCastle：
+    // Android 系统内置的 BC 是裁剪版（无 MD4），且 R8 会裁剪传递依赖的 bcprov 类，
+    // 此处显式引入并配合 proguard 规则完整保留 org.bouncycastle.**，否则 SMB 连接在
+    // 认证阶段抛 NoSuchAlgorithmException: MD4 / AESCMAC。
+    implementation(libs.bcprov) {
+        exclude(group = "org.bouncycastle", module = "bcutil")
+        exclude(group = "org.bouncycastle", module = "bcpkix")
+    }
     runtimeOnly(libs.slf4j.nop)
 
     // OkHttp API（WebDavStorage 直接构造 Request / Interceptor）

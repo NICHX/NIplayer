@@ -20,6 +20,7 @@ mmkv = "1.3.14"
 coil = "3.5.0"
 reorderable = "0.9.6"
 jcifs = "3.0.0"
+bouncycastle = "1.80"
 jsoup = "1.18.3"
 juniversalchardet = "2.4.0"
 slf4j = "1.7.36"
@@ -79,6 +80,7 @@ jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 juniversalchardet = { module = "com.github.albfernandez:juniversalchardet", version.ref = "juniversalchardet" }
 
 jcifs = { module = "org.codelibs:jcifs", version.ref = "jcifs" }
+bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 junit = { module = "junit:junit", version.ref = "junit" }
 

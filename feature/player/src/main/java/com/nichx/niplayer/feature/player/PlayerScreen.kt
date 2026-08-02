@@ -18,9 +18,11 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.Window
 import android.view.WindowManager
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
+import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -144,14 +146,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlin.math.roundToInt
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.math.roundToInt
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.SubtitleView
@@ -242,6 +245,10 @@ fun PlayerScreen(
     var showBookmarkDialog by rememberSaveable { mutableStateOf(false) }
     var surfaceViewRef by remember { mutableStateOf<SurfaceView?>(null) }
 
+    // 画中画模式状态：PiP 中隐藏全部播放器控件（控制栏/手势/OSD/弹窗），
+    // 仅保留视频画面与字幕，避免小窗内控件挤压遮挡（真机适配问题）
+    var isInPip by remember { mutableStateOf(activity?.isInPictureInPictureMode ?: false) }
+
     var gestureMode by remember { mutableStateOf(GestureMode.None) }
     var brightnessOsd by remember { mutableStateOf<Float?>(null) }
     var volumeOsd by remember { mutableStateOf<Float?>(null) }
@@ -302,21 +309,59 @@ fun PlayerScreen(
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
                     viewModel.saveProgress()
-                    // M-23：后台时暂停播放。PiP 场景由 ON_PAUSE 后单独的 PiP 入口处理，
-                    // 进入 PiP 前不应暂停；此处先暂停，PiP 转前台后由 ON_RESUME 决定是否恢复
-                    if (viewModel.nxPlayer.state.value is PlaybackState.Playing) {
+                    // M-23：普通退后台时暂停播放，避免后台视频继续解码消耗电池、干扰系统息屏。
+                    // 进入画中画时 activity 处于 PiP 态，此时不暂停（PiP 需保持声音连续），
+                    // 恢复大窗后由 ON_RESUME 直接继续播放
+                    val inPip = activity?.isInPictureInPictureMode == true
+                    if (!inPip && viewModel.nxPlayer.state.value is PlaybackState.Playing) {
                         viewModel.nxPlayer.pause()
                     }
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     // ON_RESUME 不自动恢复播放：用户主动从后台回来时应保持暂停态
-                    // 避免锁屏/后台→前台自动起播打扰用户
+                    // 避免锁屏/后台→前台自动起播打扰用户（PiP 恢复大窗除外：PiP 中未暂停，无需恢复）
                 }
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // PiP 模式监听：进入/退出小窗时同步 isInPip 状态。
+    // 退出 PiP 恢复大窗时显示控制栏，方便用户立即操作
+    val componentActivity = activity as? ComponentActivity
+    DisposableEffect(componentActivity) {
+        val listener = Consumer<PictureInPictureModeChangedInfo> { info ->
+            val pip = info.isInPictureInPictureMode
+            isInPip = pip
+            if (!pip) {
+                controllerVisible = true
+            }
+        }
+        componentActivity?.addOnPictureInPictureModeChangedListener(listener)
+        onDispose {
+            componentActivity?.removeOnPictureInPictureModeChangedListener(listener)
+        }
+    }
+
+    // 进入 PiP 时关闭所有打开中的弹窗：小窗内无法操作弹窗，
+    // 且弹窗会遮挡小窗画面（画中画控件适配）
+    LaunchedEffect(isInPip) {
+        if (isInPip) {
+            showSpeedMenu = false
+            showMoreMenu = false
+            showAudioTrackMenu = false
+            showSubtitleMenu = false
+            showSubtitleStyle = false
+            showSubtitleSearch = false
+            showSleepTimerDialog = false
+            showMediaInfoDrawer = false
+            showLongPressSpeedDialog = false
+            showAbLoopDialog = false
+            showPlaylistDialog = false
+            showBookmarkDialog = false
+        }
     }
 
     /**
@@ -629,6 +674,20 @@ fun PlayerScreen(
         // → 16:9 视频帧保持比例裁剪填满 2.35:1 surface，正好裁掉上下黑边，画面不变形
         val activeVideoSize = effectiveVideoSize?.takeIf { it.isValid } ?: videoSize
         val videoAspect = if (activeVideoSize.isValid) activeVideoSize.aspectRatio else 16f / 9f
+
+        // PiP 尺寸适配：小窗期间视频尺寸变化（切源/黑边检测完成/首帧渲染）时，
+        // 同步更新系统 PiP 宽高比，避免小窗始终保持进入时的单一尺寸
+        LaunchedEffect(isInPip, activeVideoSize) {
+            if (isInPip && activeVideoSize.isValid) {
+                runCatching {
+                    activity?.setPictureInPictureParams(
+                        PictureInPictureParams.Builder()
+                            .setAspectRatio(Rational(activeVideoSize.width, activeVideoSize.height))
+                            .build(),
+                    )
+                }
+            }
+        }
         val screenAspect = if (maxHeight.value > 0f) maxWidth.value / maxHeight.value else 16f / 9f
         val surfaceModifier = when (videoScaleMode) {
             NxVideoScaleMode.Stretch -> {
@@ -743,9 +802,11 @@ fun PlayerScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(locked) {
+                .pointerInput(locked, isInPip) {
                     val touchSlop = viewConfiguration.touchSlop
                     awaitEachGesture {
+                        // PiP 小窗内禁用全部手势（控制栏/OSD 均隐藏，避免误触干扰小窗画面）
+                        if (isInPip) return@awaitEachGesture
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val startX = down.position.x
                         val startY = down.position.y
@@ -895,7 +956,8 @@ fun PlayerScreen(
                 },
         )
 
-        (state as? PlaybackState.Error)?.let { err ->
+        // PiP 小窗内不展示错误三按钮层（控件无法在小窗适配），错误反馈由恢复大窗后呈现
+        if (!isInPip) (state as? PlaybackState.Error)?.let { err ->
             // C-02 修复：错误覆盖层增加「重试 / 从头播放 / 退出」三按钮
             // 解决 SMB/WebDAV/FTP 断连、解码失败等场景下用户只能退出再重进的问题
             Box(
@@ -963,7 +1025,8 @@ fun PlayerScreen(
         }
 
         AnimatedVisibility(
-            visible = controllerVisible,
+            // PiP 小窗内隐藏控制栏，由系统 PiP 控件接管（画中画控件适配）
+            visible = controllerVisible && !isInPip,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize(),
@@ -1047,7 +1110,7 @@ fun PlayerScreen(
             }
         }
 
-        longPressSpeedActive?.let { speed ->
+        if (!isInPip) longPressSpeedActive?.let { speed ->
             val osdText = when {
                 longPressSpeedLocked -> "${formatSpeed(speed)}  已锁定 · 点击解除"
                 inLockZone -> "松手锁定 ${formatSpeed(speed)}"
@@ -1089,7 +1152,7 @@ fun PlayerScreen(
             }
         }
 
-        scaleHint?.let { hint ->
+        if (!isInPip) scaleHint?.let { hint ->
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -1118,7 +1181,7 @@ fun PlayerScreen(
             }
         }
 
-        infoOsd?.let { text ->
+        if (!isInPip) infoOsd?.let { text ->
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -1138,7 +1201,7 @@ fun PlayerScreen(
             }
         }
 
-        if (inLockZone && longPressSpeedActive != null && !longPressSpeedLocked) {
+        if (!isInPip && inLockZone && longPressSpeedActive != null && !longPressSpeedLocked) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1158,7 +1221,7 @@ fun PlayerScreen(
             }
         }
 
-        brightnessOsd?.let { value ->
+        if (!isInPip) brightnessOsd?.let { value ->
             GestureOsd(
                 icon = Icons.Rounded.BrightnessHigh,
                 text = "${(value * 100).toInt()}%",
@@ -1166,7 +1229,7 @@ fun PlayerScreen(
             )
         }
 
-        volumeOsd?.let { value ->
+        if (!isInPip) volumeOsd?.let { value ->
             GestureOsd(
                 icon = Icons.AutoMirrored.Rounded.VolumeUp,
                 text = "${(value * 100).toInt()}%",
@@ -1251,18 +1314,17 @@ fun PlayerScreen(
 
         if (showMoreMenu) {
             MoreMenuDialog(
-                videoSize = videoSize,
+                videoSize = activeVideoSize,
                 activity = activity,
                 blackBarCropActive = autoBlackBarCrop,
                 onDismiss = { showMoreMenu = false },
                 onPictureInPicture = {
                     showMoreMenu = false
-                    val w = videoSize.width
-                    val h = videoSize.height
-                    if (w > 0 && h > 0) {
-                        val rational = Rational(w, h)
+                    // 使用黑边检测后的有效画面比例，PiP 小窗与当前显示内容一致
+                    val size = activeVideoSize
+                    if (size.isValid) {
                         val params = PictureInPictureParams.Builder()
-                            .setAspectRatio(rational)
+                            .setAspectRatio(Rational(size.width, size.height))
                             .build()
                         activity?.enterPictureInPictureMode(params)
                     }
