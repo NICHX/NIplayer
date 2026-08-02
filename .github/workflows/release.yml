@@ -56,6 +56,11 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew assembleRelease bundleRelease
 
+      - name: Rename release artifacts
+        run: |
+          mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/NIplayer-${GITHUB_REF_NAME}.apk"
+          mv app/build/outputs/bundle/release/app-release.aab "app/build/outputs/bundle/release/NIplayer-${GITHUB_REF_NAME}.aab"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
