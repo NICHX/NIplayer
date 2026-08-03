@@ -169,7 +169,7 @@ fun BackupScreen(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = "• 备份文件为明文 JSON，不含加密\n• 存储源密码已由系统密钥库加密，跨设备恢复后需重新输入\n• 播放历史不包含在备份中，恢复操作不覆盖播放记录\n• 恢复操作会替换当前存储源、快速访问、书签、扩展目录数据\n• 音乐 API 与 Assrt 字幕配置随备份导出/恢复",
+                        text = "• 备份文件为明文 JSON，不含加密\n• 存储源密码已由系统密钥库加密，跨设备恢复后需重新输入\n• 播放历史不包含在备份中，恢复操作不覆盖播放记录\n• 恢复操作会替换当前存储源、快速访问、书签、扩展目录数据\n• 音乐 API、Assrt 字幕配置及主题、播放器、字幕样式、均衡器、缩略图、文件浏览、视频扩展名、下载目录等应用设置随备份导出/恢复",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 18.sp,
@@ -216,7 +216,8 @@ fun BackupScreen(
                 append("视频书签: ${s.summary.videoBookmarks} 条\n")
                 append("扩展目录: ${s.summary.extendFolders} 条\n")
                 append("音乐 API: ${if (s.summary.lrcApiConfigured) "已恢复" else "无配置"}\n")
-                append("Assrt 字幕: ${if (s.summary.assrtConfigured) "已恢复" else "无配置"}\n\n")
+                append("Assrt 字幕: ${if (s.summary.assrtConfigured) "已恢复" else "无配置"}\n")
+                append("应用设置: ${if (s.summary.appSettingsRestored) "已恢复" else "旧版备份无设置"}\n\n")
                 append("播放历史不受影响")
             }
             ResultDialog(
@@ -251,7 +252,7 @@ fun BackupScreen(
             },
         ) {
             Text(
-                text = "将从所选文件恢复存储源、快速访问、视频书签、扩展目录、音乐 API 与 Assrt 字幕配置数据。" +
+                text = "将从所选文件恢复存储源、快速访问、视频书签、扩展目录、音乐 API、Assrt 字幕配置及主题、播放器、字幕样式、均衡器、缩略图等应用设置。" +
                     "当前数据将被替换，播放历史不受影响。此操作不可撤销，是否继续？",
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -275,7 +276,7 @@ fun BackupScreen(
             },
         ) {
             Text(
-                text = "将从服务器下载备份文件 $fileName 并恢复存储源、快速访问、视频书签、扩展目录、音乐 API 与 Assrt 字幕配置数据。" +
+                text = "将从服务器下载备份文件 $fileName 并恢复存储源、快速访问、视频书签、扩展目录、音乐 API、Assrt 字幕配置及主题、播放器、字幕样式、均衡器、缩略图等应用设置。" +
                     "当前数据将被替换，播放历史不受影响。此操作不可撤销，是否继续？",
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -548,7 +549,7 @@ private fun LocalBackupCard(
             )
         }
         Text(
-            text = "将存储源、快速访问、书签、扩展目录、音乐 API 与 Assrt 字幕配置导出为 JSON 文件，或从备份文件恢复。播放历史不包含在备份中。",
+            text = "将存储源、快速访问、书签、扩展目录、音乐 API、Assrt 字幕配置及主题、播放器、字幕样式、均衡器、缩略图等应用设置导出为 JSON 文件，或从备份文件恢复。播放历史不包含在备份中。",
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             lineHeight = 18.sp,
