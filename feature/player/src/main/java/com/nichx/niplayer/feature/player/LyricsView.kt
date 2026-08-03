@@ -44,8 +44,11 @@ import kotlin.math.absoluteValue
 /** 歌词物理行固定高度。 */
 private val ROW_HEIGHT = 44.dp
 
-/** 单句歌词最多拆分的物理行数，超出部分截断（保护极端长歌词）。 */
-private const val MAX_PHYSICAL_LINES_PER_SENTENCE = 6
+/**
+ * 单句歌词最多拆分的物理行数。
+ * 设为一个非常大的值：超长歌词按可用宽度完整自动换行，几乎不会触发截断。
+ */
+private const val MAX_PHYSICAL_LINES_PER_SENTENCE = 30
 
 /**
  * 物理歌词行：由一句歌词按宽度拆分成的一行，用于等高管控与精确居中。
@@ -91,7 +94,12 @@ fun LyricsView(
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
-    val measureStyle = MaterialTheme.typography.titleMedium
+    // 拆分测量用当前行最宽渲染样式（titleLarge + Bold）。
+    // 这样无论该行是当前行（titleLarge+Bold）还是普通行（titleMedium），
+    // 渲染宽度都不超过测量宽度，整句完整自动换行、永不截断。
+    val measureStyle = MaterialTheme.typography.titleLarge.copy(
+        fontWeight = FontWeight.Bold,
+    )
 
     val currentSentenceIndex = remember(currentPositionMs, lrcLines) {
         if (lrcLines.isEmpty()) 0 else {
@@ -112,9 +120,10 @@ fun LyricsView(
         val maxWidthPx = with(density) { (maxWidth - 48.dp).toPx() }
         val rowHeightPx = with(density) { ROW_HEIGHT.toPx() }
 
-        // 物理行拆分：每句按可用宽度拆成多行，行高统一
+        // 物理行拆分：先按可用宽度把每句完整拆成多行（不限行数），
+        // 再对每句限制最多 MAX_PHYSICAL_LINES_PER_SENTENCE 行，超出部分截断并给末行加省略号。
         val rows = remember(lrcLines, maxWidthPx, measureStyle, density) {
-            buildList {
+            val all = buildList {
                 lrcLines.forEachIndexed { sentenceIndex, line ->
                     if (line.text.isBlank()) {
                         add(LyricRow(sentenceIndex, 0, ""))
@@ -126,8 +135,8 @@ fun LyricsView(
                         constraints = Constraints(
                             maxWidth = maxWidthPx.toInt().coerceAtLeast(1),
                         ),
-                        maxLines = MAX_PHYSICAL_LINES_PER_SENTENCE,
-                        overflow = TextOverflow.Ellipsis,
+                        maxLines = Int.MAX_VALUE,
+                        overflow = TextOverflow.Clip,
                     )
                     if (measured.size.height <= rowHeightPx) {
                         add(LyricRow(sentenceIndex, 0, line.text))
@@ -145,6 +154,25 @@ fun LyricsView(
                                 ),
                             )
                         }
+                    }
+                }
+            }
+
+            val sentenceRowCount = mutableMapOf<Int, Int>()
+            buildList {
+                for (row in all) {
+                    val count = sentenceRowCount[row.sentenceIndex] ?: 0
+                    if (count < MAX_PHYSICAL_LINES_PER_SENTENCE) {
+                        sentenceRowCount[row.sentenceIndex] = count + 1
+                        add(row)
+                    } else if (count == MAX_PHYSICAL_LINES_PER_SENTENCE) {
+                        // 首次超限：给该句最后一行加省略号，后续超限行直接跳过
+                        val last = lastOrNull()?.takeIf { it.sentenceIndex == row.sentenceIndex }
+                        if (last != null) {
+                            val lastIdx = lastIndex
+                            this[lastIdx] = last.copy(text = last.text.trimEnd() + "…")
+                        }
+                        sentenceRowCount[row.sentenceIndex] = count + 1
                     }
                 }
             }
@@ -247,8 +275,10 @@ private fun LyricRowItem(
         animationSpec = tween(300),
         label = "lyricAlpha",
     )
+    // 当前行不缩放：避免视觉放大后超出按 titleLarge+Bold 测量的行宽造成截断；
+    // 当前行靠大字号 + 加粗 + 主题色区分，普通行保持 1.0 比例。
     val animScale by animateFloatAsState(
-        targetValue = if (isCurrent) 1.08f else 0.95f,
+        targetValue = 1f,
         animationSpec = tween(300),
         label = "lyricScale",
     )

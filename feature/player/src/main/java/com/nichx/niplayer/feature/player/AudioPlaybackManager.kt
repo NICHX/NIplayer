@@ -99,11 +99,12 @@ class AudioPlaybackManager @Inject constructor(
     fun getEqualizer(): NiEqualizer = equalizer
 
     /**
-     * 应用均衡器设置（F-02 爆音修复）。
+     * 应用均衡器设置（开关切换路径）。
      *
-     * 直接切换 [android.media.audiofx.Equalizer] 的 enabled 会立即改变 DSP 处理路径
-     * （滤波 → 旁路），播放中信号在非零交叉点被硬切断，产生一声爆响。此处先淡出
-     * 播放音量到 0，切换后再淡入恢复原音量，切换发生在静音时刻，从而消除爆音。
+     * 关闭均衡器的爆响根源是 [android.media.audiofx.Equalizer] 的 enabled 切换触发
+     * AudioFlinger 重建效果链（硬件 DSP 旁路），该爆响在效果链输出层面，无法靠音量
+     * 静音消除——已由 [NiEqualizer.applySettings] 内部"拉平增益而非 disable"解决。
+     * 此处再包一层淡出/淡入作为兜底，吸收切换瞬间可能残留的微小瞬态。
      */
     fun applyEqualizerSettings() {
         eqFadeJob?.cancel()
@@ -124,6 +125,16 @@ class AudioPlaybackManager @Inject constructor(
                 fadeVolume(player, 0f, originalVolume)
             }
         }
+    }
+
+    /**
+     * 实时应用均衡器参数（滑块拖动 / 预设点击路径）。
+     *
+     * 仅修改频段增益等参数，不触发效果链重建，直接应用无需静音包装；
+     * 若对每次拖动都做淡入淡出，会打断音乐造成明显卡顿。
+     */
+    fun applyEqualizerLive() {
+        equalizer.applySettings()
     }
 
     /** 将 [player] 音量从 [from] 平滑过渡到 [to]（约 100ms，10 步 × 10ms）。 */

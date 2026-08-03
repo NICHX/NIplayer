@@ -338,6 +338,9 @@ class MainActivity : ComponentActivity() {
                                 onApplyToPlayer = {
                                     audioPlaybackManager.applyEqualizerSettings()
                                 },
+                                onApplyLiveToPlayer = {
+                                    audioPlaybackManager.applyEqualizerLive()
+                                },
                             )
                         }
                         composable(
