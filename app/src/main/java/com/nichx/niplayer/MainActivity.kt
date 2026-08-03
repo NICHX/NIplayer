@@ -336,7 +336,7 @@ class MainActivity : ComponentActivity() {
                             EqualizerSettingsScreen(
                                 onBack = { navController.popBackStack() },
                                 onApplyToPlayer = {
-                                    audioPlaybackManager.getEqualizer().applySettings()
+                                    audioPlaybackManager.applyEqualizerSettings()
                                 },
                             )
                         }
