@@ -8,9 +8,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,6 +52,7 @@ fun NiSnackbarHost(
     hostState: SnackbarHostState,
     modifier: Modifier = Modifier,
     bottomPadding: Dp = 0.dp,
+    topAligned: Boolean = false,
 ) {
     val density = LocalDensity.current
     val view = LocalView.current
@@ -64,13 +67,33 @@ fun NiSnackbarHost(
             view.rootWindowInsets?.systemWindowInsetBottom?.toDp() ?: 0.dp
         }
     }
+    val statusBarInsetDp: Dp = with(density) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            view.rootWindowInsets
+                ?.getInsets(android.view.WindowInsets.Type.statusBars())
+                ?.top
+                ?.toDp() ?: 0.dp
+        } else {
+            @Suppress("DEPRECATION")
+            view.rootWindowInsets?.systemWindowInsetTop?.toDp() ?: 0.dp
+        }
+    }
 
-    SnackbarHost(
-        hostState = hostState,
-        modifier = modifier
-            .padding(bottom = maxOf(navBarInsetDp, bottomPadding)),
-        snackbar = { data -> NiSnackbar(data) },
-    )
+    Box(modifier = Modifier.fillMaxSize()) {
+        SnackbarHost(
+            hostState = hostState,
+            modifier = if (topAligned) {
+                modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = statusBarInsetDp + 12.dp)
+            } else {
+                modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = maxOf(navBarInsetDp, bottomPadding))
+            },
+            snackbar = { data -> NiSnackbar(data) },
+        )
+    }
 }
 
 @Composable
@@ -103,6 +126,7 @@ fun NiSnackbarHost(
     controller: NiSnackbarController,
     modifier: Modifier = Modifier,
     bottomPadding: Dp = 0.dp,
+    topAligned: Boolean = false,
 ) {
     val density = LocalDensity.current
     val view = LocalView.current
@@ -117,6 +141,17 @@ fun NiSnackbarHost(
             view.rootWindowInsets?.systemWindowInsetBottom?.toDp() ?: 0.dp
         }
     }
+    val statusBarInsetDp: Dp = with(density) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            view.rootWindowInsets
+                ?.getInsets(android.view.WindowInsets.Type.statusBars())
+                ?.top
+                ?.toDp() ?: 0.dp
+        } else {
+            @Suppress("DEPRECATION")
+            view.rootWindowInsets?.systemWindowInsetTop?.toDp() ?: 0.dp
+        }
+    }
 
     // 当前展示的消息（单条队列，后续消息覆盖前一条，与 SnackbarHost 语义一致）
     var current by remember { mutableStateOf<NiMessage?>(null) }
@@ -125,14 +160,25 @@ fun NiSnackbarHost(
     }
 
     current?.let { msg ->
-        NiMessageSnackbar(
-            message = msg,
-            onDismiss = { current = null },
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = maxOf(navBarInsetDp, bottomPadding)),
-        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            NiMessageSnackbar(
+                message = msg,
+                onDismiss = { current = null },
+                modifier = if (topAligned) {
+                    modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(top = statusBarInsetDp + 12.dp)
+                } else {
+                    modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = maxOf(navBarInsetDp, bottomPadding))
+                },
+            )
+        }
     }
 }
 

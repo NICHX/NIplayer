@@ -215,4 +215,58 @@ class PlayStarter @Inject constructor(
             StartResult.Error(e.message ?: "无法打开播放源")
         }
     }
+
+    /**
+     * 从歌单条目开始播放（歌单详情页「播放全部」）。
+     *
+     * 与 [startFromHistory] 共用「library → Storage → NxMediaSource → PlaybackRequest」链路，
+     * 但播放列表已由歌单持久化提供（[PlaylistItem] 列表），直接同步写入 [PlaylistHolder]，
+     * 无需后台异步列目录。切歌（上一集/下一集）由 PlayerViewModel.playAtIndex 按
+     * item.libraryId 重建存储源完成，覆盖同目录自动连播。
+     *
+     * @param items 歌单条目（已按用户排序）
+     * @param startIndex 起始播放下标，默认从头
+     */
+    suspend fun startFromPlaylist(items: List<PlaylistItem>, startIndex: Int = 0): StartResult {
+        if (items.isEmpty()) return StartResult.Error("歌单为空")
+        val target = items.getOrNull(startIndex)
+            ?: return StartResult.Error("播放位置无效")
+        val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(target.libraryId) }
+            ?: return StartResult.Error("存储源已删除")
+        val storage = withContext(Dispatchers.IO) { storageFactory.create(library) }
+            ?: return StartResult.Error("不支持的存储类型：${library.mediaType.storageName}")
+
+        return try {
+            val file = MediaSourceBuilder.createVirtualFile(
+                path = target.filePath,
+                name = target.fileName,
+            )
+            val source = MediaSourceBuilder.buildMediaSource(
+                storage,
+                file,
+                mediaId = "${target.libraryId}:${target.filePath}",
+            )
+            // 直接写入完整歌单列表，切歌沿用同一列表（覆盖同目录自动连播）
+            playlistHolder.set(items, startIndex)
+            playbackRequestHolder.set(
+                PlaybackRequest(
+                    source = source,
+                    title = target.fileName,
+                    startPositionMs = 0L,
+                    history = HistoryDescriptor(
+                        uniqueKey = "${target.libraryId}:${target.filePath}",
+                        url = target.filePath,
+                        mediaTypeValue = target.mediaTypeValue,
+                        storageId = target.libraryId,
+                        storagePath = target.filePath,
+                        fileSize = target.fileSize,
+                    ),
+                    isAudio = isAudioFile(target.fileName),
+                )
+            )
+            StartResult.Success
+        } catch (e: Exception) {
+            StartResult.Error(e.message ?: "无法打开播放源")
+        }
+    }
 }

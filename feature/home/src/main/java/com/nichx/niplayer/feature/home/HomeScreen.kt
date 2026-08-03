@@ -44,6 +44,7 @@ fun HomeScreen(
     onNavigateToSearch: () -> Unit = {},
     onNavigateToPlayHistory: () -> Unit = {},
     onNavigateToQuickAccess: () -> Unit = {},
+    onOpenPlaylists: () -> Unit = {},
     onPlayVideo: () -> Unit = {},
     onNavigateToImageViewer: () -> Unit = {},
     onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit = { _, _ -> },
@@ -117,6 +118,7 @@ fun HomeScreen(
             onNavigateToSearch = onNavigateToSearch,
             onNavigateToPlayHistory = onNavigateToPlayHistory,
             onNavigateToQuickAccess = onNavigateToQuickAccess,
+            onOpenPlaylists = onOpenPlaylists,
             onPlayVideo = onPlayVideo,
             onNavigateToImageViewer = onNavigateToImageViewer,
             onNavigateToStoragePlus = onNavigateToStoragePlus,
@@ -148,6 +150,7 @@ private fun HomeTabContent(
     onNavigateToSearch: () -> Unit,
     onNavigateToPlayHistory: () -> Unit,
     onNavigateToQuickAccess: () -> Unit,
+    onOpenPlaylists: () -> Unit,
     onPlayVideo: () -> Unit,
     onNavigateToImageViewer: () -> Unit,
     onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit,
@@ -174,6 +177,7 @@ private fun HomeTabContent(
                     LibraryScreen(
                         onNavigateToStorageFile = onOpenFileBrowser,
                         onNavigateToStoragePlus = onNavigateToStoragePlus,
+                        onOpenPlaylists = onOpenPlaylists,
                     )
                 } else {
                     Box(

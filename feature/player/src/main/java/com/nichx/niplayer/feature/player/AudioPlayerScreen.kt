@@ -50,6 +50,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +69,7 @@ import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 private enum class PlayMode(val label: String) {
     Loop("顺序播放"),
@@ -83,6 +85,7 @@ fun AudioPlayerScreen(
     audioPlaybackManager: AudioPlaybackManager? = null,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         viewModel.downloadEvent.collect { msg ->
@@ -123,6 +126,7 @@ fun AudioPlayerScreen(
 
     var showLyrics by remember { mutableStateOf(false) }
     var showPlaylist by remember { mutableStateOf(false) }
+    var showSavePlaylistDialog by remember { mutableStateOf(false) }
 
     val hasNext = currentIndex in 0 until playlist.lastIndex
     val hasPrev = currentIndex > 0
@@ -200,6 +204,20 @@ fun AudioPlayerScreen(
                 onPlayAtIndex = { index -> viewModel.playAtIndex(index) },
                 onSwitchPlayMode = {
                     playMode = (playMode + 1) % PlayMode.entries.size
+                },
+                onSaveToPlaylist = {
+                    showPlaylist = false
+                    showSavePlaylistDialog = true
+                },
+            )
+        }
+
+        if (showSavePlaylistDialog) {
+            SaveToPlaylistDialog(
+                playlist = playlist,
+                onDismiss = { showSavePlaylistDialog = false },
+                onSaved = { message ->
+                    scope.launch { snackbarHostState.showSnackbar(message) }
                 },
             )
         }

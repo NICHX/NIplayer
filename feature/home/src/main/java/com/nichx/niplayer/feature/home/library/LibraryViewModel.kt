@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.DownloadTaskDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
+import com.nichx.niplayer.database.dao.PlaylistDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.security.EncryptedFolderManager
@@ -36,6 +37,7 @@ class LibraryViewModel @Inject constructor(
     private val playHistoryDao: PlayHistoryDao,
     private val downloadTaskDao: DownloadTaskDao,
     private val encryptedFolderManager: EncryptedFolderManager,
+    private val playlistDao: PlaylistDao,
 ) : ViewModel() {
 
     private val librariesFlow = mediaLibraryDao.getAll()
@@ -46,6 +48,15 @@ class LibraryViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList(),
+        )
+
+    /** 歌单数量（媒体库 Tab 入口卡片角标）。 */
+    val playlistCount: StateFlow<Int> = playlistDao.getAllFlow()
+        .map { it.size }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0,
         )
 
     /** 数据是否已就绪（避免首帧空列表误显示空状态，触发骨架屏）。 */
