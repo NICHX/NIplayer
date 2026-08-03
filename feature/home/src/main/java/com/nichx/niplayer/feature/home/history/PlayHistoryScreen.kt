@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.history
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,11 +16,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -36,9 +41,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,6 +64,9 @@ import com.nichx.niplayer.designsystem.components.NiSkeletonLine
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiThumbCard
 import com.nichx.niplayer.designsystem.components.NiTopBar
+import com.nichx.niplayer.sync.SyncUiState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -93,6 +104,17 @@ fun PlayHistoryScreen(
 
     val hasHistory = allHistory.isNotEmpty()
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val syncState by viewModel.syncState.collectAsStateWithLifecycle()
+    val syncConfig by viewModel.syncConfig.collectAsStateWithLifecycle()
+
+    // 同步结果短暂展示后消退（对勾 / 错误角标回到待机）
+    LaunchedEffect(syncState) {
+        if (syncState is SyncUiState.Done) {
+            delay(3000)
+            viewModel.dismissSyncResult()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -110,6 +132,52 @@ fun PlayHistoryScreen(
             NiTopBar(
                 title = "播放历史",
                 actions = {
+                    if (syncConfig.enabled) {
+                        val isSyncing = syncState is SyncUiState.Syncing
+                        val done = syncState as? SyncUiState.Done
+                        val showError = done != null && !done.success
+                        val showSuccess = done != null && done.success
+                        Box {
+                            IconButton(
+                                onClick = {
+                                    if (showError) {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar(done?.message ?: "同步失败")
+                                        }
+                                    } else {
+                                        viewModel.syncNow()
+                                    }
+                                },
+                                enabled = !isSyncing,
+                            ) {
+                                if (isSyncing) {
+                                    CircularProgressIndicator(
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = if (showSuccess) Icons.Filled.Check else Icons.Filled.CloudSync,
+                                        contentDescription = if (showSuccess) "同步成功" else "云同步",
+                                        tint = when {
+                                            showSuccess -> MaterialTheme.colorScheme.primary
+                                            showError -> MaterialTheme.colorScheme.error
+                                            else -> MaterialTheme.colorScheme.onSurface
+                                        },
+                                    )
+                                }
+                            }
+                            if (showError) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.error),
+                                )
+                            }
+                        }
+                    }
                     if (hasHistory) {
                         IconButton(onClick = { showDeleteAllDialog = true }) {
                             Icon(

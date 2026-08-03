@@ -16,12 +16,14 @@ import com.nichx.niplayer.datastore.AudioSettings
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.FileBrowserSettings
 import com.nichx.niplayer.datastore.LrcApiSettings
+import com.nichx.niplayer.datastore.PlayHistorySyncSettings
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.datastore.VideoExtensionSettings
+import com.nichx.niplayer.datastore.WebDavSettings
 import com.squareup.moshi.FromJson
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
@@ -101,6 +103,10 @@ data class AppSettingsData(
     // 下载目录（SAF URI 跨设备可能失效，仍随备份导出便于同设备恢复）
     val downloadDirUri: String? = null,
     val downloadDirName: String? = null,
+    // 播放历史云同步（deviceId 不备份：跨设备恢复后重新生成，避免设备冲突）
+    val historySyncEnabled: Boolean? = null,
+    val historySyncAutoSync: Boolean? = null,
+    val historySyncLibraryId: Int? = null,
 )
 
 /** 备份摘要，供 UI 展示。 */
@@ -192,6 +198,10 @@ class BackupManager @Inject constructor(
                 videoExtensions = VideoExtensionSettings.supportText,
                 downloadDirUri = DownloadSettings.downloadDirUri.ifBlank { null },
                 downloadDirName = DownloadSettings.downloadDirName.ifBlank { null },
+                // 播放历史云同步开关随备份迁移；deviceId 不导出（见 AppSettingsData 注释）
+                historySyncEnabled = PlayHistorySyncSettings.enabled,
+                historySyncAutoSync = PlayHistorySyncSettings.autoSync,
+                historySyncLibraryId = WebDavSettings.libraryId.takeIf { it >= 0 },
             ),
         )
         return adapter.toJson(data)
@@ -324,6 +334,13 @@ class BackupManager @Inject constructor(
             s.videoExtensions?.let { VideoExtensionSettings.supportText = it }
             s.downloadDirUri?.let { DownloadSettings.downloadDirUri = it }
             s.downloadDirName?.let { DownloadSettings.downloadDirName = it }
+            // 播放历史云同步：恢复开关与所选服务器，并重新生成设备标识
+            s.historySyncEnabled?.let { PlayHistorySyncSettings.enabled = it }
+            s.historySyncAutoSync?.let { PlayHistorySyncSettings.autoSync = it }
+            if (s.historySyncLibraryId != null) {
+                WebDavSettings.setLibraryId(s.historySyncLibraryId)
+                PlayHistorySyncSettings.resetDeviceId()
+            }
         }
 
         return BackupSummary(

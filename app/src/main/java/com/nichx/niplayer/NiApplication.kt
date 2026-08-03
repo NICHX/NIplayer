@@ -13,9 +13,12 @@ import com.nichx.niplayer.common.crash.CrashHandler
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.datastore.PlayHistorySyncSettings
 import com.nichx.niplayer.datastore.ThemeSettings
+import com.nichx.niplayer.sync.PlayHistorySyncManager
 import com.tencent.mmkv.MMKV
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -44,6 +47,9 @@ class NiApplication : Application(), SingletonImageLoader.Factory {
     @Inject
     lateinit var appScope: AppCoroutineScope
 
+    @Inject
+    lateinit var playHistorySyncManager: PlayHistorySyncManager
+
     /** 上次崩溃日志，启动时由 [checkPreviousCrash] 填充，供 UI 层提示用户上报。 */
     @Volatile
     var previousCrashLog: String? = null
@@ -59,6 +65,13 @@ class NiApplication : Application(), SingletonImageLoader.Factory {
         ThemeSettings.themeFlow.value
         checkPreviousCrash()
         appScope.launch { ensureLocalStorageExists() }
+        // 启动时自动同步播放历史（若启用自动同步）；延迟等待数据库就绪
+        if (PlayHistorySyncSettings.autoSync) {
+            appScope.launch {
+                delay(5_000)
+                playHistorySyncManager.sync(auto = true)
+            }
+        }
     }
 
     /**

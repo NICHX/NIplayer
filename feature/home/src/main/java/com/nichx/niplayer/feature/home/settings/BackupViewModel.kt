@@ -10,6 +10,11 @@ import com.nichx.niplayer.database.backup.BackupSummary
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.datastore.PlayHistorySyncConfig
+import com.nichx.niplayer.datastore.PlayHistorySyncSettings
+import com.nichx.niplayer.datastore.WebDavSettings
+import com.nichx.niplayer.sync.PlayHistorySyncManager
+import com.nichx.niplayer.sync.SyncUiState
 import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.storage.StorageFile
@@ -40,6 +45,7 @@ class BackupViewModel @Inject constructor(
     private val backupManager: BackupManager,
     private val mediaLibraryDao: MediaLibraryDao,
     private val storageFactory: StorageFactory,
+    private val syncManager: PlayHistorySyncManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<BackupUiState>(BackupUiState.Idle)
@@ -49,13 +55,65 @@ class BackupViewModel @Inject constructor(
     private val _webDavLibraries = MutableStateFlow<List<MediaLibraryEntity>>(emptyList())
     val webDavLibraries: StateFlow<List<MediaLibraryEntity>> = _webDavLibraries.asStateFlow()
 
+    /** 所选 WebDAV 服务器 id（共享配置 [WebDavSettings]，备份与云同步共用）。 */
+    private val _selectedWebDavId = MutableStateFlow(WebDavSettings.libraryId)
+    val selectedWebDavId: StateFlow<Int> = _selectedWebDavId.asStateFlow()
+
     /** 所选 WebDAV 服务器 NIplayer_backup 目录下的备份文件，供恢复选择。 */
     private val _webDavBackupFiles = MutableStateFlow<List<StorageFile>>(emptyList())
     val webDavBackupFiles: StateFlow<List<StorageFile>> = _webDavBackupFiles.asStateFlow()
 
+    /** 备份文件列表加载中（慢网速/大目录时提示）。 */
+    private val _webDavBackupLoading = MutableStateFlow(false)
+    val webDavBackupLoading: StateFlow<Boolean> = _webDavBackupLoading.asStateFlow()
+
+    /** 加载备份文件列表失败的错误提示（卡片内展示，null = 无错误）。 */
+    private val _webDavBackupError = MutableStateFlow<String?>(null)
+    val webDavBackupError: StateFlow<String?> = _webDavBackupError.asStateFlow()
+
+    /** 播放历史云同步状态（设置页卡片与历史页 TopBar 共用）。 */
+    val syncState: StateFlow<SyncUiState> = syncManager.state
+
+    /** 播放历史云同步配置（开关 / 自动同步 / 上次结果）。 */
+    val historySyncConfig: StateFlow<PlayHistorySyncConfig> = PlayHistorySyncSettings.flow
+
     init {
         viewModelScope.launch {
             _webDavLibraries.value = mediaLibraryDao.getByMediaTypeSuspend(MediaType.WEBDAV_SERVER)
+            // 共享配置优先；配置缺失或已失效时默认选第一个并回写
+            val libs = _webDavLibraries.value
+            if (libs.isNotEmpty()) {
+                val saved = WebDavSettings.libraryId
+                if (saved < 0 || libs.none { it.id == saved }) {
+                    selectWebDavServer(libs.first().id)
+                } else {
+                    _selectedWebDavId.value = saved
+                }
+            }
+        }
+    }
+
+    /** 选择 WebDAV 服务器：写入共享配置，并自动启用播放历史云同步。 */
+    fun selectWebDavServer(libraryId: Int) {
+        WebDavSettings.setLibraryId(libraryId)
+        _selectedWebDavId.value = libraryId
+        PlayHistorySyncSettings.enabled = true
+    }
+
+    /** 播放历史云同步总开关。 */
+    fun setHistorySyncEnabled(enabled: Boolean) {
+        PlayHistorySyncSettings.enabled = enabled
+    }
+
+    /** 自动同步开关（应用启动 / 播放器退出后触发）。 */
+    fun setAutoSync(enabled: Boolean) {
+        PlayHistorySyncSettings.autoSync = enabled
+    }
+
+    /** 立即执行一次播放历史云同步。 */
+    fun syncNow() {
+        viewModelScope.launch {
+            syncManager.sync()
         }
     }
 
@@ -119,22 +177,47 @@ class BackupViewModel @Inject constructor(
     /** 列出所选 WebDAV 服务器 NIplayer_backup 目录下的备份文件。 */
     fun loadWebDavBackupFiles(libraryId: Int) {
         viewModelScope.launch {
+            _webDavBackupLoading.value = true
+            _webDavBackupError.value = null
             _webDavBackupFiles.value = emptyList()
             try {
                 val library = _webDavLibraries.value.firstOrNull { it.id == libraryId }
                     ?: return@launch
                 val files = withContext(Dispatchers.IO) {
-                    val storage = storageFactory.create(library) ?: return@withContext emptyList()
+                    val storage = storageFactory.create(library)
+                        ?: throw IllegalStateException("无法连接 WebDAV 服务器")
+                    // 先验证连接与认证，401/403 等给出友好提示
+                    try {
+                        storage.testConnection()
+                    } catch (e: WebDavHttpException) {
+                        throw IllegalStateException(e.friendlyMessage)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        throw IllegalStateException("无法连接服务器: ${e.message ?: "网络错误"}")
+                    }
                     val dir = object : AbstractStorageFile(WEBDAV_BACKUP_DIR, WEBDAV_BACKUP_DIR, true) {}
-                    storage.listFiles(dir)
-                        .filter { !it.isDirectory && it.name.endsWith(".json") }
-                        .sortedByDescending { it.lastModified }
+                    try {
+                        storage.listFiles(dir)
+                            .filter { !it.isDirectory && it.name.endsWith(".json") }
+                            .sortedByDescending { it.lastModified }
+                    } catch (e: WebDavHttpException) {
+                        // 404 = 备份目录尚不存在：不是错误，视为无备份文件
+                        if (e.code == 404) {
+                            emptyList()
+                        } else {
+                            throw IllegalStateException(e.friendlyMessage)
+                        }
+                    }
                 }
                 _webDavBackupFiles.value = files
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                // 目录不存在或无权限等：保持空列表，UI 提示无备份文件
+            } catch (e: Exception) {
+                Log.e(TAG, "加载备份文件列表失败", e)
+                _webDavBackupError.value = "加载失败: ${e.toUserMessage()}"
+            } finally {
+                _webDavBackupLoading.value = false
             }
         }
     }

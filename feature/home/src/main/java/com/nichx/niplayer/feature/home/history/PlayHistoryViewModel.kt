@@ -4,10 +4,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
+import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.dao.VideoDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
+import com.nichx.niplayer.database.entity.SyncDeleteLogEntity
+import com.nichx.niplayer.datastore.PlayHistorySyncConfig
+import com.nichx.niplayer.datastore.PlayHistorySyncSettings
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.PlayStarter
+import com.nichx.niplayer.sync.PlayHistorySyncManager
+import com.nichx.niplayer.sync.SyncUiState
+import com.nichx.niplayer.sync.recordKey
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.RemoteThumbnailRequest
 import com.nichx.niplayer.thumbnail.ThumbnailManager
@@ -53,6 +60,8 @@ class PlayHistoryViewModel @Inject constructor(
     private val mediaLibraryDao: MediaLibraryDao,
     private val storageFactory: StorageFactory,
     private val thumbnailManager: ThumbnailManager,
+    private val syncDeleteLogDao: SyncDeleteLogDao,
+    private val syncManager: PlayHistorySyncManager,
 ) : ViewModel() {
 
     private val historiesFlow = playHistoryDao.getAllFlow()
@@ -256,23 +265,69 @@ class PlayHistoryViewModel @Inject constructor(
         }
     }
 
-    /** 删除单条历史。 */
+    /** 删除单条历史，删除前记录同步 tombstone。 */
     fun deleteHistory(id: Int) {
         viewModelScope.launch {
+            val entity = playHistoryDao.getById(id) ?: return@launch
+            recordDeleteTombstone(entity)
             playHistoryDao.delete(id)
         }
     }
 
-    /** 清空全部历史。 */
+    /** 清空全部历史，逐条记录同步 tombstone。 */
     fun clearAll() {
         viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            playHistoryDao.getAll().forEach { entity ->
+                entity.storageId?.let { sid ->
+                    syncDeleteLogDao.insert(
+                        SyncDeleteLogEntity(
+                            tableName = TABLE_PLAY_HISTORY,
+                            recordKey = recordKey(sid, entity.uniqueKey),
+                            deletedAt = now,
+                        ),
+                    )
+                }
+            }
             playHistoryDao.deleteAll()
         }
+    }
+
+    private suspend fun recordDeleteTombstone(entity: PlayHistoryEntity) {
+        entity.storageId?.let { sid ->
+            syncDeleteLogDao.insert(
+                SyncDeleteLogEntity(
+                    tableName = TABLE_PLAY_HISTORY,
+                    recordKey = recordKey(sid, entity.uniqueKey),
+                    deletedAt = System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
+    /** 云同步状态（驱动 TopBar 同步按钮指示器）。 */
+    val syncState: StateFlow<SyncUiState> = syncManager.state
+
+    /** 云同步配置（是否启用，决定 TopBar 是否显示同步按钮）。 */
+    val syncConfig: StateFlow<PlayHistorySyncConfig> = PlayHistorySyncSettings.flow
+
+    /** 手动触发一次云同步。 */
+    fun syncNow() {
+        viewModelScope.launch {
+            syncManager.sync()
+        }
+    }
+
+    /** 清除同步结果指示（短暂展示后消退）。 */
+    fun dismissSyncResult() {
+        syncManager.dismissResult()
     }
 
     private companion object {
         /** 批量提交缩略图结果的间隔（ms）。降低 StateFlow emit 次数，减少 Compose 重组。 */
         const val FLUSH_INTERVAL_MS = 250L
+
+        const val TABLE_PLAY_HISTORY = "play_history"
     }
 }
 

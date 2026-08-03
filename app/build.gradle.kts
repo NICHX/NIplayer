@@ -119,6 +119,7 @@ dependencies {
     implementation(project(":core:storage"))
     implementation(project(":core:designsystem"))
     implementation(project(":core:thumbnail"))
+    implementation(project(":core:sync"))
     implementation(project(":player:kernel"))
     implementation(project(":feature:player"))
     implementation(project(":feature:home"))
