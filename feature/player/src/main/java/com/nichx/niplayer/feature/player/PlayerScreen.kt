@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.Color as AndroidColor
 import android.media.AudioManager
 import android.net.Uri
 import android.os.BatteryManager
@@ -157,6 +158,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.SubtitleView
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
@@ -782,6 +784,19 @@ fun PlayerScreen(
                 SubtitleView(ctx).apply {
                     setApplyEmbeddedStyles(SubtitleSettings.applyEmbeddedStyles)
                     setFractionalTextSize(embeddedSubtitleFraction)
+                    // media3 默认样式 CaptionStyleCompat.DEFAULT 的 backgroundColor 是不透明黑，
+                    // SubtitlePainter 会为整条 cue 文本绘制 BackgroundColorSpan，导致内嵌字幕出现整行黑底。
+                    // 这里改为透明背景，保留默认白色文字，仅去掉黑框。
+                    setStyle(
+                        CaptionStyleCompat(
+                            AndroidColor.WHITE,
+                            AndroidColor.TRANSPARENT,
+                            AndroidColor.TRANSPARENT,
+                            CaptionStyleCompat.EDGE_TYPE_NONE,
+                            AndroidColor.WHITE,
+                            null,
+                        )
+                    )
                 }
             },
             update = {
