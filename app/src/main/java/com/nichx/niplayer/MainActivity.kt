@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.theme.NiTheme
@@ -66,6 +68,8 @@ import com.nichx.niplayer.feature.home.settings.PlaybackStatsScreen
 import com.nichx.niplayer.feature.home.settings.PlayerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.ScanManagerScreen
 import com.nichx.niplayer.feature.home.settings.ThemeScreen
+import com.nichx.niplayer.feature.home.update.UpdateDialogHost
+import com.nichx.niplayer.feature.home.update.UpdateViewModel
 import com.nichx.niplayer.feature.player.AudioPlaybackManager
 import com.nichx.niplayer.feature.player.AudioPlayerScreen
 import com.nichx.niplayer.feature.player.MusicBar
@@ -126,6 +130,13 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+                // 版本检测：启动自动检查（24h 节流，静默失败），有更新时弹窗提示
+                val updateViewModel: UpdateViewModel = hiltViewModel()
+                LaunchedEffect(Unit) {
+                    updateViewModel.checkUpdate(auto = true)
+                }
+                UpdateDialogHost(viewModel = updateViewModel)
+
                 val bgColor = MaterialTheme.colorScheme.background.toArgb()
                 val activityWindow = window
                 SideEffect {

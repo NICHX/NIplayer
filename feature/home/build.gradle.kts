@@ -47,6 +47,8 @@ dependencies {
     implementation(project(":core:datastore"))
     // 阶段 5 P1 接入 :core:thumbnail（ThumbnailManager，视频缩略图生成与磁盘缓存）
     implementation(project(":core:thumbnail"))
+    // 在线更新：GitHubApi（GitHubApi）版本检测与下载源获取
+    implementation(project(":core:network"))
 
     implementation(libs.androidx.core.ktx)
     // DocumentFile：StorageFileScreen 下载目标目录选择时读取 SAF tree URI 显示名
