@@ -15,6 +15,9 @@
     <!-- Android 13+ 通知权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- 在线更新：安装未知来源 APK 所需的声明（实际授予由用户在系统设置中操作） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <application
         android:name=".NiApplication"
         android:allowBackup="true"

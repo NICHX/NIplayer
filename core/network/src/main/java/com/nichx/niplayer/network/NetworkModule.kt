@@ -1,6 +1,7 @@
 package com.nichx.niplayer.network
 
 import com.nichx.niplayer.network.subtitle.AssrtApi
+import com.nichx.niplayer.network.update.GitHubApi
 import com.squareup.moshi.Moshi
 import dagger.Module
 import dagger.Provides
@@ -68,4 +69,21 @@ object NetworkModule {
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()
         .create(AssrtApi::class.java)
+
+    /**
+     * GitHub Releases API（版本检测 / 在线更新）。
+     *
+     * baseURL 为 [GitHubApi.BASE_URL]（HTTPS），共享全局 [OkHttpClient]。
+     */
+    @Provides
+    @Singleton
+    fun provideGitHubApi(
+        okHttpClient: OkHttpClient,
+        moshi: Moshi,
+    ): GitHubApi = Retrofit.Builder()
+        .baseUrl(GitHubApi.BASE_URL)
+        .client(okHttpClient)
+        .addConverterFactory(MoshiConverterFactory.create(moshi))
+        .build()
+        .create(GitHubApi::class.java)
 }

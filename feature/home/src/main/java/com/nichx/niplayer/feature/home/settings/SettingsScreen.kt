@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -47,14 +48,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import com.nichx.niplayer.feature.home.update.UpdateDialogHost
+import com.nichx.niplayer.feature.home.update.UpdateViewModel
 import com.nichx.niplayer.navigation.Routes
 
 @Composable
 fun SettingsScreen(
     onNavigateToGlobal: (String) -> Unit = {},
 ) {
+    val updateViewModel: UpdateViewModel = hiltViewModel()
+
     Scaffold(
         topBar = { NiTopBar(title = "设置") },
     ) { padding ->
@@ -81,15 +87,21 @@ fun SettingsScreen(
                     SettingsGroupCard(
                         entries = group.entries,
                         onItemClick = { entry ->
-                            if (entry.route.isNotEmpty()) {
-                                onNavigateToGlobal(entry.route)
-                            }
+                            entry.route?.let { onNavigateToGlobal(it) }
+                                ?: run {
+                                    if (entry == SettingsEntry.UPDATE) {
+                                        updateViewModel.checkUpdate(auto = false)
+                                    }
+                                }
                         },
                     )
                 }
             }
         }
     }
+
+    // 检查更新对话框（手动触发 + 已下载待安装恢复）
+    UpdateDialogHost(viewModel = updateViewModel)
 }
 
 @Composable
@@ -246,12 +258,12 @@ enum class SettingsGroup(
     ),
     ABOUT(
         label = "关于",
-        entries = listOf(SettingsEntry.ABOUT),
+        entries = listOf(SettingsEntry.UPDATE, SettingsEntry.ABOUT),
     ),
 }
 
 enum class SettingsEntry(
-    val route: String,
+    val route: String?,
     val title: String,
     val subtitle: String?,
     val icon: ImageVector,
@@ -312,6 +324,13 @@ enum class SettingsEntry(
         subtitle = "浅色 / 暗色 / 跟随系统",
         icon = Icons.Filled.Palette,
         iconBg = Color(0xFF00ACC1),
+    ),
+    UPDATE(
+        route = null,
+        title = "检查更新",
+        subtitle = "检测 GitHub 最新版本并在线更新",
+        icon = Icons.Filled.SystemUpdate,
+        iconBg = Color(0xFF00897B),
     ),
     ABOUT(
         route = Routes.User.ABOUT,
