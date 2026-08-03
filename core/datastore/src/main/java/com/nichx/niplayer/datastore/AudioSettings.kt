@@ -20,6 +20,9 @@ object AudioSettings {
     private const val KEY_EQ_PRESET = "audio_eq_preset"
     private const val KEY_EQ_BAND_PREFIX = "audio_eq_band_"
 
+    /** 均衡器频段数量（v2 UI 固定 5 频段，与 EqualizerSettingsScreen EQ_BANDS 一致）。 */
+    const val BAND_COUNT = 5
+
     /** 均衡器总开关。默认 false。 */
     var equalizerEnabled: Boolean
         get() = mmkv.decodeBool(KEY_EQ_ENABLED, false)
@@ -53,5 +56,17 @@ object AudioSettings {
     fun setBandLevel(band: Int, level: Int) {
         mmkv.encode(KEY_EQ_BAND_PREFIX + band, level)
         equalizerPresetIndex = -1
+    }
+
+    /**
+     * 导出当前自定义频段增益快照（仅包含非 0 频段，供备份）。
+     *
+     * @return band 索引 -> 增益（mB）
+     */
+    fun snapshotBandLevels(): Map<Int, Int> = buildMap {
+        for (band in 0 until BAND_COUNT) {
+            val level = getBandLevel(band)
+            if (level != 0) put(band, level)
+        }
     }
 }

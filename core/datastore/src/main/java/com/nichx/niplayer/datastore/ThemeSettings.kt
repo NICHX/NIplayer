@@ -48,6 +48,10 @@ object ThemeSettings {
     val themeScheme: NiScheme
         get() = _themeFlow.value.scheme
 
+    /** 当前配色方案序号（存储原始值，供备份导出，外部模块无需依赖 NiScheme）。 */
+    val themeSchemeOrdinal: Int
+        get() = _themeFlow.value.scheme.ordinal
+
     /** 设置主题模式，立即持久化并通知 StateFlow。 */
     fun setThemeMode(mode: Mode) {
         mmkv.encode(KEY_THEME_MODE, mode.value)
@@ -58,6 +62,16 @@ object ThemeSettings {
     fun setThemeScheme(scheme: NiScheme) {
         mmkv.encode(KEY_THEME_SCHEME, scheme.ordinal)
         _themeFlow.value = _themeFlow.value.copy(scheme = scheme)
+    }
+
+    /** 从备份快照恢复主题模式（接收存储原始值，外部模块无需依赖 Mode 枚举）。 */
+    fun restoreMode(modeValue: Int) {
+        setThemeMode(Mode.fromValue(modeValue))
+    }
+
+    /** 从备份快照恢复配色方案（接收存储原始值，外部模块无需依赖 NiScheme）。 */
+    fun restoreScheme(schemeOrdinal: Int) {
+        setThemeScheme(NiScheme.entries.getOrElse(schemeOrdinal) { NiScheme.BLUE })
     }
 
     private fun loadThemeConfig(): ThemeConfig {
