@@ -47,31 +47,29 @@ jobs:
             echo "$RELEASE_KEYSTORE" | base64 -d > "$RUNNER_TEMP/niplayer-release.keystore"
             echo "RELEASE_STORE_FILE=$RUNNER_TEMP/niplayer-release.keystore" >> "$GITHUB_ENV"
           else
-            echo "::warning::RELEASE_KEYSTORE secret 未配置，将构建未签名 APK/AAB"
+            echo "::warning::RELEASE_KEYSTORE secret 未配置，将构建未签名 APK"
           fi
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
 
-      - name: Build release artifacts
+      - name: Build release APK
         env:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease bundleRelease
+        run: ./gradlew assembleRelease
 
-      - name: Rename release artifacts
+      - name: Rename release artifact
         run: |
           mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/NIplayer-${GITHUB_REF_NAME}.apk"
-          mv app/build/outputs/bundle/release/app-release.aab "app/build/outputs/bundle/release/NIplayer-${GITHUB_REF_NAME}.aab"
 
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-artifacts
           path: |
             app/build/outputs/apk/release/*.apk
-            app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
 
       - name: Generate release notes
@@ -85,9 +83,7 @@ jobs:
           BODY="$RUNNER_TEMP/RELEASE_NOTES.md"
 
           APK_SIZE="$(ls -lh app/build/outputs/apk/release/*.apk 2>/dev/null | awk '{print $5}' || true)"
-          AAB_SIZE="$(ls -lh app/build/outputs/bundle/release/*.aab 2>/dev/null | awk '{print $5}' || true)"
           if [ -z "$APK_SIZE" ]; then APK_SIZE="—"; fi
-          if [ -z "$AAB_SIZE" ]; then AAB_SIZE="—"; fi
 
           {
             echo "## 🎬 NIplayer ${VERSION}"
@@ -162,7 +158,6 @@ jobs:
             echo "## 📥 安装"
             echo ""
             echo "- **APK**：\`NIplayer-${GITHUB_REF_NAME}.apk\`（约 ${APK_SIZE}，直接安装，含 arm64-v8a / armeabi-v7a）"
-            echo "- **AAB**：\`NIplayer-${GITHUB_REF_NAME}.aab\`（约 ${AAB_SIZE}，用于 Google Play / 应用市场）"
             echo ""
             echo "> 💡 首次安装请在系统设置中允许「安装未知来源应用」；升级覆盖安装即可，历史数据保留。"
             echo ""
@@ -178,5 +173,4 @@ jobs:
         with:
           files: |
             app/build/outputs/apk/release/*.apk
-            app/build/outputs/bundle/release/*.aab
           body_path: ${{ steps.release_notes.outputs.body_path }}
