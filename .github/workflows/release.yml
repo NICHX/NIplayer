@@ -16,6 +16,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 生成 release notes 需要完整历史与全部 tag，用于计算「上一版本 → 本版本」提交区间
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -70,10 +74,109 @@ jobs:
             app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
 
+      - name: Generate release notes
+        id: release_notes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          PREV_TAG="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          BODY="$RUNNER_TEMP/RELEASE_NOTES.md"
+
+          APK_SIZE="$(ls -lh app/build/outputs/apk/release/*.apk 2>/dev/null | awk '{print $5}' || true)"
+          AAB_SIZE="$(ls -lh app/build/outputs/bundle/release/*.aab 2>/dev/null | awk '{print $5}' || true)"
+          if [ -z "$APK_SIZE" ]; then APK_SIZE="—"; fi
+          if [ -z "$AAB_SIZE" ]; then AAB_SIZE="—"; fi
+
+          {
+            echo "## 🎬 NIplayer ${VERSION}"
+            echo ""
+            echo "> 发布时间：$(date -u +'%Y-%m-%d') ｜ 支持 Android 8.0+"
+          } > "$BODY"
+
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..${GITHUB_REF_NAME}"
+            {
+              echo "> 变更范围：[\`${PREV_TAG}...${GITHUB_REF_NAME}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${GITHUB_REF_NAME})"
+              echo ""
+            } >> "$BODY"
+          else
+            RANGE="${GITHUB_REF_NAME}"
+            {
+              echo "> 🎉 首个版本"
+              echo ""
+            } >> "$BODY"
+          fi
+
+          # 按 Conventional Commits 前缀分类展示提交，并给出对应 commit 短哈希
+          git log --no-merges --pretty=format:'%h|%s' "$RANGE" > "$RUNNER_TEMP/commits.txt"
+          if [ ! -s "$RUNNER_TEMP/commits.txt" ]; then
+            echo -e "\n**本版本无新增提交。**" >> "$BODY"
+          fi
+
+          write_group() {
+            local emoji="$1" title="$2" pattern="$3" first=1
+            local sha subject desc
+            while IFS='|' read -r sha subject; do
+              case "$subject" in
+                ${pattern})
+                  if [ "$first" -eq 1 ]; then
+                    printf '\n### %s %s\n\n' "$emoji" "$title" >> "$BODY"
+                    first=0
+                  fi
+                  desc="${subject#*: }"
+                  if [ "$desc" = "$subject" ]; then desc="$subject"; fi
+                  printf -- '- %s (`%s`)\n' "$desc" "${sha:0:7}" >> "$BODY"
+                  ;;
+              esac
+            done < "$RUNNER_TEMP/commits.txt"
+          }
+
+          write_group "✨" "新功能" "feat*"
+          write_group "🐛" "问题修复" "fix*"
+          write_group "⚡" "性能优化" "perf*"
+          write_group "♻️" "重构" "refactor*"
+          write_group "📝" "文档" "docs*"
+          write_group "🔧" "CI / 构建" "ci*"
+          write_group "🧪" "测试" "test*"
+          write_group "🧹" "杂项" "chore*"
+
+          # 兜底分组：未带约定前缀的提交
+          unmatched=0
+          while IFS='|' read -r sha subject; do
+            case "$subject" in
+              feat*|fix*|perf*|refactor*|docs*|ci*|test*|chore*|style*|build*|revert*) continue ;;
+            esac
+            if [ "$unmatched" -eq 0 ]; then
+              printf '\n### 📦 其他\n\n' >> "$BODY"
+              unmatched=1
+            fi
+            printf -- '- %s (`%s`)\n' "$subject" "${sha:0:7}" >> "$BODY"
+          done < "$RUNNER_TEMP/commits.txt"
+
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 📥 安装"
+            echo ""
+            echo "- **APK**：\`NIplayer-${GITHUB_REF_NAME}.apk\`（约 ${APK_SIZE}，直接安装，含 arm64-v8a / armeabi-v7a）"
+            echo "- **AAB**：\`NIplayer-${GITHUB_REF_NAME}.aab\`（约 ${AAB_SIZE}，用于 Google Play / 应用市场）"
+            echo ""
+            echo "> 💡 首次安装请在系统设置中允许「安装未知来源应用」；升级覆盖安装即可，历史数据保留。"
+            echo ""
+            echo "## 🔒 关于签名"
+            echo ""
+            echo "本版本由 GitHub Actions 使用 Release 密钥签名。安装时如提示与应用签名不一致，请先卸载旧版本再安装（会导致本地数据清空）。"
+          } >> "$BODY"
+
+          echo "body_path=$BODY" >> "$GITHUB_OUTPUT"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
-          generate_release_notes: true
+          body_path: ${{ steps.release_notes.outputs.body_path }}
