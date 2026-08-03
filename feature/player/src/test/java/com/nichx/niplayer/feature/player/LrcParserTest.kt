@@ -91,4 +91,30 @@ class LrcParserTest {
     fun `无有效时间标签返回空列表`() {
         assertTrue(LrcParser.parse("just plain text").isEmpty())
     }
+
+    @Test
+    fun `解析增强 LRC 逐字时间戳`() {
+        val lrc = "[00:14.20]<00:14.25>When <00:14.67>the <00:15.12>night"
+        val lines = LrcParser.parse(lrc)
+
+        assertEquals(1, lines.size)
+        assertEquals(14_200L, lines[0].timeMs)
+        // 纯文本 = 各词拼接（去除时间戳）
+        assertEquals("When the night", lines[0].text)
+        // 逐字时间戳被正确解析
+        assertEquals(3, lines[0].wordTimes.size)
+        assertEquals("When" to 14_250L, lines[0].wordTimes[0])
+        assertEquals("the" to 14_670L, lines[0].wordTimes[1])
+        assertEquals("night" to 15_120L, lines[0].wordTimes[2])
+    }
+
+    @Test
+    fun `普通 LRC 无逐字时间戳`() {
+        val lrc = "[00:01.00]Plain line"
+        val lines = LrcParser.parse(lrc)
+
+        assertEquals(1, lines.size)
+        assertEquals("Plain line", lines[0].text)
+        assertTrue(lines[0].wordTimes.isEmpty())
+    }
 }

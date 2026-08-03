@@ -23,6 +23,7 @@ import com.nichx.niplayer.database.entity.VideoBookmarkEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.DownloadSettings
+import com.nichx.niplayer.datastore.PlayHistorySyncSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.player.kernel.AudioTrackInfo
@@ -44,6 +45,7 @@ import com.nichx.niplayer.player.kernel.VideoSize
 import com.nichx.niplayer.common.coroutine.AppCoroutineScope
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.subtitle.format.FormatASS
+import com.nichx.niplayer.sync.PlayHistorySyncManager
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import com.nichx.niplayer.subtitle.format.FormatSRT
 import com.nichx.niplayer.subtitle.renderer.SubtitleColor
@@ -119,6 +121,7 @@ class PlayerViewModel @Inject constructor(
     private val musicMetadataService: MusicMetadataService,
     private val appScope: AppCoroutineScope,
     private val encryptedFolderManager: EncryptedFolderManager,
+    private val syncManager: PlayHistorySyncManager,
 ) : ViewModel() {
 
     /** 播放状态（WhileSubscribed(5000) 避免短暂配置变化导致 Player 释放）。 */
@@ -899,6 +902,19 @@ class PlayerViewModel @Inject constructor(
                 }
             }
         }
+
+        // BUG-H2 修复：PlayStarter 在后台异步构造同目录播放列表（SMB/WebDAV 大目录
+        // listFiles 耗时 1-3 秒），可能晚于本 ViewModel 初始化。同步路径（文件浏览页）
+        // 已在上方 consume 消费；此处订阅 PlaylistHolder 的流，接收延迟到达的列表，
+        // 避免首页英雄卡/播放历史恢复播放时连播列表丢失（竞态）。此时请求已消费，
+        // isAudioPlayback 已确定，可安全按请求类型过滤并同步 AudioPlaybackManager。
+        viewModelScope.launch {
+            playlistHolder.playlistFlow.collect { update ->
+                val (items, startIndex) = update ?: return@collect
+                applyLatePlaylist(items, startIndex)
+                playlistHolder.clear()
+            }
+        }
     }
 
     /**
@@ -999,6 +1015,33 @@ class PlayerViewModel @Inject constructor(
             newPlayTime = now,
             newEntity = newEntity,
         )
+    }
+
+    /**
+     * 应用延迟到达的播放列表（PlayStarter 异步构造场景，BUG-H2 修复）。
+     *
+     * 与 init 中同步路径的区别：调用时请求已消费、[isAudioPlayback] 已确定，
+     * 可安全按当前请求类型过滤，避免上一会话残留的异构列表混入。音频场景同步
+     * [AudioPlaybackManager] 的列表与索引，激活「下一首/上一首」与播放列表面板。
+     */
+    private fun applyLatePlaylist(items: List<PlaylistItem>, startIndex: Int) {
+        if (items.isEmpty()) return
+        val typeFilter: (PlaylistItem) -> Boolean =
+            if (isAudioPlayback) { item -> isAudioFile(item.fileName) }
+            else { item -> !isAudioFile(item.fileName) }
+        val filtered = items.filter(typeFilter)
+        if (filtered.isEmpty()) {
+            _playlist.value = emptyList()
+            _currentIndex.value = -1
+            return
+        }
+        val oldPath = items.getOrNull(startIndex)?.filePath
+        val newIndex = filtered.indexOfFirst { it.filePath == oldPath }.takeIf { it >= 0 } ?: 0
+        _playlist.value = filtered
+        _currentIndex.value = newIndex
+        if (isAudioPlayback) {
+            audioPlaybackManager.updatePlaylist(filtered, newIndex)
+        }
     }
 
     /**
@@ -2019,6 +2062,13 @@ class PlayerViewModel @Inject constructor(
                     }
                 }
             }
+
+            // 3. 播放器退出后触发播放历史云同步（若启用自动同步）。
+            //    延迟等待上面的进度保存落库；失败静默，留待下次同步时机重试
+            if (PlayHistorySyncSettings.autoSync) {
+                delay(SYNC_DELAY_MS)
+                syncManager.sync(auto = true)
+            }
         }
     }
 }
@@ -2077,3 +2127,6 @@ private const val PROGRESS_FIRST_SAVE_DELAY_MS = 5_000L
  * - 超过 10s 视为网络异常，放弃生成（下次播放时会重新生成）
  */
 private const val THUMBNAIL_TIMEOUT_MS = 10_000L
+
+/** 播放器退出后自动同步的延迟（ms），等待退出时的进度保存落库。 */
+private const val SYNC_DELAY_MS = 3_000L
