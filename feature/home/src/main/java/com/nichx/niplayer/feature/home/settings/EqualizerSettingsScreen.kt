@@ -84,6 +84,7 @@ private val BUILTIN_PRESETS: List<EqPreset> = listOf(
 fun EqualizerSettingsScreen(
     onBack: () -> Unit = {},
     onApplyToPlayer: () -> Unit = {},
+    onApplyLiveToPlayer: () -> Unit = {},
 ) {
     var enabled by remember { mutableStateOf(AudioSettings.equalizerEnabled) }
     var selectedPreset by remember {
@@ -92,8 +93,10 @@ fun EqualizerSettingsScreen(
     // 用于触发滑块重绘（预设切换后各 band 增益变化，需刷新 UI）
     var refreshKey by remember { mutableStateOf(0) }
 
-    // 实时应用均衡器设置到当前播放器
+    // 开关切换：经淡入淡出包装（效果链不重建，此处为兜底）
     val applyEqualizer: () -> Unit = onApplyToPlayer
+    // 滑块 / 预设：实时直通，避免拖动时反复打断音乐
+    val applyEqualizerLive: () -> Unit = onApplyLiveToPlayer
 
     Scaffold(
         topBar = {
@@ -177,7 +180,7 @@ fun EqualizerSettingsScreen(
                                 }
                                 AudioSettings.equalizerPresetIndex = -1
                                 refreshKey++ // 触发滑块刷新
-                                applyEqualizer()
+                                applyEqualizerLive()
                             },
                         )
                     }
@@ -207,7 +210,7 @@ fun EqualizerSettingsScreen(
                             onLevelChange = { newLevel ->
                                 AudioSettings.setBandLevel(band.index, newLevel)
                                 if (selectedPreset != -1) selectedPreset = -1
-                                applyEqualizer()
+                                applyEqualizerLive()
                             },
                             modifier = Modifier.weight(1f),
                         )

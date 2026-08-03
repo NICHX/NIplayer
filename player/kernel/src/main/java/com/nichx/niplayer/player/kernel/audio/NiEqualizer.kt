@@ -67,23 +67,34 @@ class NiEqualizer {
      * 从 [AudioSettings] 重新读取配置并应用到当前 Equalizer。
      *
      * 调用前必须已 [attach]。UI 修改设置后调用此方法实时生效。
+     *
+     * 关闭均衡器（[AudioSettings.equalizerEnabled] = false）时保持效果 enabled，
+     * 将全部频段增益拉平为 0 mB（unity 增益 ≈ 旁路），而不是调用 `enabled = false`。
+     * 直接切换 enabled 会让 AudioFlinger 重建/拆除效果链（含硬件 DSP 旁路切换），
+     * 播放中的音频被硬切断产生爆响，且该爆响产生在效果链输出层面，音量静音无法消除。
+     * 保持 enabled 仅修改频段参数，效果链不重建，从根源上消除爆音。
      */
     fun applySettings() {
         val eq = equalizer ?: return
         runCatching {
-            eq.enabled = AudioSettings.equalizerEnabled
-            val presetIndex = AudioSettings.equalizerPresetIndex
-            if (presetIndex >= 0 && presetIndex < eq.numberOfPresets) {
-                eq.usePreset(presetIndex.toShort())
+            eq.enabled = true
+            if (AudioSettings.equalizerEnabled) {
+                val presetIndex = AudioSettings.equalizerPresetIndex
+                if (presetIndex >= 0 && presetIndex < eq.numberOfPresets) {
+                    eq.usePreset(presetIndex.toShort())
+                } else {
+                    // 自定义模式：逐 band 设置增益
+                    for (band in 0 until eq.numberOfBands.toInt()) {
+                        val level = AudioSettings.getBandLevel(band)
+                        eq.setBandLevel(band.toShort(), level.toShort())
+                    }
+                }
             } else {
-                // 自定义模式：逐 band 设置增益
+                // 关闭：拉平所有频段（0 mB = unity 增益），等效旁路但不拆除效果链
                 for (band in 0 until eq.numberOfBands.toInt()) {
-                    val level = AudioSettings.getBandLevel(band)
-                    eq.setBandLevel(band.toShort(), level.toShort())
+                    eq.setBandLevel(band.toShort(), 0)
                 }
             }
-            // usePreset 后 enabled 状态可能被重置，重新应用
-            eq.enabled = AudioSettings.equalizerEnabled
         }
     }
 
