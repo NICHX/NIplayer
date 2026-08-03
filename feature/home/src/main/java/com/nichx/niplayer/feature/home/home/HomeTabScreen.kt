@@ -66,6 +66,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -90,6 +92,7 @@ import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.components.PlaceholderText
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeTabScreen(
     onNavigateToSearch: () -> Unit,
@@ -108,6 +111,7 @@ fun HomeTabScreen(
     val thumbnailUrls by viewModel.thumbnailUrls.collectAsStateWithLifecycle()
     val qaThumbnailUrls by viewModel.qaThumbnailUrls.collectAsStateWithLifecycle()
     val storageReachability by viewModel.storageReachability.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
@@ -196,7 +200,13 @@ fun HomeTabScreen(
         },
         snackbarHost = { NiSnackbarHost(hostState = snackbarHostState, bottomPadding = 80.dp) },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
             if (!dataReady) {
                 NiHomeLoadingState()
             } else if (useMagazine) {

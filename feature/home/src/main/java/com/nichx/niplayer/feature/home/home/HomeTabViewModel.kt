@@ -155,6 +155,10 @@ class HomeTabViewModel @Inject constructor(
     private val _qaThumbnailUrls = MutableStateFlow<Map<String, String>>(emptyMap())
     val qaThumbnailUrls: StateFlow<Map<String, String>> = _qaThumbnailUrls.asStateFlow()
 
+    /** 下拉刷新状态：true 时首页顶部显示刷新指示器。 */
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     init {
         viewModelScope.launch {
             recentPlays.collect { plays ->
@@ -223,12 +227,12 @@ class HomeTabViewModel @Inject constructor(
             }
         }
 
-        // 首页加载时验证存储源可达性（仅一次）
+        // 首页加载时验证存储源可达性（仅一次；下拉刷新会再次验证）
         viewModelScope.launch {
-            recentPlays.collect { plays ->
+            recentPlays.collect {
                 if (!connectionsValidated) {
                     connectionsValidated = true
-                    validateStorageConnections(plays, quickAccessItems.value)
+                    validateStorageConnections()
                 }
             }
         }
@@ -407,12 +411,12 @@ class HomeTabViewModel @Inject constructor(
      *
      * 并发验证所有不同的 storageId，每个 storageId 只测一次连接。
      * 验证结果写入 [_storageReachability]，UI 据此显示视觉提示。
+     * 首页加载与下拉刷新共用（suspend，调用方持协程）。
      */
-    private fun validateStorageConnections(
-        plays: List<PlayHistoryEntity>,
-        quickItems: List<QuickAccessUiItem>,
-    ) {
-        viewModelScope.launch {
+    private suspend fun validateStorageConnections() {
+        val plays = recentPlays.value
+        val quickItems = quickAccessItems.value
+        coroutineScope {
             val storageIds = mutableSetOf<Int>()
             plays.filter { it.storageId != null }.forEach { storageIds.add(it.storageId!!) }
             quickItems.filter { it.libraryValid }.forEach { storageIds.add(it.entity.libraryId) }
@@ -475,6 +479,27 @@ class HomeTabViewModel @Inject constructor(
                     is PlayStarter.StartResult.Error ->
                         _events.tryEmit(HomeTabEvent.ShowError(result.message))
                 }
+            }
+        }
+    }
+
+    /**
+     * 下拉刷新首页。
+     *
+     * 播放记录 / 快速访问数据来自 Room Flow，增删改会自动推送，无需重查；
+     * 刷新针对的是会过期的状态：重新验证存储源可达性（连接可能已恢复/断开），
+     * 并重新生成本地缺失的缩略图。
+     */
+    fun refresh() {
+        if (_isRefreshing.value) return
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                validateStorageConnections()
+                generateRemoteThumbnails(recentPlays.value, _thumbnailUrls.value)
+                generateQuickAccessThumbnails(quickAccessItems.value, _qaThumbnailUrls.value)
+            } finally {
+                _isRefreshing.value = false
             }
         }
     }
