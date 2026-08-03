@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -187,6 +188,10 @@ fun NiThumbCard(
     subtitleText: String? = null,
     mediaLabel: String? = null,
     squareCover: Boolean = false,
+    // 大屏网格场景下让卡片填满列宽，替代固定 160dp 宽
+    fillWidth: Boolean = false,
+    // 横向滚动行内自定义卡片宽度（fillWidth = false 时生效），默认按 squareCover 取 160/120dp
+    cardWidth: Dp = Dp.Unspecified,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -307,7 +312,10 @@ fun NiThumbCard(
 
         Column(
             modifier = modifier
-                .width(verticalCardWidth)
+                .then(
+                    if (fillWidth) Modifier.fillMaxWidth()
+                    else Modifier.width(if (cardWidth != Dp.Unspecified) cardWidth else verticalCardWidth),
+                )
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
