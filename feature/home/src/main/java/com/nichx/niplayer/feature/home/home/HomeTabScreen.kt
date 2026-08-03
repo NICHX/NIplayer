@@ -13,17 +13,23 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -32,12 +38,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import com.nichx.niplayer.designsystem.components.NiAutoSizeText
 import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
 import com.nichx.niplayer.designsystem.iconstyle.NiStyleIcon
 import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
+import com.nichx.niplayer.designsystem.theme.NiSpacings
+import com.nichx.niplayer.designsystem.theme.NiWindowHeightSizeClass
 import com.nichx.niplayer.designsystem.theme.NiWindowWidthSizeClass
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import androidx.compose.material.icons.Icons
@@ -45,7 +54,6 @@ import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Image
-import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -64,6 +72,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -111,209 +120,615 @@ fun HomeTabScreen(
         }
     }
 
+    // ===== 响应式布局参数 =====
+    // 按窗口宽度分级适配：紧凑(手机竖屏)用单列 + 底部导航；中大屏(平板/横屏/桌面)
+    // 用侧边导航 + 杂志式单列滚动（影院横幅 + 各分区横向行）。
+    val windowSizeClass = LocalNiWindowSizeClass.current
+    val useMagazine = windowSizeClass.width != NiWindowWidthSizeClass.Compact
+    val qaColumns = when (windowSizeClass.width) {
+        NiWindowWidthSizeClass.Compact -> 2
+        NiWindowWidthSizeClass.Medium -> 3
+        NiWindowWidthSizeClass.Expanded -> 4
+    }
+    // 最近播放网格列数：紧凑宽度用 1 列(横向滚动)，中大屏用多列网格
+    val recentColumns = when (windowSizeClass.width) {
+        NiWindowWidthSizeClass.Compact -> 1
+        NiWindowWidthSizeClass.Medium -> 2
+        NiWindowWidthSizeClass.Expanded -> 3
+    }
+    // 内容最大宽度：大屏避免内容拉伸过宽，提升可读性
+    val contentMaxWidth = when (windowSizeClass.width) {
+        NiWindowWidthSizeClass.Compact -> Dp.Unspecified
+        NiWindowWidthSizeClass.Medium -> 720.dp
+        NiWindowWidthSizeClass.Expanded -> 960.dp
+    }
+    // 英雄卡最大宽度：横屏(高度紧凑)下大幅收窄避免 16:9 撑满全屏；中大屏也收窄
+    val heroMaxWidth = when {
+        windowSizeClass.height == NiWindowHeightSizeClass.Compact -> 380.dp
+        windowSizeClass.width == NiWindowWidthSizeClass.Medium -> 560.dp
+        windowSizeClass.width == NiWindowWidthSizeClass.Expanded -> 560.dp
+        else -> Dp.Unspecified
+    }
+    // 影院横幅最大高度：横屏(高度紧凑)下压低，避免占满整屏高度
+    val bannerMaxHeight = if (windowSizeClass.height == NiWindowHeightSizeClass.Compact) 220.dp else 280.dp
+
     Scaffold(
         topBar = {
-            NiTopBar(
-                title = "NIplayer",
-                actions = {
-                    IconButton(onClick = onNavigateToSearch) {
-                        NiStyleIcon(
-                            icon = Icons.Rounded.Search,
-                            style = NiAppIconStyle,
-                            containerSize = 40.dp,
-                            iconSize = 22.dp,
-                            contentDescription = "搜索",
-                        )
-                    }
-                    IconButton(onClick = onNavigateToPlayHistory) {
-                        NiStyleIcon(
-                            icon = Icons.Rounded.History,
-                            style = NiAppIconStyle,
-                            containerSize = 40.dp,
-                            iconSize = 22.dp,
-                            contentDescription = "播放历史",
-                        )
-                    }
-                    IconButton(onClick = onNavigateToSettings) {
-                        NiStyleIcon(
-                            icon = Icons.Rounded.Settings,
-                            style = NiAppIconStyle,
-                            containerSize = 40.dp,
-                            iconSize = 22.dp,
-                            contentDescription = "设置",
-                        )
-                    }
-                },
-            )
+            // 大屏下顶部栏也限制最大宽度并居中，与正文对齐
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                NiTopBar(
+                    title = "NIplayer",
+                    modifier = Modifier.widthIn(max = contentMaxWidth),
+                    actions = {
+                        IconButton(onClick = onNavigateToSearch) {
+                            NiStyleIcon(
+                                icon = Icons.Rounded.Search,
+                                style = NiAppIconStyle,
+                                containerSize = 40.dp,
+                                iconSize = 22.dp,
+                                contentDescription = "搜索",
+                            )
+                        }
+                        IconButton(onClick = onNavigateToPlayHistory) {
+                            NiStyleIcon(
+                                icon = Icons.Rounded.History,
+                                style = NiAppIconStyle,
+                                containerSize = 40.dp,
+                                iconSize = 22.dp,
+                                contentDescription = "播放历史",
+                            )
+                        }
+                        IconButton(onClick = onNavigateToSettings) {
+                            NiStyleIcon(
+                                icon = Icons.Rounded.Settings,
+                                style = NiAppIconStyle,
+                                containerSize = 40.dp,
+                                iconSize = 22.dp,
+                                contentDescription = "设置",
+                            )
+                        }
+                    },
+                )
+            }
         },
         snackbarHost = { NiSnackbarHost(hostState = snackbarHostState, bottomPadding = 80.dp) },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (!dataReady) {
                 NiHomeLoadingState()
+            } else if (useMagazine) {
+                HomeMagazineLayout(
+                    recentPlays = recentPlays,
+                    recentVideoPlays = recentVideoPlays,
+                    recentAudioPlays = recentAudioPlays,
+                    quickAccessItems = quickAccessItems,
+                    thumbnailUrls = thumbnailUrls,
+                    qaThumbnailUrls = qaThumbnailUrls,
+                    storageReachability = storageReachability,
+                    contentMaxWidth = contentMaxWidth,
+                    bannerMaxHeight = bannerMaxHeight,
+                    onNavigateToPlayHistory = onNavigateToPlayHistory,
+                    onNavigateToQuickAccess = onNavigateToQuickAccess,
+                    onResumePlay = { viewModel.resumePlay(it) },
+                    onOpenQuickAccess = { viewModel.openQuickAccessItem(it) },
+                )
             } else {
-                val qaColumns = when (LocalNiWindowSizeClass.current.width) {
-                    NiWindowWidthSizeClass.Compact -> 2
-                    NiWindowWidthSizeClass.Medium -> 3
-                    NiWindowWidthSizeClass.Expanded -> 4
+                HomeSingleColumnLayout(
+                    recentPlays = recentPlays,
+                    recentVideoPlays = recentVideoPlays,
+                    recentAudioPlays = recentAudioPlays,
+                    quickAccessItems = quickAccessItems,
+                    thumbnailUrls = thumbnailUrls,
+                    qaThumbnailUrls = qaThumbnailUrls,
+                    storageReachability = storageReachability,
+                    recentColumns = recentColumns,
+                    qaColumns = qaColumns,
+                    contentMaxWidth = contentMaxWidth,
+                    heroMaxWidth = heroMaxWidth,
+                    onNavigateToPlayHistory = onNavigateToPlayHistory,
+                    onNavigateToQuickAccess = onNavigateToQuickAccess,
+                    onResumePlay = { viewModel.resumePlay(it) },
+                    onOpenQuickAccess = { viewModel.openQuickAccessItem(it) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 杂志式单列布局（中大屏/横屏）：
+ * 全宽影院横幅 + 各分区横向滚动行（最近播放视频 / 快速访问 / 最近播放音乐）。
+ * 单轴滚动、卡片尺寸恒定，避免双栏布局的右栏挤压与视线跳跃。
+ */
+@Composable
+private fun HomeMagazineLayout(
+    recentPlays: List<PlayHistoryEntity>,
+    recentVideoPlays: List<PlayHistoryEntity>,
+    recentAudioPlays: List<PlayHistoryEntity>,
+    quickAccessItems: List<QuickAccessUiItem>,
+    thumbnailUrls: Map<String, String>,
+    qaThumbnailUrls: Map<String, String>,
+    storageReachability: Map<Int, Boolean>,
+    contentMaxWidth: Dp,
+    bannerMaxHeight: Dp,
+    onNavigateToPlayHistory: () -> Unit,
+    onNavigateToQuickAccess: () -> Unit,
+    onResumePlay: (PlayHistoryEntity) -> Unit,
+    onOpenQuickAccess: (QuickAccessUiItem) -> Unit,
+) {
+    val screenOuter = NiSpacings.responsiveScreenOuter
+    val listGap = NiSpacings.responsiveListGap
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .widthIn(max = contentMaxWidth)
+                .fillMaxWidth()
+                .align(Alignment.TopCenter),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
+            verticalArrangement = Arrangement.spacedBy(listGap),
+        ) {
+            if (recentPlays.isEmpty() && quickAccessItems.isEmpty()) {
+                item(key = "empty_all") {
+                    NiEmptyState(
+                        icon = Icons.Rounded.Star,
+                        text = "暂无内容",
+                        hint = "从媒体库添加存储源开始使用",
+                        modifier = Modifier.padding(horizontal = screenOuter),
+                    )
                 }
-                LazyColumn(
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = 8.dp,
-                        bottom = 80.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (recentPlays.isEmpty() && quickAccessItems.isEmpty()) {
-                        item(key = "empty_all") {
-                            NiEmptyState(
-                                icon = Icons.Rounded.Star,
-                                text = "暂无内容",
-                                hint = "从媒体库添加存储源开始使用",
+            } else {
+                if (recentPlays.isNotEmpty()) {
+                    val hero = recentPlays.first()
+                    item(key = "hero_banner") {
+                        CinematicHeroBanner(
+                            title = hero.videoName,
+                            durationText = formatTime(hero.videoDuration),
+                            positionText = formatTime(hero.videoPosition),
+                            thumbnailModel = buildHeroThumbnailModel(
+                                hero.url, hero.mediaType, hero.videoName, thumbnailUrls,
+                            ),
+                            progressFraction = if (hero.videoDuration > 0)
+                                hero.videoPosition.toFloat() / hero.videoDuration.toFloat() else 0f,
+                            maxHeight = bannerMaxHeight,
+                            onClick = { onResumePlay(hero) },
+                        )
+                    }
+
+                    if (recentVideoPlays.isNotEmpty()) {
+                        item(key = "recent_video_header") {
+                            NiSectionHeader(
+                                title = "最近播放视频",
+                                count = recentVideoPlays.size,
+                                onClick = onNavigateToPlayHistory,
+                                modifier = Modifier.padding(horizontal = screenOuter),
                             )
                         }
-                    } else {
-                        if (recentPlays.isNotEmpty()) {
-                            val hero = recentPlays.first()
-                            val heroProgress = if (hero.videoDuration > 0)
-                                hero.videoPosition.toFloat() / hero.videoDuration.toFloat() else 0f
-                            val heroReachable = isHistoryReachable(hero, storageReachability)
-                            item(key = "hero") {
-                                Box {
-                                    NiHeroResumeCard(
-                                        title = hero.videoName,
-                                        durationText = formatTime(hero.videoDuration),
-                                        positionText = formatTime(hero.videoPosition),
-                                        thumbnailModel = buildHeroThumbnailModel(
-                                            hero.url, hero.mediaType, hero.videoName, thumbnailUrls,
-                                        ),
-                                        progressFraction = heroProgress,
-                                        contentScale = ContentScale.Crop,
-                                        onClick = { viewModel.resumePlay(hero) },
-                                        modifier = if (!heroReachable) Modifier.graphicsLayer { alpha = 0.5f } else Modifier,
-                                    )
-                                    if (!heroReachable) {
-                                        UnreachableBadge(
-                                            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
-                                        )
-                                    }
-                                }
-                            }
+                        item(key = "recent_video_row") {
+                            RecentMediaGrid(
+                                mediaItems = recentVideoPlays,
+                                columns = 1,
+                                thumbnailUrls = thumbnailUrls,
+                                storageReachability = storageReachability,
+                                contentScale = ContentScale.Crop,
+                                squareCover = false,
+                                edgePadding = screenOuter,
+                                cardWidth = 200.dp,
+                                onItemClick = onResumePlay,
+                            )
+                        }
+                    }
+                }
 
-                            if (recentVideoPlays.isNotEmpty()) {
-                                item(key = "recent_video_header") {
-                                    NiSectionHeader(
-                                        title = "最近播放视频",
-                                        count = recentVideoPlays.size,
-                                        onClick = onNavigateToPlayHistory,
-                                    )
-                                }
+                if (quickAccessItems.isNotEmpty()) {
+                    item(key = "qa_header") {
+                        NiSectionHeader(
+                            title = "快速访问",
+                            count = quickAccessItems.size,
+                            onClick = onNavigateToQuickAccess,
+                            modifier = Modifier.padding(horizontal = screenOuter),
+                        )
+                    }
+                    item(key = "qa_row") {
+                        HomeQuickAccessLazyRow(
+                            items = quickAccessItems,
+                            thumbnailUrls = qaThumbnailUrls,
+                            storageReachability = storageReachability,
+                            onItemClick = onOpenQuickAccess,
+                            edgePadding = screenOuter,
+                            cardWidth = 200.dp,
+                        )
+                    }
+                }
 
-                                item(key = "recent_video_row") {
-                                    LazyRow(
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    ) {
-                                        items(recentVideoPlays, key = { it.id }) { history ->
-                                            val progress = if (history.videoDuration > 0)
-                                                history.videoPosition.toFloat() / history.videoDuration.toFloat() else 0f
-                                            val reachable = isHistoryReachable(history, storageReachability)
-                                            Box(modifier = Modifier.graphicsLayer { if (!reachable) alpha = 0.5f }) {
-                                                NiThumbCard(
-                                                    title = history.videoName,
-                                                    durationText = formatTime(history.videoDuration),
-                                                    thumbnailModel = buildThumbnailModel(history.url, history.mediaType, thumbnailUrls),
-                                                    progressFraction = progress,
-                                                    mediaLabel = mediaTypeLabel(history.mediaType),
-                                                    contentScale = ContentScale.Crop,
-                                                    onClick = { viewModel.resumePlay(history) },
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                if (recentAudioPlays.isNotEmpty()) {
+                    item(key = "recent_audio_header") {
+                        NiSectionHeader(
+                            title = "最近播放音乐",
+                            count = recentAudioPlays.size,
+                            onClick = onNavigateToPlayHistory,
+                            modifier = Modifier.padding(horizontal = screenOuter),
+                        )
+                    }
+                    item(key = "recent_audio_row") {
+                        RecentMediaGrid(
+                            mediaItems = recentAudioPlays,
+                            columns = 1,
+                            thumbnailUrls = thumbnailUrls,
+                            storageReachability = storageReachability,
+                            contentScale = ContentScale.Fit,
+                            squareCover = true,
+                            edgePadding = screenOuter,
+                            cardWidth = 140.dp,
+                            onItemClick = onResumePlay,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
-                            if (recentAudioPlays.isNotEmpty()) {
-                                item(key = "recent_audio_header") {
-                                    NiSectionHeader(
-                                        title = "最近播放音乐",
-                                        count = recentAudioPlays.size,
-                                        onClick = onNavigateToPlayHistory,
-                                    )
-                                }
+/**
+ * 影院横幅（杂志式首页首屏）：
+ * 缩略图模糊铺满 + 加深遮罩保证可读性；前景为「继续播放」引导、标题、
+ * 进度信息与播放按钮，整卡可点击续播。无缩略图时降级为主题渐变背景。
+ */
+@Composable
+private fun CinematicHeroBanner(
+    title: String,
+    durationText: String,
+    positionText: String,
+    thumbnailModel: Any?,
+    progressFraction: Float,
+    maxHeight: Dp,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(20.dp)
+    val isDark = NiExtraColors.current.isDark
+    val fallbackBrush = Brush.verticalGradient(
+        listOf(
+            MaterialTheme.colorScheme.primaryContainer,
+            if (isDark) Color(0xFF0F0F17) else Color(0xFFEDEAE2),
+        ),
+    )
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.985f else 1f,
+        animationSpec = tween(durationMillis = NiMotion.DURATION_MICRO),
+        label = "bannerScale",
+    )
 
-                                item(key = "recent_audio_row") {
-                                    LazyRow(
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    ) {
-                                        items(recentAudioPlays, key = { it.id }) { history ->
-                                            val progress = if (history.videoDuration > 0)
-                                                history.videoPosition.toFloat() / history.videoDuration.toFloat() else 0f
-                                            val reachable = isHistoryReachable(history, storageReachability)
-                                            Box(modifier = Modifier.graphicsLayer { if (!reachable) alpha = 0.5f }) {
-                                                NiThumbCard(
-                                                    title = history.videoName,
-                                                    durationText = formatTime(history.videoDuration),
-                                                    thumbnailModel = buildThumbnailModel(history.url, history.mediaType, thumbnailUrls),
-                                                    progressFraction = progress,
-                                                    mediaLabel = mediaTypeLabel(history.mediaType),
-                                                    contentScale = ContentScale.Fit,
-                                                    onClick = { viewModel.resumePlay(history) },
-                                                    squareCover = true,
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            item(key = "history_empty") {
-                                NiEmptyState(
-                                    icon = Icons.Rounded.History,
-                                    text = "暂无播放记录",
-                                    hint = "从媒体库选择视频或音乐开始播放",
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 200.dp, max = maxHeight)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(shape)
+            .background(NiExtraColors.current.surfaceLevel2)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            ),
+    ) {
+        // 背景层：缩略图放大模糊铺满；无缩略图时用主题渐变
+        if (thumbnailModel != null) {
+            AsyncImage(
+                model = thumbnailModel,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { scaleX = 1.25f; scaleY = 1.25f }
+                    .blur(18.dp)
+                    .alpha(0.95f),
+            )
+        } else {
+            Box(Modifier.fillMaxSize().background(fallbackBrush))
+        }
+        // 遮罩：仅左侧轻微加深托住前景文字，保留缩略图可读性
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color.Black.copy(alpha = 0.5f),
+                            Color.Black.copy(alpha = 0.12f),
+                        ),
+                    ),
+                ),
+        )
+        // 前景内容：左对齐，限制文本宽度避免过宽
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 520.dp)
+                    .padding(horizontal = 22.dp, vertical = 18.dp),
+            ) {
+                Text(
+                    text = "继续播放",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White.copy(alpha = 0.92f),
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "$positionText / $durationText",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.75f),
+                )
+                Spacer(Modifier.weight(1f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.22f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.PlayArrow,
+                            contentDescription = "播放",
+                            tint = Color.White,
+                            modifier = Modifier.size(30.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(Color.White.copy(alpha = 0.28f)),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(progressFraction.coerceIn(0f, 1f))
+                                    .fillMaxHeight()
+                                    .background(Color.White),
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "继续播放",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.6f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 单列布局（紧凑宽度/手机竖屏）：
+ * 英雄卡 + 最近播放视频 + 最近播放音乐 + 快速访问，纵向单列滚动。
+ */
+@Composable
+private fun HomeSingleColumnLayout(
+    recentPlays: List<PlayHistoryEntity>,
+    recentVideoPlays: List<PlayHistoryEntity>,
+    recentAudioPlays: List<PlayHistoryEntity>,
+    quickAccessItems: List<QuickAccessUiItem>,
+    thumbnailUrls: Map<String, String>,
+    qaThumbnailUrls: Map<String, String>,
+    storageReachability: Map<Int, Boolean>,
+    recentColumns: Int,
+    qaColumns: Int,
+    contentMaxWidth: Dp,
+    heroMaxWidth: Dp,
+    onNavigateToPlayHistory: () -> Unit,
+    onNavigateToQuickAccess: () -> Unit,
+    onResumePlay: (PlayHistoryEntity) -> Unit,
+    onOpenQuickAccess: (QuickAccessUiItem) -> Unit,
+) {
+    val screenOuter = NiSpacings.responsiveScreenOuter
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .widthIn(max = contentMaxWidth)
+                .fillMaxWidth()
+                .align(Alignment.TopCenter),
+            contentPadding = PaddingValues(
+                start = screenOuter,
+                end = screenOuter,
+                top = 8.dp,
+                bottom = 80.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(NiSpacings.responsiveListGap),
+        ) {
+            if (recentPlays.isEmpty() && quickAccessItems.isEmpty()) {
+                item(key = "empty_all") {
+                    NiEmptyState(
+                        icon = Icons.Rounded.Star,
+                        text = "暂无内容",
+                        hint = "从媒体库添加存储源开始使用",
+                    )
+                }
+            } else {
+                if (recentPlays.isNotEmpty()) {
+                    val hero = recentPlays.first()
+                    item(key = "hero") {
+                        // 大屏/横屏下限制英雄卡最大宽度并居中，避免 16:9 撑满全屏高度
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.TopCenter,
+                        ) {
+                            Box(modifier = Modifier.widthIn(max = heroMaxWidth)) {
+                                HomeHeroItem(
+                                    hero = hero,
+                                    thumbnailUrls = thumbnailUrls,
+                                    storageReachability = storageReachability,
+                                    onClick = { onResumePlay(hero) },
                                 )
                             }
                         }
                     }
 
-                    if (quickAccessItems.isNotEmpty()) {
-                        item(key = "qa_header") {
+                    if (recentVideoPlays.isNotEmpty()) {
+                        item(key = "recent_video_header") {
                             NiSectionHeader(
-                                title = "快速访问",
-                                count = quickAccessItems.size,
-                                onClick = onNavigateToQuickAccess,
+                                title = "最近播放视频",
+                                count = recentVideoPlays.size,
+                                onClick = onNavigateToPlayHistory,
                             )
                         }
 
-                        quickAccessItems.chunked(qaColumns).forEachIndexed { chunkIdx, row ->
-                            item(key = "qa_row_$chunkIdx") {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    row.forEach { qaItem ->
-                                        val effectiveValid = qaItem.libraryValid &&
-                                            storageReachability[qaItem.entity.libraryId] != false
-                                        HomeQuickAccessGridItem(
-                                            item = qaItem,
-                                            thumbnailUrl = qaThumbnailUrls[qaItem.entity.storagePath],
-                                            isValid = effectiveValid,
-                                            onClick = { viewModel.openQuickAccessItem(qaItem) },
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                    }
-                                    if (row.size < qaColumns) {
-                                        Spacer(Modifier.weight(1f))
-                                    }
-                                }
-                            }
+                        item(key = "recent_video_row") {
+                            RecentMediaGrid(
+                                mediaItems = recentVideoPlays,
+                                columns = recentColumns,
+                                thumbnailUrls = thumbnailUrls,
+                                storageReachability = storageReachability,
+                                contentScale = ContentScale.Crop,
+                                squareCover = false,
+                                onItemClick = onResumePlay,
+                            )
                         }
+                    }
+
+                    if (recentAudioPlays.isNotEmpty()) {
+                        item(key = "recent_audio_header") {
+                            NiSectionHeader(
+                                title = "最近播放音乐",
+                                count = recentAudioPlays.size,
+                                onClick = onNavigateToPlayHistory,
+                            )
+                        }
+
+                        item(key = "recent_audio_row") {
+                            RecentMediaGrid(
+                                mediaItems = recentAudioPlays,
+                                columns = recentColumns,
+                                thumbnailUrls = thumbnailUrls,
+                                storageReachability = storageReachability,
+                                contentScale = ContentScale.Fit,
+                                squareCover = true,
+                                onItemClick = onResumePlay,
+                            )
+                        }
+                    }
+                } else {
+                    item(key = "history_empty") {
+                        NiEmptyState(
+                            icon = Icons.Rounded.History,
+                            text = "暂无播放记录",
+                            hint = "从媒体库选择视频或音乐开始播放",
+                        )
                     }
                 }
             }
+
+            if (quickAccessItems.isNotEmpty()) {
+                item(key = "qa_header") {
+                    NiSectionHeader(
+                        title = "快速访问",
+                        count = quickAccessItems.size,
+                        onClick = onNavigateToQuickAccess,
+                    )
+                }
+
+                quickAccessItems.chunked(qaColumns).forEachIndexed { chunkIdx, row ->
+                    item(key = "qa_row_$chunkIdx") {
+                        HomeQuickAccessRow(
+                            row = row,
+                            columns = qaColumns,
+                            thumbnailUrls = qaThumbnailUrls,
+                            storageReachability = storageReachability,
+                            onItemClick = onOpenQuickAccess,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 英雄续播项：横版/竖版英雄卡 + 不可达半透明 + 右上角「离线」角标。
+ */
+@Composable
+private fun HomeHeroItem(
+    hero: PlayHistoryEntity,
+    thumbnailUrls: Map<String, String>,
+    storageReachability: Map<Int, Boolean>,
+    onClick: () -> Unit,
+) {
+    val heroProgress = if (hero.videoDuration > 0)
+        hero.videoPosition.toFloat() / hero.videoDuration.toFloat() else 0f
+    val heroReachable = isHistoryReachable(hero, storageReachability)
+    Box(modifier = Modifier.fillMaxWidth()) {
+        NiHeroResumeCard(
+            title = hero.videoName,
+            durationText = formatTime(hero.videoDuration),
+            positionText = formatTime(hero.videoPosition),
+            thumbnailModel = buildHeroThumbnailModel(
+                hero.url, hero.mediaType, hero.videoName, thumbnailUrls,
+            ),
+            progressFraction = heroProgress,
+            contentScale = ContentScale.Crop,
+            onClick = onClick,
+            modifier = if (!heroReachable) Modifier.graphicsLayer { alpha = 0.5f } else Modifier,
+        )
+        if (!heroReachable) {
+            UnreachableBadge(
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 快速访问单行：按 [columns] 均分宽度，末行不足时用等宽占位填齐避免拉伸。
+ */
+@Composable
+private fun HomeQuickAccessRow(
+    row: List<QuickAccessUiItem>,
+    columns: Int,
+    thumbnailUrls: Map<String, String>,
+    storageReachability: Map<Int, Boolean>,
+    onItemClick: (QuickAccessUiItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        row.forEach { qaItem ->
+            val effectiveValid = qaItem.libraryValid &&
+                storageReachability[qaItem.entity.libraryId] != false
+            HomeQuickAccessGridItem(
+                item = qaItem,
+                thumbnailUrl = thumbnailUrls[qaItem.entity.storagePath],
+                isValid = effectiveValid,
+                onClick = { onItemClick(qaItem) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (row.size < columns) {
+            Spacer(Modifier.weight(1f))
         }
     }
 }
@@ -395,6 +810,136 @@ private fun isHistoryReachable(
 ): Boolean {
     val sid = history.storageId ?: return true // 本地播放，无 storageId，视为可达
     return storageReachability[sid] != false // 未验证（null）视为可达，明确 false 才不可达
+}
+
+/**
+ * 最近播放媒体展示容器：
+ * - [columns] <= 1（紧凑宽度）：横向滚动 [LazyRow]，固定宽度卡片。
+ * - [columns] > 1（中大屏）：多列网格，卡片填满列宽，末行用等宽占位填齐避免拉伸。
+ *
+ * 不可达条目统一叠加半透明效果。
+ */
+@Composable
+private fun RecentMediaGrid(
+    mediaItems: List<PlayHistoryEntity>,
+    columns: Int,
+    thumbnailUrls: Map<String, String>,
+    storageReachability: Map<Int, Boolean>,
+    contentScale: ContentScale,
+    squareCover: Boolean,
+    onItemClick: (PlayHistoryEntity) -> Unit,
+    edgePadding: Dp = 0.dp,
+    cardWidth: Dp = Dp.Unspecified,
+) {
+    val gap = NiSpacings.responsiveCardGroupGap
+    if (columns <= 1) {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = edgePadding),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            items(mediaItems, key = { it.id }) { history ->
+                RecentThumbItem(
+                    history = history,
+                    thumbnailUrls = thumbnailUrls,
+                    storageReachability = storageReachability,
+                    contentScale = contentScale,
+                    squareCover = squareCover,
+                    fillWidth = false,
+                    cardWidth = cardWidth,
+                    onClick = { onItemClick(history) },
+                )
+            }
+        }
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            mediaItems.chunked(columns).forEach { row ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    row.forEach { history ->
+                        RecentThumbItem(
+                            history = history,
+                            thumbnailUrls = thumbnailUrls,
+                            storageReachability = storageReachability,
+                            contentScale = contentScale,
+                            squareCover = squareCover,
+                            fillWidth = true,
+                            onClick = { onItemClick(history) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    // 用与满行等数量的占位填齐末行，避免末行卡片被拉伸变宽
+                    repeat(columns - row.size) {
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 最近播放单条卡片：包裹 [NiThumbCard] 并叠加不可达半透明效果。 */
+@Composable
+private fun RecentThumbItem(
+    history: PlayHistoryEntity,
+    thumbnailUrls: Map<String, String>,
+    storageReachability: Map<Int, Boolean>,
+    contentScale: ContentScale,
+    squareCover: Boolean,
+    fillWidth: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    cardWidth: Dp = Dp.Unspecified,
+) {
+    val progress = if (history.videoDuration > 0)
+        history.videoPosition.toFloat() / history.videoDuration.toFloat() else 0f
+    val reachable = isHistoryReachable(history, storageReachability)
+    Box(modifier = modifier.graphicsLayer { if (!reachable) alpha = 0.5f }) {
+        NiThumbCard(
+            title = history.videoName,
+            durationText = formatTime(history.videoDuration),
+            thumbnailModel = buildThumbnailModel(history.url, history.mediaType, thumbnailUrls),
+            progressFraction = progress,
+            mediaLabel = mediaTypeLabel(history.mediaType),
+            contentScale = contentScale,
+            onClick = onClick,
+            squareCover = squareCover,
+            fillWidth = fillWidth,
+            cardWidth = cardWidth,
+        )
+    }
+}
+
+/**
+ * 快速访问横向滚动行（杂志式布局用）：
+ * 固定宽度 16:9 磁贴横向滚动，与最近播放行的卡片尺寸协调。
+ */
+@Composable
+private fun HomeQuickAccessLazyRow(
+    items: List<QuickAccessUiItem>,
+    thumbnailUrls: Map<String, String>,
+    storageReachability: Map<Int, Boolean>,
+    onItemClick: (QuickAccessUiItem) -> Unit,
+    edgePadding: Dp = 0.dp,
+    cardWidth: Dp = 200.dp,
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = edgePadding),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(items, key = { it.entity.storagePath }) { qaItem ->
+            val effectiveValid = qaItem.libraryValid &&
+                storageReachability[qaItem.entity.libraryId] != false
+            HomeQuickAccessGridItem(
+                item = qaItem,
+                thumbnailUrl = thumbnailUrls[qaItem.entity.storagePath],
+                isValid = effectiveValid,
+                onClick = { onItemClick(qaItem) },
+                modifier = Modifier.width(cardWidth),
+            )
+        }
+    }
 }
 
 @Composable

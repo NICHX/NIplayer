@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,8 +24,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.designsystem.components.NiBottomBar
 import com.nichx.niplayer.designsystem.components.NiBottomBarTab
+import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
+import com.nichx.niplayer.designsystem.theme.NiWindowWidthSizeClass
 import com.nichx.niplayer.feature.home.home.HomeTabScreen
 import com.nichx.niplayer.feature.home.library.FileBrowserOverlay
 import com.nichx.niplayer.feature.home.library.LibraryScreen
@@ -48,6 +54,13 @@ fun HomeScreen(
     var fbStorageId by rememberSaveable { mutableIntStateOf(0) }
     var fbPath by rememberSaveable { mutableStateOf("") }
 
+    // 底部导航栏最大宽度限制，与首页正文最大宽度保持对齐
+    val bottomBarMaxWidth = when (LocalNiWindowSizeClass.current.width) {
+        NiWindowWidthSizeClass.Compact -> Dp.Unspecified
+        NiWindowWidthSizeClass.Medium -> 720.dp
+        NiWindowWidthSizeClass.Expanded -> 960.dp
+    }
+
     val tabs = HomeTab.entries.map { tab ->
         NiBottomBarTab(
             route = tab.route,
@@ -55,6 +68,20 @@ fun HomeScreen(
             selectedIcon = tab.selectedIcon,
             unselectedIcon = tab.unselectedIcon,
         )
+    }
+
+    val currentRoute = when (currentTab) {
+        TabKey.HOME -> HomeTab.HOME.route
+        TabKey.LIBRARY -> HomeTab.LIBRARY.route
+        TabKey.SETTINGS -> HomeTab.SETTINGS.route
+    }
+
+    val onTabSelected: (NiBottomBarTab) -> Unit = { tab ->
+        currentTab = when (tab.route) {
+            HomeTab.HOME.route -> TabKey.HOME
+            HomeTab.LIBRARY.route -> TabKey.LIBRARY
+            else -> TabKey.SETTINGS
+        }
     }
 
     val openFileBrowser: (Int, String) -> Unit = { storageId, path ->
@@ -79,77 +106,105 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Crossfade(
-            targetState = currentTab,
-            animationSpec = tween(220),
-            label = "tabCrossfade",
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(WindowInsets.navigationBars),
-        ) { tab ->
-            when (tab) {
-                TabKey.HOME -> HomeTabScreen(
-                    onNavigateToSearch = onNavigateToSearch,
-                    onNavigateToPlayHistory = onNavigateToPlayHistory,
-                    onNavigateToQuickAccess = onNavigateToQuickAccess,
-                    onNavigateToStorageFile = openFileBrowser,
-                    onPlayVideo = onPlayVideo,
-                    onNavigateToSettings = { onNavigateToGlobal(Routes.User.SWITCH_THEME) },
-                )
-                TabKey.LIBRARY -> {
-                    if (fbStorageId <= 0) {
-                        LibraryScreen(
-                            onNavigateToStorageFile = openFileBrowser,
-                            onNavigateToStoragePlus = onNavigateToStoragePlus,
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.background),
-                        )
-                    }
-                }
-                TabKey.SETTINGS -> SettingsScreen(
-                    onNavigateToGlobal = onNavigateToGlobal,
-                )
-            }
-        }
-
-        AnimatedVisibility(
-            visible = currentTab == TabKey.LIBRARY && fbStorageId > 0,
-            enter = fadeIn(animationSpec = tween(220)),
-            exit = fadeOut(animationSpec = tween(220)),
-            modifier = Modifier.consumeWindowInsets(WindowInsets.navigationBars),
-        ) {
-            if (fbStorageId > 0) {
-                FileBrowserOverlay(
-                    storageId = fbStorageId,
-                    initialPath = fbPath,
-                    onBack = closeFileBrowser,
-                    onPlayVideo = onPlayVideo,
-                    onNavigateToImageViewer = onNavigateToImageViewer,
-                    onNavigateToDownloadManager = { onNavigateToGlobal(Routes.Stream.DOWNLOAD_MANAGER) },
-                )
-            }
-        }
+        // 内容层 + 底部导航栏（大屏下限制最大宽度并与正文对齐，避免拉伸过宽）
+        HomeTabContent(
+            currentTab = currentTab,
+            fbStorageId = fbStorageId,
+            fbPath = fbPath,
+            onCloseFileBrowser = closeFileBrowser,
+            onOpenFileBrowser = openFileBrowser,
+            onNavigateToGlobal = onNavigateToGlobal,
+            onNavigateToSearch = onNavigateToSearch,
+            onNavigateToPlayHistory = onNavigateToPlayHistory,
+            onNavigateToQuickAccess = onNavigateToQuickAccess,
+            onPlayVideo = onPlayVideo,
+            onNavigateToImageViewer = onNavigateToImageViewer,
+            onNavigateToStoragePlus = onNavigateToStoragePlus,
+        )
 
         NiBottomBar(
             tabs = tabs,
-            currentRoute = when (currentTab) {
-                TabKey.HOME -> HomeTab.HOME.route
-                TabKey.LIBRARY -> HomeTab.LIBRARY.route
-                TabKey.SETTINGS -> HomeTab.SETTINGS.route
-            },
-            onTabSelected = { tab ->
-                currentTab = when (tab.route) {
-                    HomeTab.HOME.route -> TabKey.HOME
-                    HomeTab.LIBRARY.route -> TabKey.LIBRARY
-                    else -> TabKey.SETTINGS
-                }
-            },
-            modifier = Modifier.align(Alignment.BottomCenter),
+            currentRoute = currentRoute,
+            onTabSelected = onTabSelected,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .widthIn(max = bottomBarMaxWidth),
         )
+    }
+}
+
+/**
+ * Tab 内容块：各页面切换动画 + 文件浏览器 overlay。
+ * 大屏布局（侧边导航）与紧凑布局（底部导航）共用，避免内容层重复。
+ */
+@Composable
+private fun HomeTabContent(
+    currentTab: TabKey,
+    fbStorageId: Int,
+    fbPath: String,
+    onCloseFileBrowser: () -> Unit,
+    onOpenFileBrowser: (Int, String) -> Unit,
+    onNavigateToGlobal: (String) -> Unit,
+    onNavigateToSearch: () -> Unit,
+    onNavigateToPlayHistory: () -> Unit,
+    onNavigateToQuickAccess: () -> Unit,
+    onPlayVideo: () -> Unit,
+    onNavigateToImageViewer: () -> Unit,
+    onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit,
+) {
+    Crossfade(
+        targetState = currentTab,
+        animationSpec = tween(220),
+        label = "tabCrossfade",
+        modifier = Modifier
+            .fillMaxSize()
+            .consumeWindowInsets(WindowInsets.navigationBars),
+    ) { tab ->
+        when (tab) {
+            TabKey.HOME -> HomeTabScreen(
+                onNavigateToSearch = onNavigateToSearch,
+                onNavigateToPlayHistory = onNavigateToPlayHistory,
+                onNavigateToQuickAccess = onNavigateToQuickAccess,
+                onNavigateToStorageFile = onOpenFileBrowser,
+                onPlayVideo = onPlayVideo,
+                onNavigateToSettings = { onNavigateToGlobal(Routes.User.SWITCH_THEME) },
+            )
+            TabKey.LIBRARY -> {
+                if (fbStorageId <= 0) {
+                    LibraryScreen(
+                        onNavigateToStorageFile = onOpenFileBrowser,
+                        onNavigateToStoragePlus = onNavigateToStoragePlus,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background),
+                    )
+                }
+            }
+            TabKey.SETTINGS -> SettingsScreen(
+                onNavigateToGlobal = onNavigateToGlobal,
+            )
+        }
+    }
+
+    AnimatedVisibility(
+        visible = currentTab == TabKey.LIBRARY && fbStorageId > 0,
+        enter = fadeIn(animationSpec = tween(220)),
+        exit = fadeOut(animationSpec = tween(220)),
+        modifier = Modifier.consumeWindowInsets(WindowInsets.navigationBars),
+    ) {
+        if (fbStorageId > 0) {
+            FileBrowserOverlay(
+                storageId = fbStorageId,
+                initialPath = fbPath,
+                onBack = onCloseFileBrowser,
+                onPlayVideo = onPlayVideo,
+                onNavigateToImageViewer = onNavigateToImageViewer,
+                onNavigateToDownloadManager = { onNavigateToGlobal(Routes.Stream.DOWNLOAD_MANAGER) },
+            )
+        }
     }
 }
 
