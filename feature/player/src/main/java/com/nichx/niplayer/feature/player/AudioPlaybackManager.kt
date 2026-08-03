@@ -22,6 +22,7 @@ import com.nichx.niplayer.player.kernel.audio.NiEqualizer
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -91,8 +92,53 @@ class AudioPlaybackManager @Inject constructor(
     /** 均衡器实例（F-02），在 audioSessionId 就绪后自动 attach。 */
     private val equalizer = NiEqualizer()
 
+    /** 均衡器 enabled 切换时的淡出/淡入任务，重复调用时取消前一个，避免并发 fade 竞争。 */
+    private var eqFadeJob: Job? = null
+
     /** 暴露均衡器供 UI 读取频段信息 / 应用设置。 */
     fun getEqualizer(): NiEqualizer = equalizer
+
+    /**
+     * 应用均衡器设置（F-02 爆音修复）。
+     *
+     * 直接切换 [android.media.audiofx.Equalizer] 的 enabled 会立即改变 DSP 处理路径
+     * （滤波 → 旁路），播放中信号在非零交叉点被硬切断，产生一声爆响。此处先淡出
+     * 播放音量到 0，切换后再淡入恢复原音量，切换发生在静音时刻，从而消除爆音。
+     */
+    fun applyEqualizerSettings() {
+        eqFadeJob?.cancel()
+        val player = exoPlayer ?: run {
+            equalizer.applySettings()
+            return
+        }
+        eqFadeJob = scope.launch {
+            val originalVolume = try { player.volume } catch (_: IllegalStateException) { return@launch }
+            val wasPlaying = try { player.isPlaying } catch (_: IllegalStateException) { return@launch }
+            var fadedOut = false
+            if (wasPlaying && originalVolume > 0f) {
+                fadeVolume(player, originalVolume, 0f)
+                fadedOut = true
+            }
+            equalizer.applySettings()
+            if (fadedOut && originalVolume > 0f) {
+                fadeVolume(player, 0f, originalVolume)
+            }
+        }
+    }
+
+    /** 将 [player] 音量从 [from] 平滑过渡到 [to]（约 100ms，10 步 × 10ms）。 */
+    private suspend fun fadeVolume(player: ExoPlayer, from: Float, to: Float) {
+        if (from == to) return
+        for (step in 1..EQ_FADE_STEPS) {
+            try {
+                player.volume = from + (to - from) * (step / EQ_FADE_STEPS.toFloat())
+            } catch (_: IllegalStateException) {
+                // 播放器已释放，中止淡入淡出
+                return
+            }
+            delay(EQ_FADE_STEP_DELAY_MS)
+        }
+    }
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -255,6 +301,19 @@ class AudioPlaybackManager @Inject constructor(
         startService()
     }
 
+    /**
+     * 更新播放列表与当前索引（不重启播放器）。
+     *
+     * BUG-H2 修复：首页英雄卡/播放历史恢复经 PlayStarter 异步构造同目录列表，
+     * 可能晚于 [play] 调用（SMB/WebDAV listFiles 耗时 1-3 秒）。列表就绪后调用
+     * 本方法同步，使「下一首/上一首」与播放列表面板立即可用。
+     */
+    fun updatePlaylist(items: List<PlaylistItem>, startIndex: Int) {
+        if (items.isEmpty() || startIndex !in items.indices) return
+        _playlist.value = items
+        _currentIndex.value = startIndex
+    }
+
     fun togglePlayPause() {
         val player = exoPlayer ?: return
         if (player.isPlaying) player.pause() else player.play()
@@ -320,6 +379,8 @@ class AudioPlaybackManager @Inject constructor(
     fun release() {
         stopService()
         closeStorageAsync()
+        // F-02 爆音修复：取消进行中的均衡器淡入淡出，避免访问已释放的播放器
+        eqFadeJob?.cancel()
         exoPlayer?.removeListener(playerListener)
         exoPlayer?.release()
         exoPlayer = null
@@ -391,6 +452,12 @@ class AudioPlaybackManager @Inject constructor(
     }
 
     private companion object {
+        /** F-02 爆音修复：均衡器淡入淡出步数（10 步 ≈ 100ms）。 */
+        private const val EQ_FADE_STEPS = 10
+
+        /** F-02 爆音修复：均衡器淡入淡出每步间隔（ms）。 */
+        private const val EQ_FADE_STEP_DELAY_MS = 10L
+
         /**
          * 从异常链中提取 HTTP 状态码。
          *

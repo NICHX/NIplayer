@@ -1,5 +1,8 @@
 package com.nichx.niplayer.player.kernel
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,6 +39,11 @@ data class PlaylistItem(
  *
  * 与 [PlaybackRequestHolder] 配合：[PlaybackRequest] 携带首个播放项的完整播放源，
  * [PlaylistHolder] 携带同目录其余视频列表供 next/prev 连播。
+ *
+ * BUG-H2 修复：PlayStarter 在后台异步构造同目录列表（SMB/WebDAV listFiles 耗时
+ * 1-3 秒），可能晚于播放页 [consume]。故新增 [playlistFlow]，set 时同步 emit，
+ * PlayerViewModel 订阅后可接收延迟到达的列表；[consume] 与 [clear] 均会清空该流，
+ * 保证同步路径（文件浏览页）不会重复消费。
  */
 @Singleton
 class PlaylistHolder @Inject constructor() {
@@ -46,16 +54,31 @@ class PlaylistHolder @Inject constructor() {
     @Volatile
     private var startIndex: Int = 0
 
-    /** 生产者调用：缓存播放列表与起始索引。 */
+    /**
+     * 播放列表变更流：set 时更新为 (列表, 起始索引)，clear/consume 时置 null。
+     * PlayerViewModel 在 init 末尾订阅，接收 PlayStarter 异步构造的延迟列表。
+     */
+    private val _playlistFlow = MutableStateFlow<Pair<List<PlaylistItem>, Int>?>(null)
+    val playlistFlow: StateFlow<Pair<List<PlaylistItem>, Int>?> = _playlistFlow.asStateFlow()
+
+    /** 生产者调用：缓存播放列表与起始索引，并通知 [playlistFlow] 订阅者。 */
     fun set(items: List<PlaylistItem>, startIndex: Int) {
         this.items = items
         this.startIndex = startIndex
+        _playlistFlow.value = items to startIndex
     }
 
     /** 消费者调用：取出并清空。播放页 init 时调用一次。 */
     fun consume(): Pair<List<PlaylistItem>, Int>? {
         val current = items
         items = null
+        _playlistFlow.value = null
         return current?.let { it to startIndex }
+    }
+
+    /** 订阅者应用列表后调用：清除残留（含流），避免跨会话混入。 */
+    fun clear() {
+        items = null
+        _playlistFlow.value = null
     }
 }
