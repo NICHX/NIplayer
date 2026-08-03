@@ -50,6 +50,9 @@ dependencies {
     // 在线更新：GitHubApi（GitHubApi）版本检测与下载源获取
     implementation(project(":core:network"))
 
+    // 播放历史云同步核心
+    implementation(project(":core:sync"))
+
     implementation(libs.androidx.core.ktx)
     // DocumentFile：StorageFileScreen 下载目标目录选择时读取 SAF tree URI 显示名
     implementation(libs.androidx.documentfile)

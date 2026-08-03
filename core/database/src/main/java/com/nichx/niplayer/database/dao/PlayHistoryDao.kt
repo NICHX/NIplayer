@@ -168,6 +168,10 @@ interface PlayHistoryDao {
     @Query("DELETE FROM play_history WHERE id = (:id)")
     suspend fun delete(id: Int)
 
+    /** 按 id 查询单条历史（供删除前记录同步 tombstone）。 */
+    @Query("SELECT * FROM play_history WHERE id = (:id)")
+    suspend fun getById(id: Int): PlayHistoryEntity?
+
     /**
      * 删除指定目录前缀下的播放历史（用于屏蔽目录时清理已播记录）。
      *
@@ -263,6 +267,8 @@ interface PlayHistoryDao {
             existing.videoPosition = newPosition
             existing.videoDuration = newDuration
             existing.playTime = newPlayTime
+            // 刷新 updated_at 供增量同步（play_history 云同步）
+            existing.updatedAt = System.currentTimeMillis()
             update(existing)
         } else {
             insert(newEntity)
@@ -299,6 +305,8 @@ interface PlayHistoryDao {
         if (existing != null) {
             // BUG-H3：仅更新 playTime 刷新排序，不覆盖 videoPosition
             existing.playTime = newPlayTime
+            // 刷新 updated_at 供增量同步（play_history 云同步）
+            existing.updatedAt = System.currentTimeMillis()
             update(existing)
         } else {
             insert(newEntity)
