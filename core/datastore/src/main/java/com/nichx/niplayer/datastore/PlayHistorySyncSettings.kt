@@ -84,6 +84,38 @@ object PlayHistorySyncSettings {
         persist(_flow.value)
     }
 
+    private const val KEY_REMOTE_MTIME_PREFIX = "play_history_sync_remote_mtime_"
+    private const val KEY_REMOTE_LENGTH_PREFIX = "play_history_sync_remote_len_"
+    private const val KEY_REMOTE_SYNCED_AT_PREFIX = "play_history_sync_remote_synced_at_"
+
+    /**
+     * 读取远端设备文件的元数据快照（增量拉取跳过 / 废弃设备判定用）。
+     *
+     * 上次成功同步后记录的 [RemoteFileMeta]；未记录（首次同步 / 新设备）返回 null。
+     * 直接操作 MMKV（非 UI 配置，不进 StateFlow 快照）。
+     */
+    fun getRemoteFileMeta(fileName: String): RemoteFileMeta? {
+        val mtime = mmkv.decodeLong(KEY_REMOTE_MTIME_PREFIX + fileName, 0)
+        val length = mmkv.decodeLong(KEY_REMOTE_LENGTH_PREFIX + fileName, 0)
+        val syncedAt = mmkv.decodeLong(KEY_REMOTE_SYNCED_AT_PREFIX + fileName, 0)
+        if (mtime <= 0 && length <= 0 && syncedAt <= 0) return null
+        return RemoteFileMeta(mtime, length, syncedAt)
+    }
+
+    /** 记录远端设备文件元数据快照（成功拉取解析后调用）。 */
+    fun setRemoteFileMeta(fileName: String, mtime: Long, length: Long, syncedAt: Long) {
+        mmkv.encode(KEY_REMOTE_MTIME_PREFIX + fileName, mtime)
+        mmkv.encode(KEY_REMOTE_LENGTH_PREFIX + fileName, length)
+        mmkv.encode(KEY_REMOTE_SYNCED_AT_PREFIX + fileName, syncedAt)
+    }
+
+    /** 清除远端设备文件元数据快照（文件被判定废弃删除时调用）。 */
+    fun clearRemoteFileMeta(fileName: String) {
+        mmkv.encode(KEY_REMOTE_MTIME_PREFIX + fileName, 0L)
+        mmkv.encode(KEY_REMOTE_LENGTH_PREFIX + fileName, 0L)
+        mmkv.encode(KEY_REMOTE_SYNCED_AT_PREFIX + fileName, 0L)
+    }
+
     /** 确保存在设备标识，缺失时生成 UUID 并持久化。 */
     fun ensureDeviceId() {
         if (_flow.value.deviceId.isBlank()) {
@@ -133,4 +165,12 @@ data class PlayHistorySyncConfig(
     val lastSyncTime: Long,
     val lastSyncSuccess: Boolean,
     val lastSyncMessage: String,
+)
+
+/** 远端设备文件的元数据快照（增量拉取跳过 / 废弃设备判定用）。 */
+data class RemoteFileMeta(
+    val mtime: Long,
+    val length: Long,
+    /** 该设备文件内记录的最后同步时间（心跳），0 表示旧格式文件。 */
+    val syncedAt: Long,
 )

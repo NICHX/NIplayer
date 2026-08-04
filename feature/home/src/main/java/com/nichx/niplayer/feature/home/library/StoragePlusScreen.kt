@@ -42,8 +42,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
+import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiTextField
+import com.nichx.niplayer.designsystem.components.showNiMessage
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -103,7 +105,7 @@ fun StoragePlusScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is StoragePlusEvent.ShowError ->
-                    snackbarHostState.showSnackbar(event.message)
+                    snackbarHostState.showNiMessage(NiMessage.error(event.message))
 
                 StoragePlusEvent.NavigateBack -> onBack()
                 StoragePlusEvent.Saved -> Unit

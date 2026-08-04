@@ -56,6 +56,8 @@ import com.nichx.niplayer.feature.home.history.PlayHistoryScreen
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerScreen
 import com.nichx.niplayer.feature.home.library.FileBrowserOverlay
 import com.nichx.niplayer.feature.home.library.StoragePlusScreen
+import com.nichx.niplayer.feature.home.playlist.PlaylistDetailScreen
+import com.nichx.niplayer.feature.home.playlist.PlaylistsScreen
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessScreen
 import com.nichx.niplayer.feature.home.search.SearchScreen
 import com.nichx.niplayer.feature.home.settings.AboutScreen
@@ -179,6 +181,12 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToQuickAccess = {
                                     navController.navigate(Routes.Local.QUICK_ACCESS)
                                 },
+                                onOpenPlaylists = {
+                                    navController.navigate(Routes.Playlist.LIST)
+                                },
+                                onOpenPlaylist = { playlistId ->
+                                    navController.navigate(Routes.Playlist.detailRoute(playlistId))
+                                },
                                 onPlayVideo = { navController.navigate(Routes.Player.GUARD) },
                                 onNavigateToImageViewer = {
                                     navController.navigate(Routes.ImageViewer.VIEWER)
@@ -258,6 +266,33 @@ class MainActivity : ComponentActivity() {
                                     pendingFileBrowser = storageId to path
                                     navController.popBackStack(Routes.Home.ROOT, inclusive = false)
                                 },
+                            )
+                        }
+                        composable(
+                            route = Routes.Playlist.LIST,
+                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
+                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
+                        ) {
+                            PlaylistsScreen(
+                                onBack = { navController.popBackStack() },
+                                onOpenPlaylist = { playlistId ->
+                                    navController.navigate(Routes.Playlist.detailRoute(playlistId))
+                                },
+                            )
+                        }
+                        composable(
+                            route = Routes.Playlist.DETAIL_ROUTE,
+                            arguments = listOf(
+                                navArgument("playlistId") {
+                                    type = NavType.IntType
+                                },
+                            ),
+                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
+                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
+                        ) {
+                            PlaylistDetailScreen(
+                                onBack = { navController.popBackStack() },
+                                onPlayVideo = { navController.navigate(Routes.Player.GUARD) },
                             )
                         }
                         composable(

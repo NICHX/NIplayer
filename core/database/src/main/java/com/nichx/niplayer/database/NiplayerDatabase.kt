@@ -13,7 +13,10 @@ import com.nichx.niplayer.database.dao.EncryptedFolderDao
 import com.nichx.niplayer.database.dao.ExtendFolderDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
+import com.nichx.niplayer.database.dao.PlaylistDao
+import com.nichx.niplayer.database.dao.PlaylistItemDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
+import com.nichx.niplayer.database.dao.SyncConflictDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.dao.VideoBookmarkDao
 import com.nichx.niplayer.database.dao.VideoDao
@@ -22,7 +25,10 @@ import com.nichx.niplayer.database.entity.EncryptedFolderEntity
 import com.nichx.niplayer.database.entity.ExtendFolderEntity
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
+import com.nichx.niplayer.database.entity.PlaylistEntity
+import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.database.entity.QuickAccessEntity
+import com.nichx.niplayer.database.entity.SyncConflictEntity
 import com.nichx.niplayer.database.entity.SyncDeleteLogEntity
 import com.nichx.niplayer.database.entity.VideoBookmarkEntity
 import com.nichx.niplayer.database.entity.VideoEntity
@@ -45,6 +51,11 @@ import com.nichx.niplayer.database.entity.VideoEntity
  * - v8: 修正 updated_at 列默认值 schema hash
  * - v9: 新增 video_bookmark 表（F-19 视频书签）
  * - v10: 新增 encrypted_folder 表（文件夹访问加密）
+ * - v11: 新增 playlist / playlist_item 表（扩展功能方案二：播放列表系统）
+ * - v12: play_history 表新增 playlist_id 列（记录来源歌单，恢复播放时还原歌单播放列表）
+ * - v13: 移除 PasswordVault 加密，清空 media_library 中遗留的 enc:v1: 密文密码
+ * - v14: 新增 sync_conflict 表（播放历史云同步冲突记录）
+ * - v15: playlist 表新增 is_pinned 列（歌单置顶）
  */
 @Database(
     entities = [
@@ -56,9 +67,12 @@ import com.nichx.niplayer.database.entity.VideoEntity
         QuickAccessEntity::class,
         SyncDeleteLogEntity::class,
         VideoBookmarkEntity::class,
-        EncryptedFolderEntity::class
+        EncryptedFolderEntity::class,
+        PlaylistEntity::class,
+        PlaylistItemEntity::class,
+        SyncConflictEntity::class
     ],
-    version = 10,
+    version = 15,
     exportSchema = true
 )
 @TypeConverters(
@@ -82,9 +96,15 @@ abstract class NiplayerDatabase : RoomDatabase() {
 
     abstract fun getSyncDeleteLogDao(): SyncDeleteLogDao
 
+    abstract fun getSyncConflictDao(): SyncConflictDao
+
     abstract fun getVideoBookmarkDao(): VideoBookmarkDao
 
     abstract fun getEncryptedFolderDao(): EncryptedFolderDao
+
+    abstract fun getPlaylistDao(): PlaylistDao
+
+    abstract fun getPlaylistItemDao(): PlaylistItemDao
 
     companion object {
         const val DATABASE_NAME = "niplayer.db"
@@ -200,6 +220,89 @@ abstract class NiplayerDatabase : RoomDatabase() {
                     "CREATE UNIQUE INDEX IF NOT EXISTS `index_encrypted_folder_storage_id_folder_path` " +
                         "ON `encrypted_folder` (`storage_id`, `folder_path`)"
                 )
+            }
+        }
+
+        // 播放列表系统：新增 playlist / playlist_item 表
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `playlist` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL DEFAULT 0
+                    )"""
+                )
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `playlist_item` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `playlist_id` INTEGER NOT NULL,
+                        `library_id` INTEGER NOT NULL,
+                        `file_path` TEXT NOT NULL,
+                        `file_name` TEXT NOT NULL,
+                        `media_type` TEXT NOT NULL,
+                        `file_size` INTEGER NOT NULL DEFAULT 0,
+                        `sort_order` INTEGER NOT NULL DEFAULT 0
+                    )"""
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_playlist_item_playlist_id_file_path` " +
+                        "ON `playlist_item` (`playlist_id`, `file_path`)"
+                )
+            }
+        }
+
+        // 播放历史记录来源歌单：play_history 表新增 playlist_id 列
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `play_history` ADD COLUMN `playlist_id` INTEGER"
+                )
+            }
+        }
+
+        // 移除 PasswordVault 加密：清空遗留的 enc:v1: 密文密码，密码改为明文存储
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "UPDATE media_library SET password = NULL WHERE password LIKE 'enc:v1:%'"
+                )
+            }
+        }
+
+        // 播放历史云同步冲突记录：新增 sync_conflict 表
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `sync_conflict` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `record_key` TEXT NOT NULL,
+                        `storage_id` INTEGER,
+                        `unique_key` TEXT NOT NULL,
+                        `video_name` TEXT NOT NULL,
+                        `local_video_position` INTEGER NOT NULL,
+                        `local_video_duration` INTEGER NOT NULL,
+                        `local_updated_at` INTEGER NOT NULL,
+                        `local_play_time` INTEGER NOT NULL,
+                        `remote_video_position` INTEGER NOT NULL,
+                        `remote_video_duration` INTEGER NOT NULL,
+                        `remote_updated_at` INTEGER NOT NULL,
+                        `resolved` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL
+                    )"""
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_conflict_record_key` " +
+                        "ON `sync_conflict` (`record_key`)"
+                )
+            }
+        }
+
+        // 歌单管理增强：playlist 表新增 is_pinned 列（置顶歌单固定排最前）
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `playlist` ADD COLUMN `is_pinned` INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

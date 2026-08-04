@@ -15,6 +15,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -25,11 +26,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,6 +58,7 @@ import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Delete
@@ -72,8 +76,12 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Storage
@@ -97,9 +105,13 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHostState
+import com.nichx.niplayer.common.error.NiMessage
+import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiTextField
+import com.nichx.niplayer.designsystem.components.showNiMessage
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -123,6 +135,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -138,6 +151,7 @@ import kotlinx.coroutines.launch
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.FileBrowserSettings
 import com.nichx.niplayer.designsystem.components.NiAutoSizeText
+import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiExtendedFAB
 import com.nichx.niplayer.designsystem.components.NiFAB
@@ -150,11 +164,17 @@ import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.MediaFileTypes.isImageFile
+import com.nichx.niplayer.database.dao.PlaylistWithCount
 import com.nichx.niplayer.storage.StorageFile
 
 // 主 FAB 底部偏移，与媒体库页"新增媒体库"按钮位置保持一致
 // （该值已包含对应用底部导航栏 NiBottomBar 的避让）
 private val FabBottomOffset = 104.dp
+
+// 多选底部操作栏避让：NiBottomBar 高度 60dp + 8dp 间距。
+// 系统导航栏高度因 HomeTabContent.consumeWindowInsets 被消费、navigationBarsPadding 无效，
+// 需在 FileBrowserOverlay 中直接读 LocalWindowInsets 后叠加到此偏移上。
+private val MultiSelectBarBottomOffset = 68.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -175,11 +195,17 @@ fun FileBrowserOverlay(
     val thumbnailProgress by viewModel.thumbnailProgress.collectAsStateWithLifecycle()
     val activeDownloadCount by viewModel.activeDownloadCount.collectAsStateWithLifecycle()
     val encryptedPaths by viewModel.encryptedPaths.collectAsStateWithLifecycle()
+    val isMultiSelect by viewModel.isMultiSelect.collectAsStateWithLifecycle()
+    val selectedPaths by viewModel.selectedPaths.collectAsStateWithLifecycle()
+    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var fileMenu by remember { mutableStateOf<Pair<StorageFile, Boolean>?>(null) }
     var isGridView by remember { mutableStateOf(FileBrowserSettings.isGridView) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showFileInfo by remember { mutableStateOf<StorageFile?>(null) }
+    var showPlaylistPicker by remember { mutableStateOf(false) }
+    var showNewPlaylistDialog by remember { mutableStateOf(false) }
+    var showBatchDeleteConfirm by remember { mutableStateOf(false) }
     // 文件夹访问加密对话框状态
     var showEncryptDialog by remember { mutableStateOf<StorageFile?>(null) }
     var showDecryptDialog by remember { mutableStateOf<StorageFile?>(null) }
@@ -198,6 +224,12 @@ fun FileBrowserOverlay(
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
+
+    // 底部系统导航栏高度：HomeTabContent.consumeWindowInsets 已消费 insets，
+    // navigationBarsPadding 在此处无效，须直接读 WindowInsets.getBottom 用于多选操作栏避让。
+    val bottomNavInset = with(LocalDensity.current) {
+        WindowInsets.navigationBars.getBottom(this).toDp()
+    }
 
     val showScrollToTop by remember {
         derivedStateOf {
@@ -218,13 +250,13 @@ fun FileBrowserOverlay(
     }
 
     val context = LocalContext.current
-    var pendingDownloadFile by remember { mutableStateOf<StorageFile?>(null) }
+    var pendingDownloadFiles by remember { mutableStateOf<List<StorageFile>>(emptyList()) }
     val downloadTargetLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { treeUri ->
-        val file = pendingDownloadFile
-        pendingDownloadFile = null
-        if (treeUri == null || file == null) return@rememberLauncherForActivityResult
+        val files = pendingDownloadFiles
+        pendingDownloadFiles = emptyList()
+        if (treeUri == null || files.isEmpty()) return@rememberLauncherForActivityResult
         try {
             context.contentResolver.takePersistableUriPermission(
                 treeUri,
@@ -232,7 +264,11 @@ fun FileBrowserOverlay(
             )
         } catch (_: SecurityException) { }
         val dirName = DocumentFile.fromTreeUri(context, treeUri)?.name ?: "下载目录"
-        viewModel.setDownloadDirAndDownload(file, treeUri.toString(), dirName)
+        if (files.size == 1) {
+            viewModel.setDownloadDirAndDownload(files.first(), treeUri.toString(), dirName)
+        } else {
+            viewModel.setDownloadDirAndDownloadFiles(files, treeUri.toString(), dirName)
+        }
     }
 
     // 上传文件 launcher：选择单个文件（任意类型），传给 ViewModel 上传到当前目录
@@ -263,6 +299,7 @@ fun FileBrowserOverlay(
 
     BackHandler(enabled = true) {
         when {
+            isMultiSelect -> viewModel.exitMultiSelect()
             uiState.canGoUp -> viewModel.goUp()
             else -> onBack()
         }
@@ -273,8 +310,8 @@ fun FileBrowserOverlay(
             when (event) {
                 is StorageFileEvent.NavigateToPlayer -> onPlayVideo()
                 is StorageFileEvent.NavigateToImageViewer -> onNavigateToImageViewer()
-                is StorageFileEvent.ShowError -> snackbarHostState.showSnackbar(event.message)
-                is StorageFileEvent.ShowToast -> snackbarHostState.showSnackbar(event.message)
+                is StorageFileEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
+                is StorageFileEvent.ShowToast -> snackbarHostState.showNiMessage(NiMessage.info(event.message))
                 is StorageFileEvent.ShowQuickAccessMenu ->
                     fileMenu = event.file to event.isFavorited
             }
@@ -283,6 +320,22 @@ fun FileBrowserOverlay(
 
     Scaffold(
         topBar = {
+            if (isMultiSelect) {
+                NiTopBar(
+                    title = "已选择 ${selectedPaths.size} 项",
+                    navigationIcon = {
+                        IconButton(onClick = viewModel::exitMultiSelect) {
+                            NiStyleIcon(
+                                icon = Icons.Rounded.Close,
+                                style = NiAppIconStyle,
+                                containerSize = 40.dp,
+                                iconSize = 22.dp,
+                                contentDescription = "取消多选",
+                            )
+                        }
+                    },
+                )
+            } else {
             NiTopBar(
                 title = uiState.storageName.ifEmpty { "文件浏览" },
                 navigationIcon = {
@@ -409,8 +462,14 @@ fun FileBrowserOverlay(
                     }
                 },
             )
+            }
         },
-        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState) },
+        snackbarHost = {
+            NiSnackbarHost(
+                hostState = snackbarHostState,
+                bottomObstruction = NiSnackbarDefaults.MINI_PLAYER_OBSTRUCTION,
+            )
+        },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -446,10 +505,14 @@ fun FileBrowserOverlay(
                                     thumbnailUrls = thumbnailUrls,
                                     tooShortPaths = tooShortPaths,
                                     encryptedPaths = encryptedPaths,
+                                    isMultiSelect = isMultiSelect,
+                                    selectedPaths = selectedPaths,
                                     onOpenDirectory = viewModel::openDirectory,
                                     onPlayFile = viewModel::playFile,
                                     onOpenImageFile = viewModel::openImageFile,
                                     onShowQuickAccess = viewModel::checkQuickAccess,
+                                    onEnterMultiSelect = viewModel::enterMultiSelect,
+                                    onToggleSelection = viewModel::toggleSelection,
                                     gridState = gridState,
                                 )
                             } else {
@@ -458,10 +521,14 @@ fun FileBrowserOverlay(
                                     thumbnailUrls = thumbnailUrls,
                                     tooShortPaths = tooShortPaths,
                                     encryptedPaths = encryptedPaths,
+                                    isMultiSelect = isMultiSelect,
+                                    selectedPaths = selectedPaths,
                                     onOpenDirectory = viewModel::openDirectory,
                                     onPlayFile = viewModel::playFile,
                                     onOpenImageFile = viewModel::openImageFile,
                                     onShowQuickAccess = viewModel::checkQuickAccess,
+                                    onEnterMultiSelect = viewModel::enterMultiSelect,
+                                    onToggleSelection = viewModel::toggleSelection,
                                     listState = listState,
                                 )
                             }
@@ -474,7 +541,7 @@ fun FileBrowserOverlay(
                 fabExpanded = false
             }
 
-            if (showScrollToTop && !fabExpanded) {
+            if (showScrollToTop && !fabExpanded && !isMultiSelect) {
                 NiFAB(
                     icon = Icons.Rounded.KeyboardArrowUp,
                     onClick = {
@@ -491,7 +558,7 @@ fun FileBrowserOverlay(
                 )
             }
 
-            if (viewModel.supportsFileManagement) {
+            if (viewModel.supportsFileManagement && !isMultiSelect) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -540,7 +607,82 @@ fun FileBrowserOverlay(
                     }
                 }
             }
+
+            // 多选模式底部操作栏：全选 / 添加到歌单(仅选中含音频时) / 下载 / 删除
+            if (isMultiSelect) {
+                val selectedFiles = uiState.files.filter { it.path in selectedPaths && !it.isDirectory }
+                val selectedHasAudio = selectedFiles.any { MediaFileTypes.isAudioFile(it.name) }
+                MultiSelectActionBar(
+                    selectedCount = selectedPaths.size,
+                    allSelected = selectedPaths.size >= uiState.files.count { !it.isDirectory } && uiState.files.any { !it.isDirectory },
+                    hasAudio = selectedHasAudio,
+                    hasDownloadable = selectedFiles.isNotEmpty(),
+                    onSelectAll = viewModel::selectAllFiles,
+                    onAddToPlaylist = { showPlaylistPicker = true },
+                    onDownload = {
+                        if (DownloadSettings.isDownloadDirSet) {
+                            viewModel.downloadFiles(
+                                selectedFiles,
+                                DownloadSettings.downloadDirUri,
+                                DownloadSettings.downloadDirName,
+                            )
+                        } else {
+                            pendingDownloadFiles = selectedFiles
+                            downloadTargetLauncher.launch(null)
+                        }
+                    },
+                    onDelete = { showBatchDeleteConfirm = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = bottomNavInset + MultiSelectBarBottomOffset),
+                )
+            }
         }
+    }
+
+    if (showBatchDeleteConfirm) {
+        val selectedForDelete = uiState.files.filter { it.path in selectedPaths }
+        val deleteFileCount = selectedForDelete.count { !it.isDirectory }
+        val deleteDirCount = selectedForDelete.count { it.isDirectory }
+        NiConfirmDialog(
+            title = "删除所选",
+            text = "确定删除已选择的 ${selectedForDelete.size} 项" +
+                "（$deleteFileCount 个文件${if (deleteDirCount > 0) "、$deleteDirCount 个文件夹" else ""}）？" +
+                "该操作不可恢复。",
+            confirmText = "删除",
+            confirmDanger = true,
+            onConfirm = {
+                showBatchDeleteConfirm = false
+                viewModel.deleteSelected()
+            },
+            onDismiss = { showBatchDeleteConfirm = false },
+        )
+    }
+
+    if (showPlaylistPicker) {
+        PlaylistPickerSheet(
+            playlists = playlists,
+            onPick = { playlistId ->
+                showPlaylistPicker = false
+                viewModel.addSelectedToPlaylist(playlistId)
+            },
+            onCreateNew = {
+                showPlaylistPicker = false
+                showNewPlaylistDialog = true
+            },
+            onDismiss = { showPlaylistPicker = false },
+        )
+    }
+
+    if (showNewPlaylistDialog) {
+        CreatePlaylistNameDialog(
+            onConfirm = { name ->
+                showNewPlaylistDialog = false
+                viewModel.createPlaylistAndAdd(name)
+            },
+            onDismiss = { showNewPlaylistDialog = false },
+        )
     }
 
     fileMenu?.let { (file, favorited) ->
@@ -565,7 +707,7 @@ fun FileBrowserOverlay(
                         DownloadSettings.downloadDirName,
                     )
                 } else {
-                    pendingDownloadFile = file
+                    pendingDownloadFiles = listOf(file)
                     downloadTargetLauncher.launch(null)
                 }
             },
@@ -914,10 +1056,14 @@ private fun FileList(
     thumbnailUrls: Map<String, String>,
     tooShortPaths: Set<String>,
     encryptedPaths: Set<String>,
+    isMultiSelect: Boolean,
+    selectedPaths: Set<String>,
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
     onShowQuickAccess: (StorageFile) -> Unit,
+    onEnterMultiSelect: (StorageFile) -> Unit,
+    onToggleSelection: (StorageFile) -> Unit,
     listState: LazyListState = rememberLazyListState(),
 ) {
     LazyColumn(
@@ -934,10 +1080,14 @@ private fun FileList(
                 thumbnailUrl = thumbnailUrls[file.path],
                 isTooShort = tooShortPaths.contains(file.path),
                 isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
+                isMultiSelect = isMultiSelect,
+                isSelected = file.path in selectedPaths,
                 onOpenDirectory = onOpenDirectory,
                 onPlayFile = onPlayFile,
                 onOpenImageFile = onOpenImageFile,
                 onShowQuickAccess = { onShowQuickAccess(file) },
+                onEnterMultiSelect = { onEnterMultiSelect(file) },
+                onToggleSelection = { onToggleSelection(file) },
             )
         }
     }
@@ -950,10 +1100,14 @@ private fun FileRow(
     thumbnailUrl: String?,
     isTooShort: Boolean,
     isEncrypted: Boolean,
+    isMultiSelect: Boolean,
+    isSelected: Boolean,
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
     onShowQuickAccess: () -> Unit,
+    onEnterMultiSelect: () -> Unit,
+    onToggleSelection: () -> Unit,
 ) {
     val isVideo = MediaFileTypes.isVideoFile(file.name)
     val isAudio = MediaFileTypes.isAudioFile(file.name)
@@ -969,34 +1123,70 @@ private fun FileRow(
 
     val thumbShape = RoundedCornerShape(8.dp)
 
-    val rowBgColor = NiExtraColors.current.surfaceLevel2
+    val rowBgColor = if (isSelected) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+    } else {
+        NiExtraColors.current.surfaceLevel2
+    }
 
     val rowShape = RoundedCornerShape(16.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer { this.alpha = bgAlpha }
-            .shadow(elevation = 1.dp, shape = rowShape, clip = false)
+            // 多选模式下取消阴影：列表保持平整，选中态用边框+背景区分，避免阴影干扰视觉
+            .then(
+                if (isMultiSelect) {
+                    Modifier
+                } else {
+                    Modifier.shadow(elevation = 1.dp, shape = rowShape, clip = false)
+                }
+            )
             .clip(rowShape)
+            .then(
+                if (isSelected) {
+                    Modifier.border(
+                        width = 1.5.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = rowShape,
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .background(rowBgColor)
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = {
-                    when {
-                        file.isDirectory -> onOpenDirectory(file)
-                        isVideo || isAudio -> onPlayFile(file)
-                        isImage -> onOpenImageFile(file)
-                        else -> Unit
+                    if (isMultiSelect) {
+                        onToggleSelection()
+                    } else {
+                        when {
+                            file.isDirectory -> onOpenDirectory(file)
+                            isVideo || isAudio -> onPlayFile(file)
+                            isImage -> onOpenImageFile(file)
+                            else -> Unit
+                        }
                     }
                 },
                 onLongClick = {
-                    onShowQuickAccess()
+                    if (!isMultiSelect) onEnterMultiSelect()
                 },
             )
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (isMultiSelect) {
+            Icon(
+                imageVector = if (isSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                contentDescription = if (isSelected) "取消选择" else "选择",
+                tint = if (isSelected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(22.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+        }
         if (isVideo || isAudio || isImage) {
             // 列表缩略图：音频用 56×56 方形（唱片封套感 + 品牌色底），
             // 视频/图片保持 88×56 16:9 影视感。
@@ -1150,17 +1340,19 @@ private fun FileRow(
             }
         }
         Spacer(Modifier.width(8.dp))
-        IconButton(
-            onClick = onShowQuickAccess,
-            modifier = Modifier.size(32.dp),
-        ) {
-            NiStyleIcon(
-                icon = Icons.Rounded.MoreVert,
-                style = NiAppIconStyle,
-                containerSize = 32.dp,
-                iconSize = 18.dp,
-                contentDescription = "更多",
-            )
+        if (!isMultiSelect) {
+            IconButton(
+                onClick = onShowQuickAccess,
+                modifier = Modifier.size(32.dp),
+            ) {
+                NiStyleIcon(
+                    icon = Icons.Rounded.MoreVert,
+                    style = NiAppIconStyle,
+                    containerSize = 32.dp,
+                    iconSize = 18.dp,
+                    contentDescription = "更多",
+                )
+            }
         }
     }
 }
@@ -1171,10 +1363,14 @@ private fun FileGrid(
     thumbnailUrls: Map<String, String>,
     tooShortPaths: Set<String>,
     encryptedPaths: Set<String>,
+    isMultiSelect: Boolean,
+    selectedPaths: Set<String>,
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
     onShowQuickAccess: (StorageFile) -> Unit,
+    onEnterMultiSelect: (StorageFile) -> Unit,
+    onToggleSelection: (StorageFile) -> Unit,
     gridState: LazyGridState = rememberLazyGridState(),
 ) {
     LazyVerticalGrid(
@@ -1193,10 +1389,14 @@ private fun FileGrid(
                 thumbnailUrl = thumbnailUrls[file.path],
                 isTooShort = tooShortPaths.contains(file.path),
                 isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
+                isMultiSelect = isMultiSelect,
+                isSelected = file.path in selectedPaths,
                 onOpenDirectory = onOpenDirectory,
                 onPlayFile = onPlayFile,
                 onOpenImageFile = onOpenImageFile,
                 onShowQuickAccess = { onShowQuickAccess(file) },
+                onEnterMultiSelect = { onEnterMultiSelect(file) },
+                onToggleSelection = { onToggleSelection(file) },
             )
         }
     }
@@ -1209,10 +1409,14 @@ private fun GridFileCard(
     thumbnailUrl: String?,
     isTooShort: Boolean,
     isEncrypted: Boolean,
+    isMultiSelect: Boolean,
+    isSelected: Boolean,
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
     onShowQuickAccess: () -> Unit,
+    onEnterMultiSelect: () -> Unit,
+    onToggleSelection: () -> Unit,
 ) {
     val isVideo = MediaFileTypes.isVideoFile(file.name)
     val isAudio = MediaFileTypes.isAudioFile(file.name)
@@ -1242,20 +1446,35 @@ private fun GridFileCard(
                 .aspectRatio(16f / 9f)
                 .shadow(elevation = 1.dp, shape = cardShape, clip = false)
                 .clip(cardShape)
+                .then(
+                    if (isSelected) {
+                        Modifier.border(
+                            width = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = cardShape,
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
                 .background(NiExtraColors.current.surfaceLevel3)
                 .combinedClickable(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = {
-                        when {
-                            file.isDirectory -> onOpenDirectory(file)
-                            isVideo || isAudio -> onPlayFile(file)
-                            isImage -> onOpenImageFile(file)
-                            else -> Unit
+                        if (isMultiSelect) {
+                            onToggleSelection()
+                        } else {
+                            when {
+                                file.isDirectory -> onOpenDirectory(file)
+                                isVideo || isAudio -> onPlayFile(file)
+                                isImage -> onOpenImageFile(file)
+                                else -> Unit
+                            }
                         }
                     },
                     onLongClick = {
-                        onShowQuickAccess()
+                        if (!isMultiSelect) onEnterMultiSelect()
                     },
                 ),
         ) {
@@ -1320,14 +1539,14 @@ private fun GridFileCard(
                         )
                     }
 
-                    // 类型角标：左上角，仅在媒体文件显示
+                    // 类型角标：左上角，仅在媒体文件显示（多选模式让位于选中指示）
                     val typeLabel = when {
                         isVideo -> "视频"
                         isAudio -> "音乐"
                         isImage -> "图片"
                         else -> null
                     }
-                    if (typeLabel != null) {
+                    if (typeLabel != null && !isMultiSelect) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
@@ -1437,6 +1656,29 @@ private fun GridFileCard(
                     }
                 }
             }
+
+                    // 多选模式：左上角选中指示（圆形勾选）
+                    if (isMultiSelect) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(6.dp)
+                                .size(26.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.primary
+                                    else Color.Black.copy(alpha = 0.45f),
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = if (isSelected) Icons.Rounded.Check else Icons.Rounded.Add,
+                                contentDescription = if (isSelected) "已选择" else "选择",
+                                tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.White,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
         }
         // 文件名：卡片外底部居中，长文字两行自动缩字
         NiAutoSizeText(
@@ -2005,5 +2247,226 @@ fun ResetFolderPasswordDialog(
                 )
             }
         }
+    }
+}
+
+/** 多选模式底部操作栏：全选 / 添加到歌单 / 下载 / 删除。 */
+@Composable
+private fun MultiSelectActionBar(
+    selectedCount: Int,
+    allSelected: Boolean,
+    hasAudio: Boolean,
+    hasDownloadable: Boolean,
+    onSelectAll: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onDownload: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 4.dp,
+        shadowElevation = 8.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ActionBarItem(
+                icon = if (allSelected) Icons.Rounded.Close else Icons.Rounded.SelectAll,
+                label = if (allSelected) "取消全选" else "全选",
+                enabled = selectedCount > 0,
+                onClick = onSelectAll,
+                modifier = Modifier.weight(1f),
+            )
+            if (hasAudio) {
+                ActionBarItem(
+                    icon = Icons.Rounded.PlaylistAdd,
+                    label = "添加到歌单",
+                    enabled = selectedCount > 0,
+                    onClick = onAddToPlaylist,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (hasDownloadable) {
+                ActionBarItem(
+                    icon = Icons.Rounded.Download,
+                    label = "下载",
+                    enabled = selectedCount > 0,
+                    onClick = onDownload,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            ActionBarItem(
+                icon = Icons.Rounded.Delete,
+                label = "删除",
+                enabled = selectedCount > 0,
+                onClick = onDelete,
+                isDanger = true,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActionBarItem(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    isDanger: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val color = when {
+        !enabled -> MaterialTheme.colorScheme.outline
+        isDanger -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    Column(
+        modifier = modifier
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = color,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** 选歌单弹窗（多选添加入口②）：列出全部歌单 + 新建歌单。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaylistPickerSheet(
+    playlists: List<PlaylistWithCount>,
+    onPick: (Int) -> Unit,
+    onCreateNew: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        tonalElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+        ) {
+            Text(
+                text = "添加到歌单",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            if (playlists.isEmpty()) {
+                Text(
+                    text = "暂无歌单，请先新建",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 320.dp),
+                ) {
+                    items(playlists, key = { it.playlist.id }) { playlist ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPick(playlist.playlist.id) }
+                                .padding(horizontal = 20.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.QueueMusic,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = playlist.playlist.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = "${playlist.itemCount} 个条目",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                        }
+                    }
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onCreateNew)
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Add,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = "新建歌单",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+/** 新建歌单名称输入对话框（多选添加入口内）。 */
+@Composable
+private fun CreatePlaylistNameDialog(
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    NiInfoDialog(
+        title = "新建歌单",
+        onDismiss = onDismiss,
+        actions = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(
+                onClick = { onConfirm(name) },
+                enabled = name.isNotBlank(),
+            ) { Text("创建") }
+        },
+    ) {
+        NiTextField(
+            value = name,
+            onValueChange = { name = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = "歌单名称",
+            placeholder = "例如：我的最爱",
+        )
     }
 }

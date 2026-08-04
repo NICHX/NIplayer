@@ -81,6 +81,7 @@ import com.nichx.niplayer.designsystem.components.NiFAB
 import com.nichx.niplayer.designsystem.components.NiFabVariant
 import com.nichx.niplayer.designsystem.components.NiSkeletonBox
 import com.nichx.niplayer.designsystem.components.NiSkeletonLine
+import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTextFieldDefaults
@@ -153,7 +154,12 @@ fun LibraryScreen(
                 },
             )
         },
-        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState, bottomPadding = 80.dp) },
+        snackbarHost = {
+                NiSnackbarHost(
+                    hostState = snackbarHostState,
+                    bottomObstruction = NiSnackbarDefaults.MINI_PLAYER_OBSTRUCTION,
+                )
+            },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             Column(modifier = Modifier.fillMaxSize()) {

@@ -11,6 +11,7 @@ import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.util.Date
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -50,7 +51,12 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideMoshi(): Moshi = Moshi.Builder().build()
+    fun provideMoshi(): Moshi = Moshi.Builder()
+        .add(object : Any() {
+            @com.squareup.moshi.ToJson fun dateToJson(date: Date): Long = date.time
+            @com.squareup.moshi.FromJson fun dateFromJson(ts: Long): Date = Date(ts)
+        })
+        .build()
 
     /**
      * ASSRT 字幕 API Retrofit 实例。
