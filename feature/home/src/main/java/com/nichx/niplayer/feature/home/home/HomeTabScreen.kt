@@ -72,7 +72,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import com.nichx.niplayer.common.error.NiMessage
+import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import com.nichx.niplayer.designsystem.components.showNiMessage
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -129,7 +132,7 @@ fun HomeTabScreen(
             when (event) {
                 is HomeTabEvent.NavigateToPlayer -> onPlayVideo()
                 is HomeTabEvent.NavigateToStorageFile -> onNavigateToStorageFile(event.libraryId, event.relativePath)
-                is HomeTabEvent.ShowError -> snackbarHostState.showSnackbar(event.message)
+                is HomeTabEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
             }
         }
     }
@@ -208,7 +211,12 @@ fun HomeTabScreen(
                 )
             }
         },
-        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState, bottomPadding = 80.dp) },
+        snackbarHost = {
+                NiSnackbarHost(
+                    hostState = snackbarHostState,
+                    bottomObstruction = NiSnackbarDefaults.MINI_PLAYER_OBSTRUCTION,
+                )
+            },
     ) { padding ->
         PullToRefreshBox(
             isRefreshing = isRefreshing,

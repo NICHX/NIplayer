@@ -18,19 +18,19 @@ data class PlaylistWithCount(
 @Dao
 interface PlaylistDao {
 
-    /** 全量歌单（含条目数），按最近更新倒序。 */
+    /** 全量歌单（含条目数），置顶优先，其次按最近更新倒序。 */
     @Query(
         """
         SELECT playlist.*,
                (SELECT COUNT(*) FROM playlist_item
                 WHERE playlist_item.playlist_id = playlist.id) AS itemCount
         FROM playlist
-        ORDER BY playlist.updated_at DESC, playlist.id DESC
+        ORDER BY playlist.is_pinned DESC, playlist.updated_at DESC, playlist.id DESC
         """
     )
     fun getAllWithCountFlow(): Flow<List<PlaylistWithCount>>
 
-    @Query("SELECT * FROM playlist ORDER BY updated_at DESC, id DESC")
+    @Query("SELECT * FROM playlist ORDER BY is_pinned DESC, updated_at DESC, id DESC")
     fun getAllFlow(): Flow<List<PlaylistEntity>>
 
     /** 全量查询（suspend），用于备份导出。 */
@@ -55,6 +55,12 @@ interface PlaylistDao {
 
     @Query("DELETE FROM playlist WHERE id = :playlistId")
     suspend fun deleteById(playlistId: Int)
+
+    @Query("UPDATE playlist SET name = :name, updated_at = :updatedAt WHERE id = :playlistId")
+    suspend fun renamePlaylist(playlistId: Int, name: String, updatedAt: Long)
+
+    @Query("UPDATE playlist SET is_pinned = :pinned, updated_at = :updatedAt WHERE id = :playlistId")
+    suspend fun setPinned(playlistId: Int, pinned: Boolean, updatedAt: Long)
 
     /** 清空全表，用于恢复前清库。 */
     @Query("DELETE FROM playlist")

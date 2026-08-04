@@ -19,4 +19,6 @@ data class PlaylistEntity(
     @ColumnInfo(name = "name") var name: String,
     @ColumnInfo(name = "created_at") var createdAt: Date = Date(),
     @ColumnInfo(name = "updated_at", defaultValue = "0") var updatedAt: Long = System.currentTimeMillis(),
+    /** 置顶标记：置顶歌单固定排在列表最前。 */
+    @ColumnInfo(name = "is_pinned", defaultValue = "0") var isPinned: Boolean = false,
 )

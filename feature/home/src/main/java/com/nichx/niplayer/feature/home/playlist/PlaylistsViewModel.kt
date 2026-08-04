@@ -124,4 +124,53 @@ class PlaylistsViewModel @Inject constructor(
             _toast.tryEmit("已删除歌单「$name」")
         }
     }
+
+    /** 重命名歌单（名称去空格，空名忽略）。 */
+    fun renamePlaylist(playlistId: Int, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                playlistDao.renamePlaylist(playlistId, trimmed, System.currentTimeMillis())
+            }
+            _toast.tryEmit("已重命名为「$trimmed」")
+        }
+    }
+
+    /** 复制歌单：新建「原名 副本」歌单并复制全部条目。 */
+    fun duplicatePlaylist(playlistId: Int, name: String) {
+        viewModelScope.launch {
+            val newName = "$name 副本"
+            withContext(Dispatchers.IO) {
+                playlistItemDao.duplicatePlaylist(playlistId, newName, playlistDao)
+            }
+            _toast.tryEmit("已复制为歌单「$newName」")
+        }
+    }
+
+    /** 合并歌单：将 sourceId 的条目复制进 targetId（重复项自动跳过）。 */
+    fun mergePlaylist(sourceId: Int, sourceName: String, targetId: Int, targetName: String) {
+        viewModelScope.launch {
+            val added = withContext(Dispatchers.IO) {
+                playlistItemDao.mergeInto(sourceId, targetId, playlistDao)
+            }
+            _toast.tryEmit(
+                if (added > 0) {
+                    "已从「$sourceName」合并 $added 个条目到「$targetName」"
+                } else {
+                    "「$targetName」已包含「$sourceName」的全部条目"
+                },
+            )
+        }
+    }
+
+    /** 置顶 / 取消置顶。 */
+    fun togglePinned(playlistId: Int, pinned: Boolean, name: String) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                playlistDao.setPinned(playlistId, pinned, System.currentTimeMillis())
+            }
+            _toast.tryEmit(if (pinned) "已置顶「$name」" else "已取消置顶「$name」")
+        }
+    }
 }

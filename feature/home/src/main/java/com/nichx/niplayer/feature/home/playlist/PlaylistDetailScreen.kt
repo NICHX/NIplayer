@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -23,18 +24,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -56,18 +61,25 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.nichx.niplayer.database.dao.PlaylistWithCount
 import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
+import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiEmptyState
+import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTopBar
+import com.nichx.niplayer.designsystem.components.showNiMessage
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import org.burnoutcrew.reorderable.ReorderableItem
 import org.burnoutcrew.reorderable.detectReorderAfterLongPress
 import org.burnoutcrew.reorderable.rememberReorderableLazyListState
 import org.burnoutcrew.reorderable.reorderable
+
+/** 底部操作栏的批量操作类型。 */
+private enum class SelectionAction { MOVE, COPY }
 
 /**
  * 歌单详情页（扩展功能方案二 · 页面 2）。
@@ -84,6 +96,7 @@ fun PlaylistDetailScreen(
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val items by viewModel.items.collectAsStateWithLifecycle()
     val coverUrls by viewModel.coverUrls.collectAsStateWithLifecycle()
+    val allPlaylists by viewModel.allPlaylists.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var orderedItems by remember { mutableStateOf(items) }
@@ -92,7 +105,14 @@ fun PlaylistDetailScreen(
     var searchQuery by remember { mutableStateOf("") }
     var searchActive by remember { mutableStateOf(false) }
     var editMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(setOf<Int>()) }
     var removeTarget by remember { mutableStateOf<PlaylistItemEntity?>(null) }
+    var showManage by remember { mutableStateOf(false) }
+    var showRename by remember { mutableStateOf(false) }
+    var showMergePicker by remember { mutableStateOf(false) }
+    var pickerAction by remember { mutableStateOf<SelectionAction?>(null) }
+    var showRemoveSelected by remember { mutableStateOf(false) }
+    var showDeletePlaylist by remember { mutableStateOf(false) }
 
     val filteredItems = remember(orderedItems, searchQuery, searchActive) {
         if (!searchActive || searchQuery.isBlank()) orderedItems
@@ -123,9 +143,16 @@ fun PlaylistDetailScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is PlaylistDetailEvent.NavigateToPlayer -> onPlayVideo()
-                is PlaylistDetailEvent.ShowError -> snackbarHostState.showSnackbar(event.message)
+                is PlaylistDetailEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
+                is PlaylistDetailEvent.ShowMessage -> snackbarHostState.showNiMessage(NiMessage.info(event.message))
+                PlaylistDetailEvent.PlaylistDeleted -> onBack()
             }
         }
+    }
+
+    fun exitEditMode() {
+        editMode = false
+        selectedIds = emptySet()
     }
 
     Scaffold(
@@ -143,7 +170,7 @@ fun PlaylistDetailScreen(
                 NiTopBar(
                     title = "编辑模式",
                     navigationIcon = {
-                        IconButton(onClick = { editMode = false }) {
+                        IconButton(onClick = { exitEditMode() }) {
                             Icon(
                                 imageVector = Icons.Rounded.Close,
                                 contentDescription = "退出编辑模式",
@@ -151,7 +178,7 @@ fun PlaylistDetailScreen(
                         }
                     },
                     actions = {
-                        TextButton(onClick = { editMode = false }) {
+                        TextButton(onClick = { exitEditMode() }) {
                             Text("完成", color = MaterialTheme.colorScheme.primary)
                         }
                     },
@@ -176,11 +203,40 @@ fun PlaylistDetailScreen(
                                 )
                             }
                         }
+                        IconButton(onClick = { showManage = true }) {
+                            Icon(
+                                imageVector = Icons.Rounded.MoreVert,
+                                contentDescription = "歌单管理",
+                            )
+                        }
                     },
                 )
             }
         },
-        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState, topAligned = true) },
+        bottomBar = {
+            if (editMode) {
+                SelectionActionBar(
+                    selectedCount = selectedIds.size,
+                    totalCount = filteredItems.size,
+                    onToggleSelectAll = {
+                        selectedIds = if (selectedIds.size == filteredItems.size && filteredItems.isNotEmpty()) {
+                            emptySet()
+                        } else {
+                            filteredItems.map { it.id }.toSet()
+                        }
+                    },
+                    onMove = { pickerAction = SelectionAction.MOVE },
+                    onCopy = { pickerAction = SelectionAction.COPY },
+                    onRemove = { showRemoveSelected = true },
+                )
+            }
+        },
+        snackbarHost = {
+            NiSnackbarHost(
+                hostState = snackbarHostState,
+                bottomObstruction = NiSnackbarDefaults.MINI_PLAYER_OBSTRUCTION,
+            )
+        },
     ) { padding ->
         when {
             playlist == null -> PlaylistDetailSkeleton(padding)
@@ -245,10 +301,19 @@ fun PlaylistDetailScreen(
                                         coverUrl = coverUrls[item.filePath],
                                         isDragging = isDragging,
                                         editMode = editMode,
+                                        selected = item.id in selectedIds,
+                                        onToggleSelect = {
+                                            selectedIds = if (item.id in selectedIds) {
+                                                selectedIds - item.id
+                                            } else {
+                                                selectedIds + item.id
+                                            }
+                                        },
                                         onPlay = { viewModel.playItem(index) },
                                         onLongPress = {
                                             searchActive = false
                                             searchQuery = ""
+                                            selectedIds = emptySet()
                                             editMode = true
                                         },
                                         onRemove = { removeTarget = item },
@@ -273,6 +338,110 @@ fun PlaylistDetailScreen(
             },
             onDismiss = { removeTarget = null },
         )
+    }
+
+    if (showManage) {
+        playlist?.let { p ->
+            PlaylistManageSheet(
+                playlist = PlaylistWithCount(playlist = p, itemCount = orderedItems.size),
+                onDismiss = { showManage = false },
+                onRename = {
+                    showRename = true
+                    showManage = false
+                },
+                onDuplicate = {
+                    viewModel.duplicatePlaylist()
+                    showManage = false
+                },
+                onMerge = {
+                    showMergePicker = true
+                    showManage = false
+                },
+                onTogglePin = {
+                    viewModel.togglePinned(!p.isPinned)
+                    showManage = false
+                },
+                onDelete = {
+                    showDeletePlaylist = true
+                    showManage = false
+                },
+            )
+        }
+    }
+
+    if (showRename) {
+        playlist?.let { p ->
+            RenamePlaylistDialog(
+                initialName = p.name,
+                onConfirm = { name ->
+                    viewModel.renamePlaylist(name)
+                    showRename = false
+                },
+                onDismiss = { showRename = false },
+            )
+        }
+    }
+
+    if (showMergePicker) {
+        PlaylistPickerSheet(
+            title = "将「${playlist?.name ?: ""}」合并到",
+            playlists = allPlaylists.filter { it.playlist.id != playlist?.id },
+            onDismiss = { showMergePicker = false },
+            onPick = { target ->
+                viewModel.mergeInto(target.playlist.id)
+                showMergePicker = false
+            },
+        )
+    }
+
+    pickerAction?.let { action ->
+        PlaylistPickerSheet(
+            title = when (action) {
+                SelectionAction.MOVE -> "移动选中条目到"
+                SelectionAction.COPY -> "复制选中条目到"
+            },
+            playlists = allPlaylists.filter { it.playlist.id != playlist?.id },
+            onDismiss = { pickerAction = null },
+            onPick = { target ->
+                val ids = selectedIds.toList()
+                when (action) {
+                    SelectionAction.MOVE -> viewModel.moveSelectedTo(target.playlist.id, ids)
+                    SelectionAction.COPY -> viewModel.copySelectedTo(target.playlist.id, ids)
+                }
+                pickerAction = null
+                exitEditMode()
+            },
+        )
+    }
+
+    if (showRemoveSelected) {
+        NiConfirmDialog(
+            title = "移除选中条目",
+            text = "确定从歌单移除选中的 ${selectedIds.size} 个条目？",
+            confirmText = "移除",
+            onConfirm = {
+                viewModel.removeItems(selectedIds.toList())
+                selectedIds = emptySet()
+                showRemoveSelected = false
+            },
+            onDismiss = { showRemoveSelected = false },
+        )
+    }
+
+    if (showDeletePlaylist) {
+        playlist?.let { p ->
+            NiConfirmDialog(
+                title = "删除歌单",
+                text = "确定删除歌单「${p.name}」？${orderedItems.size} 个条目将一并移除。",
+                confirmText = "删除",
+                confirmDanger = true,
+                onConfirm = {
+                    viewModel.deletePlaylist()
+                    showDeletePlaylist = false
+                },
+                onDismiss = { showDeletePlaylist = false },
+            )
+        }
     }
 }
 
@@ -330,13 +499,15 @@ private fun PlaylistPlayAllHeader(
     }
 }
 
-/** 歌单条目行：封面缩略图 + 文件名 + 大小，点击播放，长按进入编辑模式（编辑模式下显示移出按钮、长按可拖拽排序）。 */
+/** 歌单条目行：封面缩略图 + 文件名 + 大小；普通模式点击播放、长按进入编辑模式；编辑模式下勾选批量操作，长按可拖拽排序。 */
 @Composable
 private fun PlaylistItemRow(
     item: PlaylistItemEntity,
     coverUrl: String?,
     isDragging: Boolean,
     editMode: Boolean,
+    selected: Boolean,
+    onToggleSelect: () -> Unit,
     onPlay: () -> Unit,
     onLongPress: () -> Unit,
     onRemove: () -> Unit,
@@ -351,19 +522,28 @@ private fun PlaylistItemRow(
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(
-                if (isDragging) {
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                } else {
-                    NiExtraColors.current.surfaceLevel2
+                when {
+                    isDragging -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                    else -> NiExtraColors.current.surfaceLevel2
                 }
             )
             .combinedClickable(
-                onClick = onPlay,
+                onClick = if (editMode) onToggleSelect else onPlay,
                 onLongClick = if (editMode) null else onLongPress,
             )
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 编辑模式下的多选勾选框
+        if (editMode) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = { onToggleSelect() },
+                modifier = Modifier.size(40.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+        }
         Box(
             modifier = Modifier
                 .size(48.dp)
@@ -415,6 +595,65 @@ private fun PlaylistItemRow(
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(20.dp),
                 )
+            }
+        }
+    }
+}
+
+/** 编辑模式底部批量操作栏：全选 / 已选计数 / 移到歌单 / 复制到歌单 / 移除。 */
+@Composable
+private fun SelectionActionBar(
+    selectedCount: Int,
+    totalCount: Int,
+    onToggleSelectAll: () -> Unit,
+    onMove: () -> Unit,
+    onCopy: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onToggleSelectAll) {
+                    Text(
+                        text = if (totalCount > 0 && selectedCount == totalCount) "取消全选" else "全选",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+                Text(
+                    text = "已选 $selectedCount 项",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = onMove,
+                    enabled = selectedCount > 0,
+                ) {
+                    Text("移到歌单")
+                }
+                TextButton(
+                    onClick = onCopy,
+                    enabled = selectedCount > 0,
+                ) {
+                    Text("复制到歌单")
+                }
+                IconButton(
+                    onClick = onRemove,
+                    enabled = selectedCount > 0,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Delete,
+                        contentDescription = "移除选中条目",
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         }
     }

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlaylistDao
 import com.nichx.niplayer.database.dao.PlaylistItemDao
+import com.nichx.niplayer.database.dao.PlaylistWithCount
 import com.nichx.niplayer.database.entity.PlaylistEntity
 import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.feature.home.MediaFileTypes
@@ -70,6 +71,14 @@ class PlaylistDetailViewModel @Inject constructor(
     /** 本地列表快照：供拖拽排序时同步重排（避免 Flow 重发导致回跳）。 */
     private val _draftItems = MutableStateFlow<List<PlaylistItemEntity>>(emptyList())
     val draftItems: StateFlow<List<PlaylistItemEntity>> = _draftItems.asStateFlow()
+
+    /** 全部歌单（含条目数）：供「合并到 / 移动到 / 复制到」目标选择（列表页选择器复用）。 */
+    val allPlaylists: StateFlow<List<PlaylistWithCount>> = playlistDao.getAllWithCountFlow()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList(),
+        )
 
     /** 条目封面：filePath → 音频封面本地路径（缓存优先，未命中异步生成）。 */
     private val _coverUrls = MutableStateFlow<Map<String, String>>(emptyMap())
@@ -179,6 +188,128 @@ class PlaylistDetailViewModel @Inject constructor(
             }
         }
     }
+
+    /** 批量移除选中条目。 */
+    fun removeItems(itemIds: List<Int>) {
+        if (itemIds.isEmpty()) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                playlistItemDao.deleteByIds(itemIds)
+                playlistDao.touch(playlistId, System.currentTimeMillis())
+            }
+        }
+    }
+
+    /** 置顶 / 取消置顶当前歌单。 */
+    fun togglePinned(pinned: Boolean) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                playlistDao.setPinned(playlistId, pinned, System.currentTimeMillis())
+            }
+            _events.tryEmit(PlaylistDetailEvent.ShowMessage(if (pinned) "已置顶" else "已取消置顶"))
+        }
+    }
+
+    /** 删除当前歌单（连带清空条目），完成后由 UI 返回上一页。 */
+    fun deletePlaylist() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                playlistItemDao.deleteByPlaylist(playlistId)
+                playlistDao.deleteById(playlistId)
+            }
+            _events.tryEmit(PlaylistDetailEvent.PlaylistDeleted)
+        }
+    }
+
+    /** 重命名当前歌单（名称去空格，空名忽略）。 */
+    fun renamePlaylist(newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                playlistDao.renamePlaylist(playlistId, trimmed, System.currentTimeMillis())
+            }
+            _events.tryEmit(PlaylistDetailEvent.ShowMessage("已重命名为「$trimmed」"))
+        }
+    }
+
+    /** 复制当前歌单为「原名 副本」。 */
+    fun duplicatePlaylist() {
+        val name = playlist.value?.name ?: return
+        viewModelScope.launch {
+            val newName = "$name 副本"
+            withContext(Dispatchers.IO) {
+                playlistItemDao.duplicatePlaylist(playlistId, newName, playlistDao)
+            }
+            _events.tryEmit(PlaylistDetailEvent.ShowMessage("已复制为歌单「$newName」"))
+        }
+    }
+
+    /** 合并当前歌单到目标歌单（重复项自动跳过）。 */
+    fun mergeInto(targetId: Int) {
+        val sourceName = playlist.value?.name ?: return
+        viewModelScope.launch {
+            val targetName = withContext(Dispatchers.IO) {
+                playlistDao.getById(targetId)?.name ?: ""
+            }
+            val added = withContext(Dispatchers.IO) {
+                playlistItemDao.mergeInto(playlistId, targetId, playlistDao)
+            }
+            _events.tryEmit(
+                PlaylistDetailEvent.ShowMessage(
+                    if (added > 0) {
+                        "已合并 $added 个条目到「$targetName」"
+                    } else {
+                        "「$sourceName」的条目已全部存在于「$targetName」"
+                    },
+                ),
+            )
+        }
+    }
+
+    /** 批量复制选中条目到目标歌单（重复项自动跳过）。 */
+    fun copySelectedTo(targetId: Int, itemIds: List<Int>) {
+        if (itemIds.isEmpty()) return
+        viewModelScope.launch {
+            val added = withContext(Dispatchers.IO) {
+                playlistItemDao.copyItemsTo(targetId, itemIds, playlistDao)
+            }
+            val targetName = withContext(Dispatchers.IO) {
+                playlistDao.getById(targetId)?.name ?: ""
+            }
+            _events.tryEmit(
+                PlaylistDetailEvent.ShowMessage(
+                    if (added > 0) {
+                        "已复制 $added 个条目到「$targetName」"
+                    } else {
+                        "所选条目已全部存在于「$targetName」"
+                    },
+                ),
+            )
+        }
+    }
+
+    /** 批量移动选中条目到目标歌单（源歌单删除，目标重复项自动跳过）。 */
+    fun moveSelectedTo(targetId: Int, itemIds: List<Int>) {
+        if (itemIds.isEmpty()) return
+        viewModelScope.launch {
+            val added = withContext(Dispatchers.IO) {
+                playlistItemDao.moveItemsTo(targetId, itemIds, playlistId, playlistDao)
+            }
+            val targetName = withContext(Dispatchers.IO) {
+                playlistDao.getById(targetId)?.name ?: ""
+            }
+            _events.tryEmit(
+                PlaylistDetailEvent.ShowMessage(
+                    if (added > 0) {
+                        "已移动 $added 个条目到「$targetName」"
+                    } else {
+                        "所选条目已全部存在于「$targetName」，已从本歌单移除"
+                    },
+                ),
+            )
+        }
+    }
 }
 
 sealed class PlaylistDetailEvent {
@@ -187,4 +318,10 @@ sealed class PlaylistDetailEvent {
 
     /** 操作失败，显示错误提示。 */
     data class ShowError(val message: String) : PlaylistDetailEvent()
+
+    /** 操作成功，显示提示消息。 */
+    data class ShowMessage(val message: String) : PlaylistDetailEvent()
+
+    /** 歌单已删除，导航返回上一页。 */
+    object PlaylistDeleted : PlaylistDetailEvent()
 }

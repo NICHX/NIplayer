@@ -1,12 +1,18 @@
 package com.nichx.niplayer.feature.player
 
 import android.content.res.Configuration
+import androidx.activity.compose.LocalActivity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -19,13 +25,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlaylistAdd
@@ -35,15 +46,23 @@ import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHostState
+import com.nichx.niplayer.common.error.NiMessage
+import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import com.nichx.niplayer.designsystem.components.showNiMessage
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -51,25 +70,36 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+/** 横屏沉浸模式：无操作自动隐藏控件的延时（ms）。 */
+private const val AUTO_HIDE_DELAY_MS = 3000L
 
 @Composable
 fun AudioPlayerScreen(
@@ -83,13 +113,13 @@ fun AudioPlayerScreen(
 
     LaunchedEffect(Unit) {
         viewModel.downloadEvent.collect { msg ->
-            snackbarHostState.showSnackbar(msg)
+            snackbarHostState.showNiMessage(NiMessage.info(msg))
         }
     }
 
     LaunchedEffect(Unit) {
         viewModel.messageEvent.collect { msg ->
-            snackbarHostState.showSnackbar(msg)
+            snackbarHostState.showNiMessage(NiMessage.info(msg))
         }
     }
 
@@ -124,11 +154,46 @@ fun AudioPlayerScreen(
     var showPlaylist by remember { mutableStateOf(false) }
     var showSavePlaylistDialog by remember { mutableStateOf(false) }
 
+    // 倍速：音频独立 4 档（0.5/1/1.5/2），偏好走 PlayerSettings.audioSpeedIndex，
+    // 与视频 8 档互不影响
+    val speedValues = AudioPlaybackManager.AudioPlaybackSpeedValues
+    var speedIndex by rememberSaveable {
+        mutableIntStateOf(PlayerSettings.audioSpeedIndex.coerceIn(0, speedValues.lastIndex))
+    }
+    LaunchedEffect(speedIndex) {
+        audioPlaybackManager?.setPlaybackSpeed(speedValues[speedIndex])
+        PlayerSettings.audioSpeedIndex = speedIndex
+    }
+
     val hasNext = currentIndex in 0 until playlist.lastIndex
     val hasPrev = currentIndex > 0
 
     // 横屏 / 竖屏自适应：横屏用左右分栏布局（黑胶 + 控制区），竖屏用原单列布局
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // 横屏沉浸全屏：隐藏系统状态栏与手势条，让唱片在无系统栏干扰下真正居中；
+    // 轻扫屏幕边缘可临时唤出系统栏。退出横屏（回竖屏/离开页面）时恢复系统栏。
+    val activity = LocalActivity.current
+    DisposableEffect(isLandscape) {
+        if (isLandscape) {
+            val window = activity?.window
+            val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+            val originalBehavior = controller?.systemBarsBehavior
+            window?.let { WindowCompat.setDecorFitsSystemWindows(it, false) }
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+            controller?.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            onDispose {
+                activity?.window?.let { w ->
+                    val c = WindowCompat.getInsetsController(w, w.decorView)
+                    c.show(WindowInsetsCompat.Type.systemBars())
+                    originalBehavior?.let { c.systemBarsBehavior = it }
+                }
+            }
+        } else {
+            onDispose { }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         BackgroundLayer(coverData = coverPath)
@@ -159,6 +224,9 @@ fun AudioPlayerScreen(
                 onDownload = { viewModel.downloadCurrentFile() },
                 onEqualizer = onEqualizer,
                 onAddToPlaylist = { showSavePlaylistDialog = true },
+                speedOptions = speedValues,
+                currentSpeedIndex = speedIndex,
+                onSpeedSelect = { speedIndex = it },
             )
         } else {
             PortraitLayout(
@@ -190,6 +258,9 @@ fun AudioPlayerScreen(
                 onDownload = { viewModel.downloadCurrentFile() },
                 onEqualizer = onEqualizer,
                 onAddToPlaylist = { showSavePlaylistDialog = true },
+                speedOptions = speedValues,
+                currentSpeedIndex = speedIndex,
+                onSpeedSelect = { speedIndex = it },
             )
         }
 
@@ -204,19 +275,22 @@ fun AudioPlayerScreen(
         }
 
         if (showSavePlaylistDialog) {
-            SaveToPlaylistDialog(
-                playlist = playlist,
-                onDismiss = { showSavePlaylistDialog = false },
-                onSaved = { message ->
-                    scope.launch { snackbarHostState.showSnackbar(message) }
-                },
-            )
+            // 添加到歌单：只针对当前正在播放的歌曲，而非整个播放列表
+            val currentItem = playlist.getOrNull(currentIndex)
+            if (currentItem != null) {
+                SaveToPlaylistDialog(
+                    items = listOf(currentItem),
+                    onDismiss = { showSavePlaylistDialog = false },
+                    onSaved = { message ->
+                        scope.launch { snackbarHostState.showNiMessage(NiMessage.info(message)) }
+                    },
+                )
+            } else {
+                showSavePlaylistDialog = false
+            }
         }
 
-        NiSnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        NiSnackbarHost(hostState = snackbarHostState)
     }
 }
 
@@ -301,6 +375,9 @@ private fun PortraitLayout(
     onDownload: () -> Unit,
     onEqualizer: () -> Unit = {},
     onAddToPlaylist: () -> Unit = {},
+    speedOptions: List<Float> = listOf(1f),
+    currentSpeedIndex: Int = 0,
+    onSpeedSelect: (Int) -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
 
@@ -315,6 +392,9 @@ private fun PortraitLayout(
             onDownload = onDownload,
             onEqualizer = onEqualizer,
             onAddToPlaylist = onAddToPlaylist,
+            speedOptions = speedOptions,
+            currentSpeedIndex = currentSpeedIndex,
+            onSpeedSelect = onSpeedSelect,
         )
 
         Box(
@@ -483,85 +563,167 @@ private fun LandscapeLayout(
     onDownload: () -> Unit,
     onEqualizer: () -> Unit = {},
     onAddToPlaylist: () -> Unit = {},
+    speedOptions: List<Float> = listOf(1f),
+    currentSpeedIndex: Int = 0,
+    onSpeedSelect: (Int) -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
+    // 大屏（平板/大屏手机横屏）下歌词行数更多，配合 LyricsView 内部字号/行高自适应放大
+    val isLargeScreen = LocalConfiguration.current.screenWidthDp >= 800
 
+    // 沉浸模式：横屏 3s 无操作自动隐藏顶部行与底部控件，仅留歌词（5 行）；
+    // 点击空白处切换控件显隐（显示时歌词 3 行，隐藏时 5 行）。
+    // 无歌词时不启用自动隐藏。
+    var controlsVisible by remember { mutableStateOf(true) }
+    var interactionTick by remember { mutableIntStateOf(0) }
+    val hasLyrics = lrcLines.isNotEmpty()
+    // 更多/倍速下拉菜单展开中：暂停自动隐藏计时，避免菜单还开着控件就收起
+    var menuOpen by remember { mutableStateOf(false) }
+
+    fun onBackgroundTap() {
+        // 点击空白处切换控件显隐；恢复显示时重启 3s 自动隐藏计时
+        controlsVisible = !controlsVisible
+        if (controlsVisible) interactionTick++
+    }
+
+    // 每次交互递增 interactionTick 重启 3s 计时；无歌词时强制显示控件；
+    // 下拉菜单展开时不执行自动隐藏
+    LaunchedEffect(interactionTick, hasLyrics, menuOpen) {
+        if (!hasLyrics || menuOpen) {
+            controlsVisible = true
+            return@LaunchedEffect
+        }
+        delay(AUTO_HIDE_DELAY_MS)
+        controlsVisible = false
+    }
+
+    // 横屏不使用独立顶栏：整屏为左右分栏 Row。
+    // 左侧唱片占满全部高度；右侧顶部一行 = 返回 + 歌名 + 操作按钮（添加歌单/更多），
+    // 下方为歌词（占满剩余空间）与一行式播放控件。最底部常驻细进度条。
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding(),
+            // 点击任意空白处切换控件显隐
+            .pointerInput(Unit) { detectTapGestures { onBackgroundTap() } },
     ) {
-        TopBar(
-            title = title,
-            onBack = onBack,
-            onDownload = onDownload,
-            onEqualizer = onEqualizer,
-            onAddToPlaylist = onAddToPlaylist,
-        )
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                // 横屏已沉浸全屏（隐藏系统栏），无需 statusBarsPadding，保证唱片居中
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .weight(1f),
-                contentAlignment = Alignment.Center,
-            ) {
-                when {
-                    !hasActiveContent -> Text(
-                        text = "无播放源",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = onSurface.copy(alpha = 0.6f),
-                    )
-                    playbackError != null -> PlaybackErrorState(
-                        errorMessage = playbackError,
-                        onRetry = onRetry,
-                    )
-                    else -> VinylRecordPlayer(
-                        coverData = coverPath,
-                        isPlaying = isPlaying,
-                        // 高度 60% 保证唱针尖端不超出边界（唱针高于碟面约 29% 直径）
-                        modifier = Modifier
-                            .fillMaxHeight(0.6f)
-                            .aspectRatio(1f),
-                    )
+        // 左侧：唱片占满全部高度
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .weight(1f),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                !hasActiveContent -> Text(
+                    text = "无播放源",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = onSurface.copy(alpha = 0.6f),
+                )
+                playbackError != null -> PlaybackErrorState(
+                    errorMessage = playbackError,
+                    onRetry = onRetry,
+                )
+                else -> VinylRecordPlayer(
+                    coverData = coverPath,
+                    isPlaying = isPlaying,
+                    // 横屏移除唱针；高度留白较多，让出空间给歌词区
+                    modifier = Modifier
+                        .fillMaxHeight(0.78f)
+                        .aspectRatio(1f),
+                    showNeedle = false,
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(24.dp))
+
+        // 右侧列：顶部行（返回 + 歌名 + 操作按钮）+ 歌词 + 控件
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .weight(1f),
+        ) {
+            // 顶部行：返回 | 歌名 | 添加到歌单 | 更多（沉浸模式下自动隐藏）
+            AnimatedVisibility(visible = controlsVisible) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(onClick = onBack) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(onSurface.copy(alpha = 0.08f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = "返回",
+                                    tint = onSurface.copy(alpha = 0.8f),
+                                )
+                            }
+                        }
+                        Text(
+                            text = if (title.isNotEmpty()) title else "未知歌曲",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = onSurface.copy(alpha = 0.9f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TopBarActions(
+                            onDownload = onDownload,
+                            onEqualizer = onEqualizer,
+                            onAddToPlaylist = onAddToPlaylist,
+                            speedOptions = speedOptions,
+                            currentSpeedIndex = currentSpeedIndex,
+                            onSpeedSelect = onSpeedSelect,
+                            onMenuOpenChange = { menuOpen = it },
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
 
-            Spacer(modifier = Modifier.width(24.dp))
+            if (hasLyrics) {
+                // 歌词：控件可见时 3 行（为顶栏/控件让位），隐藏时 5 行（沉浸展示）
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .heightIn(min = 132.dp), // 44dp × 3 行下限
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LyricsView(
+                        lrcLines = lrcLines,
+                        currentPositionMs = positionMs,
+                        onSeek = onSeek,
+                        // 大屏行数更多：控件可见 3/5 行，沉浸 5/8 行
+                        maxVisibleLines = if (controlsVisible) {
+                            if (isLargeScreen) 5 else 3
+                        } else {
+                            if (isLargeScreen) 8 else 5
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .weight(1f),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (lrcLines.isNotEmpty()) {
-                    // 歌词：上方歌词（行数自适应，最少 3 行）+ 底部一行控件，同时显示
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .heightIn(min = 132.dp), // 44dp × 3 行下限
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            LyricsView(
-                                lrcLines = lrcLines,
-                                currentPositionMs = positionMs,
-                                onSeek = onSeek,
-                                maxVisibleLines = 8,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-
+                // 底部一行式控件（沉浸模式下自动隐藏）
+                AnimatedVisibility(visible = controlsVisible) {
+                    Column {
                         Spacer(modifier = Modifier.height(6.dp))
-
                         ControlColumn(
                             positionMs = positionMs,
                             durationMs = durationMs,
@@ -580,7 +742,15 @@ private fun LandscapeLayout(
                             compact = true,
                         )
                     }
-                } else if (hasActiveContent) {
+                }
+            } else if (hasActiveContent) {
+                // 无歌词：控件在剩余空间垂直居中
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
                     ControlColumn(
                         positionMs = positionMs,
                         durationMs = durationMs,
@@ -601,8 +771,44 @@ private fun LandscapeLayout(
                 }
             }
         }
+        }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        // 最底部细进度条：仅在沉浸模式（控件隐藏）下显示，作为进度的唯一指示；
+        // 控件可见时底部已有完整进度条，避免重复
+        AnimatedVisibility(visible = !controlsVisible) {
+            ThinProgressBar(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+/** 底部细进度条：3dp 高，按播放进度填充主色，不参与交互，用于沉浸模式下指示进度。 */
+@Composable
+private fun ThinProgressBar(
+    positionMs: Long,
+    durationMs: Long,
+    modifier: Modifier = Modifier,
+) {
+    val progress = if (durationMs > 0) {
+        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = modifier
+            .height(3.dp)
+            .background(onSurface.copy(alpha = 0.12f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(progress)
+                .fillMaxHeight()
+                .background(primary),
+        )
     }
 }
 
@@ -660,6 +866,237 @@ private fun ControlColumn(
     }
 }
 
+/**
+ * 顶栏操作按钮组：添加到歌单 + 更多（更多内含倍速二级菜单 / 均衡器 / 下载）。
+ * 竖屏 TopBar 与横屏顶部行共用，保证按钮与菜单样式一致。
+ */
+@Composable
+private fun TopBarActions(
+    onDownload: () -> Unit,
+    onEqualizer: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    speedOptions: List<Float>,
+    currentSpeedIndex: Int,
+    onSpeedSelect: (Int) -> Unit,
+    onMenuOpenChange: (Boolean) -> Unit = {},
+) {
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val primary = MaterialTheme.colorScheme.primary
+    var showSpeedMenu by remember { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
+    val safeSpeedIndex = currentSpeedIndex.coerceIn(0, speedOptions.lastIndex)
+
+    // 任意下拉菜单展开/收起时通知外层（横屏用于暂停自动隐藏计时）
+    LaunchedEffect(showSpeedMenu, showMoreMenu) {
+        onMenuOpenChange(showSpeedMenu || showMoreMenu)
+    }
+
+    // 菜单卡片样式：与 NiPopupMenu 一致的磨砂玻璃风格（20dp 大圆角 + 半透明背景 + 细边框 + 阴影）
+    val menuShape = RoundedCornerShape(20.dp)
+    val menuSurfaceColor = if (isSystemInDarkTheme()) {
+        Color(0xFF2C2C2E).copy(alpha = 0.95f)
+    } else {
+        Color.White.copy(alpha = 0.94f)
+    }
+    val menuBorderColor = if (isSystemInDarkTheme()) {
+        Color.White.copy(alpha = 0.10f)
+    } else {
+        Color.Black.copy(alpha = 0.08f)
+    }
+    val menuItemPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        // 添加到歌单：常用操作，独立按钮直出
+        IconButton(onClick = onAddToPlaylist) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(onSurface.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PlaylistAdd,
+                    contentDescription = "添加到歌单",
+                    tint = onSurface.copy(alpha = 0.8f),
+                )
+            }
+        }
+
+        // 更多：倍速（二级菜单）/ 均衡器 / 下载 收进溢出菜单，保持顶栏简洁
+        Box {
+            IconButton(onClick = { showMoreMenu = true }) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(onSurface.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.MoreVert,
+                        contentDescription = "更多",
+                        tint = onSurface.copy(alpha = 0.8f),
+                    )
+                }
+            }
+            DropdownMenu(
+                expanded = showMoreMenu,
+                onDismissRequest = { showMoreMenu = false },
+                shape = menuShape,
+                containerColor = menuSurfaceColor,
+                shadowElevation = 8.dp,
+                border = BorderStroke(0.5.dp, menuBorderColor),
+                modifier = Modifier.widthIn(min = 210.dp),
+            ) {
+                // 倍速：子菜单入口，尾部显示当前档位 + 展开箭头
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = "倍速",
+                            fontSize = 14.sp,
+                            color = onSurface,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.Speed,
+                            contentDescription = null,
+                            tint = onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                    trailingIcon = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                text = formatSpeedLabel(speedOptions[safeSpeedIndex]),
+                                color = onSurfaceVariant,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    },
+                    contentPadding = menuItemPadding,
+                    onClick = {
+                        showMoreMenu = false
+                        showSpeedMenu = true
+                    },
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    thickness = 0.5.dp,
+                    color = onSurface.copy(alpha = 0.08f),
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = "均衡器",
+                            fontSize = 14.sp,
+                            color = onSurface,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.Equalizer,
+                            contentDescription = null,
+                            tint = onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                    contentPadding = menuItemPadding,
+                    onClick = {
+                        showMoreMenu = false
+                        onEqualizer()
+                    },
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = "下载",
+                            fontSize = 14.sp,
+                            color = onSurface,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.Download,
+                            contentDescription = null,
+                            tint = onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                    contentPadding = menuItemPadding,
+                    onClick = {
+                        showMoreMenu = false
+                        onDownload()
+                    },
+                )
+            }
+            // 倍速二级菜单：磨砂卡片 + 标题头，选择后自动关闭
+            DropdownMenu(
+                expanded = showSpeedMenu,
+                onDismissRequest = { showSpeedMenu = false },
+                shape = menuShape,
+                containerColor = menuSurfaceColor,
+                shadowElevation = 8.dp,
+                border = BorderStroke(0.5.dp, menuBorderColor),
+                modifier = Modifier.widthIn(min = 170.dp),
+            ) {
+                // 菜单标题（本版本无 DropdownMenuHeader，用普通文本行代替）
+                Text(
+                    text = "播放倍速",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                    thickness = 0.5.dp,
+                    color = onSurface.copy(alpha = 0.08f),
+                )
+                speedOptions.forEachIndexed { idx, speed ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = formatSpeedLabel(speed),
+                                fontSize = 14.sp,
+                                color = if (idx == safeSpeedIndex) primary else onSurface,
+                                fontWeight = if (idx == safeSpeedIndex) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        },
+                        contentPadding = menuItemPadding,
+                        onClick = {
+                            showSpeedMenu = false
+                            onSpeedSelect(idx)
+                        },
+                        trailingIcon = if (idx == safeSpeedIndex) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Rounded.Check,
+                                    contentDescription = "当前倍速",
+                                    tint = primary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        } else null,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun TopBar(
     title: String,
@@ -667,6 +1104,9 @@ private fun TopBar(
     onDownload: () -> Unit = {},
     onEqualizer: () -> Unit = {},
     onAddToPlaylist: () -> Unit = {},
+    speedOptions: List<Float> = listOf(1f),
+    currentSpeedIndex: Int = 0,
+    onSpeedSelect: (Int) -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     Row(
@@ -691,62 +1131,28 @@ private fun TopBar(
             }
         }
 
-        Text(
-            text = if (title.isNotEmpty()) title else "音频播放",
-            style = MaterialTheme.typography.titleMedium,
-            color = onSurface.copy(alpha = 0.9f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+        // 标题：空标题时（无此场景）不显示占位文本，用 Spacer 维持两端按钮间距
+        if (title.isNotEmpty()) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = onSurface.copy(alpha = 0.9f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            Spacer(modifier = Modifier.weight(1f))
+        }
+
+        TopBarActions(
+            onDownload = onDownload,
+            onEqualizer = onEqualizer,
+            onAddToPlaylist = onAddToPlaylist,
+            speedOptions = speedOptions,
+            currentSpeedIndex = currentSpeedIndex,
+            onSpeedSelect = onSpeedSelect,
         )
-
-        IconButton(onClick = onEqualizer) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(onSurface.copy(alpha = 0.08f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Equalizer,
-                    contentDescription = "均衡器",
-                    tint = onSurface.copy(alpha = 0.8f),
-                )
-            }
-        }
-
-        IconButton(onClick = onDownload) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(onSurface.copy(alpha = 0.08f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Download,
-                    contentDescription = "下载",
-                    tint = onSurface.copy(alpha = 0.8f),
-                )
-            }
-        }
-
-        IconButton(onClick = onAddToPlaylist) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(onSurface.copy(alpha = 0.08f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.PlaylistAdd,
-                    contentDescription = "添加到歌单",
-                    tint = onSurface.copy(alpha = 0.8f),
-                )
-            }
-        }
     }
 }
 
@@ -764,6 +1170,8 @@ private fun ProgressSection(
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
     val sliderPos = if (dragging) dragValue else positionMs.toFloat().coerceIn(0f, duration.toFloat())
+    // 拖动中左侧时间显示目标位置（预览），松手后回到实际播放位置
+    val displayMs = if (dragging) dragValue.toLong() else positionMs
 
     Slider(
         value = sliderPos,
@@ -795,7 +1203,7 @@ private fun ProgressSection(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = formatTime(positionMs),
+            text = formatTime(displayMs),
             style = MaterialTheme.typography.bodySmall,
             color = onSurface.copy(alpha = 0.6f),
         )
@@ -1016,4 +1424,13 @@ private fun formatTime(ms: Long): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return String.format(Locale.ROOT, "%d:%02d", minutes, seconds)
+}
+
+/** 倍速文字标签：整数档省略小数（1.0x、1.25x）。 */
+private fun formatSpeedLabel(speed: Float): String {
+    return if (speed % 1f == 0f) {
+        "${speed.toInt()}x"
+    } else {
+        "${speed}x"
+    }
 }

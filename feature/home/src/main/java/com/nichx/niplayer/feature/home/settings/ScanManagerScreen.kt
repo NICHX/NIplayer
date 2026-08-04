@@ -27,7 +27,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
+import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import com.nichx.niplayer.designsystem.components.showNiMessage
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.PrimaryTabRow
@@ -85,7 +87,7 @@ fun ScanManagerScreen(
     // Toast 消息 → Snackbar
     LaunchedEffect(toastMessage) {
         toastMessage?.let { msg ->
-            snackbarHostState.showSnackbar(msg)
+            snackbarHostState.showNiMessage(NiMessage.info(msg))
             viewModel.consumeToast()
         }
     }

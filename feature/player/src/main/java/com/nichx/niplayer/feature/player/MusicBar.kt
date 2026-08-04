@@ -79,6 +79,8 @@ fun MusicBar(
     val isPlaying by playbackManager.isPlaying.collectAsStateWithLifecycle()
     val title by playbackManager.currentTitle.collectAsStateWithLifecycle()
     val coverPath by playbackManager.audioCoverPath.collectAsStateWithLifecycle()
+    val positionMs by playbackManager.positionMs.collectAsStateWithLifecycle()
+    val durationMs by playbackManager.durationMs.collectAsStateWithLifecycle()
 
     val hasActiveTrack = title.isNotEmpty()
 
@@ -92,6 +94,8 @@ fun MusicBar(
                 coverPath = coverPath,
                 title = title,
                 isPlaying = isPlaying,
+                positionMs = positionMs,
+                durationMs = durationMs,
                 onPlayPause = { playbackManager.togglePlayPause() },
                 onNext = { playbackManager.playNext() },
                 onPrevious = { playbackManager.playPrevious() },
@@ -107,6 +111,8 @@ private fun FloatingMiniPlayerCard(
     coverPath: String?,
     title: String,
     isPlaying: Boolean,
+    positionMs: Long,
+    durationMs: Long,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -242,6 +248,46 @@ private fun FloatingMiniPlayerCard(
                     )
                 }
 
+                // 播放时间与细进度条
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = formatMiniTime(positionMs),
+                            color = Color.White.copy(alpha = 0.85f),
+                            fontSize = 8.sp,
+                        )
+                        Text(
+                            text = formatMiniTime(durationMs),
+                            color = Color.White.copy(alpha = 0.55f),
+                            fontSize = 8.sp,
+                        )
+                    }
+                    Spacer(Modifier.height(1.dp))
+                    val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(Color.White.copy(alpha = 0.2f)),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(fraction)
+                                .height(2.dp)
+                                .background(Color.White),
+                        )
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -291,5 +337,18 @@ private fun FloatingMiniPlayerCard(
                 )
             }
         }
+    }
+}
+
+/** 迷你播放器的紧凑时间格式：m:ss（超过 1 小时显示 h:mm:ss）。 */
+private fun formatMiniTime(ms: Long): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0)
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
     }
 }

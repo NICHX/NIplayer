@@ -13,6 +13,7 @@ import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.entity.PlaylistEntity
 import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.database.entity.QuickAccessEntity
+import com.nichx.niplayer.database.entity.resumeStartPositionMs
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.database.security.EncryptedFolderManager
 import com.nichx.niplayer.datastore.DownloadSettings
@@ -1187,9 +1188,9 @@ class StorageFileViewModel @Inject constructor(
                 // 文件夹访问加密双保险：加密目录内的文件不写播放历史（history = null 走现有"不记历史"机制）
                 val withinEncrypted = encryptedFolderManager.isWithinEncrypted(library.id, file.path)
 
-                // 查询续播位置
+                // 查询续播位置（已播完的曲目从头播放）
                 val startPositionMs = withContext(Dispatchers.IO) {
-                    playHistoryDao.getPlayHistory(uniqueKey, library.id)?.videoPosition ?: 0L
+                    playHistoryDao.getPlayHistory(uniqueKey, library.id)?.resumeStartPositionMs() ?: 0L
                 }
 
                 // 构造同目录播放列表（仅视频文件，按当前排序顺序）

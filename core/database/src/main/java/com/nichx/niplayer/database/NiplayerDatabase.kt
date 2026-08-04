@@ -55,6 +55,7 @@ import com.nichx.niplayer.database.entity.VideoEntity
  * - v12: play_history 表新增 playlist_id 列（记录来源歌单，恢复播放时还原歌单播放列表）
  * - v13: 移除 PasswordVault 加密，清空 media_library 中遗留的 enc:v1: 密文密码
  * - v14: 新增 sync_conflict 表（播放历史云同步冲突记录）
+ * - v15: playlist 表新增 is_pinned 列（歌单置顶）
  */
 @Database(
     entities = [
@@ -71,7 +72,7 @@ import com.nichx.niplayer.database.entity.VideoEntity
         PlaylistItemEntity::class,
         SyncConflictEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 @TypeConverters(
@@ -295,6 +296,13 @@ abstract class NiplayerDatabase : RoomDatabase() {
                     "CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_conflict_record_key` " +
                         "ON `sync_conflict` (`record_key`)"
                 )
+            }
+        }
+
+        // 歌单管理增强：playlist 表新增 is_pinned 列（置顶歌单固定排最前）
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `playlist` ADD COLUMN `is_pinned` INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

@@ -2,34 +2,48 @@ package com.nichx.niplayer.feature.home.playlist
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.List
 import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,7 +54,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,12 +65,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.nichx.niplayer.database.dao.PlaylistWithCount
 import com.nichx.niplayer.designsystem.components.NiAutoSizeText
+import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTopBar
+import com.nichx.niplayer.designsystem.components.showNiMessage
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 
 /**
@@ -74,9 +92,12 @@ fun PlaylistsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showCreateDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<PlaylistWithCount?>(null) }
+    var manageTarget by remember { mutableStateOf<PlaylistWithCount?>(null) }
+    var renameTarget by remember { mutableStateOf<PlaylistWithCount?>(null) }
+    var mergeSource by remember { mutableStateOf<PlaylistWithCount?>(null) }
 
     LaunchedEffect(Unit) {
-        viewModel.toast.collect { snackbarHostState.showSnackbar(it) }
+        viewModel.toast.collect { snackbarHostState.showNiMessage(NiMessage.info(it)) }
     }
 
     Scaffold(
@@ -95,7 +116,7 @@ fun PlaylistsScreen(
                     if (playlists.isNotEmpty()) {
                         IconButton(onClick = { showCreateDialog = true }) {
                             Icon(
-                                imageVector = Icons.Rounded.Add,
+                                imageVector = Icons.Outlined.Add,
                                 contentDescription = "新建歌单",
                                 tint = MaterialTheme.colorScheme.onSurface,
                             )
@@ -145,7 +166,7 @@ fun PlaylistsScreen(
                                 playlist = playlist,
                                 coverUrl = coverUrls[playlist.playlist.id],
                                 onClick = { onOpenPlaylist(playlist.playlist.id) },
-                                onDelete = { deleteTarget = playlist },
+                                onManage = { manageTarget = playlist },
                             )
                         }
                     }
@@ -175,6 +196,259 @@ fun PlaylistsScreen(
             onDismiss = { deleteTarget = null },
         )
     }
+
+    manageTarget?.let { target ->
+        PlaylistManageSheet(
+            playlist = target,
+            onDismiss = { manageTarget = null },
+            onRename = {
+                renameTarget = target
+                manageTarget = null
+            },
+            onDuplicate = {
+                viewModel.duplicatePlaylist(target.playlist.id, target.playlist.name)
+                manageTarget = null
+            },
+            onMerge = {
+                mergeSource = target
+                manageTarget = null
+            },
+            onTogglePin = {
+                viewModel.togglePinned(
+                    target.playlist.id,
+                    !target.playlist.isPinned,
+                    target.playlist.name,
+                )
+                manageTarget = null
+            },
+            onDelete = {
+                deleteTarget = target
+                manageTarget = null
+            },
+        )
+    }
+
+    renameTarget?.let { target ->
+        RenamePlaylistDialog(
+            initialName = target.playlist.name,
+            onConfirm = { name ->
+                viewModel.renamePlaylist(target.playlist.id, name)
+                renameTarget = null
+            },
+            onDismiss = { renameTarget = null },
+        )
+    }
+
+    mergeSource?.let { source ->
+        PlaylistPickerSheet(
+            title = "将「${source.playlist.name}」合并到",
+            playlists = playlists.filter { it.playlist.id != source.playlist.id },
+            onDismiss = { mergeSource = null },
+            onPick = { target ->
+                viewModel.mergePlaylist(
+                    source.playlist.id,
+                    source.playlist.name,
+                    target.playlist.id,
+                    target.playlist.name,
+                )
+                mergeSource = null
+            },
+        )
+    }
+}
+
+/** 长按歌单弹出的管理操作底部弹层（详情页顶栏菜单复用）。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun PlaylistManageSheet(
+    playlist: PlaylistWithCount,
+    onDismiss: () -> Unit,
+    onRename: () -> Unit,
+    onDuplicate: () -> Unit,
+    onMerge: () -> Unit,
+    onTogglePin: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp),
+        ) {
+            Text(
+                text = playlist.playlist.name,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            Spacer(Modifier.height(4.dp))
+            ManageActionRow(
+                icon = Icons.Outlined.Edit,
+                label = "重命名",
+                onClick = onRename,
+            )
+            ManageActionRow(
+                icon = Icons.Outlined.Add,
+                label = "复制歌单",
+                onClick = onDuplicate,
+            )
+            ManageActionRow(
+                icon = Icons.Outlined.List,
+                label = "合并到其他歌单",
+                onClick = onMerge,
+            )
+            ManageActionRow(
+                icon = Icons.Outlined.KeyboardArrowUp,
+                label = if (playlist.playlist.isPinned) "取消置顶" else "置顶",
+                onClick = onTogglePin,
+            )
+            ManageActionRow(
+                icon = Icons.Outlined.Delete,
+                label = "删除歌单",
+                onClick = onDelete,
+                danger = true,
+            )
+        }
+    }
+}
+
+/** 管理弹层单行操作。 */
+@Composable
+private fun ManageActionRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    danger: Boolean = false,
+) {
+    val color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(16.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = color,
+        )
+    }
+}
+
+/** 重命名歌单对话框（预填当前名称，详情页复用）。 */
+@Composable
+internal fun RenamePlaylistDialog(
+    initialName: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(initialName) }
+    NiInfoDialog(
+        title = "重命名歌单",
+        onDismiss = onDismiss,
+        actions = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(
+                onClick = { onConfirm(name) },
+                enabled = name.isNotBlank(),
+            ) { Text("保存") }
+        },
+    ) {
+        NiTextField(
+            value = name,
+            onValueChange = { name = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = "歌单名称",
+        )
+    }
+}
+
+/** 目标歌单选择底部弹层（排除调用方自行过滤后传入的列表）。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun PlaylistPickerSheet(
+    title: String,
+    playlists: List<PlaylistWithCount>,
+    onDismiss: () -> Unit,
+    onPick: (PlaylistWithCount) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+            if (playlists.isEmpty()) {
+                Text(
+                    text = "没有其他歌单可选",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
+                )
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(
+                        items = playlists,
+                        key = { it.playlist.id },
+                    ) { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPick(item) }
+                                .padding(horizontal = 20.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = item.playlist.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                text = "${item.itemCount} 个条目",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -182,7 +456,7 @@ private fun PlaylistGridCard(
     playlist: PlaylistWithCount,
     coverUrl: String?,
     onClick: () -> Unit,
-    onDelete: () -> Unit,
+    onManage: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     Column(
@@ -192,7 +466,7 @@ private fun PlaylistGridCard(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
-                onLongClick = onDelete,
+                onLongClick = onManage,
             ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -217,6 +491,20 @@ private fun PlaylistGridCard(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(48.dp),
+                )
+            }
+            // 置顶角标
+            if (playlist.playlist.isPinned) {
+                Text(
+                    text = "置顶",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.primary)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
             // 条目数角标（跟随封面底色，无黑底）

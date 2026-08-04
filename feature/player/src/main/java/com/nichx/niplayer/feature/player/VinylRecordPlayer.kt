@@ -107,8 +107,13 @@ fun VinylRecordPlayer(
         val ph = parentSize.value.height.toFloat()
         if (pw <= 0f || ph <= 0f) return@remember null
 
-        // Larger unit for bigger disc
-        val unit = min(pw / 7f, ph / 7.5f)
+        // 唱针存在时需为其尖端留出高度余量（碟面占高度约 80%）；
+        // 无唱针（横屏）时可放大碟面至约 91%，让唱片更大更协调
+        val unit = if (showNeedle) {
+            min(pw / 7f, ph / 7.5f)
+        } else {
+            min(pw / 6.2f, ph / 6.6f)
+        }
 
         val needleW = unit * 2f
         val needleH = unit * 3.33f
@@ -149,7 +154,12 @@ fun VinylRecordPlayer(
             val ph = size.height
             if (pw <= 0f || ph <= 0f) return@Canvas
 
-            val unit = min(pw / 7f, ph / 7.5f)
+            // 与上层 layout 保持一致：无唱针时放大碟面
+            val unit = if (showNeedle) {
+                min(pw / 7f, ph / 7.5f)
+            } else {
+                min(pw / 6.2f, ph / 6.6f)
+            }
 
             val needleW = unit * 2f
             val needleH = unit * 3.33f

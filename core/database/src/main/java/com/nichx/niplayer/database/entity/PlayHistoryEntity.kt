@@ -76,3 +76,18 @@ data class PlayHistoryEntity(
     @androidx.room.Ignore
     var isLastPlay: Boolean = false
 }
+
+/** 距结尾小于该值时视为已播完（毫秒），续播时从头开始。 */
+private const val COMPLETION_MARGIN_MS = 2_000L
+
+/**
+ * 计算恢复播放的起始位置。
+ *
+ * 曲目播放完成时进度会记录为接近时长（100%），若直接用它续播会立即 seek 到结尾并再次结束；
+ * 因此已播完（进度 ≥ 时长 - [COMPLETION_MARGIN_MS]）的曲目应从头播放。
+ * 时长未知（0）时不做归一化，保持原始进度。
+ */
+fun PlayHistoryEntity.resumeStartPositionMs(): Long {
+    val duration = videoDuration
+    return if (duration > 0 && videoPosition >= duration - COMPLETION_MARGIN_MS) 0L else videoPosition
+}

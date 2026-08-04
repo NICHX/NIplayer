@@ -4,6 +4,7 @@ import com.nichx.niplayer.common.coroutine.AppCoroutineScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlaylistItemDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
+import com.nichx.niplayer.database.entity.resumeStartPositionMs
 import com.nichx.niplayer.database.entity.QuickAccessEntity
 import com.nichx.niplayer.feature.home.playlist.toPlaylistItem
 import com.nichx.niplayer.player.kernel.HistoryDescriptor
@@ -78,7 +79,7 @@ class PlayStarter @Inject constructor(
                 PlaybackRequest(
                     source = source,
                     title = history.videoName,
-                    startPositionMs = history.videoPosition,
+                    startPositionMs = history.resumeStartPositionMs(),
                     history = HistoryDescriptor(
                         uniqueKey = history.uniqueKey,
                         url = history.url,
