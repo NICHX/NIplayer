@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.playlist
 
+import com.nichx.niplayer.feature.home.R
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
@@ -12,6 +14,7 @@ import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +37,7 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class PlaylistsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val playlistDao: PlaylistDao,
     private val playlistItemDao: PlaylistItemDao,
     private val mediaLibraryDao: MediaLibraryDao,
@@ -110,7 +114,7 @@ class PlaylistsViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 playlistDao.insert(PlaylistEntity(name = trimmed))
             }
-            _toast.tryEmit("已创建歌单「$trimmed」")
+            _toast.tryEmit(context.getString(R.string.playlist_created, trimmed))
         }
     }
 
@@ -121,7 +125,7 @@ class PlaylistsViewModel @Inject constructor(
                 playlistItemDao.deleteByPlaylist(playlistId)
                 playlistDao.deleteById(playlistId)
             }
-            _toast.tryEmit("已删除歌单「$name」")
+            _toast.tryEmit(context.getString(R.string.playlist_deleted, name))
         }
     }
 
@@ -133,18 +137,18 @@ class PlaylistsViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 playlistDao.renamePlaylist(playlistId, trimmed, System.currentTimeMillis())
             }
-            _toast.tryEmit("已重命名为「$trimmed」")
+            _toast.tryEmit(context.getString(R.string.playlist_renamed, trimmed))
         }
     }
 
     /** 复制歌单：新建「原名 副本」歌单并复制全部条目。 */
     fun duplicatePlaylist(playlistId: Int, name: String) {
         viewModelScope.launch {
-            val newName = "$name 副本"
+            val newName = context.getString(R.string.playlist_duplicate_name, name)
             withContext(Dispatchers.IO) {
                 playlistItemDao.duplicatePlaylist(playlistId, newName, playlistDao)
             }
-            _toast.tryEmit("已复制为歌单「$newName」")
+            _toast.tryEmit(context.getString(R.string.playlist_duplicated, newName))
         }
     }
 
@@ -156,9 +160,9 @@ class PlaylistsViewModel @Inject constructor(
             }
             _toast.tryEmit(
                 if (added > 0) {
-                    "已从「$sourceName」合并 $added 个条目到「$targetName」"
+                    context.getString(R.string.playlist_merged_from_to, sourceName, added, targetName)
                 } else {
-                    "「$targetName」已包含「$sourceName」的全部条目"
+                    context.getString(R.string.playlist_merge_all_duplicate, targetName, sourceName)
                 },
             )
         }
@@ -170,7 +174,7 @@ class PlaylistsViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 playlistDao.setPinned(playlistId, pinned, System.currentTimeMillis())
             }
-            _toast.tryEmit(if (pinned) "已置顶「$name」" else "已取消置顶「$name」")
+            _toast.tryEmit(if (pinned) context.getString(R.string.playlist_pinned, name) else context.getString(R.string.playlist_unpinned, name))
         }
     }
 }

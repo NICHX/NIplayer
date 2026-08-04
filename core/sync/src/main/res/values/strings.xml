@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 同步错误 -->
+    <string name="sync_error_operation_failed">操作失败</string>
+    <!-- 同步状态提示 -->
+    <string name="sync_success">同步成功</string>
+    <string name="sync_success_with_conflicts">同步成功，发现 %1$d 条冲突待处理</string>
+    <string name="sync_error_no_server_selected">未选择 WebDAV 服务器</string>
+    <string name="sync_error_server_not_found">未找到所选 WebDAV 服务器</string>
+    <string name="sync_error_cannot_connect">无法连接 WebDAV 服务器</string>
+    <string name="sync_error_connect_failed">无法连接服务器: %1$s</string>
+    <string name="sync_error_network">网络错误</string>
+    <string name="sync_error_create_dir_failed">无法创建同步目录 %1$s</string>
+    <string name="sync_error_upload_failed">上传失败，请检查服务器配置</string>
+    <string name="sync_error_upload_mismatch">上传校验失败：服务端内容不一致</string>
+</resources>

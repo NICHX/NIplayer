@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.library
 
+import com.nichx.niplayer.feature.home.R
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -12,6 +14,7 @@ import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.storage.StorageFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +50,7 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class StoragePlusViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
     private val mediaLibraryDao: MediaLibraryDao,
     private val quickAccessDao: QuickAccessDao,
@@ -80,7 +84,7 @@ class StoragePlusViewModel @Inject constructor(
         viewModelScope.launch {
             val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(storageId) }
             if (library == null) {
-                _events.tryEmit(StoragePlusEvent.ShowError("存储源不存在"))
+                _events.tryEmit(StoragePlusEvent.ShowError(context.getString(R.string.storage_plus_library_missing)))
                 _events.tryEmit(StoragePlusEvent.NavigateBack)
                 return@launch
             }
@@ -159,7 +163,7 @@ class StoragePlusViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(isTesting = false, testResult = false)
                 }
-                _events.tryEmit(StoragePlusEvent.ShowError(e.message ?: "连接失败"))
+                _events.tryEmit(StoragePlusEvent.ShowError(e.message ?: context.getString(R.string.storage_plus_connect_failed)))
             } finally {
                 withContext(Dispatchers.IO) { storage?.close() }
             }
@@ -185,7 +189,7 @@ class StoragePlusViewModel @Inject constructor(
                 }
                 if (dup != null && dup.id != library.id) {
                     _uiState.update { it.copy(isSaving = false) }
-                    _events.tryEmit(StoragePlusEvent.ShowError("保存失败，该地址已存在"))
+                    _events.tryEmit(StoragePlusEvent.ShowError(context.getString(R.string.storage_plus_duplicate_url)))
                     return@launch
                 }
                 withContext(Dispatchers.IO) { mediaLibraryDao.insert(library) }
@@ -194,7 +198,7 @@ class StoragePlusViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e("StoragePlusVM", "save error", e)
                 _uiState.update { it.copy(isSaving = false) }
-                _events.tryEmit(StoragePlusEvent.ShowError(e.message ?: "保存失败"))
+                _events.tryEmit(StoragePlusEvent.ShowError(e.message ?: context.getString(R.string.storage_plus_save_failed)))
             }
         }
     }
@@ -216,7 +220,7 @@ class StoragePlusViewModel @Inject constructor(
                 _events.tryEmit(StoragePlusEvent.NavigateBack)
             } catch (e: Exception) {
                 Log.e("StoragePlusVM", "delete error", e)
-                _events.tryEmit(StoragePlusEvent.ShowError(e.message ?: "删除失败"))
+                _events.tryEmit(StoragePlusEvent.ShowError(e.message ?: context.getString(R.string.storage_plus_delete_failed)))
             }
         }
     }
@@ -226,27 +230,27 @@ class StoragePlusViewModel @Inject constructor(
     private fun validate(state: StoragePlusUiState): String? {
         return when (state.mediaType) {
             MediaType.WEBDAV_SERVER -> {
-                if (state.url.isBlank()) "请填写服务器地址"
+                if (state.url.isBlank()) context.getString(R.string.storage_plus_enter_url)
                 else if (!state.isAnonymous &&
                     (state.account.isBlank() || state.password.isBlank())
-                ) "请填写账号密码"
+                ) context.getString(R.string.storage_plus_enter_account)
                 else null
             }
 
             MediaType.SMB_SERVER -> {
-                if (state.url.isBlank()) "请填写 IP 地址"
+                if (state.url.isBlank()) context.getString(R.string.storage_plus_enter_ip)
                 else if (!state.isAnonymous &&
                     (state.account.isBlank() || state.password.isBlank())
-                ) "请填写账号密码"
+                ) context.getString(R.string.storage_plus_enter_account)
                 else null
             }
 
             MediaType.EXTERNAL_STORAGE -> {
-                if (state.externalUri.isBlank()) "请选择根目录"
+                if (state.externalUri.isBlank()) context.getString(R.string.storage_plus_select_root)
                 else null
             }
 
-            else -> "不支持的存储类型"
+            else -> context.getString(R.string.storage_plus_unsupported_type)
         }
     }
 
@@ -262,7 +266,7 @@ class StoragePlusViewModel @Inject constructor(
                 val fullUrl = protocol + state.url
                 MediaLibraryEntity(
                     id = id,
-                    displayName = state.displayName.ifBlank { "WebDav媒体库" },
+                    displayName = state.displayName.ifBlank { context.getString(R.string.storage_plus_default_webdav_name) },
                     url = fullUrl,
                     mediaType = MediaType.WEBDAV_SERVER,
                     account = if (state.isAnonymous) null else state.account,
@@ -277,7 +281,7 @@ class StoragePlusViewModel @Inject constructor(
                 val port = if (state.port <= 0) 445 else state.port
                 MediaLibraryEntity(
                     id = id,
-                    displayName = state.displayName.ifBlank { "SMB媒体库" },
+                    displayName = state.displayName.ifBlank { context.getString(R.string.storage_plus_default_smb_name) },
                     url = state.url,
                     mediaType = MediaType.SMB_SERVER,
                     account = if (state.isAnonymous) null else state.account,
@@ -297,7 +301,7 @@ class StoragePlusViewModel @Inject constructor(
             MediaType.EXTERNAL_STORAGE -> {
                 MediaLibraryEntity(
                     id = id,
-                    displayName = state.displayName.ifBlank { "设备存储库" },
+                    displayName = state.displayName.ifBlank { context.getString(R.string.storage_plus_default_external_name) },
                     url = state.externalUri,
                     mediaType = MediaType.EXTERNAL_STORAGE,
                     describe = state.externalUri,

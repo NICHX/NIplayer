@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.search
 
+import com.nichx.niplayer.feature.home.R
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
@@ -12,6 +14,7 @@ import com.nichx.niplayer.feature.home.PlayStarter
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessUiItem
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -43,6 +46,7 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class SearchViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val playHistoryDao: PlayHistoryDao,
     private val quickAccessDao: QuickAccessDao,
     private val mediaLibraryDao: MediaLibraryDao,
@@ -150,7 +154,7 @@ class SearchViewModel @Inject constructor(
         val entity = item.entity
         viewModelScope.launch {
             if (!item.libraryValid) {
-                _events.tryEmit(SearchEvent.ShowError("存储源已删除"))
+                _events.tryEmit(SearchEvent.ShowError(context.getString(R.string.storage_library_deleted)))
                 return@launch
             }
             if (entity.isDirectory) {

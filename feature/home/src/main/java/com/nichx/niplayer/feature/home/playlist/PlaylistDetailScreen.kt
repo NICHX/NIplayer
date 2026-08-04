@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.playlist
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -56,6 +57,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -168,29 +170,29 @@ fun PlaylistDetailScreen(
                 )
             } else if (editMode) {
                 NiTopBar(
-                    title = "编辑模式",
+                    title = stringResource(R.string.playlist_detail_edit_mode),
                     navigationIcon = {
                         IconButton(onClick = { exitEditMode() }) {
                             Icon(
                                 imageVector = Icons.Rounded.Close,
-                                contentDescription = "退出编辑模式",
+                                contentDescription = stringResource(R.string.playlist_detail_exit_edit),
                             )
                         }
                     },
                     actions = {
                         TextButton(onClick = { exitEditMode() }) {
-                            Text("完成", color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.playlist_detail_done), color = MaterialTheme.colorScheme.primary)
                         }
                     },
                 )
             } else {
                 NiTopBar(
-                    title = playlist?.name ?: "歌单详情",
+                    title = playlist?.name ?: stringResource(R.string.playlist_detail_title_fallback),
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                contentDescription = "返回",
+                                contentDescription = stringResource(R.string.back),
                             )
                         }
                     },
@@ -199,14 +201,14 @@ fun PlaylistDetailScreen(
                             IconButton(onClick = { searchActive = true }) {
                                 Icon(
                                     imageVector = Icons.Rounded.Search,
-                                    contentDescription = "搜索",
+                                    contentDescription = stringResource(R.string.search),
                                 )
                             }
                         }
                         IconButton(onClick = { showManage = true }) {
                             Icon(
                                 imageVector = Icons.Rounded.MoreVert,
-                                contentDescription = "歌单管理",
+                                contentDescription = stringResource(R.string.playlist_detail_manage),
                             )
                         }
                     },
@@ -268,14 +270,14 @@ fun PlaylistDetailScreen(
                             if (orderedItems.isEmpty()) {
                                 NiEmptyState(
                                     icon = Icons.Rounded.QueueMusic,
-                                    text = "歌单为空",
-                                    hint = "在文件浏览页多选音频文件，或从播放页保存连播内容到歌单",
+                                    text = stringResource(R.string.playlist_detail_empty),
+                                    hint = stringResource(R.string.playlist_detail_empty_hint),
                                 )
                             } else {
                                 NiEmptyState(
                                     icon = Icons.Rounded.MusicNote,
-                                    text = "没有匹配的条目",
-                                    hint = "换个关键词试试",
+                                    text = stringResource(R.string.playlist_detail_no_match),
+                                    hint = stringResource(R.string.playlist_detail_no_match_hint),
                                 )
                             }
                         }
@@ -329,9 +331,9 @@ fun PlaylistDetailScreen(
 
     removeTarget?.let { target ->
         NiConfirmDialog(
-            title = "移出歌单",
-            text = "确定将「${target.fileName}」移出歌单？",
-            confirmText = "移出",
+            title = stringResource(R.string.playlist_detail_remove),
+            text = stringResource(R.string.playlist_detail_remove_confirm, target.fileName),
+            confirmText = stringResource(R.string.playlist_detail_remove_confirm_text),
             onConfirm = {
                 viewModel.removeItem(target.id)
                 removeTarget = null
@@ -384,7 +386,7 @@ fun PlaylistDetailScreen(
 
     if (showMergePicker) {
         PlaylistPickerSheet(
-            title = "将「${playlist?.name ?: ""}」合并到",
+            title = stringResource(R.string.playlist_detail_merge_title, playlist?.name ?: ""),
             playlists = allPlaylists.filter { it.playlist.id != playlist?.id },
             onDismiss = { showMergePicker = false },
             onPick = { target ->
@@ -397,8 +399,8 @@ fun PlaylistDetailScreen(
     pickerAction?.let { action ->
         PlaylistPickerSheet(
             title = when (action) {
-                SelectionAction.MOVE -> "移动选中条目到"
-                SelectionAction.COPY -> "复制选中条目到"
+                SelectionAction.MOVE -> stringResource(R.string.playlist_detail_move_title)
+                SelectionAction.COPY -> stringResource(R.string.playlist_detail_copy_title)
             },
             playlists = allPlaylists.filter { it.playlist.id != playlist?.id },
             onDismiss = { pickerAction = null },
@@ -416,9 +418,9 @@ fun PlaylistDetailScreen(
 
     if (showRemoveSelected) {
         NiConfirmDialog(
-            title = "移除选中条目",
-            text = "确定从歌单移除选中的 ${selectedIds.size} 个条目？",
-            confirmText = "移除",
+            title = stringResource(R.string.playlist_detail_remove_selected_title),
+            text = stringResource(R.string.playlist_detail_remove_selected_confirm, selectedIds.size),
+            confirmText = stringResource(R.string.playlist_detail_remove_selected_confirm_text),
             onConfirm = {
                 viewModel.removeItems(selectedIds.toList())
                 selectedIds = emptySet()
@@ -431,9 +433,9 @@ fun PlaylistDetailScreen(
     if (showDeletePlaylist) {
         playlist?.let { p ->
             NiConfirmDialog(
-                title = "删除歌单",
-                text = "确定删除歌单「${p.name}」？${orderedItems.size} 个条目将一并移除。",
-                confirmText = "删除",
+                title = stringResource(R.string.playlist_detail_delete_title),
+                text = stringResource(R.string.playlist_detail_delete_confirm, p.name, orderedItems.size),
+                confirmText = stringResource(R.string.delete),
                 confirmDanger = true,
                 onConfirm = {
                     viewModel.deletePlaylist()
@@ -485,13 +487,13 @@ private fun PlaylistPlayAllHeader(
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                text = "播放全部（$count）",
+                text = stringResource(R.string.playlist_detail_play_all, count),
                 style = MaterialTheme.typography.titleMedium,
                 color = contentColor,
             )
         }
         Text(
-            text = "拖动右侧手柄可调整播放顺序",
+            text = stringResource(R.string.playlist_detail_reorder_hint),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.outline,
             modifier = Modifier.padding(start = 4.dp, top = 6.dp),
@@ -591,7 +593,7 @@ private fun PlaylistItemRow(
             IconButton(onClick = onRemove) {
                 Icon(
                     imageVector = Icons.Outlined.Delete,
-                    contentDescription = "移出歌单",
+                    contentDescription = stringResource(R.string.playlist_detail_remove),
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(20.dp),
                 )
@@ -622,12 +624,16 @@ private fun SelectionActionBar(
             ) {
                 TextButton(onClick = onToggleSelectAll) {
                     Text(
-                        text = if (totalCount > 0 && selectedCount == totalCount) "取消全选" else "全选",
+                        text = if (totalCount > 0 && selectedCount == totalCount) {
+                            stringResource(R.string.playlist_detail_cancel_select_all)
+                        } else {
+                            stringResource(R.string.playlist_detail_select_all)
+                        },
                         style = MaterialTheme.typography.labelLarge,
                     )
                 }
                 Text(
-                    text = "已选 $selectedCount 项",
+                    text = stringResource(R.string.playlist_detail_selected_count, selectedCount),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.weight(1f),
@@ -636,13 +642,13 @@ private fun SelectionActionBar(
                     onClick = onMove,
                     enabled = selectedCount > 0,
                 ) {
-                    Text("移到歌单")
+                    Text(stringResource(R.string.playlist_detail_move_to_playlist))
                 }
                 TextButton(
                     onClick = onCopy,
                     enabled = selectedCount > 0,
                 ) {
-                    Text("复制到歌单")
+                    Text(stringResource(R.string.playlist_detail_copy_to_playlist))
                 }
                 IconButton(
                     onClick = onRemove,
@@ -650,7 +656,7 @@ private fun SelectionActionBar(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Delete,
-                        contentDescription = "移除选中条目",
+                        contentDescription = stringResource(R.string.playlist_detail_remove_selected_title),
                         tint = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -680,7 +686,7 @@ private fun SearchTopBar(
         IconButton(onClick = onBack) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = "退出搜索",
+                contentDescription = stringResource(R.string.playlist_detail_exit_search),
             )
         }
         NiTextField(
@@ -697,7 +703,7 @@ private fun SearchTopBar(
                         onBack()
                     }
                 },
-            placeholder = "搜索歌单内的文件",
+            placeholder = stringResource(R.string.playlist_detail_search_placeholder),
             singleLine = true,
         )
     }

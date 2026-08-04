@@ -1,0 +1,30 @@
+<resources>
+    <!-- Common actions -->
+    <string name="action_play">Play</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_close">Close</string>
+    <string name="section_view_all">View all</string>
+    <string name="copied">Copied</string>
+    <string name="details">Details</string>
+    <string name="collapse">Collapse</string>
+
+    <!-- Color schemes (NiScheme.labelRes) -->
+    <string name="color_scheme_blue">Blue</string>
+    <string name="color_scheme_indigo">Indigo</string>
+    <string name="color_scheme_cyan">Cyan</string>
+    <string name="color_scheme_slate">Slate</string>
+    <string name="color_scheme_purple">Purple</string>
+    <string name="color_scheme_rose">Rose</string>
+    <string name="color_scheme_coral">Coral</string>
+    <string name="color_scheme_pink">Pink</string>
+    <string name="color_scheme_teal">Teal</string>
+    <string name="color_scheme_green">Green</string>
+    <string name="color_scheme_forest">Forest</string>
+    <string name="color_scheme_caramel">Caramel</string>
+
+    <!-- Color scheme categories (NiScheme.categoryRes) -->
+    <string name="color_scheme_category_cool">Cool</string>
+    <string name="color_scheme_category_warm">Warm</string>
+    <string name="color_scheme_category_nature">Nature</string>
+</resources>

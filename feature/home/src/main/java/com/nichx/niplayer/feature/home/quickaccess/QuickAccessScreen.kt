@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.quickaccess
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -56,6 +57,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -107,7 +109,7 @@ fun QuickAccessScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "快速访问",
+                title = stringResource(R.string.quick_access_title),
                 actions = {
                     if (items.isNotEmpty()) {
                         if (isEditing) {
@@ -118,13 +120,13 @@ fun QuickAccessScreen(
                                     modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(Modifier.size(4.dp))
-                                Text("完成")
+                                Text(stringResource(R.string.quick_access_done))
                             }
                         } else {
                             IconButton(onClick = { isEditing = true }) {
                                 Icon(
                                     imageVector = Icons.Filled.Edit,
-                                    contentDescription = "编辑",
+                                    contentDescription = stringResource(R.string.edit),
                                     tint = MaterialTheme.colorScheme.onSurface,
                                 )
                             }
@@ -154,8 +156,8 @@ fun QuickAccessScreen(
             ) {
                 NiEmptyState(
                     icon = Icons.Filled.BookmarkBorder,
-                    text = "暂无快速访问",
-                    hint = "在文件浏览器中长按文件夹即可添加",
+                    text = stringResource(R.string.quick_access_empty),
+                    hint = stringResource(R.string.quick_access_empty_hint),
                 )
             }
         } else {
@@ -199,8 +201,8 @@ fun QuickAccessScreen(
 
     if (deleteTarget != null) {
         NiConfirmDialog(
-            title = "删除快速访问",
-            text = "确定删除「${deleteTarget!!.entity.name}」的快速访问？",
+            title = stringResource(R.string.quick_access_delete_title),
+            text = stringResource(R.string.quick_access_delete_confirm, deleteTarget!!.entity.name),
             onConfirm = {
                 viewModel.deleteItem(deleteTarget!!.entity.id)
                 deleteTarget = null
@@ -306,7 +308,7 @@ private fun QuickAccessGridItem(
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.PlayArrow,
-                                    contentDescription = "播放",
+                                    contentDescription = stringResource(R.string.play),
                                     tint = Color.White,
                                     modifier = Modifier.size(20.dp),
                                 )
@@ -350,7 +352,7 @@ private fun QuickAccessGridItem(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Delete,
-                        contentDescription = "删除",
+                        contentDescription = stringResource(R.string.delete),
                         tint = MaterialTheme.colorScheme.onError,
                         modifier = Modifier.size(14.dp),
                     )

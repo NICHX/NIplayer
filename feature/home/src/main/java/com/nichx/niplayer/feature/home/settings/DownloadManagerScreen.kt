@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -54,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -103,19 +105,20 @@ fun DownloadManagerScreen(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
         } catch (_: SecurityException) { }
-        val dirName = DocumentFile.fromTreeUri(context, treeUri)?.name ?: "下载目录"
+        val dirName = DocumentFile.fromTreeUri(context, treeUri)?.name
+            ?: context.getString(R.string.download_manager_dir_fallback)
         viewModel.setDownloadDir(treeUri.toString(), dirName)
     }
 
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "下载管理",
+                title = stringResource(R.string.download_manager_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.back),
                         )
                     }
                 },
@@ -124,7 +127,7 @@ fun DownloadManagerScreen(
                         IconButton(onClick = { showOverflowMenu = true }) {
                             Icon(
                                 imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "更多",
+                                contentDescription = stringResource(R.string.download_manager_more),
                             )
                         }
                         DropdownMenu(
@@ -132,21 +135,21 @@ fun DownloadManagerScreen(
                             onDismissRequest = { showOverflowMenu = false },
                         ) {
                             DropdownMenuItem(
-                                text = { Text("清空已完成") },
+                                text = { Text(stringResource(R.string.download_manager_clear_completed)) },
                                 onClick = {
                                     showOverflowMenu = false
                                     viewModel.removeCompleted()
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("重试所有失败") },
+                                text = { Text(stringResource(R.string.download_manager_retry_failed)) },
                                 onClick = {
                                     showOverflowMenu = false
                                     viewModel.retryAllFailed()
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("清空失败/已取消") },
+                                text = { Text(stringResource(R.string.download_manager_clear_failed)) },
                                 onClick = {
                                     showOverflowMenu = false
                                     viewModel.clearFailed()
@@ -166,8 +169,8 @@ fun DownloadManagerScreen(
             ) {
                 NiEmptyState(
                     icon = Icons.Filled.ArrowDownward,
-                    text = "暂无下载任务",
-                    hint = "在文件浏览页长按文件即可下载",
+                    text = stringResource(R.string.download_manager_empty),
+                    hint = stringResource(R.string.download_manager_empty_hint),
                 )
             }
         } else {
@@ -236,9 +239,9 @@ fun DownloadManagerScreen(
         when (action) {
             is PendingAction.Cancel -> {
                 NiConfirmDialog(
-                    title = "取消下载",
-                    text = "已下载的部分将被删除，确定取消「${action.taskName}」吗？",
-                    confirmText = "取消下载",
+                    title = stringResource(R.string.download_manager_cancel_title),
+                    text = stringResource(R.string.download_manager_cancel_confirm, action.taskName),
+                    confirmText = stringResource(R.string.download_manager_cancel_confirm_text),
                     onConfirm = {
                         viewModel.cancelTask(action.taskId)
                         pendingAction = null
@@ -248,9 +251,9 @@ fun DownloadManagerScreen(
             }
             is PendingAction.Delete -> {
                 NiConfirmDialog(
-                    title = "删除任务",
-                    text = "将删除任务记录及已下载文件「${action.taskName}」，确定吗？",
-                    confirmText = "删除",
+                    title = stringResource(R.string.download_manager_delete_title),
+                    text = stringResource(R.string.download_manager_delete_confirm, action.taskName),
+                    confirmText = stringResource(R.string.download_manager_delete),
                     onConfirm = {
                         viewModel.deleteTask(action.taskId)
                         pendingAction = null
@@ -294,7 +297,7 @@ private fun DownloadDirCard(
             Spacer(Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (hasDir) "下载目录" else "未设置下载目录",
+                    text = if (hasDir) stringResource(R.string.download_manager_has_dir) else stringResource(R.string.download_manager_no_dir),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                 )
@@ -308,7 +311,7 @@ private fun DownloadDirCard(
                     )
                 } else {
                     Text(
-                        text = "请先设置下载目录才可以下载",
+                        text = stringResource(R.string.download_manager_no_dir_hint),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -316,11 +319,11 @@ private fun DownloadDirCard(
             }
             if (hasDir) {
                 TextButton(onClick = onClearDownloadDir) {
-                    Text("清除", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.download_manager_clear), style = MaterialTheme.typography.labelMedium)
                 }
             } else {
                 TextButton(onClick = onSetDownloadDir) {
-                    Text("设置", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.download_manager_set), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -391,9 +394,9 @@ private fun DownloadTaskCard(
             StateBadge(state = state)
         }
 
-        val targetLabel = task.targetStorageName ?: "缓存"
+        val targetLabel = task.targetStorageName ?: stringResource(R.string.download_manager_target_fallback)
         Text(
-            text = "保存至：$targetLabel",
+            text = stringResource(R.string.download_manager_saved_to, targetLabel),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.outline,
             maxLines = 1,
@@ -417,7 +420,7 @@ private fun DownloadTaskCard(
                     text = if (hasKnownSize)
                         "${formatFileSize(display.downloadedBytes)} / ${formatFileSize(task.totalBytes)}"
                     else
-                        "${formatFileSize(display.downloadedBytes)} / 未知大小",
+                        "${formatFileSize(display.downloadedBytes)} / ${stringResource(R.string.download_manager_unknown_size)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline,
                 )
@@ -430,7 +433,7 @@ private fun DownloadTaskCard(
                     )
                 } else if (state == DownloadState.WAITING) {
                     Text(
-                        text = "等待中",
+                        text = stringResource(R.string.download_manager_waiting),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                     )
@@ -477,13 +480,13 @@ private fun DownloadTaskCard(
 @Composable
 private fun StateBadge(state: Int) {
     val (text, color) = when (state) {
-        DownloadState.WAITING -> "等待中" to MaterialTheme.colorScheme.outline
-        DownloadState.DOWNLOADING -> "下载中" to MaterialTheme.colorScheme.primary
-        DownloadState.PAUSED -> "已暂停" to MaterialTheme.colorScheme.outline
-        DownloadState.COMPLETED -> "已完成" to MaterialTheme.colorScheme.tertiary
-        DownloadState.FAILED -> "失败" to MaterialTheme.colorScheme.error
-        DownloadState.CANCELLED -> "已取消" to MaterialTheme.colorScheme.outline
-        else -> "未知" to MaterialTheme.colorScheme.outline
+        DownloadState.WAITING -> stringResource(R.string.download_state_waiting) to MaterialTheme.colorScheme.outline
+        DownloadState.DOWNLOADING -> stringResource(R.string.download_state_downloading) to MaterialTheme.colorScheme.primary
+        DownloadState.PAUSED -> stringResource(R.string.download_state_paused) to MaterialTheme.colorScheme.outline
+        DownloadState.COMPLETED -> stringResource(R.string.download_state_completed) to MaterialTheme.colorScheme.tertiary
+        DownloadState.FAILED -> stringResource(R.string.download_state_failed) to MaterialTheme.colorScheme.error
+        DownloadState.CANCELLED -> stringResource(R.string.download_state_cancelled) to MaterialTheme.colorScheme.outline
+        else -> stringResource(R.string.download_state_unknown) to MaterialTheme.colorScheme.outline
     }
     Text(
         text = text,
@@ -511,24 +514,24 @@ private fun ActionButtons(
     ) {
         when (state) {
             DownloadState.DOWNLOADING, DownloadState.WAITING -> {
-                ActionIconButton(icon = Icons.Filled.Pause, label = "暂停", onClick = onPause)
-                ActionIconButton(icon = Icons.Filled.Clear, label = "取消", onClick = onCancel)
+                ActionIconButton(icon = Icons.Filled.Pause, label = stringResource(R.string.download_manager_pause), onClick = onPause)
+                ActionIconButton(icon = Icons.Filled.Clear, label = stringResource(R.string.download_manager_cancel), onClick = onCancel)
             }
             DownloadState.PAUSED -> {
-                ActionIconButton(icon = Icons.Filled.PlayArrow, label = "继续", onClick = onResume)
-                ActionIconButton(icon = Icons.Filled.Clear, label = "取消", onClick = onCancel)
+                ActionIconButton(icon = Icons.Filled.PlayArrow, label = stringResource(R.string.download_manager_resume), onClick = onResume)
+                ActionIconButton(icon = Icons.Filled.Clear, label = stringResource(R.string.download_manager_cancel), onClick = onCancel)
             }
             DownloadState.FAILED -> {
-                ActionIconButton(icon = Icons.Filled.Refresh, label = "重试", onClick = onRetry)
-                ActionIconButton(icon = Icons.Filled.Delete, label = "删除", onClick = onDelete)
+                ActionIconButton(icon = Icons.Filled.Refresh, label = stringResource(R.string.download_manager_retry), onClick = onRetry)
+                ActionIconButton(icon = Icons.Filled.Delete, label = stringResource(R.string.download_manager_delete), onClick = onDelete)
             }
             DownloadState.COMPLETED -> {
-                ActionTextButton(text = "打开", onClick = onOpen)
-                ActionTextButton(text = "清除记录", onClick = onClearRecord)
-                ActionIconButton(icon = Icons.Filled.Delete, label = "删除文件", onClick = onDelete)
+                ActionTextButton(text = stringResource(R.string.download_manager_open), onClick = onOpen)
+                ActionTextButton(text = stringResource(R.string.download_manager_clear_record), onClick = onClearRecord)
+                ActionIconButton(icon = Icons.Filled.Delete, label = stringResource(R.string.download_manager_delete_file), onClick = onDelete)
             }
             DownloadState.CANCELLED -> {
-                ActionIconButton(icon = Icons.Filled.Delete, label = "删除", onClick = onDelete)
+                ActionIconButton(icon = Icons.Filled.Delete, label = stringResource(R.string.download_manager_delete), onClick = onDelete)
             }
         }
     }

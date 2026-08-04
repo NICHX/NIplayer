@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -69,7 +70,7 @@ class CacheManagerViewModel @Inject constructor(
                 }
             }
             refresh()
-            _uiState.update { it.copy(toastMessage = "已清理：${item.displayName}") }
+            _uiState.update { it.copy(toastMessage = context.getString(R.string.cache_cleared_item, item.displayName)) }
         }
     }
 
@@ -80,7 +81,7 @@ class CacheManagerViewModel @Inject constructor(
                 context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
             }
             refresh()
-            _uiState.update { it.copy(toastMessage = "已清理全部缓存") }
+            _uiState.update { it.copy(toastMessage = context.getString(R.string.cache_cleared_all)) }
         }
     }
 
@@ -110,7 +111,8 @@ class CacheManagerViewModel @Inject constructor(
             .sortedByDescending { it.sizeBytes }
     }
 
-    private fun friendlyName(dirName: String): String = CACHE_DIR_NAMES[dirName] ?: dirName
+    private fun friendlyName(dirName: String): String =
+        CACHE_DIR_NAME_RES[dirName]?.let { context.getString(it) } ?: dirName
 
     private fun calculateDirSize(dir: File): Pair<Long, Int> {
         var size = 0L
@@ -134,13 +136,13 @@ data class CacheItem(
     val isDirectory: Boolean,
 )
 
-/** 缓存目录名 → 友好名映射。未知目录保持原名。 */
-private val CACHE_DIR_NAMES = mapOf(
-    "video_cover" to "视频缩略图",
-    "audio_cover" to "音频封面",
-    "image_thumb" to "图片缩略图",
-    "seek_preview" to "进度预览缓存",
-    "subtitle" to "字幕缓存",
+/** 缓存目录名 → 友好名资源 ID 映射。未知目录保持原名。 */
+private val CACHE_DIR_NAME_RES = mapOf(
+    "video_cover" to R.string.cache_type_video_cover,
+    "audio_cover" to R.string.cache_type_audio_cover,
+    "image_thumb" to R.string.cache_type_image_thumb,
+    "seek_preview" to R.string.cache_type_seek_preview,
+    "subtitle" to R.string.cache_type_subtitle,
 )
 
 /** 缓存管理 UI 状态。 */

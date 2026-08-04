@@ -8,6 +8,7 @@ import android.media.MediaMetadataRetriever
 import android.os.Build
 import android.os.SystemClock
 import androidx.annotation.OptIn
+import androidx.annotation.StringRes
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -61,10 +62,10 @@ import javax.inject.Singleton
  *
  * 索引与 [PlayerSettings.audioPlayModeIndex] 对齐，保证切换与持久化一致。
  */
-enum class PlayMode(val label: String) {
-    Loop("顺序播放"),
-    Shuffle("随机播放"),
-    Single("单曲循环"),
+enum class PlayMode(@StringRes val labelRes: Int) {
+    Loop(R.string.player_play_mode_order),
+    Shuffle(R.string.player_play_mode_shuffle),
+    Single(R.string.player_play_mode_single),
 }
 
 @OptIn(UnstableApi::class)
@@ -219,7 +220,7 @@ class AudioPlaybackManager @Inject constructor(
                             saveLrcToCache(nameWithoutExt, content)
                             _lrcText.value = content
                             android.util.Log.i(TAG, "从API加载歌词成功: $nameWithoutExt, 长度: ${content.length}")
-                            onMessage?.invoke("已通过 API 获取歌词：$nameWithoutExt")
+                            onMessage?.invoke(context.getString(R.string.player_lyrics_fetched, nameWithoutExt))
                             return@launch
                         }
                     } else {
@@ -410,18 +411,18 @@ class AudioPlaybackManager @Inject constructor(
             val httpCode = extractHttpStatusCode(error)
             val msg = if (httpCode != null) {
                 when (httpCode) {
-                    401 -> "播放失败：账号密码错误或凭据过期（401）"
-                    403 -> "播放失败：无访问权限（403）"
-                    404 -> "播放失败：文件不存在，可能已被移动或删除（404）"
-                    in 500..599 -> "播放失败：服务器错误（$httpCode）"
-                    else -> "播放失败：HTTP $httpCode"
+                    401 -> context.getString(R.string.player_play_failed_401)
+                    403 -> context.getString(R.string.player_play_failed_403)
+                    404 -> context.getString(R.string.player_play_failed_404)
+                    in 500..599 -> context.getString(R.string.player_play_failed_server, httpCode)
+                    else -> context.getString(R.string.player_play_failed_http, httpCode)
                 }
             } else {
-                val causeMsg = error.message ?: error::class.simpleName ?: "未知错误"
+                val causeMsg = error.message ?: error::class.simpleName ?: context.getString(R.string.player_unknown_error)
                 when (val cause = error.cause) {
-                    is java.io.FileNotFoundException -> "播放失败：文件不存在，可能已被移动或删除"
-                    is java.io.IOException -> "播放失败：网络错误（$causeMsg）"
-                    else -> "播放失败：$causeMsg"
+                    is java.io.FileNotFoundException -> context.getString(R.string.player_play_failed_file_not_found)
+                    is java.io.IOException -> context.getString(R.string.player_play_failed_network, causeMsg)
+                    else -> context.getString(R.string.player_play_failed_generic, causeMsg)
                 }
             }
             _playbackError.value = msg
@@ -718,7 +719,7 @@ class AudioPlaybackManager @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w(TAG, "switchToIndex($index) failed", e)
-                onPlaybackError?.invoke("切换失败：${e.message ?: e::class.simpleName}")
+                onPlaybackError?.invoke(context.getString(R.string.player_switch_failed, e.message ?: e::class.simpleName))
                 false
             }
         }

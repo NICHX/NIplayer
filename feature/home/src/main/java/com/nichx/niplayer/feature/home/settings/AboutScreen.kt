@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -72,12 +74,12 @@ fun AboutScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "关于 NIplayer",
+                title = stringResource(R.string.about_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.back),
                         )
                     }
                 },

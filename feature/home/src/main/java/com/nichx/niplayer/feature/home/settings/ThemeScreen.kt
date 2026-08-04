@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,6 +46,7 @@ import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiScheme
 import com.nichx.niplayer.designsystem.theme.NiSchemes
+import com.nichx.niplayer.feature.home.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,12 +58,12 @@ fun ThemeScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "主题",
+                title = stringResource(R.string.theme_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.back),
                         )
                     }
                 },
@@ -73,7 +75,7 @@ fun ThemeScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "主题模式",
+                text = stringResource(R.string.theme_mode),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.outline,
@@ -89,7 +91,7 @@ fun ThemeScreen(
                             onClick = { ThemeSettings.setThemeMode(mode) },
                             shape = SegmentedButtonDefaults.itemShape(index, ThemeSettings.Mode.entries.size),
                         ) {
-                            Text(mode.label(), maxLines = 1)
+                            Text(stringResource(mode.labelRes()), maxLines = 1)
                         }
                     }
                 }
@@ -98,7 +100,7 @@ fun ThemeScreen(
             Spacer(Modifier.height(4.dp))
 
             Text(
-                text = "配色方案",
+                text = stringResource(R.string.theme_color_scheme),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.outline,
@@ -109,13 +111,13 @@ fun ThemeScreen(
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(NiExtraColors.current.surfaceLevel2),
             ) {
                 Column {
-                    NiScheme.entries.groupBy { it.category }.forEach { (category, schemes) ->
+                    NiScheme.entries.groupBy { it.categoryRes }.forEach { (category, schemes) ->
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = category,
+                                text = stringResource(category),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.outline,
@@ -142,7 +144,7 @@ fun ThemeScreen(
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(NiExtraColors.current.surfaceLevel2).padding(16.dp),
             ) {
                 Text(
-                    text = themeConfig.scheme.description(),
+                    text = stringResource(themeConfig.scheme.descriptionRes()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.outline,
                 )
@@ -175,7 +177,7 @@ private fun SchemeOption(
         }
         Spacer(Modifier.width(12.dp))
         Text(
-            text = scheme.label,
+            text = stringResource(scheme.labelRes),
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
             modifier = Modifier.weight(1f),
@@ -183,7 +185,7 @@ private fun SchemeOption(
         if (isSelected) {
             Icon(
                 imageVector = Icons.Filled.Check,
-                contentDescription = "选中",
+                contentDescription = stringResource(R.string.selected),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(18.dp),
             )
@@ -191,31 +193,31 @@ private fun SchemeOption(
     }
 }
 
-private fun ThemeSettings.Mode.label(): String = when (this) {
-    ThemeSettings.Mode.LIGHT -> "浅色"
-    ThemeSettings.Mode.DARK -> "暗色"
-    ThemeSettings.Mode.SYSTEM -> "跟随系统"
+private fun ThemeSettings.Mode.labelRes(): Int = when (this) {
+    ThemeSettings.Mode.LIGHT -> R.string.theme_mode_light
+    ThemeSettings.Mode.DARK -> R.string.theme_mode_dark
+    ThemeSettings.Mode.SYSTEM -> R.string.theme_mode_system
 }
 
-private fun ThemeSettings.Mode.description(): String = when (this) {
-    ThemeSettings.Mode.LIGHT -> "始终使用浅色主题。"
-    ThemeSettings.Mode.DARK -> "始终使用暗色主题。"
-    ThemeSettings.Mode.SYSTEM -> "跟随系统设置自动切换深浅。"
+private fun ThemeSettings.Mode.descriptionRes(): Int = when (this) {
+    ThemeSettings.Mode.LIGHT -> R.string.theme_mode_light_desc
+    ThemeSettings.Mode.DARK -> R.string.theme_mode_dark_desc
+    ThemeSettings.Mode.SYSTEM -> R.string.theme_mode_system_desc
 }
 
-private fun NiScheme.description(): String = when (this) {
-    NiScheme.BLUE -> "经典蓝色主色调，干净明快。"
-    NiScheme.INDIGO -> "靛蓝主色调，沉稳专业。"
-    NiScheme.CYAN -> "青色主色调，科技感十足。"
-    NiScheme.SLATE -> "石板灰主色调，极简冷静。"
-    NiScheme.PURPLE -> "优雅紫色主色调，富有创意感。"
-    NiScheme.ROSE -> "玫瑰红主色调，浪漫复古。"
-    NiScheme.CORAL -> "珊瑚橙主色调，温暖元气。"
-    NiScheme.PINK -> "粉红主色调，温柔甜美。"
-    NiScheme.TEAL -> "青绿主色调，清爽自然。"
-    NiScheme.GREEN -> "清新绿色主色调，护眼舒适。"
-    NiScheme.FOREST -> "森林绿主色调，沉静深邃。"
-    NiScheme.CARAMEL -> "焦糖棕主色调，温暖质朴。"
+private fun NiScheme.descriptionRes(): Int = when (this) {
+    NiScheme.BLUE -> R.string.theme_scheme_blue_desc
+    NiScheme.INDIGO -> R.string.theme_scheme_indigo_desc
+    NiScheme.CYAN -> R.string.theme_scheme_cyan_desc
+    NiScheme.SLATE -> R.string.theme_scheme_slate_desc
+    NiScheme.PURPLE -> R.string.theme_scheme_purple_desc
+    NiScheme.ROSE -> R.string.theme_scheme_rose_desc
+    NiScheme.CORAL -> R.string.theme_scheme_coral_desc
+    NiScheme.PINK -> R.string.theme_scheme_pink_desc
+    NiScheme.TEAL -> R.string.theme_scheme_teal_desc
+    NiScheme.GREEN -> R.string.theme_scheme_green_desc
+    NiScheme.FOREST -> R.string.theme_scheme_forest_desc
+    NiScheme.CARAMEL -> R.string.theme_scheme_caramel_desc
 }
 
 private fun NiScheme.swatchColor(): Color = when (this) {

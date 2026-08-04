@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,7 +79,7 @@ fun SubtitleStyleDialog(
 
     PlayerDialog(onDismiss = onDismiss, maxWidth = 320, maxHeight = 600) {
         Text(
-            text = "字幕样式",
+            text = stringResource(R.string.subtitle_style_title),
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
             color = PlayerDialogColors.textPrimary,
             fontSize = 18.sp,
@@ -92,40 +93,40 @@ fun SubtitleStyleDialog(
                 .padding(vertical = 4.dp),
         ) {
             StyleClickRow(
-                label = "字体",
-                value = SubtitleSettings.FONT_FAMILY_OPTIONS.find { it.second == fontFamilyKey }?.first ?: "默认",
+                label = stringResource(R.string.subtitle_font_label),
+                value = stringResource(SubtitleSettings.FONT_FAMILY_OPTIONS.find { it.second == fontFamilyKey }?.first ?: R.string.subtitle_font_default),
                 onClick = { showFontFamilyPicker = true },
             )
             StyleClickRow(
-                label = "字号",
-                value = SubtitleSettings.TEXT_SIZE_OPTIONS.find { it.second == textSizeFraction }?.first ?: "中",
+                label = stringResource(R.string.subtitle_size_label),
+                value = stringResource(SubtitleSettings.TEXT_SIZE_OPTIONS.find { it.second == textSizeFraction }?.first ?: R.string.subtitle_size_medium),
                 onClick = { showTextSizePicker = true },
             )
             StyleClickRow(
-                label = "文字颜色",
-                value = SubtitleSettings.FONT_COLOR_OPTIONS.find { it.second == fontColor }?.first ?: "白色",
+                label = stringResource(R.string.subtitle_color_label),
+                value = stringResource(SubtitleSettings.FONT_COLOR_OPTIONS.find { it.second == fontColor }?.first ?: R.string.subtitle_color_white),
                 colorDot = fontColor,
                 onClick = { showFontColorPicker = true },
             )
             StyleClickRow(
-                label = "描边宽度",
-                value = SubtitleSettings.OUTLINE_WIDTH_OPTIONS.find { it.second == outlineWidth }?.first ?: "中",
+                label = stringResource(R.string.subtitle_outline_width_label),
+                value = stringResource(SubtitleSettings.OUTLINE_WIDTH_OPTIONS.find { it.second == outlineWidth }?.first ?: R.string.subtitle_outline_medium),
                 onClick = { showOutlineWidthPicker = true },
             )
             StyleClickRow(
-                label = "描边颜色",
-                value = SubtitleSettings.OUTLINE_COLOR_OPTIONS.find { it.second == outlineColor }?.first ?: "黑色",
+                label = stringResource(R.string.subtitle_outline_color_label),
+                value = stringResource(SubtitleSettings.OUTLINE_COLOR_OPTIONS.find { it.second == outlineColor }?.first ?: R.string.subtitle_outline_color_black),
                 colorDot = outlineColor,
                 onClick = { showOutlineColorPicker = true },
             )
             StyleClickRow(
-                label = "底部边距",
-                value = SubtitleSettings.BOTTOM_PADDING_OPTIONS.find { it.second == bottomPaddingDp }?.first ?: "中",
+                label = stringResource(R.string.subtitle_bottom_padding_label),
+                value = stringResource(SubtitleSettings.BOTTOM_PADDING_OPTIONS.find { it.second == bottomPaddingDp }?.first ?: R.string.subtitle_bottom_padding_medium),
                 onClick = { showBottomPaddingPicker = true },
             )
             StyleSwitchRow(
-                label = "应用内嵌样式",
-                description = "使用字幕文件自带的颜色和样式",
+                label = stringResource(R.string.subtitle_apply_embedded),
+                description = stringResource(R.string.subtitle_apply_embedded_desc),
                 checked = applyEmbeddedStyles,
                 onCheckedChange = {
                     applyEmbeddedStyles = it
@@ -141,14 +142,14 @@ fun SubtitleStyleDialog(
                 .align(Alignment.End)
                 .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
         ) {
-            Text("完成")
+            Text(stringResource(R.string.subtitle_done))
         }
     }
 
     // ===== 子 Dialog：单选列表 =====
     if (showFontFamilyPicker) {
         SingleSelectDialog(
-            title = "字体",
+            title = stringResource(R.string.subtitle_font_label),
             options = SubtitleSettings.FONT_FAMILY_OPTIONS,
             selected = fontFamilyKey,
             onSelect = {
@@ -162,7 +163,7 @@ fun SubtitleStyleDialog(
     }
     if (showTextSizePicker) {
         SingleSelectDialog(
-            title = "字号",
+            title = stringResource(R.string.subtitle_size_label),
             options = SubtitleSettings.TEXT_SIZE_OPTIONS,
             selected = textSizeFraction,
             onSelect = {
@@ -176,7 +177,7 @@ fun SubtitleStyleDialog(
     }
     if (showOutlineWidthPicker) {
         SingleSelectDialog(
-            title = "描边宽度",
+            title = stringResource(R.string.subtitle_outline_width_label),
             options = SubtitleSettings.OUTLINE_WIDTH_OPTIONS,
             selected = outlineWidth,
             onSelect = {
@@ -190,7 +191,7 @@ fun SubtitleStyleDialog(
     }
     if (showBottomPaddingPicker) {
         SingleSelectDialog(
-            title = "底部边距",
+            title = stringResource(R.string.subtitle_bottom_padding_label),
             options = SubtitleSettings.BOTTOM_PADDING_OPTIONS,
             selected = bottomPaddingDp,
             onSelect = {
@@ -205,7 +206,7 @@ fun SubtitleStyleDialog(
     // ===== 子 Dialog：色板 =====
     if (showFontColorPicker) {
         ColorPickerDialog(
-            title = "文字颜色",
+            title = stringResource(R.string.subtitle_color_label),
             options = SubtitleSettings.FONT_COLOR_OPTIONS,
             selected = fontColor,
             onSelect = {
@@ -219,7 +220,7 @@ fun SubtitleStyleDialog(
     }
     if (showOutlineColorPicker) {
         ColorPickerDialog(
-            title = "描边颜色",
+            title = stringResource(R.string.subtitle_outline_color_label),
             options = SubtitleSettings.OUTLINE_COLOR_OPTIONS,
             selected = outlineColor,
             onSelect = {
@@ -237,7 +238,7 @@ fun SubtitleStyleDialog(
 @Composable
 private fun <T> SingleSelectDialog(
     title: String,
-    options: List<Pair<String, T>>,
+    options: List<Pair<Int, T>>,
     selected: T,
     onSelect: (T) -> Unit,
     onDismiss: () -> Unit,
@@ -263,7 +264,7 @@ private fun <T> SingleSelectDialog(
                     .padding(horizontal = 12.dp),
             ) {
                 Text(
-                    text = label,
+                    text = stringResource(label),
                     color = if (isSelected) primary else PlayerDialogColors.textPrimary,
                     fontSize = 14.sp,
                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
@@ -286,7 +287,7 @@ private fun <T> SingleSelectDialog(
 @Composable
 private fun ColorPickerDialog(
     title: String,
-    options: List<Pair<String, Int>>,
+    options: List<Pair<Int, Int>>,
     selected: Int,
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,

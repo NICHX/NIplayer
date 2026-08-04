@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.imageviewer
 
+import com.nichx.niplayer.feature.home.R
+import android.content.Context
 import android.util.LruCache
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,6 +12,7 @@ import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.storage.StorageFile
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +40,7 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class ImageViewerViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val holder: ImageViewerRequestHolder,
     private val storageFactory: StorageFactory,
     private val mediaLibraryDao: MediaLibraryDao,
@@ -60,7 +64,7 @@ class ImageViewerViewModel @Inject constructor(
     /** 从 Holder 消费请求，重建 Storage，列出目录图片。 */
     private fun loadImages() {
         val request = holder.consume() ?: run {
-            _uiState.update { it.copy(isLoading = false, error = "无效的图片请求") }
+            _uiState.update { it.copy(isLoading = false, error = context.getString(R.string.image_viewer_invalid_request)) }
             return
         }
 
@@ -70,14 +74,14 @@ class ImageViewerViewModel @Inject constructor(
                     mediaLibraryDao.getById(request.storageId)
                 }
                 if (library == null) {
-                    _uiState.update { it.copy(isLoading = false, error = "存储源不存在") }
+                    _uiState.update { it.copy(isLoading = false, error = context.getString(R.string.storage_plus_library_missing)) }
                     return@launch
                 }
 
                 val s = withContext(Dispatchers.IO) { storageFactory.create(library) }
                 if (s == null) {
                     _uiState.update {
-                        it.copy(isLoading = false, error = "不支持的存储类型")
+                        it.copy(isLoading = false, error = context.getString(R.string.storage_plus_unsupported_type))
                     }
                     return@launch
                 }
@@ -100,7 +104,7 @@ class ImageViewerViewModel @Inject constructor(
                     .sortedBy { it.name.lowercase() }
 
                 if (images.isEmpty()) {
-                    _uiState.update { it.copy(isLoading = false, error = "目录下无图片文件") }
+                    _uiState.update { it.copy(isLoading = false, error = context.getString(R.string.image_viewer_no_images)) }
                     return@launch
                 }
 
@@ -116,7 +120,7 @@ class ImageViewerViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = e.message ?: "加载图片列表失败")
+                    it.copy(isLoading = false, error = e.message ?: context.getString(R.string.image_viewer_load_failed))
                 }
             }
         }

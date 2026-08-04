@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.history
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,8 +45,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.annotation.StringRes
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
+import android.content.Context
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -75,11 +80,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class HistoryFilter(val label: String) {
-    ALL("全部"),
-    VIDEO("视频"),
-    AUDIO("音频"),
-}
+private enum class HistoryFilter(@StringRes val labelRes: Int) {
+        ALL(R.string.history_filter_all),
+        VIDEO(R.string.history_filter_video),
+        AUDIO(R.string.history_filter_audio),
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -113,6 +118,7 @@ fun PlayHistoryScreen(
     val syncConfig by viewModel.syncConfig.collectAsStateWithLifecycle()
     val conflicts by viewModel.conflicts.collectAsStateWithLifecycle()
     var showConflicts by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     // 同步结果短暂展示后消退（对勾 / 错误角标回到待机）
     LaunchedEffect(syncState) {
@@ -136,7 +142,7 @@ fun PlayHistoryScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "播放历史",
+                title = stringResource(R.string.play_history_title),
                 actions = {
                     if (syncConfig.enabled) {
                         val isSyncing = syncState is SyncUiState.Syncing
@@ -148,7 +154,7 @@ fun PlayHistoryScreen(
                                 onClick = {
                                     if (showError) {
                                         scope.launch {
-                                            snackbarHostState.showNiMessage(NiMessage.error(done?.message ?: "同步失败"))
+                                            snackbarHostState.showNiMessage(NiMessage.error(done?.message ?: context.getString(R.string.play_history_sync_failed)))
                                         }
                                     } else {
                                         viewModel.syncNow()
@@ -164,7 +170,7 @@ fun PlayHistoryScreen(
                                 } else {
                                     Icon(
                                         imageVector = if (showSuccess) Icons.Filled.Check else Icons.Filled.CloudSync,
-                                        contentDescription = if (showSuccess) "同步成功" else "云同步",
+                                        contentDescription = if (showSuccess) stringResource(R.string.play_history_sync_success) else stringResource(R.string.play_history_cloud_sync),
                                         tint = when {
                                             showSuccess -> MaterialTheme.colorScheme.primary
                                             showError -> MaterialTheme.colorScheme.error
@@ -188,7 +194,7 @@ fun PlayHistoryScreen(
                         IconButton(onClick = { showDeleteAllDialog = true }) {
                             Icon(
                                 imageVector = Icons.Outlined.Delete,
-                                contentDescription = "清空历史",
+                                contentDescription = stringResource(R.string.play_history_clear_history),
                                 tint = MaterialTheme.colorScheme.onSurface,
                             )
                         }
@@ -229,7 +235,7 @@ fun PlayHistoryScreen(
                         tint = MaterialTheme.colorScheme.error,
                     )
                     Text(
-                        text = "有 ${conflicts.size} 条同步冲突待处理，点击解决",
+                        text = stringResource(R.string.play_history_conflicts_banner, conflicts.size),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.weight(1f),
@@ -252,7 +258,7 @@ fun PlayHistoryScreen(
                         FilterChip(
                             selected = activeFilter == filter,
                             onClick = { activeFilter = filter },
-                            label = { Text("${filter.label} ($count)") },
+                            label = { Text(stringResource(filter.labelRes) + " ($count)") },
                         )
                     }
                 }
@@ -265,8 +271,10 @@ fun PlayHistoryScreen(
                 ) {
                     NiEmptyState(
                         icon = Icons.Filled.History,
-                        text = if (allHistory.isEmpty()) "暂无播放记录" else "没有匹配的记录",
-                        hint = if (allHistory.isEmpty()) "播放视频或音乐后将自动记录" else "尝试切换筛选条件",
+                        text = if (allHistory.isEmpty()) stringResource(R.string.play_history_empty_title)
+                        else stringResource(R.string.play_history_no_match),
+                        hint = if (allHistory.isEmpty()) stringResource(R.string.play_history_empty_hint)
+                        else stringResource(R.string.play_history_no_match_hint),
                     )
                 }
             } else {
@@ -277,7 +285,7 @@ fun PlayHistoryScreen(
                     grouped.forEach { (dateKey, items) ->
                         item(key = "header_$dateKey") {
                             NiSectionHeader(
-                                title = formatDateGroup(dateKey),
+                                title = formatDateGroup(dateKey, context),
                                 count = items.size,
                                 onClick = null,
                             )
@@ -332,7 +340,7 @@ fun PlayHistoryScreen(
                     )
                     Spacer(Modifier.width(12.dp))
                     Text(
-                        text = "继续播放",
+                        text = stringResource(R.string.play_history_resume),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -355,7 +363,7 @@ fun PlayHistoryScreen(
                     )
                     Spacer(Modifier.width(12.dp))
                     Text(
-                        text = "删除记录",
+                        text = stringResource(R.string.play_history_delete_record),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -375,12 +383,12 @@ fun PlayHistoryScreen(
         ) {
             Column(modifier = Modifier.padding(bottom = 32.dp)) {
                 Text(
-                    text = "同步冲突",
+                    text = stringResource(R.string.play_history_conflicts_title),
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 )
                 Text(
-                    text = "两台设备在相近时间各自修改了同一条历史，请选择保留哪个版本。",
+                    text = stringResource(R.string.play_history_conflicts_desc),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
@@ -408,8 +416,8 @@ fun PlayHistoryScreen(
 
     if (showDeleteAllDialog) {
         NiConfirmDialog(
-            title = "清空历史",
-            text = "确定删除所有播放记录？此操作不可撤销。",
+            title = stringResource(R.string.play_history_clear_all),
+            text = stringResource(R.string.play_history_clear_all_confirm),
             onConfirm = {
                 viewModel.clearAll()
                 showDeleteAllDialog = false
@@ -444,13 +452,14 @@ private fun HistoryItem(
     Spacer(Modifier.height(8.dp))
 }
 
+@Composable
 private fun mediaTypeLabel(type: MediaType): String = when (type) {
-    MediaType.LOCAL_STORAGE -> "本地"
-    MediaType.EXTERNAL_STORAGE -> "设备"
+    MediaType.LOCAL_STORAGE -> stringResource(R.string.storage_type_local)
+    MediaType.EXTERNAL_STORAGE -> stringResource(R.string.storage_type_device)
     MediaType.SMB_SERVER -> "SMB"
     MediaType.WEBDAV_SERVER -> "WebDAV"
-    MediaType.QUICK_ACCESS -> "快捷"
-    else -> "其他"
+    MediaType.QUICK_ACCESS -> stringResource(R.string.storage_type_quick)
+    else -> stringResource(R.string.storage_type_other)
 }
 
 private fun formatPlayTime(date: Date): String {
@@ -458,15 +467,15 @@ private fun formatPlayTime(date: Date): String {
     return sdf.format(date)
 }
 
-private fun formatDateGroup(dateKey: String): String {
+private fun formatDateGroup(dateKey: String, context: Context): String {
     // dateKey is yyyy-MM-dd
     val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     val yesterday = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(
         Date(System.currentTimeMillis() - 86400000)
     )
     return when (dateKey) {
-        today -> "今天"
-        yesterday -> "昨天"
+        today -> context.getString(R.string.play_history_today)
+        yesterday -> context.getString(R.string.play_history_yesterday)
         else -> dateKey
     }
 }
@@ -507,34 +516,34 @@ private fun ConflictItem(
         Row {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "本机",
+                    text = stringResource(R.string.play_history_local),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "进度 ${formatPositionMs(conflict.localVideoPosition)} / ${formatPositionMs(conflict.localVideoDuration)}",
+                    text = stringResource(R.string.play_history_progress, formatPositionMs(conflict.localVideoPosition), formatPositionMs(conflict.localVideoDuration)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = "更新于 ${formatPlayTime(Date(conflict.localPlayTime))}",
+                    text = stringResource(R.string.play_history_updated_at, formatPlayTime(Date(conflict.localPlayTime))),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "云端",
+                    text = stringResource(R.string.play_history_remote),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.tertiary,
                 )
                 Text(
-                    text = "进度 ${formatPositionMs(conflict.remoteVideoPosition)} / ${formatPositionMs(conflict.remoteVideoDuration)}",
+                    text = stringResource(R.string.play_history_progress, formatPositionMs(conflict.remoteVideoPosition), formatPositionMs(conflict.remoteVideoDuration)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = "更新于 ${formatPlayTime(Date(conflict.remoteUpdatedAt))}",
+                    text = stringResource(R.string.play_history_updated_at, formatPlayTime(Date(conflict.remoteUpdatedAt))),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -542,8 +551,8 @@ private fun ConflictItem(
         }
         Spacer(Modifier.height(4.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = onKeepLocal) { Text("保留本机") }
-            TextButton(onClick = onKeepRemote) { Text("保留云端") }
+            TextButton(onClick = onKeepLocal) { Text(stringResource(R.string.play_history_keep_local)) }
+            TextButton(onClick = onKeepRemote) { Text(stringResource(R.string.play_history_keep_remote)) }
         }
     }
 }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NIplayer</string>
+    <!-- Crash log dialog -->
+    <string name="crash_dialog_title">NIplayer crashed unexpectedly last time</string>
+    <string name="crash_dialog_ignore">Ignore</string>
+    <string name="crash_log_copied">Crash log copied</string>
+    <string name="crash_dialog_copy_and_close">Copy and close</string>
+</resources>

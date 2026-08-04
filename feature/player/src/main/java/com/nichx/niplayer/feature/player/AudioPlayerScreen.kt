@@ -81,6 +81,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -217,7 +218,7 @@ fun AudioPlayerScreen(
                 coverPath = coverPath,
                 playMode = playMode,
                 modeIcon = modeIcon,
-                modeLabel = mode.label,
+                modeLabel = stringResource(mode.labelRes),
                 onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
                 onShowPlaylist = { showPlaylist = true },
                 onBack = onBack,
@@ -250,7 +251,7 @@ fun AudioPlayerScreen(
                 currentIndex = currentIndex,
                 playMode = playMode,
                 modeIcon = modeIcon,
-                modeLabel = mode.label,
+                modeLabel = stringResource(mode.labelRes),
                 onToggleLyrics = { showLyrics = !showLyrics },
                 onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
                 onShowPlaylist = { showPlaylist = true },
@@ -405,7 +406,7 @@ private fun PortraitLayout(
         ) {
             if (!hasActiveContent) {
                 Text(
-                    text = "无播放源",
+                    text = stringResource(R.string.player_no_source),
                     style = MaterialTheme.typography.bodyLarge,
                     color = onSurface.copy(alpha = 0.6f),
                 )
@@ -623,7 +624,7 @@ private fun LandscapeLayout(
         ) {
             when {
                 !hasActiveContent -> Text(
-                    text = "无播放源",
+                    text = stringResource(R.string.player_no_source),
                     style = MaterialTheme.typography.bodyLarge,
                     color = onSurface.copy(alpha = 0.6f),
                 )
@@ -668,13 +669,13 @@ private fun LandscapeLayout(
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                    contentDescription = "返回",
+                                    contentDescription = stringResource(R.string.player_back),
                                     tint = onSurface.copy(alpha = 0.8f),
                                 )
                             }
                         }
                         Text(
-                            text = if (title.isNotEmpty()) title else "未知歌曲",
+                            text = if (title.isNotEmpty()) title else stringResource(R.string.player_unknown_song),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = onSurface.copy(alpha = 0.9f),
@@ -918,7 +919,7 @@ private fun TopBarActions(
             ) {
                 Icon(
                     imageVector = Icons.Rounded.PlaylistAdd,
-                    contentDescription = "添加到歌单",
+                    contentDescription = stringResource(R.string.player_save_to_playlist),
                     tint = onSurface.copy(alpha = 0.8f),
                 )
             }
@@ -936,7 +937,7 @@ private fun TopBarActions(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.MoreVert,
-                        contentDescription = "更多",
+                        contentDescription = stringResource(R.string.player_more),
                         tint = onSurface.copy(alpha = 0.8f),
                     )
                 }
@@ -954,7 +955,7 @@ private fun TopBarActions(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = "倍速",
+                            text = stringResource(R.string.player_speed_icon),
                             fontSize = 14.sp,
                             color = onSurface,
                         )
@@ -1000,7 +1001,7 @@ private fun TopBarActions(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = "均衡器",
+                            text = stringResource(R.string.player_equalizer),
                             fontSize = 14.sp,
                             color = onSurface,
                         )
@@ -1022,7 +1023,7 @@ private fun TopBarActions(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = "下载",
+                            text = stringResource(R.string.player_download_icon),
                             fontSize = 14.sp,
                             color = onSurface,
                         )
@@ -1054,7 +1055,7 @@ private fun TopBarActions(
             ) {
                 // 菜单标题（本版本无 DropdownMenuHeader，用普通文本行代替）
                 Text(
-                    text = "播放倍速",
+                    text = stringResource(R.string.player_speed_menu_title),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = onSurfaceVariant,
@@ -1084,7 +1085,7 @@ private fun TopBarActions(
                             {
                                 Icon(
                                     imageVector = Icons.Rounded.Check,
-                                    contentDescription = "当前倍速",
+                                    contentDescription = stringResource(R.string.player_current_speed),
                                     tint = primary,
                                     modifier = Modifier.size(18.dp),
                                 )
@@ -1125,7 +1126,7 @@ private fun TopBar(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "返回",
+                    contentDescription = stringResource(R.string.player_back),
                     tint = onSurface.copy(alpha = 0.8f),
                 )
             }
@@ -1280,7 +1281,7 @@ private fun PlaybackControls(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.SkipPrevious,
-                        contentDescription = "上一首",
+                        contentDescription = stringResource(R.string.player_previous),
                         tint = if (hasPrev) onSurface.copy(alpha = 0.8f)
                         else onSurface.copy(alpha = 0.2f),
                         modifier = Modifier.size(sideIconSize),
@@ -1300,7 +1301,7 @@ private fun PlaybackControls(
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = if (isPlaying) "暂停" else "播放",
+                    contentDescription = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
                     tint = primary,
                     modifier = Modifier.size(mainIconSize),
                 )
@@ -1321,7 +1322,7 @@ private fun PlaybackControls(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.SkipNext,
-                        contentDescription = "下一首",
+                        contentDescription = stringResource(R.string.player_next),
                         tint = if (hasNext) onSurface.copy(alpha = 0.8f)
                         else onSurface.copy(alpha = 0.2f),
                         modifier = Modifier.size(sideIconSize),
@@ -1345,7 +1346,7 @@ private fun PlaybackControls(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
-                        contentDescription = "播放列表",
+                        contentDescription = stringResource(R.string.player_playlist),
                         tint = onSurface.copy(alpha = 0.5f),
                         modifier = Modifier.size(sideIconSize),
                     )
@@ -1370,7 +1371,7 @@ private fun PlaybackErrorState(
     ) {
         Icon(
             imageVector = Icons.Rounded.ErrorOutline,
-            contentDescription = "播放错误",
+            contentDescription = stringResource(R.string.player_playback_error),
             tint = errorColor,
             modifier = Modifier.size(72.dp),
         )
@@ -1378,7 +1379,7 @@ private fun PlaybackErrorState(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "播放失败",
+            text = stringResource(R.string.player_error_title),
             style = MaterialTheme.typography.headlineSmall,
             color = onSurface,
         )
@@ -1410,7 +1411,7 @@ private fun PlaybackErrorState(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "重试",
+                    text = stringResource(R.string.player_retry),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )

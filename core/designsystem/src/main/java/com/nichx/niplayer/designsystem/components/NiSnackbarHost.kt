@@ -48,12 +48,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.common.error.NiMessageSeverity
+import com.nichx.niplayer.designsystem.R
 import kotlinx.coroutines.delay
 
 /**
@@ -200,7 +202,12 @@ fun NiSnackbarHost(
 private fun NiMessageSnackbar(data: SnackbarData) {
     val visuals = data.visuals
     val niMessage = (visuals as? NiMessageVisuals)?.niMessage
-    val messageText = niMessage?.message ?: visuals.message
+    // i18n：messageRes 非 0 时经 stringResource 解析（支持占位符），否则回退动态 message 文案
+    val messageText = if (niMessage?.messageRes != 0 && niMessage != null) {
+        stringResource(niMessage.messageRes, *niMessage.messageArgs.toTypedArray())
+    } else {
+        niMessage?.message ?: visuals.message
+    }
     val severity = niMessage?.severity ?: NiMessageSeverity.INFO
     val details = niMessage?.details
     val actionLabel = visuals.actionLabel
@@ -287,7 +294,7 @@ private fun NiMessageSnackbar(data: SnackbarData) {
                         modifier = Modifier.size(14.dp),
                     )
                     Text(
-                        text = "已复制",
+                        text = stringResource(R.string.copied),
                         style = MaterialTheme.typography.labelSmall,
                         color = contentColor,
                     )
@@ -311,7 +318,8 @@ private fun NiMessageSnackbar(data: SnackbarData) {
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                 ) {
                     Text(
-                        text = if (detailsExpanded) "收起" else "详情",
+                        text = if (detailsExpanded) stringResource(R.string.collapse)
+                        else stringResource(R.string.details),
                         style = MaterialTheme.typography.labelMedium,
                         color = contentColor,
                     )
@@ -323,7 +331,7 @@ private fun NiMessageSnackbar(data: SnackbarData) {
             ) {
                 Icon(
                     imageVector = Icons.Filled.Close,
-                    contentDescription = "关闭",
+                    contentDescription = stringResource(R.string.action_close),
                     tint = contentColor,
                     modifier = Modifier.size(18.dp),
                 )

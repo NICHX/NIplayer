@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.library
 
+import com.nichx.niplayer.feature.home.R
+import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -63,11 +65,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.annotation.StringRes
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -91,17 +96,15 @@ import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.designsystem.theme.NiSpacings
 import kotlinx.coroutines.launch
 
-private val libraryFilterLabels = LibraryFilter.entries.map { it.label }
-
 private val menuShape = RoundedCornerShape(12.dp)
 private val cardShape = RoundedCornerShape(12.dp)
 private val pillShape = RoundedCornerShape(8.dp)
 
-private enum class LibraryFilter(val label: String) {
-    ALL("全部"),
-    LOCAL("本机"),
-    SMB("SMB"),
-    WEBDAV("WebDAV"),
+private enum class LibraryFilter(@StringRes val labelRes: Int) {
+    ALL(R.string.library_filter_all),
+    LOCAL(R.string.library_filter_local),
+    SMB(R.string.library_filter_smb),
+    WEBDAV(R.string.library_filter_webdav),
 }
 
 private fun filterByType(filter: LibraryFilter, libraries: List<MediaLibraryEntity>): List<MediaLibraryEntity> {
@@ -132,6 +135,7 @@ fun LibraryScreen(
     var isSearchVisible by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val currentFiltered by remember(selectedFilter, filteredLibraries) {
         derivedStateOf { filterByType(selectedFilter, filteredLibraries) }
@@ -140,7 +144,7 @@ fun LibraryScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "媒体库",
+                title = stringResource(R.string.library_title),
                 actions = {
                     IconButton(onClick = {
                         if (isSearchVisible) viewModel.setSearchQuery("")
@@ -148,7 +152,9 @@ fun LibraryScreen(
                     }) {
                         Icon(
                             imageVector = Icons.Filled.Search,
-                            contentDescription = if (isSearchVisible) "关闭搜索" else "搜索",
+                            contentDescription = stringResource(
+                                if (isSearchVisible) R.string.library_close_search else R.string.library_search,
+                            ),
                         )
                     }
                 },
@@ -171,7 +177,7 @@ fun LibraryScreen(
                     NiTextField(
                     value = searchQuery,
                     onValueChange = viewModel::setSearchQuery,
-                    placeholder = "搜索存储源...",
+                    placeholder = stringResource(R.string.library_search_placeholder),
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Filled.Search,
@@ -184,7 +190,7 @@ fun LibraryScreen(
                             IconButton(onClick = { viewModel.setSearchQuery("") }) {
                                 Icon(
                                     imageVector = Icons.Filled.Close,
-                                    contentDescription = "清除",
+                                    contentDescription = stringResource(R.string.clear),
                                     tint = MaterialTheme.colorScheme.outline,
                                 )
                             }
@@ -203,7 +209,7 @@ fun LibraryScreen(
 
             if (dataReady && libraries.isNotEmpty()) {
                 FilterChipRow(
-                    items = libraryFilterLabels,
+                    items = LibraryFilter.entries.map { stringResource(it.labelRes) },
                     selectedIndex = selectedFilter.ordinal,
                     onItemSelected = { index ->
                         selectedFilter = LibraryFilter.entries[index]
@@ -222,9 +228,9 @@ fun LibraryScreen(
                 ) {
                     NiEmptyState(
                         icon = Icons.Filled.FolderOpen,
-                        text = "暂无存储源",
-                        hint = "点击下方按钮添加存储源",
-                        actionText = "添加存储源",
+                        text = stringResource(R.string.library_empty_title),
+                        hint = stringResource(R.string.library_empty_hint),
+                        actionText = stringResource(R.string.library_add_storage),
                         onAction = { showTypeSheet = true },
                     )
                 }
@@ -235,8 +241,10 @@ fun LibraryScreen(
                 ) {
                     NiEmptyState(
                         icon = if (searchQuery.isNotEmpty()) Icons.Filled.Search else Icons.Filled.Folder,
-                        text = if (searchQuery.isNotEmpty()) "无搜索结果" else "暂无该类型存储源",
-                        hint = if (searchQuery.isNotEmpty()) "尝试其他关键词" else "切换筛选条件查看全部存储源",
+                        text = if (searchQuery.isNotEmpty()) stringResource(R.string.library_no_result)
+                        else stringResource(R.string.library_no_type),
+                        hint = if (searchQuery.isNotEmpty()) stringResource(R.string.library_try_keywords)
+                        else stringResource(R.string.library_switch_filter),
                     )
                 }
             } else {
@@ -253,7 +261,7 @@ fun LibraryScreen(
                 ) {
                     item(key = "section_count") {
                         Text(
-                            text = "${currentFiltered.size} 个存储源",
+                            text = stringResource(R.string.library_storage_count, currentFiltered.size),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
@@ -262,9 +270,9 @@ fun LibraryScreen(
 
                     grouped.forEach { (type, libs) ->
                         item(key = "header_${type.value}") {
-                            val typeInfo = storageTypeInfo(type, NiExtraColors.current)
+                            val typeInfo = storageTypeInfo(type, NiExtraColors.current, context)
                             SectionHeader(
-                                label = type.storageName,
+                                label = stringResource(type.storageNameRes),
                                 count = libs.size,
                                 color = typeInfo.color,
                             )
@@ -293,7 +301,7 @@ fun LibraryScreen(
                 NiFAB(
                     icon = Icons.Filled.Add,
                     onClick = { showTypeSheet = true },
-                    contentDescription = "添加存储源",
+                    contentDescription = stringResource(R.string.library_add_storage),
                     variant = NiFabVariant.PRIMARY,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -306,8 +314,8 @@ fun LibraryScreen(
     if (deleteTarget != null) {
         val target = deleteTarget!!
         NiConfirmDialog(
-            title = "删除存储源",
-            text = "确定删除「${target.displayName}」？",
+            title = stringResource(R.string.library_delete_storage_title),
+            text = stringResource(R.string.library_delete_storage_body, target.displayName),
             onConfirm = {
                 viewModel.delete(target)
                 val deletedId = target.id
@@ -316,8 +324,8 @@ fun LibraryScreen(
                 scope.launch {
                     snackbarHostState.currentSnackbarData?.dismiss()
                     val result = snackbarHostState.showSnackbar(
-                        message = "已删除「${deletedName}」",
-                        actionLabel = "撤销",
+                        message = context.getString(R.string.library_deleted, deletedName),
+                        actionLabel = context.getString(R.string.undo),
                         duration = SnackbarDuration.Short,
                     )
                     if (result == SnackbarResult.ActionPerformed) {
@@ -416,7 +424,10 @@ private fun LibrarySourceCard(
     onDelete: () -> Unit,
 ) {
     val extraColors = NiExtraColors.current
-    val typeInfo = remember(library.mediaType, extraColors) { storageTypeInfo(library.mediaType, extraColors) }
+    val context = LocalContext.current
+    val typeInfo = remember(library.mediaType, extraColors) {
+        storageTypeInfo(library.mediaType, extraColors, context)
+    }
     val canModify by remember(library.mediaType) {
         derivedStateOf { library.mediaType != MediaType.LOCAL_STORAGE }
     }
@@ -521,7 +532,7 @@ private fun LibrarySourceCard(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                "编辑",
+                                stringResource(R.string.edit),
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                         },
@@ -542,7 +553,7 @@ private fun LibrarySourceCard(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                "删除",
+                                stringResource(R.string.delete),
                                 color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodyMedium,
                             )
@@ -570,13 +581,23 @@ private fun StorageTypePickerSheet(
     onPick: (MediaType) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val types = remember {
-        listOf(
-            Triple(MediaType.SMB_SERVER, "SMB 服务器", "局域网文件共享协议"),
-            Triple(MediaType.WEBDAV_SERVER, "WebDAV 服务器", "支持 WebDAV 的网盘服务"),
-            Triple(MediaType.EXTERNAL_STORAGE, "设备存储（SAF）", "通过系统文件选择器访问"),
-        )
-    }
+    val types = listOf(
+        Triple(
+            MediaType.SMB_SERVER,
+            stringResource(R.string.library_type_smb_label),
+            stringResource(R.string.library_type_smb_desc),
+        ),
+        Triple(
+            MediaType.WEBDAV_SERVER,
+            stringResource(R.string.library_type_webdav_label),
+            stringResource(R.string.library_type_webdav_desc),
+        ),
+        Triple(
+            MediaType.EXTERNAL_STORAGE,
+            stringResource(R.string.library_type_external_label),
+            stringResource(R.string.library_type_external_desc),
+        ),
+    )
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -587,12 +608,12 @@ private fun StorageTypePickerSheet(
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp)) {
             Text(
-                text = "选择存储类型",
+                text = stringResource(R.string.library_select_storage_type),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
             types.forEach { (type, label, desc) ->
-                val typeInfo = storageTypeInfo(type, NiExtraColors.current)
+                val typeInfo = storageTypeInfo(type, NiExtraColors.current, LocalContext.current)
                 val iconBg = typeInfo.color.copy(alpha = 0.1f)
                 Row(
                     modifier = Modifier
@@ -716,10 +737,10 @@ private data class StorageTypeInfo(
     val color: Color,
 )
 
-private fun storageTypeInfo(mediaType: MediaType, extraColors: NiExtraColors): StorageTypeInfo {
+private fun storageTypeInfo(mediaType: MediaType, extraColors: NiExtraColors, context: Context): StorageTypeInfo {
     return when (mediaType) {
         MediaType.LOCAL_STORAGE -> StorageTypeInfo(
-            Icons.Filled.PhoneAndroid, "本地", extraColors.storageLocalColor,
+            Icons.Filled.PhoneAndroid, context.getString(R.string.storage_type_local), extraColors.storageLocalColor,
         )
         MediaType.SMB_SERVER -> StorageTypeInfo(
             Icons.Filled.Computer, "SMB", extraColors.storageSmbColor,
@@ -731,10 +752,10 @@ private fun storageTypeInfo(mediaType: MediaType, extraColors: NiExtraColors): S
             Icons.Filled.SdCard, "SAF", extraColors.storageExternalColor,
         )
         MediaType.OTHER_STORAGE -> StorageTypeInfo(
-            Icons.Filled.History, "历史", extraColors.storageHistoryColor,
+            Icons.Filled.History, context.getString(R.string.storage_type_history), extraColors.storageHistoryColor,
         )
         MediaType.QUICK_ACCESS -> StorageTypeInfo(
-            Icons.Filled.SdCard, "其他", extraColors.storageHistoryColor,
+            Icons.Filled.SdCard, context.getString(R.string.storage_type_other), extraColors.storageHistoryColor,
         )
     }
 }

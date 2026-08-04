@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -43,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiProgressTrack
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import com.nichx.niplayer.feature.home.R
 
 /**
  * 更新流程对话框宿主。
@@ -119,7 +121,7 @@ private fun UpdateDialogBody(
 @Composable
 private fun CheckingDialog() {
     NiInfoDialog(
-        title = "检查更新",
+        title = stringResource(R.string.update_check_title),
         // 检查耗时很短且结果会覆盖状态，检查中不允许关闭
         onDismiss = {},
     ) {
@@ -130,7 +132,7 @@ private fun CheckingDialog() {
                 color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                text = "正在检查最新版本…",
+                text = stringResource(R.string.update_checking),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -144,12 +146,12 @@ private fun UpdateAvailableDialog(
     viewModel: UpdateViewModel,
 ) {
     NiInfoDialog(
-        title = "发现新版本",
+        title = stringResource(R.string.update_found_title),
         onDismiss = viewModel::dismiss,
         actions = {
-            TextButton(onClick = viewModel::dismiss) { Text("稍后") }
+            TextButton(onClick = viewModel::dismiss) { Text(stringResource(R.string.update_later)) }
             Spacer(Modifier.width(4.dp))
-            Button(onClick = viewModel::startDownload) { Text("立即更新") }
+            Button(onClick = viewModel::startDownload) { Text(stringResource(R.string.update_now)) }
         },
     ) {
         UpdateDialogBody {
@@ -163,7 +165,10 @@ private fun UpdateAvailableDialog(
                 horizontalArrangement = Arrangement.Center,
             ) {
                 VersionChip(
-                    label = "当前 ${viewModel.currentVersion.ifBlank { "未知" }}",
+                    label = stringResource(
+                        R.string.update_current_version,
+                        viewModel.currentVersion.ifBlank { stringResource(R.string.update_version_unknown) },
+                    ),
                     highlight = false,
                 )
                 Text(
@@ -179,7 +184,7 @@ private fun UpdateAvailableDialog(
             }
             if (state.sizeText.isNotEmpty()) {
                 Text(
-                    text = "安装包大小 ${state.sizeText}",
+                    text = stringResource(R.string.update_size, state.sizeText),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -194,7 +199,7 @@ private fun UpdateAvailableDialog(
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                 ) {
                     Text(
-                        text = "更新内容",
+                        text = stringResource(R.string.update_notes_title),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -213,7 +218,7 @@ private fun UpdateAvailableDialog(
                 }
             } else {
                 Text(
-                    text = "发现新版本，建议更新以获得更好的体验。",
+                    text = stringResource(R.string.update_suggest),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -257,10 +262,10 @@ private fun AlreadyLatestDialog(
     viewModel: UpdateViewModel,
 ) {
     NiInfoDialog(
-        title = "已是最新版本",
+        title = stringResource(R.string.update_latest_title),
         onDismiss = viewModel::dismiss,
         actions = {
-            Button(onClick = viewModel::dismiss) { Text("确定") }
+            Button(onClick = viewModel::dismiss) { Text(stringResource(R.string.confirm)) }
         },
     ) {
         UpdateDialogBody {
@@ -269,7 +274,7 @@ private fun AlreadyLatestDialog(
                 tint = NiExtraColors.current.success,
             )
             Text(
-                text = "当前版本 v${state.currentVersion} 已是最新版本",
+                text = stringResource(R.string.update_latest_body, state.currentVersion),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
@@ -284,12 +289,12 @@ private fun CheckFailedDialog(
     viewModel: UpdateViewModel,
 ) {
     NiInfoDialog(
-        title = "检查更新失败",
+        title = stringResource(R.string.update_check_failed_title),
         onDismiss = viewModel::dismiss,
         actions = {
-            TextButton(onClick = viewModel::dismiss) { Text("关闭") }
+            TextButton(onClick = viewModel::dismiss) { Text(stringResource(R.string.close)) }
             Spacer(Modifier.width(4.dp))
-            Button(onClick = viewModel::openReleasesPage) { Text("去浏览器查看") }
+            Button(onClick = viewModel::openReleasesPage) { Text(stringResource(R.string.update_open_browser)) }
         },
     ) {
         UpdateDialogBody {
@@ -298,7 +303,7 @@ private fun CheckFailedDialog(
                 tint = MaterialTheme.colorScheme.error,
             )
             Text(
-                text = "无法连接更新服务，请检查网络后重试",
+                text = stringResource(R.string.update_check_failed_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
@@ -321,13 +326,13 @@ private fun DownloadingDialog(
     viewModel: UpdateViewModel,
 ) {
     NiInfoDialog(
-        title = "正在下载更新",
+        title = stringResource(R.string.update_downloading_title),
         // 关闭弹窗（点击外部/返回）不终止下载，转入后台继续
         onDismiss = viewModel::downloadInBackground,
         actions = {
-            TextButton(onClick = viewModel::cancelDownload) { Text("取消") }
+            TextButton(onClick = viewModel::cancelDownload) { Text(stringResource(R.string.cancel)) }
             Spacer(Modifier.width(4.dp))
-            Button(onClick = viewModel::downloadInBackground) { Text("后台下载") }
+            Button(onClick = viewModel::downloadInBackground) { Text(stringResource(R.string.update_background_download)) }
         },
     ) {
         UpdateDialogBody {
@@ -344,7 +349,7 @@ private fun DownloadingDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 NiProgressTrack(fraction = state.progress / 100f)
                 Text(
-                    text = "可收起弹窗，在通知栏查看下载进度",
+                    text = stringResource(R.string.update_downloading_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                     textAlign = TextAlign.Center,
@@ -360,12 +365,12 @@ private fun DownloadReadyDialog(
     viewModel: UpdateViewModel,
 ) {
     NiInfoDialog(
-        title = "更新已就绪",
+        title = stringResource(R.string.update_ready_title),
         onDismiss = viewModel::dismiss,
         actions = {
-            TextButton(onClick = viewModel::dismiss) { Text("稍后") }
+            TextButton(onClick = viewModel::dismiss) { Text(stringResource(R.string.update_later)) }
             Spacer(Modifier.width(4.dp))
-            Button(onClick = viewModel::install) { Text("立即安装") }
+            Button(onClick = viewModel::install) { Text(stringResource(R.string.update_install_now)) }
         },
     ) {
         UpdateDialogBody {
@@ -374,7 +379,7 @@ private fun DownloadReadyDialog(
                 tint = NiExtraColors.current.success,
             )
             Text(
-                text = "新版本 v${state.version} 已下载完成",
+                text = stringResource(R.string.update_ready_body, state.version),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -385,7 +390,7 @@ private fun DownloadReadyDialog(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
             )
             Text(
-                text = "安装后将替换当前版本，已下载内容不受影响",
+                text = stringResource(R.string.update_ready_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -400,12 +405,12 @@ private fun DownloadFailedDialog(
     viewModel: UpdateViewModel,
 ) {
     NiInfoDialog(
-        title = "下载失败",
+        title = stringResource(R.string.update_download_failed_title),
         onDismiss = viewModel::dismiss,
         actions = {
-            TextButton(onClick = viewModel::dismiss) { Text("关闭") }
+            TextButton(onClick = viewModel::dismiss) { Text(stringResource(R.string.close)) }
             Spacer(Modifier.width(4.dp))
-            Button(onClick = viewModel::openReleasesPage) { Text("去浏览器下载") }
+            Button(onClick = viewModel::openReleasesPage) { Text(stringResource(R.string.update_open_browser_download)) }
         },
     ) {
         UpdateDialogBody {
@@ -420,7 +425,7 @@ private fun DownloadFailedDialog(
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = "可前往 GitHub Releases 页面手动下载安装包",
+                text = stringResource(R.string.update_download_failed_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -435,13 +440,13 @@ private fun InstallBlockedDialog(
     viewModel: UpdateViewModel,
 ) {
     NiInfoDialog(
-        title = "需要安装权限",
+        title = stringResource(R.string.update_permission_title),
         onDismiss = viewModel::dismiss,
         actions = {
-            TextButton(onClick = viewModel::dismiss) { Text("关闭") }
+            TextButton(onClick = viewModel::dismiss) { Text(stringResource(R.string.close)) }
             Spacer(Modifier.width(4.dp))
             // 用户授权后返回时直接重新安装已下载的 APK，无需重新下载
-            Button(onClick = viewModel::install) { Text("重新安装") }
+            Button(onClick = viewModel::install) { Text(stringResource(R.string.update_reinstall)) }
         },
     ) {
         UpdateDialogBody {
@@ -456,7 +461,7 @@ private fun InstallBlockedDialog(
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = "授权完成后返回本页，点击「重新安装」即可继续",
+                text = stringResource(R.string.update_permission_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

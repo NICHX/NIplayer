@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,6 +46,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -65,19 +68,19 @@ private const val EQ_MIN_MB = -1500
 private const val EQ_MAX_MB = 1500
 private const val EQ_RANGE = EQ_MAX_MB - EQ_MIN_MB // 3000
 
-private data class EqPreset(val name: String, val gains: IntArray) {
-    override fun equals(other: Any?) = other is EqPreset && name == other.name
-    override fun hashCode() = name.hashCode()
+private data class EqPreset(@StringRes val nameRes: Int, val gains: IntArray) {
+    override fun equals(other: Any?) = other is EqPreset && nameRes == other.nameRes
+    override fun hashCode() = nameRes.hashCode()
 }
 
 private val BUILTIN_PRESETS: List<EqPreset> = listOf(
-    EqPreset("平直", intArrayOf(0, 0, 0, 0, 0)),
-    EqPreset("流行", intArrayOf(-200, 0, 400, 800, 400)),
-    EqPreset("摇滚", intArrayOf(500, 300, -100, 400, 700)),
-    EqPreset("爵士", intArrayOf(300, 0, 100, 300, 500)),
-    EqPreset("古典", intArrayOf(400, 200, 0, 200, 400)),
-    EqPreset("低音", intArrayOf(800, 500, 0, -200, -300)),
-    EqPreset("高音", intArrayOf(-200, -100, 0, 500, 800)),
+    EqPreset(R.string.equalizer_preset_flat, intArrayOf(0, 0, 0, 0, 0)),
+    EqPreset(R.string.equalizer_preset_pop, intArrayOf(-200, 0, 400, 800, 400)),
+    EqPreset(R.string.equalizer_preset_rock, intArrayOf(500, 300, -100, 400, 700)),
+    EqPreset(R.string.equalizer_preset_jazz, intArrayOf(300, 0, 100, 300, 500)),
+    EqPreset(R.string.equalizer_preset_classical, intArrayOf(400, 200, 0, 200, 400)),
+    EqPreset(R.string.equalizer_preset_bass, intArrayOf(800, 500, 0, -200, -300)),
+    EqPreset(R.string.equalizer_preset_treble, intArrayOf(-200, -100, 0, 500, 800)),
 )
 
 @Composable
@@ -101,10 +104,10 @@ fun EqualizerSettingsScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "均衡器",
+                title = stringResource(R.string.equalizer_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
             )
@@ -129,12 +132,12 @@ fun EqualizerSettingsScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "启用均衡器",
+                            text = stringResource(R.string.equalizer_enable),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = "调节音频各频段增益，改变音色",
+                            text = stringResource(R.string.equalizer_enable_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.padding(top = 2.dp),
@@ -157,7 +160,7 @@ fun EqualizerSettingsScreen(
                     .padding(vertical = 16.dp),
             ) {
                 Text(
-                    text = "预设",
+                    text = stringResource(R.string.equalizer_presets),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 18.dp),
@@ -170,7 +173,7 @@ fun EqualizerSettingsScreen(
                     itemsIndexed(BUILTIN_PRESETS) { index, preset ->
                         val isSelected = selectedPreset == index
                         PresetCard(
-                            name = preset.name,
+                            name = stringResource(preset.nameRes),
                             isSelected = isSelected,
                             enabled = enabled,
                             onClick = {
@@ -224,9 +227,9 @@ fun EqualizerSettingsScreen(
 
                 Text(
                     text = if (enabled) {
-                        "拖动滑块自动切换为自定义模式，设置在下次播放时生效"
+                        stringResource(R.string.equalizer_custom_hint)
                     } else {
-                        "请先启用均衡器才能调节频段"
+                        stringResource(R.string.equalizer_disabled_hint)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,

@@ -1,11 +1,14 @@
 package com.nichx.niplayer.common.error
 
+import androidx.annotation.StringRes
+import com.nichx.niplayer.common.R
+
 /**
  * 错误分类枚举（O-25）。
  *
- * 用于统一错误提示的文案与图标映射。每类有默认中文文案，可在展示时被 [AppError] 自带的
- * `message` 覆盖。映射到 [NiMessageSeverity] 时：[AUTH]/[NETWORK]/[STORAGE] 默认 Error，
- * [DECODE]/[UNKNOWN] 默认 Warning（不影响继续浏览）。
+ * 用于统一错误提示的文案与图标映射。每类有默认文案资源 [defaultMessageRes]，可在展示时被
+ * [AppError] 自带的 `message` 覆盖。映射到 [NiMessageSeverity] 时：[AUTH]/[NETWORK]/[STORAGE]
+ * 默认 Error，[DECODE]/[UNKNOWN] 默认 Warning（不影响继续浏览）。
  */
 enum class ErrorType {
     /** 网络异常：超时、无法连接、DNS 失败等。 */
@@ -29,16 +32,17 @@ enum class ErrorType {
     /** 未知/其他异常。 */
     UNKNOWN;
 
-    /** 该错误类型的默认中文文案。 */
-    val defaultMessage: String
+    /** 该错误类型的默认文案资源 ID（i18n 文案见 core/common res）。 */
+    @get:StringRes
+    val defaultMessageRes: Int
         get() = when (this) {
-            NETWORK -> "网络异常"
-            AUTH -> "账号密码错误"
-            FILE -> "文件不存在"
-            STORAGE -> "存储源连接失败"
-            DECODE -> "解码失败"
-            DATABASE -> "数据读写失败"
-            UNKNOWN -> "发生错误"
+            NETWORK -> R.string.error_type_network
+            AUTH -> R.string.error_type_auth
+            FILE -> R.string.error_type_file
+            STORAGE -> R.string.error_type_storage
+            DECODE -> R.string.error_type_decode
+            DATABASE -> R.string.error_type_database
+            UNKNOWN -> R.string.error_type_unknown
         }
 }
 
@@ -67,15 +71,19 @@ sealed class AppError {
     /** 错误分类，用于默认文案与图标映射。 */
     abstract val type: ErrorType
 
-    /** 覆盖默认文案的自定义消息，null 时使用 [ErrorType.defaultMessage]。 */
+    /** 覆盖默认文案的自定义消息，null 时使用 [ErrorType.defaultMessageRes]。 */
     abstract val message: String?
 
     /** 原始异常，供日志记录，不展示给用户。 */
     abstract val cause: Throwable?
 
-    /** 展示用文案：优先 [message]，否则 [type] 默认文案。 */
-    val displayMessage: String
-        get() = message ?: type.defaultMessage
+    /**
+     * 展示用文案资源 ID：默认取 [ErrorType.defaultMessageRes]。
+     * 若 [message] 非空（动态内容，如异常原文），UI 层应优先展示 [message]。
+     */
+    @get:StringRes
+    val displayMessageRes: Int
+        get() = type.defaultMessageRes
 
     /** 网络异常：超时、连接失败、DNS 错误。 */
     data class Network(

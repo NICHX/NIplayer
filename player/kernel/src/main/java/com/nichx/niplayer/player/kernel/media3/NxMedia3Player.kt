@@ -39,6 +39,7 @@ import com.nichx.niplayer.player.kernel.NxPlayer
 import com.nichx.niplayer.player.kernel.NxVideoScaleMode
 import com.nichx.niplayer.player.kernel.PlaybackEvent
 import com.nichx.niplayer.player.kernel.PlaybackState
+import com.nichx.niplayer.player.kernel.R
 import com.nichx.niplayer.player.kernel.SubtitleTrackInfo
 import com.nichx.niplayer.player.kernel.VideoSize
 import com.nichx.niplayer.player.kernel.audio.NiEqualizer
@@ -842,7 +843,7 @@ class NxMedia3Player @Inject constructor(
                 if (!lang.isNullOrBlank()) {
                     append(languageDisplayName(lang))
                 } else {
-                    append("字幕 ${index + 1}")
+                    append(context.getString(R.string.subtitle_track_fallback, index + 1))
                 }
                 val codec = format.codecs ?: format.sampleMimeType
                 if (!codec.isNullOrBlank()) {

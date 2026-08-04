@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.bean.FolderBean
@@ -9,6 +11,7 @@ import com.nichx.niplayer.database.dao.VideoDao
 import com.nichx.niplayer.database.entity.ExtendFolderEntity
 import com.nichx.niplayer.storage.scanner.VideoScanner
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +42,7 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class ScanManagerViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val extendFolderDao: ExtendFolderDao,
     private val videoDao: VideoDao,
     private val playHistoryDao: PlayHistoryDao,
@@ -78,16 +82,16 @@ class ScanManagerViewModel @Inject constructor(
     fun addExtendFolder(folderPath: String) {
         val path = folderPath.trim()
         if (path.isEmpty()) {
-            _toastMessage.update { "路径不能为空" }
+            _toastMessage.update { context.getString(R.string.scan_manager_path_empty) }
             return
         }
         val folder = File(path)
         if (!folder.exists() || !folder.isDirectory) {
-            _toastMessage.update { "路径不存在或不是目录" }
+            _toastMessage.update { context.getString(R.string.scan_manager_path_invalid) }
             return
         }
         if (!folder.canRead()) {
-            _toastMessage.update { "目录不可读，请检查权限" }
+            _toastMessage.update { context.getString(R.string.scan_manager_path_unreadable) }
             return
         }
 
@@ -95,12 +99,12 @@ class ScanManagerViewModel @Inject constructor(
             // 先扫描目录，获取视频数量
             val count = scanner.scanExtendFolder(path)
             if (count == 0) {
-                _toastMessage.update { "目录内未识别到任何视频" }
+                _toastMessage.update { context.getString(R.string.scan_manager_no_video) }
                 return@launch
             }
             // 插入 extend_folder 记录
             extendFolderDao.insert(ExtendFolderEntity(folderPath = path, childCount = count))
-            _toastMessage.update { "已添加，扫描到 $count 个视频" }
+            _toastMessage.update { context.getString(R.string.scan_manager_added, count) }
         }
     }
 
@@ -108,7 +112,7 @@ class ScanManagerViewModel @Inject constructor(
     fun removeExtendFolder(entity: ExtendFolderEntity) {
         viewModelScope.launch {
             scanner.removeExtendFolder(entity.folderPath)
-            _toastMessage.update { "已移除：${entity.folderPath}" }
+            _toastMessage.update { context.getString(R.string.scan_manager_removed, entity.folderPath) }
         }
     }
 

@@ -127,7 +127,7 @@ class AudioPlaybackService : MediaSessionService() {
     private fun buildNotification(session: MediaSession): Notification {
         val player = session.player
         val metadata = player.currentMediaItem?.mediaMetadata
-        val title = metadata?.title?.toString() ?: playbackManager.currentTitle.value.ifEmpty { "正在播放" }
+        val title = metadata?.title?.toString() ?: playbackManager.currentTitle.value.ifEmpty { getString(R.string.player_notification_playing) }
         val artist = metadata?.artist?.toString() ?: playbackManager.currentArtist.value
         val isPlaying = player.isPlaying
 
@@ -171,9 +171,9 @@ class AudioPlaybackService : MediaSessionService() {
         val playIcon = if (isPlaying) android.R.drawable.ic_media_pause
         else android.R.drawable.ic_media_play
 
-        builder.addAction(android.R.drawable.ic_media_previous, "上一首", buildActionIntent(ACTION_SKIP_PREV))
-        builder.addAction(playIcon, if (isPlaying) "暂停" else "播放", buildActionIntent(ACTION_PLAY_PAUSE))
-        builder.addAction(android.R.drawable.ic_media_next, "下一首", buildActionIntent(ACTION_SKIP_NEXT))
+        builder.addAction(android.R.drawable.ic_media_previous, getString(R.string.player_previous), buildActionIntent(ACTION_SKIP_PREV))
+        builder.addAction(playIcon, if (isPlaying) getString(R.string.player_pause) else getString(R.string.player_play), buildActionIntent(ACTION_PLAY_PAUSE))
+        builder.addAction(android.R.drawable.ic_media_next, getString(R.string.player_next), buildActionIntent(ACTION_SKIP_NEXT))
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
@@ -189,7 +189,7 @@ class AudioPlaybackService : MediaSessionService() {
     private fun buildPlaceholderNotification(): Notification {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_music)
-            .setContentTitle("正在播放")
+            .setContentTitle(getString(R.string.player_notification_playing))
             .setShowWhen(false)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
@@ -240,10 +240,10 @@ class AudioPlaybackService : MediaSessionService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "音乐播放",
+                getString(R.string.player_notification_channel),
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "音乐播放控制"
+                description = getString(R.string.player_notification_channel_desc)
                 setShowBadge(false)
             }
             val notificationManager = getSystemService(NotificationManager::class.java)

@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.history
 
+import com.nichx.niplayer.feature.home.R
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
@@ -21,6 +23,7 @@ import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.RemoteThumbnailRequest
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -57,6 +60,7 @@ import java.util.Date
  */
 @HiltViewModel
 class PlayHistoryViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val playHistoryDao: PlayHistoryDao,
     private val videoDao: VideoDao,
     private val playStarter: PlayStarter,
@@ -354,7 +358,7 @@ class PlayHistoryViewModel @Inject constructor(
                 }
             }
             syncConflictDao.delete(conflict)
-            _events.tryEmit(PlayHistoryEvent.Toast("已保留本机版本"))
+            _events.tryEmit(PlayHistoryEvent.Toast(context.getString(R.string.play_history_keep_local)))
         }
     }
 
@@ -366,7 +370,7 @@ class PlayHistoryViewModel @Inject constructor(
     fun resolveConflictKeepRemote(conflict: SyncConflictEntity) {
         viewModelScope.launch {
             syncConflictDao.delete(conflict)
-            _events.tryEmit(PlayHistoryEvent.Toast("已保留云端版本"))
+            _events.tryEmit(PlayHistoryEvent.Toast(context.getString(R.string.play_history_keep_remote)))
         }
     }
 

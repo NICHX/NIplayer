@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.quickaccess
 
+import com.nichx.niplayer.feature.home.R
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
@@ -12,6 +14,7 @@ import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.RemoteThumbnailRequest
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -47,6 +50,7 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class QuickAccessViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val quickAccessDao: QuickAccessDao,
     private val mediaLibraryDao: MediaLibraryDao,
     private val playStarter: PlayStarter,
@@ -202,7 +206,7 @@ class QuickAccessViewModel @Inject constructor(
         val entity = item.entity
         viewModelScope.launch {
             if (!item.libraryValid) {
-                _events.tryEmit(QuickAccessEvent.ShowError("存储源已删除"))
+                _events.tryEmit(QuickAccessEvent.ShowError(context.getString(R.string.storage_library_deleted)))
                 return@launch
             }
             if (entity.isDirectory) {

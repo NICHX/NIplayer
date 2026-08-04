@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -28,6 +30,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -54,14 +58,15 @@ fun PlaybackStatsScreen(
     viewModel: PlaybackStatsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "播放统计",
+                title = stringResource(R.string.playback_stats_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
             )
@@ -81,17 +86,18 @@ fun PlaybackStatsScreen(
                     totalWatchTimeMs = state.totalWatchTimeMs,
                     recent7DaysCount = state.recent7DaysCount,
                     recent30DaysWatchMs = state.recent30DaysWatchMs,
+                    context = context,
                 )
             }
 
             // 按存储类型分布
             if (state.mediaTypeStats.isNotEmpty()) {
                 item {
-                    StatsSection(title = "按存储类型", icon = Icons.Filled.Storage) {
+                    StatsSection(title = stringResource(R.string.playback_stats_by_type), icon = Icons.Filled.Storage) {
                         state.mediaTypeStats.forEach { stat ->
                             StatRow(
-                                label = MediaType.fromValue(stat.mediaType).storageName,
-                                value = "${stat.count} 次 · ${formatDuration(stat.totalPositionMs)}",
+                                label = stringResource(MediaType.fromValue(stat.mediaType).storageNameRes),
+                                value = stringResource(R.string.playback_stats_count_duration, stat.count, formatDuration(stat.totalPositionMs, context)),
                             )
                         }
                     }
@@ -101,11 +107,11 @@ fun PlaybackStatsScreen(
             // 按存储源分布
             if (state.storageStats.isNotEmpty()) {
                 item {
-                    StatsSection(title = "按存储源", icon = Icons.Filled.Storage) {
+                    StatsSection(title = stringResource(R.string.playback_stats_by_storage), icon = Icons.Filled.Storage) {
                         state.storageStats.forEach { stat ->
                             StatRow(
-                                label = stat.storageName ?: "未知存储",
-                                value = "${stat.count} 次 · ${formatDuration(stat.totalPositionMs)}",
+                                label = stat.storageName ?: stringResource(R.string.playback_stats_unknown_storage),
+                                value = stringResource(R.string.playback_stats_count_duration, stat.count, formatDuration(stat.totalPositionMs, context)),
                             )
                         }
                     }
@@ -115,11 +121,11 @@ fun PlaybackStatsScreen(
             // Top 10 观看时长
             if (state.topWatched.isNotEmpty()) {
                 item {
-                    StatsSection(title = "观看时长 Top 10", icon = Icons.Filled.TrendingUp) {
+                    StatsSection(title = stringResource(R.string.playback_stats_top10), icon = Icons.Filled.TrendingUp) {
                         state.topWatched.forEachIndexed { index, item ->
                             StatRow(
                                 label = "${index + 1}. ${item.videoName}",
-                                value = formatDuration(item.videoPosition),
+                                value = formatDuration(item.videoPosition, context),
                             )
                         }
                     }
@@ -135,6 +141,7 @@ private fun StatsOverviewSection(
     totalWatchTimeMs: Long,
     recent7DaysCount: Int,
     recent30DaysWatchMs: Long,
+    context: Context,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -142,14 +149,14 @@ private fun StatsOverviewSection(
     ) {
         StatCard(
             icon = Icons.Filled.PlayCircleOutline,
-            label = "总播放数",
+            label = stringResource(R.string.playback_stats_total_plays),
             value = totalPlayCount.toString(),
             modifier = Modifier.weight(1f),
         )
         StatCard(
             icon = Icons.Filled.Schedule,
-            label = "总观看时长",
-            value = formatDuration(totalWatchTimeMs),
+            label = stringResource(R.string.playback_stats_total_time),
+            value = formatDuration(totalWatchTimeMs, context),
             modifier = Modifier.weight(1f),
         )
     }
@@ -160,14 +167,14 @@ private fun StatsOverviewSection(
     ) {
         StatCard(
             icon = Icons.Filled.TrendingUp,
-            label = "近 7 天播放",
+            label = stringResource(R.string.playback_stats_7d_plays),
             value = recent7DaysCount.toString(),
             modifier = Modifier.weight(1f),
         )
         StatCard(
             icon = Icons.Filled.Schedule,
-            label = "近 30 天观看",
-            value = formatDuration(recent30DaysWatchMs),
+            label = stringResource(R.string.playback_stats_30d_time),
+            value = formatDuration(recent30DaysWatchMs, context),
             modifier = Modifier.weight(1f),
         )
     }
@@ -268,16 +275,16 @@ private fun StatRow(label: String, value: String) {
 }
 
 /** 格式化时长（ms → 可读字符串）。 */
-private fun formatDuration(ms: Long): String {
-    if (ms <= 0) return "0 分钟"
+private fun formatDuration(ms: Long, context: Context): String {
+    if (ms <= 0) return context.getString(R.string.playback_stats_zero_minutes)
     val totalMinutes = ms / 60_000
     return when {
         totalMinutes >= 60 -> {
             val hours = totalMinutes / 60
             val mins = totalMinutes % 60
-            String.format(Locale.ROOT, "%d小时%d分", hours, mins)
+            String.format(Locale.ROOT, context.getString(R.string.playback_stats_hours_mins), hours, mins)
         }
-        totalMinutes > 0 -> "${totalMinutes}分钟"
-        else -> "${ms / 1000}秒"
+        totalMinutes > 0 -> context.getString(R.string.playback_stats_minutes, totalMinutes)
+        else -> context.getString(R.string.playback_stats_seconds, ms / 1000)
     }
 }

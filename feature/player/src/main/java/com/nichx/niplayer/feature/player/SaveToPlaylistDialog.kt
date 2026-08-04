@@ -26,6 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,6 +55,7 @@ fun SaveToPlaylistDialog(
     onSaved: (String) -> Unit,
     viewModel: PlaylistSaveViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     var target by remember { mutableStateOf<SavePlaylistTarget>(SavePlaylistTarget.New) }
     var newName by remember { mutableStateOf("") }
@@ -63,9 +66,9 @@ fun SaveToPlaylistDialog(
             when (event) {
                 is PlaylistSaveEvent.Saved -> {
                     val message = if (event.addedCount == 0) {
-                        "当前歌曲已存在于歌单「${event.playlistName}」"
+                        context.getString(R.string.player_save_already_exists, event.playlistName)
                     } else {
-                        "已添加当前歌曲到歌单「${event.playlistName}」"
+                        context.getString(R.string.player_save_success, event.playlistName)
                     }
                     onSaved(message)
                     onDismiss()
@@ -80,11 +83,11 @@ fun SaveToPlaylistDialog(
     }
 
     NiInfoDialog(
-        title = "添加到歌单",
+        title = stringResource(R.string.player_save_to_playlist),
         onDismiss = onDismiss,
         actions = {
             TextButton(onClick = onDismiss) {
-                Text("取消", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.player_cancel), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.width(8.dp))
             TextButton(
@@ -94,7 +97,7 @@ fun SaveToPlaylistDialog(
                 enabled = canSave,
             ) {
                 Text(
-                    "添加",
+                    stringResource(R.string.player_save_add),
                     color = if (canSave) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -102,15 +105,16 @@ fun SaveToPlaylistDialog(
         },
     ) {
         Text(
-            text = currentItem?.let { "当前播放：${it.fileName}" } ?: "没有正在播放的歌曲",
+            text = currentItem?.let { stringResource(R.string.player_save_current_playing, it.fileName) }
+                ?: stringResource(R.string.player_save_no_playing),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(12.dp))
 
         SaveTargetRow(
-            label = "新建歌单",
-            hint = "为当前歌曲创建新歌单",
+            label = stringResource(R.string.player_save_new_playlist),
+            hint = stringResource(R.string.player_save_new_playlist_hint),
             selected = target is SavePlaylistTarget.New,
             onClick = { target = SavePlaylistTarget.New },
         )
@@ -120,15 +124,15 @@ fun SaveToPlaylistDialog(
                 value = newName,
                 onValueChange = { newName = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = "歌单名称",
-                placeholder = "例如：我的最爱",
+                label = stringResource(R.string.player_save_playlist_name),
+                placeholder = stringResource(R.string.player_save_playlist_name_placeholder),
             )
         }
 
         if (playlists.isNotEmpty()) {
             Spacer(Modifier.height(16.dp))
             Text(
-                text = "保存到已有歌单",
+                text = stringResource(R.string.player_save_to_existing),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
@@ -226,7 +230,7 @@ private fun SavePlaylistRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "${item.itemCount} 个条目",
+                text = stringResource(R.string.player_save_item_count, item.itemCount),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

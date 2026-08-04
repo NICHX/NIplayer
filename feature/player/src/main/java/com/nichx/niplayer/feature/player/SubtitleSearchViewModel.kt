@@ -84,7 +84,7 @@ class SubtitleSearchViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isSearching = false,
-                        error = e.message ?: "搜索失败",
+                        error = e.message ?: context.getString(R.string.subtitle_search_failed),
                     )
                 }
             }
@@ -122,7 +122,7 @@ class SubtitleSearchViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoadingDetail = false,
-                            error = "未找到下载链接",
+                            error = context.getString(R.string.subtitle_search_no_link),
                         )
                     }
                 }
@@ -130,7 +130,7 @@ class SubtitleSearchViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isLoadingDetail = false,
-                        error = e.message ?: "加载详情失败",
+                        error = e.message ?: context.getString(R.string.subtitle_search_load_detail_failed),
                     )
                 }
             }
@@ -159,7 +159,7 @@ class SubtitleSearchViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isDownloading = false,
-                        error = e.message ?: "下载失败",
+                        error = e.message ?: context.getString(R.string.subtitle_search_download_failed),
                     )
                 }
             }

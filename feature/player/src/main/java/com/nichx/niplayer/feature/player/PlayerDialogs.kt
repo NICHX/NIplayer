@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -214,9 +215,12 @@ fun PlayerConfirmDialog(
     text: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
-    confirmText: String = "确认",
-    dismissText: String = "取消",
+    confirmText: String = "",
+    dismissText: String = "",
 ) {
+    // 默认按钮文案从资源解析（Composable 默认参数无法调用 stringResource）
+    val resolvedConfirmText = confirmText.ifEmpty { stringResource(R.string.player_confirm) }
+    val resolvedDismissText = dismissText.ifEmpty { stringResource(R.string.player_cancel) }
     PlayerDialog(onDismiss = onDismiss, maxWidth = 340, scrollable = false) {
         PlayerDialogTitle(text = title)
         HorizontalDivider(
@@ -237,11 +241,11 @@ fun PlayerConfirmDialog(
             horizontalArrangement = Arrangement.End,
         ) {
             TextButton(onClick = onDismiss) {
-                Text(dismissText, color = PlayerTextSecondary)
+                Text(resolvedDismissText, color = PlayerTextSecondary)
             }
             Spacer(Modifier.width(8.dp))
             TextButton(onClick = onConfirm) {
-                Text(confirmText, color = MaterialTheme.colorScheme.primary)
+                Text(resolvedConfirmText, color = MaterialTheme.colorScheme.primary)
             }
         }
     }

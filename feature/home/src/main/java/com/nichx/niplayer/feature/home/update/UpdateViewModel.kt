@@ -1,12 +1,15 @@
 package com.nichx.niplayer.feature.home.update
 
 import android.app.DownloadManager
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.datastore.UpdateSettings
+import com.nichx.niplayer.feature.home.R
 import com.nichx.niplayer.network.update.GitHubAsset
 import com.nichx.niplayer.network.update.GitHubRelease
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +30,7 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class UpdateViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val updateManager: UpdateManager,
 ) : ViewModel() {
 
@@ -159,7 +163,7 @@ class UpdateViewModel @Inject constructor(
         }
         val id = updateManager.startDownload(release, asset, pendingVersion ?: latestVersion())
         if (id < 0) {
-            _uiState.value = UpdateUiState.DownloadFailed("无法创建下载任务，请重试或前往浏览器下载")
+            _uiState.value = UpdateUiState.DownloadFailed(context.getString(R.string.update_failed_create_task))
             return
         }
         _uiState.value = UpdateUiState.Downloading(0)
@@ -187,10 +191,10 @@ class UpdateViewModel @Inject constructor(
         when (updateManager.install()) {
             InstallOutcome.Started -> _uiState.value = UpdateUiState.Idle
             InstallOutcome.NeedPermission -> _uiState.value = UpdateUiState.InstallBlocked(
-                "请在系统设置中允许 NIplayer 安装未知应用，然后点击重新安装"
+                context.getString(R.string.update_install_blocked)
             )
             InstallOutcome.NoFile -> _uiState.value = UpdateUiState.DownloadFailed(
-                "安装包不存在，请重新下载"
+                context.getString(R.string.update_apk_missing)
             )
         }
     }
@@ -240,7 +244,7 @@ class UpdateViewModel @Inject constructor(
 
                     DownloadManager.STATUS_FAILED -> {
                         _uiState.value = UpdateUiState.DownloadFailed(
-                            "下载失败，请重试或前往浏览器下载"
+                            context.getString(R.string.update_failed_retry)
                         )
                         break
                     }

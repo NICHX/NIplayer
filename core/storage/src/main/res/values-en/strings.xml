@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Download errors -->
+    <string name="download_error_storage_deleted">Storage source has been deleted</string>
+    <string name="download_error_storage_connect">Unable to create storage connection</string>
+    <string name="download_error_open_stream">Failed to open input stream</string>
+    <string name="download_error_failed">Download failed</string>
+    <string name="download_error_target_empty">Target storage path is empty</string>
+    <string name="download_error_target_access">Cannot access target storage</string>
+    <string name="download_error_create_file">Cannot create file in target storage</string>
+    <string name="download_error_open_fd">Cannot open file descriptor</string>
+
+    <!-- WebDAV HTTP errors -->
+    <string name="webdav_error_401">Incorrect account or password. Please edit the storage source and re-enter credentials</string>
+    <string name="webdav_error_403">No access permission. Please check the account permissions or shared path</string>
+    <string name="webdav_error_404">Resource not found. The path may have been deleted or moved</string>
+    <string name="webdav_error_4xx">Request rejected by server (HTTP %1$d)</string>
+    <string name="webdav_error_5xx">Server error, please try again later (HTTP %1$d)</string>
+    <string name="webdav_error_generic">WebDAV request failed (HTTP %1$d)</string>
+</resources>

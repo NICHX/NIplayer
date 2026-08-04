@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -217,7 +218,7 @@ fun LyricsView(
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (lrcLines.isEmpty()) {
                 Text(
-                    text = "暂无歌词",
+                    text = stringResource(R.string.lyrics_empty),
                     style = MaterialTheme.typography.bodyLarge,
                 )
             } else {

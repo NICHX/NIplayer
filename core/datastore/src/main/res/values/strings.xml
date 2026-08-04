@@ -1,0 +1,48 @@
+<resources>
+    <!-- 字幕字体大小选项（SubtitleSettings.TEXT_SIZE_OPTIONS） -->
+    <string name="subtitle_size_small">小</string>
+    <string name="subtitle_size_medium">中</string>
+    <string name="subtitle_size_large">大</string>
+    <string name="subtitle_size_xlarge">特大</string>
+
+    <!-- 字幕字体族选项（SubtitleSettings.FONT_FAMILY_OPTIONS） -->
+    <string name="subtitle_font_default">默认（无衬线）</string>
+    <string name="subtitle_font_serif">衬线</string>
+    <string name="subtitle_font_monospace">等宽</string>
+    <string name="subtitle_font_compact_sans">紧凑无衬线</string>
+
+    <!-- 字幕文字颜色选项（SubtitleSettings.FONT_COLOR_OPTIONS） -->
+    <string name="subtitle_color_white">白色</string>
+    <string name="subtitle_color_yellow">黄色</string>
+    <string name="subtitle_color_cyan">青色</string>
+    <string name="subtitle_color_light_gray">浅灰</string>
+    <string name="subtitle_color_black">黑色</string>
+
+    <!-- 字幕描边宽度选项（SubtitleSettings.OUTLINE_WIDTH_OPTIONS） -->
+    <string name="subtitle_outline_none">无</string>
+    <string name="subtitle_outline_thin">细</string>
+    <string name="subtitle_outline_medium">中</string>
+    <string name="subtitle_outline_thick">粗</string>
+
+    <!-- 字幕描边颜色选项（SubtitleSettings.OUTLINE_COLOR_OPTIONS） -->
+    <string name="subtitle_outline_color_black">黑色</string>
+    <string name="subtitle_outline_color_white">白色</string>
+    <string name="subtitle_outline_color_dark_gray">深灰</string>
+    <string name="subtitle_outline_color_red">红色</string>
+
+    <!-- 字幕底部边距选项（SubtitleSettings.BOTTOM_PADDING_OPTIONS） -->
+    <string name="subtitle_bottom_padding_near">近</string>
+    <string name="subtitle_bottom_padding_medium">中</string>
+    <string name="subtitle_bottom_padding_far">远</string>
+
+    <!-- 缩略图生成策略（ThumbnailGenerationMode.labelRes） -->
+    <string name="thumbnail_mode_all">全部生成</string>
+    <string name="thumbnail_mode_after_play">仅播放后生成</string>
+    <string name="thumbnail_mode_off">关闭</string>
+
+    <!-- 取帧位置策略（ThumbnailFramePosition.labelRes） -->
+    <string name="thumbnail_frame_5s">第 5 秒</string>
+    <string name="thumbnail_frame_10pct">10% 位置</string>
+    <string name="thumbnail_frame_50pct">50% 位置</string>
+    <string name="thumbnail_frame_custom">自定义秒数</string>
+</resources>

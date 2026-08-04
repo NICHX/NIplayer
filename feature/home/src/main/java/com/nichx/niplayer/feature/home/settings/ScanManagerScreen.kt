@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -95,12 +97,12 @@ fun ScanManagerScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "扫描目录管理",
+                title = stringResource(R.string.scan_manager_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.back),
                         )
                     }
                 },
@@ -108,7 +110,7 @@ fun ScanManagerScreen(
                     IconButton(onClick = { showExtensionDialog = true }) {
                         Icon(
                             imageVector = Icons.Filled.Settings,
-                            contentDescription = "视频扩展名配置",
+                            contentDescription = stringResource(R.string.scan_manager_extensions),
                         )
                     }
                 },
@@ -118,7 +120,7 @@ fun ScanManagerScreen(
         floatingActionButton = {
             if (selectedTab == 0) {
                 FloatingActionButton(onClick = { showAddDialog = true }) {
-                    Icon(Icons.Filled.Add, contentDescription = "添加扫描目录")
+                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.scan_manager_add_dir))
                 }
             }
         },
@@ -132,12 +134,12 @@ fun ScanManagerScreen(
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text("扫描目录") },
+                    text = { Text(stringResource(R.string.scan_manager_tab_scan)) },
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("屏蔽目录") },
+                    text = { Text(stringResource(R.string.scan_manager_tab_filter)) },
                 )
             }
 
@@ -158,20 +160,20 @@ fun ScanManagerScreen(
     if (showAddDialog) {
         var path by rememberSaveable { mutableStateOf("") }
         NiInfoDialog(
-            title = "添加扫描目录",
+            title = stringResource(R.string.scan_manager_add_title),
             onDismiss = { showAddDialog = false },
             actions = {
-                TextButton(onClick = { showAddDialog = false }) { Text("取消") }
+                TextButton(onClick = { showAddDialog = false }) { Text(stringResource(R.string.cancel)) }
                 TextButton(
                     onClick = {
                         viewModel.addExtendFolder(path)
                         showAddDialog = false
                     },
-                ) { Text("添加") }
+                ) { Text(stringResource(R.string.scan_manager_add)) }
             },
         ) {
             Text(
-                text = "输入要扫描的目录绝对路径，如 /sdcard/Movies/anime",
+                text = stringResource(R.string.scan_manager_add_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -180,7 +182,7 @@ fun ScanManagerScreen(
                 value = path,
                 onValueChange = { path = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = "目录路径",
+                placeholder = stringResource(R.string.scan_manager_path_placeholder),
             )
         }
     }
@@ -188,14 +190,14 @@ fun ScanManagerScreen(
     // ---- 删除确认对话框 ----
     folderToDelete?.let { entity ->
         NiConfirmDialog(
-            title = "移除扫描目录",
-            text = "确定移除以下目录吗？该目录下的视频将从本地媒体库中删除。\n\n${entity.folderPath}",
+            title = stringResource(R.string.scan_manager_remove_title),
+            text = stringResource(R.string.scan_manager_remove_confirm, entity.folderPath),
             onConfirm = {
                 viewModel.removeExtendFolder(entity)
                 folderToDelete = null
             },
             onDismiss = { folderToDelete = null },
-            confirmText = "移除",
+            confirmText = stringResource(R.string.scan_manager_remove_confirm_text),
         )
     }
 
@@ -205,24 +207,24 @@ fun ScanManagerScreen(
             mutableStateOf(VideoExtensionSettings.supportText)
         }
         NiInfoDialog(
-            title = "支持的视频扩展名",
+            title = stringResource(R.string.scan_manager_extensions_title),
             onDismiss = { showExtensionDialog = false },
             actions = {
                 TextButton(onClick = {
                     VideoExtensionSettings.resetDefault()
                     extensionText = VideoExtensionSettings.supportText
-                }) { Text("重置") }
-                TextButton(onClick = { showExtensionDialog = false }) { Text("取消") }
+                }) { Text(stringResource(R.string.scan_manager_reset)) }
+                TextButton(onClick = { showExtensionDialog = false }) { Text(stringResource(R.string.cancel)) }
                 TextButton(
                     onClick = {
                         VideoExtensionSettings.supportText = extensionText
                         showExtensionDialog = false
                     },
-                ) { Text("保存") }
+                ) { Text(stringResource(R.string.save)) }
             },
         ) {
             Text(
-                text = "逗号分隔，不含点号。影响扩展目录扫描的文件识别。",
+                text = stringResource(R.string.scan_manager_extensions_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -231,7 +233,7 @@ fun ScanManagerScreen(
                 value = extensionText,
                 onValueChange = { extensionText = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = "如：mp4,mkv,avi",
+                placeholder = stringResource(R.string.scan_manager_extensions_placeholder),
             )
         }
     }
@@ -244,7 +246,7 @@ private fun ExtendFolderTab(
     onDelete: (com.nichx.niplayer.database.entity.ExtendFolderEntity) -> Unit,
 ) {
     if (folders.isEmpty()) {
-        EmptyStateHint(text = "暂无扫描目录\n点击右下角 + 添加要扫描的目录")
+        EmptyStateHint(text = stringResource(R.string.scan_manager_extend_empty))
         return
     }
     LazyColumn(
@@ -276,7 +278,7 @@ private fun ExtendFolderTab(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = "${folder.childCount} 个视频",
+                            text = stringResource(R.string.scan_manager_video_count, folder.childCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -284,7 +286,7 @@ private fun ExtendFolderTab(
                     IconButton(onClick = { onDelete(folder) }) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
-                            contentDescription = "移除",
+                            contentDescription = stringResource(R.string.scan_manager_remove_action),
                             tint = MaterialTheme.colorScheme.error,
                         )
                     }
@@ -307,7 +309,7 @@ private fun FilterFolderTab(
     onToggle: (com.nichx.niplayer.database.bean.FolderBean) -> Unit,
 ) {
     if (folders.isEmpty()) {
-        EmptyStateHint(text = "暂无扫描结果\n扫描本地视频后可在此屏蔽目录")
+        EmptyStateHint(text = stringResource(R.string.scan_manager_filter_empty))
         return
     }
     LazyColumn(
@@ -339,7 +341,7 @@ private fun FilterFolderTab(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = "${folder.fileCount} 个视频",
+                            text = stringResource(R.string.scan_manager_video_count, folder.fileCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

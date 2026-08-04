@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home
 
+import com.nichx.niplayer.feature.home.R
+import android.content.Context
 import com.nichx.niplayer.common.coroutine.AppCoroutineScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlaylistItemDao
@@ -16,6 +18,7 @@ import com.nichx.niplayer.player.kernel.PlaylistItem
 import com.nichx.niplayer.player.kernel.isAudioFile
 import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.StorageFactory
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,6 +48,7 @@ class PlayStarter @Inject constructor(
     private val playbackRequestHolder: PlaybackRequestHolder,
     private val playlistHolder: PlaylistHolder,
     private val appScope: AppCoroutineScope,
+    @ApplicationContext private val context: Context,
 ) {
 
     /**
@@ -55,13 +59,18 @@ class PlayStarter @Inject constructor(
      */
     suspend fun startFromHistory(history: PlayHistoryEntity): StartResult {
         val storageId = history.storageId
-            ?: return StartResult.Error("不支持的历史记录类型（无存储源）")
+            ?: return StartResult.Error(context.getString(R.string.play_error_history_no_storage))
 
         val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(storageId) }
-            ?: return StartResult.Error("存储源已删除")
+            ?: return StartResult.Error(context.getString(R.string.play_error_library_deleted))
 
         val storage = withContext(Dispatchers.IO) { storageFactory.create(library) }
-            ?: return StartResult.Error("不支持的存储类型：${library.mediaType.storageName}")
+            ?: return StartResult.Error(
+                context.getString(
+                    R.string.play_error_unsupported_storage,
+                    context.getString(library.mediaType.storageNameRes),
+                )
+            )
 
         return try {
             val file = MediaSourceBuilder.createVirtualFile(
@@ -113,7 +122,7 @@ class PlayStarter @Inject constructor(
 
             StartResult.Success
         } catch (e: Exception) {
-            StartResult.Error(e.message ?: "无法恢复播放")
+            StartResult.Error(e.message ?: context.getString(R.string.play_error_restore_failed))
         }
     }
 
@@ -219,13 +228,18 @@ class PlayStarter @Inject constructor(
      * 文件夹书签不应调用本方法（由 [QuickAccessViewModel] 直接 emit 导航到文件浏览页）。
      */
     suspend fun startFromQuickAccess(item: QuickAccessEntity): StartResult {
-        if (item.isDirectory) return StartResult.Error("不支持打开文件夹书签")
+        if (item.isDirectory) return StartResult.Error(context.getString(R.string.play_error_folder_bookmark))
 
         val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(item.libraryId) }
-            ?: return StartResult.Error("存储源已删除")
+            ?: return StartResult.Error(context.getString(R.string.play_error_library_deleted))
 
         val storage = withContext(Dispatchers.IO) { storageFactory.create(library) }
-            ?: return StartResult.Error("不支持的存储类型：${library.mediaType.storageName}")
+            ?: return StartResult.Error(
+                context.getString(
+                    R.string.play_error_unsupported_storage,
+                    context.getString(library.mediaType.storageNameRes),
+                )
+            )
 
         return try {
             val file = MediaSourceBuilder.createVirtualFile(
@@ -252,7 +266,7 @@ class PlayStarter @Inject constructor(
             )
             StartResult.Success
         } catch (e: Exception) {
-            StartResult.Error(e.message ?: "无法打开播放源")
+            StartResult.Error(e.message ?: context.getString(R.string.play_error_open_failed))
         }
     }
 
@@ -273,13 +287,18 @@ class PlayStarter @Inject constructor(
         items: List<PlaylistItem>,
         startIndex: Int = 0,
     ): StartResult {
-        if (items.isEmpty()) return StartResult.Error("歌单为空")
+        if (items.isEmpty()) return StartResult.Error(context.getString(R.string.play_error_playlist_empty))
         val target = items.getOrNull(startIndex)
-            ?: return StartResult.Error("播放位置无效")
+            ?: return StartResult.Error(context.getString(R.string.play_error_invalid_position))
         val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(target.libraryId) }
-            ?: return StartResult.Error("存储源已删除")
+            ?: return StartResult.Error(context.getString(R.string.play_error_library_deleted))
         val storage = withContext(Dispatchers.IO) { storageFactory.create(library) }
-            ?: return StartResult.Error("不支持的存储类型：${library.mediaType.storageName}")
+            ?: return StartResult.Error(
+                context.getString(
+                    R.string.play_error_unsupported_storage,
+                    context.getString(library.mediaType.storageNameRes),
+                )
+            )
 
         return try {
             val file = MediaSourceBuilder.createVirtualFile(
@@ -312,7 +331,7 @@ class PlayStarter @Inject constructor(
             )
             StartResult.Success
         } catch (e: Exception) {
-            StartResult.Error(e.message ?: "无法打开播放源")
+            StartResult.Error(e.message ?: context.getString(R.string.play_error_open_failed))
         }
     }
 }

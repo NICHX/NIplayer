@@ -1,0 +1,204 @@
+<resources>
+    <!-- 通用操作 -->
+    <string name="player_confirm">确认</string>
+    <string name="player_cancel">取消</string>
+    <string name="player_retry">重试</string>
+    <string name="player_back">返回</string>
+    <string name="player_more">更多</string>
+    <string name="player_close">关闭</string>
+    <string name="player_previous">上一首</string>
+    <string name="player_previous_track">上一曲</string>
+    <string name="player_play">播放</string>
+    <string name="player_pause">暂停</string>
+    <string name="player_next">下一首</string>
+    <string name="player_next_track">下一曲</string>
+    <string name="player_playlist">播放列表</string>
+    <string name="player_playlist_with_count">播放列表（%1$d）</string>
+    <string name="player_playlist_empty">播放列表为空</string>
+    <string name="player_play_mode_order">顺序播放</string>
+    <string name="player_play_mode_shuffle">随机播放</string>
+    <string name="player_play_mode_single">单曲循环</string>
+    <string name="player_unknown_song">未知歌曲</string>
+    <string name="player_unknown_error">未知错误</string>
+
+    <!-- 播放错误 -->
+    <string name="player_error_title">播放失败</string>
+    <string name="player_error_hint">播放出错</string>
+    <string name="player_play_from_start">从头播放</string>
+    <string name="player_exit">退出</string>
+    <string name="player_no_source">无播放源</string>
+    <string name="player_play_failed_401">播放失败：账号密码错误或凭据过期（401）</string>
+    <string name="player_play_failed_403">播放失败：无访问权限（403）</string>
+    <string name="player_play_failed_404">播放失败：文件不存在，可能已被移动或删除（404）</string>
+    <string name="player_play_failed_server">播放失败：服务器错误（%1$s）</string>
+    <string name="player_play_failed_http">播放失败：HTTP %1$s</string>
+    <string name="player_play_failed_file_not_found">播放失败：文件不存在，可能已被移动或删除</string>
+    <string name="player_play_failed_network">播放失败：网络错误（%1$s）</string>
+    <string name="player_play_failed_generic">播放失败：%1$s</string>
+    <string name="player_switch_failed">切换失败：%1$s</string>
+
+    <!-- 播放器 OSD 提示 -->
+    <string name="player_unlock_screen_first">请先解锁屏幕</string>
+    <string name="player_screenshot_failed_not_ready">截图失败：播放器未就绪</string>
+    <string name="player_screenshot_failed_size">截图失败：画面尺寸无效</string>
+    <string name="player_screenshot_failed_pixelcopy">截图失败：PixelCopy 错误 %1$s</string>
+    <string name="player_screenshot_failed_generic">截图失败：%1$s</string>
+    <string name="player_screenshot_saved">截图已保存：%1$s</string>
+    <string name="player_seek_forward_seconds">快进%1$d秒</string>
+    <string name="player_seek_backward_seconds">快退%1$d秒</string>
+    <string name="player_bookmark_added">已添加书签</string>
+    <string name="player_scale_hint">画面比例：%1$s</string>
+    <string name="player_speed_locked">%1$s  已锁定 · 点击解除</string>
+    <string name="player_speed_long_press">%1$s  长按快进</string>
+    <string name="player_speed_lock_on_release">松手锁定 %1$s</string>
+    <string name="player_speed_release_to_lock">↓ 松手锁定倍速</string>
+    <string name="player_crop_black_bar_on">去黑边：开</string>
+    <string name="player_crop_black_bar_off">去黑边：关</string>
+    <string name="player_black_bar_crop_on">智能去黑边：已开启</string>
+    <string name="player_black_bar_crop_off">智能去黑边：已关闭</string>
+    <string name="player_long_press_speed">长按倍速</string>
+    <string name="player_sleep_timer">睡眠定时</string>
+    <string name="player_sleep_timer_minutes">%1$d 分钟</string>
+    <string name="player_sleep_timer_off">关闭定时</string>
+    <string name="player_media_info">媒体信息</string>
+    <string name="player_no_media_info">暂无媒体信息</string>
+    <string name="player_media_info_video_codec">视频编码</string>
+    <string name="player_media_info_audio_codec">音频编码</string>
+    <string name="player_media_info_resolution">分辨率</string>
+    <string name="player_media_info_bitrate">码率</string>
+    <string name="player_media_info_frame_rate">帧率</string>
+    <string name="player_media_info_hdr">HDR</string>
+    <string name="player_media_info_unknown">未知</string>
+    <string name="player_media_info_unsupported">不支持</string>
+    <string name="player_picture_in_picture">画中画</string>
+    <string name="player_bookmark">书签</string>
+    <string name="player_resume_title">续播提示</string>
+    <string name="player_resume_text">检测到上次观看到 %1$s，是否继续播放？</string>
+    <string name="player_resume_continue">继续播放</string>
+    <string name="player_download_dir_not_set">请先在下载管理页面设置下载目录</string>
+    <string name="player_added_to_download_queue">已添加到下载队列</string>
+    <string name="player_lyrics_fetched">已通过 API 获取歌词：%1$s</string>
+    <string name="player_scale_fit">适应</string>
+    <string name="player_scale_crop">裁剪</string>
+    <string name="player_scale_stretch">拉伸</string>
+    <string name="player_speed_menu_title">播放倍速</string>
+
+    <!-- 剧集 / 书签 -->
+    <string name="player_episode_list">剧集列表 (%1$d/%2$d)</string>
+    <string name="player_episode_list_icon">剧集列表</string>
+    <string name="player_episode_previous">上一集</string>
+    <string name="player_episode_next">下一集</string>
+    <string name="player_bookmark_list">书签列表 (%1$d)</string>
+    <string name="player_bookmark_empty">暂无书签，点击顶栏书签图标可在当前进度添加标记</string>
+    <string name="player_delete_bookmark">删除书签</string>
+    <string name="player_add_bookmark">添加书签</string>
+    <string name="player_unlock">解锁</string>
+    <string name="player_lock">锁定</string>
+    <string name="player_rotate_screen">旋转屏幕</string>
+    <string name="player_screenshot">截图</string>
+    <string name="player_speed_icon">倍速</string>
+    <string name="player_scale_icon">画面比例</string>
+    <string name="player_unmute">取消静音</string>
+    <string name="player_mute">静音</string>
+    <string name="player_rewind_10s">后退10秒</string>
+    <string name="player_forward_10s">前进10秒</string>
+    <string name="player_download_icon">下载</string>
+    <string name="player_equalizer">均衡器</string>
+    <string name="player_current_speed">当前倍速</string>
+    <string name="player_playback_error">播放错误</string>
+
+    <!-- 字幕 -->
+    <string name="player_subtitle">字幕</string>
+    <string name="player_subtitle_off">关闭</string>
+    <string name="player_subtitle_none">无字幕显示</string>
+    <string name="player_subtitle_auto">自动</string>
+    <string name="player_subtitle_auto_used">已使用：%1$s</string>
+    <string name="player_subtitle_auto_by_language">根据语言偏好自动选择</string>
+    <string name="player_subtitle_embedded">内嵌字幕</string>
+    <string name="player_subtitle_delay">字幕延迟</string>
+    <string name="player_subtitle_reset">重置</string>
+    <string name="player_subtitle_external_only">仅外挂字幕生效</string>
+    <string name="player_subtitle_external">外挂字幕</string>
+    <string name="player_subtitle_search">搜索字幕</string>
+    <string name="player_subtitle_style">字幕样式</string>
+    <string name="player_audio_track">音轨</string>
+    <string name="player_audio_track_auto">自动</string>
+
+    <!-- A-B 段循环 -->
+    <string name="player_ab_loop_title">A-B 段循环</string>
+    <string name="player_ab_loop_point_a">起点 A</string>
+    <string name="player_ab_loop_point_b">终点 B</string>
+    <string name="player_ab_loop_not_set">未设置</string>
+    <string name="player_ab_loop_set_a">设起点 %1$s</string>
+    <string name="player_ab_loop_set_b">设终点 %1$s</string>
+    <string name="player_ab_loop_a_value">起点 %1$s</string>
+    <string name="player_ab_loop_b_value">终点 %1$s</string>
+    <string name="player_ab_loop_active">正在 %1$s ~ %2$s 之间循环</string>
+    <string name="player_ab_loop_a_set_prompt">起点已设，请设置终点 B</string>
+    <string name="player_ab_loop_b_set_prompt">播放到目标位置后点击「设起点」</string>
+    <string name="player_ab_loop_clear">清除</string>
+    <string name="player_ab_loop_quick_hint">快速操作：长按控制器上的 A-B 按钮可快速设置起点/终点</string>
+    <string name="player_ab_loop_a_set_osd">起点 A：%1$s</string>
+    <string name="player_ab_loop_b_set_osd">终点 B：%1$s</string>
+    <string name="player_ab_loop_cleared_osd">A-B 循环已清除</string>
+
+    <!-- 保存到歌单 -->
+    <string name="player_save_to_playlist">添加到歌单</string>
+    <string name="player_save_add">添加</string>
+    <string name="player_save_current_playing">当前播放：%1$s</string>
+    <string name="player_save_no_playing">没有正在播放的歌曲</string>
+    <string name="player_save_new_playlist">新建歌单</string>
+    <string name="player_save_new_playlist_hint">为当前歌曲创建新歌单</string>
+    <string name="player_save_playlist_name">歌单名称</string>
+    <string name="player_save_playlist_name_placeholder">例如：我的最爱</string>
+    <string name="player_save_to_existing">保存到已有歌单</string>
+    <string name="player_save_item_count">%1$d 个条目</string>
+    <string name="player_save_already_exists">当前歌曲已存在于歌单「%1$s」</string>
+    <string name="player_save_success">已添加当前歌曲到歌单「%1$s」</string>
+    <string name="player_default_playlist_name">歌单</string>
+
+    <!-- 媒体通知 -->
+    <string name="player_notification_playing">正在播放</string>
+    <string name="player_notification_channel">音乐播放</string>
+    <string name="player_notification_channel_desc">音乐播放控制</string>
+
+    <!-- 字幕搜索 -->
+    <string name="subtitle_search_title">搜索字幕</string>
+    <string name="subtitle_search_placeholder">输入搜索关键词</string>
+    <string name="subtitle_search_action">搜索</string>
+    <string name="subtitle_search_downloading">正在下载字幕...</string>
+    <string name="subtitle_search_loading_detail">正在加载详情...</string>
+    <string name="subtitle_search_token_required">请先设置 ASSRT Token</string>
+    <string name="subtitle_search_input_hint">输入关键词搜索字幕</string>
+    <string name="subtitle_search_unknown">未知字幕</string>
+    <string name="subtitle_search_download">下载</string>
+    <string name="subtitle_search_token_title">设置 ASSRT Token</string>
+    <string name="subtitle_search_token_desc">在 assrt.net 注册获取 API Token，用于字幕搜索。</string>
+    <string name="subtitle_search_token_placeholder">输入 ASSRT Token</string>
+    <string name="subtitle_search_save">保存</string>
+    <string name="subtitle_search_failed">搜索失败</string>
+    <string name="subtitle_search_no_link">未找到下载链接</string>
+    <string name="subtitle_search_load_detail_failed">加载详情失败</string>
+    <string name="subtitle_search_download_failed">下载失败</string>
+
+    <!-- 字幕样式 -->
+    <string name="subtitle_style_title">字幕样式</string>
+    <string name="subtitle_font_label">字体</string>
+    <string name="subtitle_size_label">字号</string>
+    <string name="subtitle_color_label">文字颜色</string>
+    <string name="subtitle_outline_width_label">描边宽度</string>
+    <string name="subtitle_outline_color_label">描边颜色</string>
+    <string name="subtitle_bottom_padding_label">底部边距</string>
+    <string name="subtitle_font_default">默认字体</string>
+    <string name="subtitle_size_medium">中等</string>
+    <string name="subtitle_color_white">白色</string>
+    <string name="subtitle_outline_medium">中等</string>
+    <string name="subtitle_outline_color_black">黑色</string>
+    <string name="subtitle_bottom_padding_medium">中等</string>
+    <string name="subtitle_apply_embedded">应用内嵌样式</string>
+    <string name="subtitle_apply_embedded_desc">使用字幕文件自带的颜色和样式</string>
+    <string name="subtitle_done">完成</string>
+
+    <!-- 歌词 -->
+    <string name="lyrics_empty">暂无歌词</string>
+</resources>

@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">NIplayer</string>
+    <!-- 崩溃日志提示对话框 -->
+    <string name="crash_dialog_title">NIplayer 上次异常退出</string>
+    <string name="crash_dialog_ignore">忽略</string>
+    <string name="crash_log_copied">已复制崩溃日志</string>
+    <string name="crash_dialog_copy_and_close">复制并关闭</string>
 </resources>

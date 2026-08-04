@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -112,14 +113,14 @@ fun SubtitleSearchDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "搜索字幕",
+                    text = stringResource(R.string.subtitle_search_title),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = { viewModel.showTokenDialog() }) {
                     Icon(
                         imageVector = Icons.Filled.Settings,
-                        contentDescription = "设置 ASSRT Token",
+                        contentDescription = stringResource(R.string.subtitle_search_token_title),
                         tint = PlayerDialogColors.textSecondary,
                     )
                 }
@@ -131,7 +132,7 @@ fun SubtitleSearchDialog(
                 value = searchText,
                 onValueChange = { searchText = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = "输入搜索关键词",
+                placeholder = stringResource(R.string.subtitle_search_placeholder),
                 trailingIcon = {
                     IconButton(
                         onClick = { viewModel.search(searchText) },
@@ -143,7 +144,10 @@ fun SubtitleSearchDialog(
                                 strokeWidth = 2.dp,
                             )
                         } else {
-                            Icon(Icons.Filled.Search, contentDescription = "搜索")
+                            Icon(
+                                Icons.Filled.Search,
+                                contentDescription = stringResource(R.string.subtitle_search_action),
+                            )
                         }
                     }
                 },
@@ -177,7 +181,11 @@ fun SubtitleSearchDialog(
                     )
                     Spacer(modifier = Modifier.size(8.dp))
                     Text(
-                        text = if (uiState.isDownloading) "正在下载字幕..." else "正在加载详情...",
+                        text = if (uiState.isDownloading) {
+                            stringResource(R.string.subtitle_search_downloading)
+                        } else {
+                            stringResource(R.string.subtitle_search_loading_detail)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = PlayerDialogColors.textSecondary,
                     )
@@ -209,9 +217,9 @@ fun SubtitleSearchDialog(
                     item {
                         Text(
                             text = if (SubtitleSettings.assrtToken.isBlank()) {
-                                "请先设置 ASSRT Token"
+                                stringResource(R.string.subtitle_search_token_required)
                             } else {
-                                "输入关键词搜索字幕"
+                                stringResource(R.string.subtitle_search_input_hint)
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = PlayerDialogColors.textSecondary,
@@ -272,7 +280,7 @@ private fun SubtitleResultItem(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = sub.native_name ?: sub.videoname ?: "未知字幕",
+                text = sub.native_name ?: sub.videoname ?: stringResource(R.string.subtitle_search_unknown),
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -307,7 +315,7 @@ private fun SubtitleResultItem(
         }
         Icon(
             imageVector = Icons.Filled.Download,
-            contentDescription = "下载",
+            contentDescription = stringResource(R.string.subtitle_search_download),
             tint = PlayerDialogColors.textSecondary,
             modifier = Modifier.size(20.dp),
         )
@@ -324,11 +332,11 @@ private fun TokenDialog(
     val primary = MaterialTheme.colorScheme.primary
 
     PlayerDialog(onDismiss = onDismiss, maxWidth = 340, scrollable = false) {
-        PlayerDialogTitle(text = "设置 ASSRT Token")
+        PlayerDialogTitle(text = stringResource(R.string.subtitle_search_token_title))
         PlayerDialogDivider()
         Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
             Text(
-                text = "在 assrt.net 注册获取 API Token，用于字幕搜索。",
+                text = stringResource(R.string.subtitle_search_token_desc),
                 color = PlayerDialogColors.textSecondary,
                 fontSize = 12.sp,
             )
@@ -337,7 +345,7 @@ private fun TokenDialog(
                 value = token,
                 onValueChange = { token = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = "输入 ASSRT Token",
+                placeholder = stringResource(R.string.subtitle_search_token_placeholder),
                 colors = subtitleTextFieldColors(),
             )
         }
@@ -348,11 +356,11 @@ private fun TokenDialog(
             horizontalArrangement = Arrangement.End,
         ) {
             TextButton(onClick = onDismiss) {
-                Text("取消", color = PlayerDialogColors.textSecondary)
+                Text(stringResource(R.string.player_cancel), color = PlayerDialogColors.textSecondary)
             }
             Spacer(Modifier.size(8.dp))
             TextButton(onClick = { onSave(token) }) {
-                Text("保存", color = primary)
+                Text(stringResource(R.string.subtitle_search_save), color = primary)
             }
         }
     }

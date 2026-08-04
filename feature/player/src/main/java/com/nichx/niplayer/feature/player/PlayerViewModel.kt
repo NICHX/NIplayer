@@ -581,9 +581,12 @@ class PlayerViewModel @Inject constructor(
                 } else {
                     saveToLegacyFile(bitmap, displayName)
                 }
-                "截图已保存：$displayName"
+                appContext.getString(R.string.player_screenshot_saved, displayName)
             } catch (e: Exception) {
-                "截图失败：${e.message ?: "未知错误"}"
+                appContext.getString(
+                    R.string.player_screenshot_failed_generic,
+                    e.message ?: appContext.getString(R.string.player_unknown_error),
+                )
             }
             _screenshotEvent.tryEmit(result)
         }
@@ -683,7 +686,7 @@ class PlayerViewModel @Inject constructor(
     fun setAbLoopPointA() {
         val pos = player.positionMs.value
         _abLoopA.value = pos
-        _abLoopEvent.tryEmit("起点 A：${formatTime(pos)}")
+        _abLoopEvent.tryEmit(appContext.getString(R.string.player_ab_loop_a_set_osd, formatTime(pos)))
         if (_abLoopB.value != null && _abLoopA.value != null) {
             startAbLoop()
         }
@@ -693,7 +696,7 @@ class PlayerViewModel @Inject constructor(
     fun setAbLoopPointB() {
         val pos = player.positionMs.value
         _abLoopB.value = pos
-        _abLoopEvent.tryEmit("终点 B：${formatTime(pos)}")
+        _abLoopEvent.tryEmit(appContext.getString(R.string.player_ab_loop_b_set_osd, formatTime(pos)))
         if (_abLoopA.value != null && _abLoopB.value != null) {
             startAbLoop()
         }
@@ -705,7 +708,7 @@ class PlayerViewModel @Inject constructor(
         _abLoopB.value = null
         abLoopJob?.cancel()
         abLoopJob = null
-        _abLoopEvent.tryEmit("A-B 循环已清除")
+        _abLoopEvent.tryEmit(appContext.getString(R.string.player_ab_loop_cleared_osd))
     }
 
     private fun startAbLoop() {
@@ -973,19 +976,19 @@ class PlayerViewModel @Inject constructor(
         val httpCode = extractHttpStatusCode(cause)
         if (httpCode != null) {
             return when (httpCode) {
-                401 -> "播放失败：账号密码错误或凭据过期（401）"
-                403 -> "播放失败：无访问权限（403）"
-                404 -> "播放失败：文件不存在，可能已被移动或删除（404）"
-                in 500..599 -> "播放失败：服务器错误（$httpCode）"
-                else -> "播放失败：HTTP $httpCode"
+                401 -> appContext.getString(R.string.player_play_failed_401)
+                403 -> appContext.getString(R.string.player_play_failed_403)
+                404 -> appContext.getString(R.string.player_play_failed_404)
+                in 500..599 -> appContext.getString(R.string.player_play_failed_server, httpCode)
+                else -> appContext.getString(R.string.player_play_failed_http, httpCode)
             }
         }
         // 非 HTTP 错误：文件不存在 / 网络异常 / 解析错误 / 解码错误等
-        val msg = cause.message ?: cause::class.simpleName ?: "未知错误"
+        val msg = cause.message ?: cause::class.simpleName ?: appContext.getString(R.string.player_unknown_error)
         return when (cause) {
-            is java.io.FileNotFoundException -> "播放失败：文件不存在，可能已被移动或删除"
-            is java.io.IOException -> "播放失败：网络错误（${msg}）"
-            else -> "播放失败：$msg"
+            is java.io.FileNotFoundException -> appContext.getString(R.string.player_play_failed_file_not_found)
+            is java.io.IOException -> appContext.getString(R.string.player_play_failed_network, msg)
+            else -> appContext.getString(R.string.player_play_failed_generic, msg)
         }
     }
 
@@ -1234,7 +1237,7 @@ class PlayerViewModel @Inject constructor(
                     // BUG-20 修复：切集失败不中断当前播放，但需通过 messageEvent 通知 UI
                     // 显示错误信息（OSD），避免用户点「下一集」后无反馈。
                     android.util.Log.w("PlayerViewModel", "playAtIndex($index) failed", e)
-                    _messageEvent.tryEmit("切换失败：${e.message ?: e::class.simpleName}")
+                    _messageEvent.tryEmit(appContext.getString(R.string.player_switch_failed, e.message ?: e::class.simpleName))
                 }
             }
         }
@@ -1336,7 +1339,7 @@ class PlayerViewModel @Inject constructor(
      */
     fun downloadCurrentFile() {
         if (!DownloadSettings.isDownloadDirSet) {
-            _downloadEvent.tryEmit("请先在下载管理页面设置下载目录")
+            _downloadEvent.tryEmit(appContext.getString(R.string.player_download_dir_not_set))
             return
         }
         val history = currentHistory ?: return
@@ -1353,7 +1356,7 @@ class PlayerViewModel @Inject constructor(
             targetStorageUrl = DownloadSettings.downloadDirUri,
             targetStorageName = DownloadSettings.downloadDirName,
         )
-        _downloadEvent.tryEmit("已添加到下载队列")
+        _downloadEvent.tryEmit(appContext.getString(R.string.player_added_to_download_queue))
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.playlist
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
@@ -56,6 +57,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -103,12 +105,12 @@ fun PlaylistsScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "我的歌单",
+                title = stringResource(R.string.playlists_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.back),
                         )
                     }
                 },
@@ -117,7 +119,7 @@ fun PlaylistsScreen(
                         IconButton(onClick = { showCreateDialog = true }) {
                             Icon(
                                 imageVector = Icons.Outlined.Add,
-                                contentDescription = "新建歌单",
+                                contentDescription = stringResource(R.string.playlists_create_title),
                                 tint = MaterialTheme.colorScheme.onSurface,
                             )
                         }
@@ -136,9 +138,9 @@ fun PlaylistsScreen(
                 ) {
                     NiEmptyState(
                         icon = Icons.Rounded.QueueMusic,
-                        text = "暂无歌单",
-                        hint = "在播放页可将连播内容保存为歌单",
-                        actionText = "新建歌单",
+                        text = stringResource(R.string.playlists_empty),
+                        hint = stringResource(R.string.playlists_empty_hint),
+                        actionText = stringResource(R.string.playlists_create_title),
                         onAction = { showCreateDialog = true },
                     )
                 }
@@ -146,7 +148,7 @@ fun PlaylistsScreen(
             else -> {
                 Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                     Text(
-                        text = "共 ${playlists.size} 个歌单",
+                        text = stringResource(R.string.playlists_count, playlists.size),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.outline,
                         modifier = Modifier.padding(start = 20.dp, top = 4.dp, bottom = 8.dp),
@@ -187,8 +189,8 @@ fun PlaylistsScreen(
 
     deleteTarget?.let { target ->
         NiConfirmDialog(
-            title = "删除歌单",
-            text = "确定删除歌单「${target.playlist.name}」？${target.itemCount} 个条目将一并移除。",
+            title = stringResource(R.string.playlists_delete),
+            text = stringResource(R.string.playlists_delete_confirm, target.playlist.name, target.itemCount),
             onConfirm = {
                 viewModel.deletePlaylist(target.playlist.id, target.playlist.name)
                 deleteTarget = null
@@ -241,7 +243,7 @@ fun PlaylistsScreen(
 
     mergeSource?.let { source ->
         PlaylistPickerSheet(
-            title = "将「${source.playlist.name}」合并到",
+            title = stringResource(R.string.playlists_merge_title, source.playlist.name),
             playlists = playlists.filter { it.playlist.id != source.playlist.id },
             onDismiss = { mergeSource = null },
             onPick = { target ->
@@ -295,27 +297,31 @@ internal fun PlaylistManageSheet(
             Spacer(Modifier.height(4.dp))
             ManageActionRow(
                 icon = Icons.Outlined.Edit,
-                label = "重命名",
+                label = stringResource(R.string.playlists_rename),
                 onClick = onRename,
             )
             ManageActionRow(
                 icon = Icons.Outlined.Add,
-                label = "复制歌单",
+                label = stringResource(R.string.playlists_duplicate),
                 onClick = onDuplicate,
             )
             ManageActionRow(
                 icon = Icons.Outlined.List,
-                label = "合并到其他歌单",
+                label = stringResource(R.string.playlists_merge_to),
                 onClick = onMerge,
             )
             ManageActionRow(
                 icon = Icons.Outlined.KeyboardArrowUp,
-                label = if (playlist.playlist.isPinned) "取消置顶" else "置顶",
+                label = if (playlist.playlist.isPinned) {
+                    stringResource(R.string.playlists_unpin)
+                } else {
+                    stringResource(R.string.playlists_pin)
+                },
                 onClick = onTogglePin,
             )
             ManageActionRow(
                 icon = Icons.Outlined.Delete,
-                label = "删除歌单",
+                label = stringResource(R.string.playlists_delete),
                 onClick = onDelete,
                 danger = true,
             )
@@ -363,21 +369,21 @@ internal fun RenamePlaylistDialog(
 ) {
     var name by remember { mutableStateOf(initialName) }
     NiInfoDialog(
-        title = "重命名歌单",
+        title = stringResource(R.string.playlists_rename_title),
         onDismiss = onDismiss,
         actions = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             TextButton(
                 onClick = { onConfirm(name) },
                 enabled = name.isNotBlank(),
-            ) { Text("保存") }
+            ) { Text(stringResource(R.string.save)) }
         },
     ) {
         NiTextField(
             value = name,
             onValueChange = { name = it },
             modifier = Modifier.fillMaxWidth(),
-            label = "歌单名称",
+            label = stringResource(R.string.playlists_name_label),
         )
     }
 }
@@ -412,7 +418,7 @@ internal fun PlaylistPickerSheet(
             )
             if (playlists.isEmpty()) {
                 Text(
-                    text = "没有其他歌单可选",
+                    text = stringResource(R.string.playlists_no_other_playlist),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
@@ -439,7 +445,7 @@ internal fun PlaylistPickerSheet(
                                 modifier = Modifier.weight(1f),
                             )
                             Text(
-                                text = "${item.itemCount} 个条目",
+                                text = stringResource(R.string.playlists_item_count, item.itemCount),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.outline,
                             )
@@ -496,7 +502,7 @@ private fun PlaylistGridCard(
             // 置顶角标
             if (playlist.playlist.isPinned) {
                 Text(
-                    text = "置顶",
+                    text = stringResource(R.string.playlists_pinned_badge),
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White,
                     modifier = Modifier
@@ -509,7 +515,7 @@ private fun PlaylistGridCard(
             }
             // 条目数角标（跟随封面底色，无黑底）
             Text(
-                text = "${playlist.itemCount} 个条目",
+                text = stringResource(R.string.playlists_item_count, playlist.itemCount),
                 style = MaterialTheme.typography.labelSmall,
                 color = if (coverUrl != null) {
                     Color.White
@@ -584,22 +590,22 @@ private fun CreatePlaylistDialog(
 ) {
     var name by remember { mutableStateOf("") }
     NiInfoDialog(
-        title = "新建歌单",
+        title = stringResource(R.string.playlists_create_title),
         onDismiss = onDismiss,
         actions = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             TextButton(
                 onClick = { onConfirm(name) },
                 enabled = name.isNotBlank(),
-            ) { Text("创建") }
+            ) { Text(stringResource(R.string.create)) }
         },
     ) {
         NiTextField(
             value = name,
             onValueChange = { name = it },
             modifier = Modifier.fillMaxWidth(),
-            label = "歌单名称",
-            placeholder = "例如：我的最爱",
+            label = stringResource(R.string.playlists_name_label),
+            placeholder = stringResource(R.string.playlists_name_placeholder),
         )
     }
 }
