@@ -38,7 +38,6 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DropdownMenu
@@ -120,12 +119,10 @@ private fun filterByType(filter: LibraryFilter, libraries: List<MediaLibraryEnti
 fun LibraryScreen(
     onNavigateToStorageFile: (Int, String) -> Unit,
     onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit,
-    onOpenPlaylists: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val libraries by viewModel.libraries.collectAsStateWithLifecycle()
     val filteredLibraries by viewModel.filteredLibraries.collectAsStateWithLifecycle()
-    val playlistCount by viewModel.playlistCount.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val dataReady by viewModel.dataReady.collectAsStateWithLifecycle()
     var showTypeSheet by remember { mutableStateOf(false) }
@@ -208,16 +205,6 @@ fun LibraryScreen(
                     modifier = Modifier.padding(horizontal = NiSpacings.screenOuter),
                 )
                 Spacer(Modifier.height(4.dp))
-            }
-
-            if (dataReady) {
-                PlaylistEntryCard(
-                    count = playlistCount,
-                    onClick = onOpenPlaylists,
-                    modifier = Modifier
-                        .padding(horizontal = NiSpacings.screenOuter)
-                        .padding(top = 4.dp),
-                )
             }
 
             if (!dataReady) {
@@ -410,71 +397,6 @@ private fun SectionHeader(
             text = "$count",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.outline,
-        )
-    }
-}
-
-/** 「我的歌单」入口卡片（媒体库 Tab 顶部）。 */
-@Composable
-private fun PlaylistEntryCard(
-    count: Int,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val accent = MaterialTheme.colorScheme.primary
-    val accentAlpha10 = accent.copy(alpha = 0.1f)
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(64.dp)
-            .clip(cardShape)
-            .background(NiExtraColors.current.surfaceLevel2)
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() },
-                onClick = onClick,
-            )
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(accentAlpha10),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.QueueMusic,
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(20.dp),
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = "我的歌单",
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = if (count > 0) "$count 个歌单 · 连播内容收藏" else "保存连播内容，随时播放全部",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Icon(
-            imageVector = Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-            modifier = Modifier.size(18.dp),
         )
     }
 }

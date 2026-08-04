@@ -16,6 +16,7 @@ import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.PlaylistDao
 import com.nichx.niplayer.database.dao.PlaylistItemDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
+import com.nichx.niplayer.database.dao.SyncConflictDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.dao.VideoBookmarkDao
 import com.nichx.niplayer.database.dao.VideoDao
@@ -27,6 +28,7 @@ import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.entity.PlaylistEntity
 import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.database.entity.QuickAccessEntity
+import com.nichx.niplayer.database.entity.SyncConflictEntity
 import com.nichx.niplayer.database.entity.SyncDeleteLogEntity
 import com.nichx.niplayer.database.entity.VideoBookmarkEntity
 import com.nichx.niplayer.database.entity.VideoEntity
@@ -51,6 +53,8 @@ import com.nichx.niplayer.database.entity.VideoEntity
  * - v10: 新增 encrypted_folder 表（文件夹访问加密）
  * - v11: 新增 playlist / playlist_item 表（扩展功能方案二：播放列表系统）
  * - v12: play_history 表新增 playlist_id 列（记录来源歌单，恢复播放时还原歌单播放列表）
+ * - v13: 移除 PasswordVault 加密，清空 media_library 中遗留的 enc:v1: 密文密码
+ * - v14: 新增 sync_conflict 表（播放历史云同步冲突记录）
  */
 @Database(
     entities = [
@@ -64,9 +68,10 @@ import com.nichx.niplayer.database.entity.VideoEntity
         VideoBookmarkEntity::class,
         EncryptedFolderEntity::class,
         PlaylistEntity::class,
-        PlaylistItemEntity::class
+        PlaylistItemEntity::class,
+        SyncConflictEntity::class
     ],
-    version = 12,
+    version = 14,
     exportSchema = true
 )
 @TypeConverters(
@@ -89,6 +94,8 @@ abstract class NiplayerDatabase : RoomDatabase() {
     abstract fun getQuickAccessDao(): QuickAccessDao
 
     abstract fun getSyncDeleteLogDao(): SyncDeleteLogDao
+
+    abstract fun getSyncConflictDao(): SyncConflictDao
 
     abstract fun getVideoBookmarkDao(): VideoBookmarkDao
 
@@ -241,6 +248,52 @@ abstract class NiplayerDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS `index_playlist_item_playlist_id_file_path` " +
                         "ON `playlist_item` (`playlist_id`, `file_path`)"
+                )
+            }
+        }
+
+        // 播放历史记录来源歌单：play_history 表新增 playlist_id 列
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `play_history` ADD COLUMN `playlist_id` INTEGER"
+                )
+            }
+        }
+
+        // 移除 PasswordVault 加密：清空遗留的 enc:v1: 密文密码，密码改为明文存储
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "UPDATE media_library SET password = NULL WHERE password LIKE 'enc:v1:%'"
+                )
+            }
+        }
+
+        // 播放历史云同步冲突记录：新增 sync_conflict 表
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `sync_conflict` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `record_key` TEXT NOT NULL,
+                        `storage_id` INTEGER,
+                        `unique_key` TEXT NOT NULL,
+                        `video_name` TEXT NOT NULL,
+                        `local_video_position` INTEGER NOT NULL,
+                        `local_video_duration` INTEGER NOT NULL,
+                        `local_updated_at` INTEGER NOT NULL,
+                        `local_play_time` INTEGER NOT NULL,
+                        `remote_video_position` INTEGER NOT NULL,
+                        `remote_video_duration` INTEGER NOT NULL,
+                        `remote_updated_at` INTEGER NOT NULL,
+                        `resolved` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL
+                    )"""
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_conflict_record_key` " +
+                        "ON `sync_conflict` (`record_key`)"
                 )
             }
         }

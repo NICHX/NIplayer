@@ -3,7 +3,9 @@ package com.nichx.niplayer.designsystem.components
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,6 +68,7 @@ data class NiBottomBarTab(
  * @param tabs 导航标签列表
  * @param currentRoute 当前路由，用于确定选中项
  * @param onTabSelected 标签点击回调
+ * @param onTabLongClicked 标签长按回调（如长按媒体库关闭文件浏览页回到存储源列表）
  * @param modifier 修饰符
  */
 @Composable
@@ -74,6 +77,7 @@ fun NiBottomBar(
     currentRoute: String?,
     onTabSelected: (NiBottomBarTab) -> Unit,
     modifier: Modifier = Modifier,
+    onTabLongClicked: ((NiBottomBarTab) -> Unit)? = null,
 ) {
     val extraColors = NiExtraColors.current
     val isDark = extraColors.isDark
@@ -169,6 +173,7 @@ fun NiBottomBar(
                             tab = tab,
                             isSelected = isSelected,
                             onClick = { onTabSelected(tab) },
+                            onLongClick = onTabLongClicked?.let { { it(tab) } },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -183,13 +188,19 @@ fun NiBottomBar(
  *
  * 图标在上、文字在下垂直排列，选中态/非选中态通过颜色动画过渡。
  * 取消 Material ripple 指示效果，由灰色 Pill 统一反馈。
+ *
+ * 支持长按：[onLongClick] 非空时用 [combinedClickable] 同时处理单击和长按，
+ * 单击立即响应不等待（长按在 DOWN 后计时，UP 前未超时则立即触发 onClick）。
+ * 无长按需求时退化为 [clickable]，保持原有行为。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NiBottomBarItem(
     tab: NiBottomBarTab,
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val outline = MaterialTheme.colorScheme.outline
@@ -200,12 +211,25 @@ private fun NiBottomBarItem(
         label = "contentColor",
     )
 
+    val interactionSource = remember { MutableInteractionSource() }
+
     Box(
         modifier = modifier
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    )
+                } else {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = onClick,
+                    )
+                },
             ),
         contentAlignment = Alignment.Center,
     ) {

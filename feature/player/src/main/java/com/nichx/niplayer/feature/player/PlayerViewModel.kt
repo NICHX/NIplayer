@@ -1008,6 +1008,7 @@ class PlayerViewModel @Inject constructor(
             storagePath = history.storagePath,
             storageId = storageId,
             httpHeader = history.httpHeader,
+            playlistId = history.playlistId,
         )
         playHistoryDao.upsertPlayStart(
             uniqueKey = history.uniqueKey,
@@ -1124,6 +1125,7 @@ class PlayerViewModel @Inject constructor(
                         storageId = library.id,
                         storagePath = item.filePath,
                         fileSize = item.fileSize,
+                        playlistId = currentHistory?.playlistId,
                     ).also {
                         _currentBookmarkKey.value = it.uniqueKey to it.storageId
                     }

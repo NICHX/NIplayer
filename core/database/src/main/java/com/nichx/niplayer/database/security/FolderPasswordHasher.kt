@@ -10,8 +10,8 @@ import javax.inject.Singleton
 /**
  * 文件夹密码哈希器（PBKDF2WithHmacSHA256）。
  *
- * 与存储源密码（[com.nichx.niplayer.storage.security.PasswordVault]，AES-GCM 可逆）
- * 不同：文件夹密码只有"验证"语义、无需还原明文，故采用不可逆哈希。即使数据库被
+ * 与存储源密码（明文存储，便于备份恢复跨设备迁移）不同：
+ * 文件夹密码只有"验证"语义、无需还原明文，故采用不可逆哈希。即使数据库被
  * 导出，也无法据此还原密码（不提供找回密码）。
  *
  * 安全参数：

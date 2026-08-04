@@ -4,6 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.squareup.moshi.JsonClass
 
 /**
  * 歌单条目。
@@ -12,6 +13,7 @@ import androidx.room.PrimaryKey
  * mediaTypeValue / fileSize），保证「播放全部」时能直接组装 PlaylistItem 重建播放源。
  * [sortOrder] 为用户拖拽排序结果，唯一索引（playlist_id, file_path）防止重复添加。
  */
+@JsonClass(generateAdapter = true)
 @Entity(
     tableName = "playlist_item",
     indices = [Index(value = ["playlist_id", "file_path"], unique = true)],

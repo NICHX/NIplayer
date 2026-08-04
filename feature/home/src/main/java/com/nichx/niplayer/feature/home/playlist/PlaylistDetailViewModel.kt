@@ -126,7 +126,7 @@ class PlaylistDetailViewModel @Inject constructor(
         }
         viewModelScope.launch {
             val items = audioItems.map { it.toPlaylistItem() }
-            when (val result = playStarter.startFromPlaylist(items, 0)) {
+            when (val result = playStarter.startFromPlaylist(playlistId, items, 0)) {
                 is PlayStarter.StartResult.Success -> {
                     _events.tryEmit(PlaylistDetailEvent.NavigateToPlayer)
                 }
@@ -149,7 +149,7 @@ class PlaylistDetailViewModel @Inject constructor(
         if (index !in audioItems.indices) return
         viewModelScope.launch {
             val items = audioItems.map { it.toPlaylistItem() }
-            when (val result = playStarter.startFromPlaylist(items, index)) {
+            when (val result = playStarter.startFromPlaylist(playlistId, items, index)) {
                 is PlayStarter.StartResult.Success -> {
                     _events.tryEmit(PlaylistDetailEvent.NavigateToPlayer)
                 }
