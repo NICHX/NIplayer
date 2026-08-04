@@ -63,6 +63,10 @@ data class PlayHistoryEntity(
     @ColumnInfo(name = "storage_id")
     var storageId: Int? = null,
 
+    /** 来源歌单 ID（可空）。从歌单播放时记录，恢复播放时据此还原歌单播放列表。 */
+    @ColumnInfo(name = "playlist_id")
+    var playlistId: Int? = null,
+
     @ColumnInfo(name = "audio_path")
     var audioPath: String? = null,
 

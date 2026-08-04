@@ -1305,6 +1305,51 @@ class StorageFileViewModel @Inject constructor(
      * 用于用户首次下载时选择目录后，自动保存为下载目录并添加到存储源。
      */
     fun setDownloadDirAndDownload(file: StorageFile, treeUri: String, dirName: String) {
+        setDownloadDir(treeUri, dirName)
+        downloadFile(file, treeUri, dirName)
+    }
+
+    /**
+     * 批量下载选中文件（多选模式）。
+     *
+     * 与 [downloadFile] 相同语义：仅非目录文件逐个加入下载队列，
+     * uniqueKey 与播放历史保持一致，任务去重由 [DownloadManager.addTask] 处理。
+     * 完成后退出多选模式。
+     *
+     * @param files 待下载文件列表（自动过滤目录）
+     * @param targetStorageUrl 目标存储 tree URI，null 表示下载到缓存
+     * @param targetStorageName 目标存储显示名，null 时显示"缓存"
+     */
+    fun downloadFiles(files: List<StorageFile>, targetStorageUrl: String?, targetStorageName: String?) {
+        val library = currentLibrary ?: return
+        val filesToDownload = files.filter { !it.isDirectory }
+        if (filesToDownload.isEmpty()) return
+        filesToDownload.forEach { file ->
+            downloadManager.addTask(
+                storageId = library.id,
+                filePath = file.path,
+                fileName = file.name,
+                uniqueKey = "${library.id}:${file.path}",
+                totalBytes = file.length,
+                targetStorageUrl = targetStorageUrl,
+                targetStorageName = targetStorageName,
+            )
+        }
+        exitMultiSelect()
+        _events.tryEmit(StorageFileEvent.ShowToast("已将 ${filesToDownload.size} 个文件添加到下载队列"))
+    }
+
+    /**
+     * 设置下载目录并批量下载文件（多选模式）。
+     * 用于用户首次批量下载时选择目录后，自动保存为下载目录并添加到存储源。
+     */
+    fun setDownloadDirAndDownloadFiles(files: List<StorageFile>, treeUri: String, dirName: String) {
+        setDownloadDir(treeUri, dirName)
+        downloadFiles(files, treeUri, dirName)
+    }
+
+    /** 保存下载目录并注册为外部存储源（首次下载目录选择时调用）。 */
+    private fun setDownloadDir(treeUri: String, dirName: String) {
         DownloadSettings.setDownloadDir(treeUri, dirName)
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
@@ -1321,7 +1366,6 @@ class StorageFileViewModel @Inject constructor(
                 }
             }
         }
-        downloadFile(file, treeUri, dirName)
     }
 
     // ---- 快速访问（长按文件） ----

@@ -97,6 +97,7 @@ fun NiConfirmDialog(
     onDismiss: () -> Unit,
     confirmText: String = "确认",
     dismissText: String = "取消",
+    confirmDanger: Boolean = false,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -141,7 +142,11 @@ fun NiConfirmDialog(
                     }
                     Spacer(Modifier.width(8.dp))
                     TextButton(onClick = onConfirm) {
-                        Text(confirmText, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = confirmText,
+                            color = if (confirmDanger) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.primary,
+                        )
                     }
                 }
             }

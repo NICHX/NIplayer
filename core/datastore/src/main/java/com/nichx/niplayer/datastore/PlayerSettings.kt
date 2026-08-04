@@ -24,6 +24,7 @@ object PlayerSettings {
     private const val KEY_LONG_PRESS_TIMEOUT_MS = "player_long_press_timeout_ms"
     private const val KEY_SEEK_SENSITIVITY = "player_seek_sensitivity"
     private const val KEY_DOUBLE_TAP_STEP_SECONDS = "player_double_tap_step_seconds"
+    private const val KEY_AUDIO_PLAY_MODE_INDEX = "player_audio_play_mode_index"
 
     /** 允许的长按倍速候选值（UI 选择用）。 */
     val LONG_PRESS_SPEED_OPTIONS: List<Float> = listOf(1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
@@ -80,6 +81,15 @@ object PlayerSettings {
     var doubleTapStepSeconds: Int
         get() = mmkv.decodeInt(KEY_DOUBLE_TAP_STEP_SECONDS, 10)
         set(value) { mmkv.encode(KEY_DOUBLE_TAP_STEP_SECONDS, value) }
+
+    /**
+     * 音频播放模式索引（0=顺序循环 / 1=随机 / 2=单曲循环）。
+     *
+     * 由 AudioPlaybackManager 维护并持久化，进入音频播放页时自动恢复上次选择。
+     */
+    var audioPlayModeIndex: Int
+        get() = mmkv.decodeInt(KEY_AUDIO_PLAY_MODE_INDEX, 0)
+        set(value) { mmkv.encode(KEY_AUDIO_PLAY_MODE_INDEX, value) }
 
     // region 黑边检测结果缓存
 

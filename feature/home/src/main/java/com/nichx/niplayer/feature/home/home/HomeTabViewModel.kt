@@ -4,10 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
+import com.nichx.niplayer.database.dao.PlaylistDao
+import com.nichx.niplayer.database.dao.PlaylistItemDao
+import com.nichx.niplayer.database.dao.PlaylistWithCount
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.dao.VideoDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
+import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.MediaFileTypes.isImageFile
 import com.nichx.niplayer.feature.home.PlayStarter
@@ -55,6 +60,8 @@ import javax.inject.Inject
 class HomeTabViewModel @Inject constructor(
     playHistoryDao: PlayHistoryDao,
     quickAccessDao: QuickAccessDao,
+    private val playlistDao: PlaylistDao,
+    private val playlistItemDao: PlaylistItemDao,
     private val mediaLibraryDao: MediaLibraryDao,
     private val playStarter: PlayStarter,
     private val storageFactory: StorageFactory,
@@ -103,6 +110,18 @@ class HomeTabViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList(),
         )
+
+    /** 首页歌单列表（含条目数），按最近更新倒序。 */
+    val playlists: StateFlow<List<PlaylistWithCount>> = playlistDao.getAllWithCountFlow()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList(),
+        )
+
+    /** 歌单封面：playlistId → 首个条目的音频封面本地路径。 */
+    private val _playlistCoverUrls = MutableStateFlow<Map<Int, String>>(emptyMap())
+    val playlistCoverUrls: StateFlow<Map<Int, String>> = _playlistCoverUrls.asStateFlow()
 
     /** 最近播放 - 视频（已过滤屏蔽目录）。 */
     val recentVideoPlays: StateFlow<List<PlayHistoryEntity>> = combine(
@@ -252,6 +271,41 @@ class HomeTabViewModel @Inject constructor(
                 }
             }
         }
+
+        // 歌单变化时刷新封面：缓存命中立即可用，未命中异步生成
+        viewModelScope.launch {
+            playlists.collect { lists ->
+                if (lists.isEmpty()) {
+                    _playlistCoverUrls.value = emptyMap()
+                    return@collect
+                }
+                val firstItems = withContext(Dispatchers.IO) {
+                    playlistItemDao.getFirstItemPerPlaylist()
+                }
+                val covers = withContext(Dispatchers.IO) {
+                    firstItems.mapNotNull { item ->
+                        resolvePlaylistCover(item)?.let { item.playlistId to it }
+                    }.toMap()
+                }
+                _playlistCoverUrls.value = covers
+            }
+        }
+    }
+
+    /** 解析歌单封面：先查缓存，未命中则生成。 */
+    private suspend fun resolvePlaylistCover(item: PlaylistItemEntity): String? {
+        thumbnailManager.getCachedAudioCoverPath(item.libraryId, item.filePath)?.let { return it }
+        val library = mediaLibraryDao.getById(item.libraryId) ?: return null
+        val storage = storageFactory.create(library) ?: return null
+        val file = object : AbstractStorageFile(
+            path = item.filePath,
+            name = item.fileName,
+            isDirectory = false,
+            length = item.fileSize,
+        ) {}
+        return runCatching {
+            thumbnailManager.generateAudioCover(storage, item.libraryId, file)
+        }.getOrNull()
     }
 
     /**

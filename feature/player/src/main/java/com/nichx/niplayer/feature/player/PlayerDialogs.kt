@@ -46,9 +46,16 @@ import com.nichx.niplayer.designsystem.components.NiDialogItem
  * 设计目标（解决用户反馈的三个问题）：
  * 1. **占全高不好看** → 所有 Dialog 统一 `heightIn(max = 580.dp)`，超出可滚动
  * 2. **整体样式不好看** → 统一 28dp 圆角、16dp 阴影、0.5dp 细边框、统一宽度策略与 padding
- * 3. **高亮度刺眼** → 强制暗色玻璃拟态配色，不跟随系统主题（播放器始终是暗色视频场景）
+ * 3. **高亮度刺眼** → 暗色玻璃拟态配色（视频播放器场景：播放始终是暗色画面，暗色弹窗不刺眼且协调）
  *
- * 配色（固定暗色，不依赖 MaterialTheme.colorScheme.surface）：
+ * **重要：本组强制暗色弹窗仅用于视频播放器场景**（[PlayerScreen] 全屏暗色画面）。
+ * 音频播放器等浅色场景请使用 core/designsystem 的主题自适应弹窗组件
+ * （[com.nichx.niplayer.designsystem.components.NiInfoDialog]、
+ * [com.nichx.niplayer.designsystem.components.NiConfirmDialog]、
+ * [com.nichx.niplayer.designsystem.components.NiListItemDialog]），
+ * 避免浅色模式下出现黑色弹窗。
+ *
+ * 暗色调色板（固定暗色，不依赖 MaterialTheme.colorScheme.surface）：
  * - 背景：`0xFF1C1C1E` alpha=0.92（iOS 风格深灰半透明，让视频隐约透出降低割裂感）
  * - 文字主色：`0xFFE8E8EA`（柔和白，非纯白降低刺眼度）
  * - 文字次色：`0xFF9E9EA2`
