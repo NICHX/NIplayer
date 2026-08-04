@@ -55,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -72,7 +73,6 @@ import com.nichx.niplayer.sync.SyncUiState
 import com.nichx.niplayer.storage.StorageFile
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -455,7 +455,7 @@ private fun PlayHistorySyncCard(
     val isSyncing = syncState is SyncUiState.Syncing
 
     val lastSyncText = if (config.lastSyncTime > 0) {
-        val time = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(config.lastSyncTime))
+        val time = SimpleDateFormat("MM-dd HH:mm", LocalLocale.current.platformLocale).format(Date(config.lastSyncTime))
         if (config.lastSyncSuccess) "上次同步：$time · 成功"
         else "上次同步：$time · ${config.lastSyncMessage}"
     } else {
