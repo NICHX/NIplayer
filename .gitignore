@@ -16,3 +16,4 @@ keystore.properties
 !app/debug.keystore
 !gradle/wrapper/gradle-wrapper.jar
 /docs
+gradle/gradle-daemon-jvm.properties
