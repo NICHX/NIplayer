@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.backup.BackupManager
 import com.nichx.niplayer.database.backup.BackupSummary
+import com.nichx.niplayer.database.backup.RestoreMode
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
@@ -145,7 +146,6 @@ class BackupViewModel @Inject constructor(
                 withContext(Dispatchers.IO) {
                     val storage = storageFactory.create(library)
                         ?: throw IllegalStateException("无法连接 WebDAV 服务器")
-                    // 上传前先验证连接与认证，401/403 等 HTTP 错误直接透传友好提示
                     try {
                         storage.testConnection()
                     } catch (e: WebDavHttpException) {
@@ -163,6 +163,8 @@ class BackupViewModel @Inject constructor(
                         json.toByteArray(Charsets.UTF_8),
                     )
                     if (!ok) throw IllegalStateException("上传失败，请检查服务器配置")
+                    // 清理当前设备的旧备份，最多保留 3 份
+                    pruneDeviceBackups(storage, MAX_BACKUPS_PER_DEVICE)
                 }
                 _state.value = BackupUiState.ExportSuccess("已备份到 ${library.displayName}")
             } catch (e: CancellationException) {
@@ -186,7 +188,6 @@ class BackupViewModel @Inject constructor(
                 val files = withContext(Dispatchers.IO) {
                     val storage = storageFactory.create(library)
                         ?: throw IllegalStateException("无法连接 WebDAV 服务器")
-                    // 先验证连接与认证，401/403 等给出友好提示
                     try {
                         storage.testConnection()
                     } catch (e: WebDavHttpException) {
@@ -222,8 +223,8 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    /** 从所选 WebDAV 服务器下载备份文件并恢复。 */
-    fun restoreFromWebDav(libraryId: Int, fileName: String) {
+    /** 从所选 WebDAV 服务器下载备份文件并恢复（默认 MERGE 模式，保留本机独有数据）。 */
+    fun restoreFromWebDav(libraryId: Int, fileName: String, mode: RestoreMode = RestoreMode.MERGE) {
         viewModelScope.launch {
             _state.value = BackupUiState.Working
             try {
@@ -250,9 +251,7 @@ class BackupViewModel @Inject constructor(
                         input.readBytes().toString(Charsets.UTF_8)
                     }
                 }
-                // 恢复前快照现有存储源，恢复时保留本地可用凭据（避免覆盖 WebDAV 恢复源自身等）
-                val currentLibraries = mediaLibraryDao.getAllSuspend()
-                val summary = backupManager.importFromJson(json, currentLibraries)
+                val summary = backupManager.importFromJson(json, mode)
                 _state.value = BackupUiState.ImportSuccess(summary)
             } catch (e: CancellationException) {
                 throw e
@@ -263,17 +262,14 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun import(resolver: ContentResolver, uri: Uri) {
+    fun import(resolver: ContentResolver, uri: Uri, mode: RestoreMode = RestoreMode.MERGE) {
         viewModelScope.launch {
             _state.value = BackupUiState.Working
             try {
                 val json = resolver.openInputStream(uri)?.use { input ->
                     input.readBytes().toString(Charsets.UTF_8)
                 } ?: throw IllegalStateException("无法读取文件")
-
-                // 恢复前快照现有存储源，恢复时保留本地可用凭据
-                val currentLibraries = mediaLibraryDao.getAllSuspend()
-                val summary = backupManager.importFromJson(json, currentLibraries)
+                val summary = backupManager.importFromJson(json, mode)
                 _state.value = BackupUiState.ImportSuccess(summary)
             } catch (e: CancellationException) {
                 throw e
@@ -287,14 +283,51 @@ class BackupViewModel @Inject constructor(
         _state.value = BackupUiState.Idle
     }
 
+    /**
+     * 清理当前设备在 WebDAV 备份目录中的旧备份，保留最新的 [keep] 份。
+     *
+     * 按文件名前缀 `niplayer_backup_{deviceTag}_` 筛选当前设备的备份，
+     * 按修改时间倒序排序，删除超出的部分。清理失败不影响备份结果（仅记录日志）。
+     */
+    private suspend fun pruneDeviceBackups(storage: com.nichx.niplayer.storage.Storage, keep: Int) {
+        try {
+            val prefix = "niplayer_backup_${deviceTag()}_"
+            val dir = object : AbstractStorageFile(WEBDAV_BACKUP_DIR, WEBDAV_BACKUP_DIR, true) {}
+            val files = storage.listFiles(dir)
+                .filter { !it.isDirectory && it.name.startsWith(prefix) && it.name.endsWith(".json") }
+                .sortedByDescending { it.lastModified }
+            if (files.size <= keep) return
+            files.drop(keep).forEach { stale ->
+                try {
+                    storage.deleteFile(stale)
+                } catch (e: Exception) {
+                    Log.w(TAG, "删除旧备份 ${stale.name} 失败: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "清理旧备份失败（不影响本次备份）: ${e.message}")
+        }
+    }
+
     companion object {
         private const val TAG = "BackupViewModel"
         private const val WEBDAV_BACKUP_DIR = "NIplayer_backup"
+        private const val MAX_BACKUPS_PER_DEVICE = 3
 
+        /**
+         * 备份文件名：包含设备短标识，便于多设备场景区分备份来源。
+         * 格式: niplayer_backup_{deviceId前4位}_{yyyyMMdd_HHmmss}.json
+         */
         fun defaultFileName(): String {
             val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ROOT).format(Date())
-            return "niplayer_backup_$ts.json"
+            return "niplayer_backup_${deviceTag()}_$ts.json"
         }
+
+        /** 当前设备短标识（deviceId 前 4 位），用于备份文件名与旧备份清理筛选。 */
+        fun deviceTag(): String = PlayHistorySyncSettings.deviceId
+            .takeIf { it.isNotBlank() }
+            ?.take(4)
+            ?: "local"
     }
 }
 

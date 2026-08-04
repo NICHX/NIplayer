@@ -29,10 +29,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiListSkeleton
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import com.nichx.niplayer.designsystem.components.showNiMessage
 import androidx.compose.material3.Text
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -72,7 +74,7 @@ fun CacheManagerScreen(
 
     LaunchedEffect(uiState.toastMessage) {
         uiState.toastMessage?.let {
-            snackbarHostState.showSnackbar(it)
+            snackbarHostState.showNiMessage(NiMessage.info(it))
             viewModel.consumeToast()
         }
     }

@@ -68,8 +68,8 @@ class AudioPlaybackService : MediaSessionService() {
                         .build()
                 }
 
-                override fun hasNextMediaItem(): Boolean = true
-                override fun hasPreviousMediaItem(): Boolean = true
+                override fun hasNextMediaItem(): Boolean = playbackManager.hasNextInPlaylist()
+                override fun hasPreviousMediaItem(): Boolean = playbackManager.hasPreviousInPlaylist()
 
                 override fun seekToNextMediaItem() { playbackManager.playNext() }
                 override fun seekToPreviousMediaItem() { playbackManager.playPrevious() }

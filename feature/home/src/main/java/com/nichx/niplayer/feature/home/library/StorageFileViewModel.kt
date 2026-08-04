@@ -5,9 +5,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
+import com.nichx.niplayer.database.dao.PlaylistDao
+import com.nichx.niplayer.database.dao.PlaylistItemDao
+import com.nichx.niplayer.database.dao.PlaylistWithCount
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
+import com.nichx.niplayer.database.entity.PlaylistEntity
+import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.database.entity.QuickAccessEntity
+import com.nichx.niplayer.database.entity.resumeStartPositionMs
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.database.security.EncryptedFolderManager
 import com.nichx.niplayer.datastore.DownloadSettings
@@ -44,9 +50,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -94,6 +102,8 @@ class StorageFileViewModel @Inject constructor(
     private val thumbnailManager: ThumbnailManager,
     private val downloadManager: DownloadManager,
     private val encryptedFolderManager: EncryptedFolderManager,
+    private val playlistDao: PlaylistDao,
+    private val playlistItemDao: PlaylistItemDao,
 ) : ViewModel() {
 
     private var storageId: Int = savedStateHandle.get<Int>("storageId") ?: 0
@@ -205,6 +215,159 @@ class StorageFileViewModel @Inject constructor(
     /** 清除解锁密码错误（对话框输入变更时调用）。 */
     fun clearUnlockError() {
         _unlockError.value = null
+    }
+
+    // ---- 多选模式（长按进入，供批量添加到歌单 / 批量删除）----
+
+    /** 是否处于多选模式。 */
+    private val _isMultiSelect = MutableStateFlow(false)
+    val isMultiSelect: StateFlow<Boolean> = _isMultiSelect.asStateFlow()
+
+    /** 已选中的文件路径集合。 */
+    private val _selectedPaths = MutableStateFlow<Set<String>>(emptySet())
+    val selectedPaths: StateFlow<Set<String>> = _selectedPaths.asStateFlow()
+
+    /** 全量歌单及条目数（选歌单弹窗用）。 */
+    val playlists: StateFlow<List<PlaylistWithCount>> = playlistDao.getAllWithCountFlow()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList(),
+        )
+
+    /** 长按文件/目录进入多选模式并选中该项。 */
+    fun enterMultiSelect(file: StorageFile) {
+        _selectedPaths.value = setOf(file.path)
+        _isMultiSelect.value = true
+    }
+
+    /** 多选模式下点击切换选中状态。 */
+    fun toggleSelection(file: StorageFile) {
+        val current = _selectedPaths.value
+        _selectedPaths.value = if (file.path in current) current - file.path else current + file.path
+    }
+
+    /** 退出多选模式并清空选择。 */
+    fun exitMultiSelect() {
+        _selectedPaths.value = emptySet()
+        _isMultiSelect.value = false
+    }
+
+    /** 全选当前目录中的文件（不含子目录，子目录不可入歌单）。 */
+    fun selectAllFiles() {
+        _selectedPaths.value = _uiState.value.files
+            .filter { !it.isDirectory }
+            .map { it.path }
+            .toSet()
+    }
+
+    /**
+     * 将选中文件批量加入歌单（入口②）。
+     *
+     * 歌单仅支持音频：非音频文件自动跳过；已存在（playlist_id, file_path）的自动去重。
+     */
+    fun addSelectedToPlaylist(playlistId: Int) {
+        val library = currentLibrary ?: return
+        val selected = _uiState.value.files.filter {
+            it.path in _selectedPaths.value && !it.isDirectory && MediaFileTypes.isAudioFile(it.name)
+        }
+        if (selected.isEmpty()) {
+            _events.tryEmit(StorageFileEvent.ShowToast("仅支持添加音频文件"))
+            return
+        }
+        val entities = selected.map {
+            PlaylistItemEntity(
+                playlistId = playlistId,
+                libraryId = library.id,
+                filePath = it.path,
+                fileName = it.name,
+                mediaTypeValue = library.mediaType.value,
+                fileSize = it.length,
+            )
+        }
+        viewModelScope.launch {
+            val inserted = withContext(Dispatchers.IO) {
+                runCatching {
+                    val count = playlistItemDao.addItems(playlistId, entities)
+                    playlistDao.touch(playlistId, System.currentTimeMillis())
+                    count
+                }.getOrDefault(0)
+            }
+            exitMultiSelect()
+            val skipped = selected.size - inserted
+            val message = when {
+                inserted > 0 && skipped > 0 ->
+                    "已添加 $inserted 个条目到歌单，跳过 $skipped 个重复"
+                inserted > 0 ->
+                    "已添加 $inserted 个条目到歌单"
+                else ->
+                    "所选音频已全部在歌单中"
+            }
+            _events.tryEmit(StorageFileEvent.ShowToast(message))
+        }
+    }
+
+    /**
+     * 新建歌单并把选中音频文件加入其中（选歌单弹窗「新建歌单」路径）。
+     */
+    fun createPlaylistAndAdd(name: String) {
+        val library = currentLibrary ?: return
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        val selected = _uiState.value.files.filter {
+            it.path in _selectedPaths.value && !it.isDirectory && MediaFileTypes.isAudioFile(it.name)
+        }
+        if (selected.isEmpty()) {
+            _events.tryEmit(StorageFileEvent.ShowToast("仅支持添加音频文件"))
+            return
+        }
+        viewModelScope.launch {
+            val added = withContext(Dispatchers.IO) {
+                runCatching {
+                    val playlistId = playlistDao.insert(PlaylistEntity(name = trimmed)).toInt()
+                    val entities = selected.map {
+                        PlaylistItemEntity(
+                            playlistId = playlistId,
+                            libraryId = library.id,
+                            filePath = it.path,
+                            fileName = it.name,
+                            mediaTypeValue = library.mediaType.value,
+                            fileSize = it.length,
+                        )
+                    }
+                    playlistItemDao.addItems(playlistId, entities)
+                }.getOrDefault(0)
+            }
+            exitMultiSelect()
+            _events.tryEmit(StorageFileEvent.ShowToast(if (added > 0) "已创建歌单「$trimmed」并添加 $added 个条目" else "已创建歌单「$trimmed」"))
+        }
+    }
+
+    /** 批量删除选中文件/目录。 */
+    fun deleteSelected() {
+        val s = storage ?: return
+        val selected = _uiState.value.files.filter { it.path in _selectedPaths.value }
+        if (selected.isEmpty()) return
+        viewModelScope.launch {
+            var okCount = 0
+            withContext(Dispatchers.IO) {
+                selected.forEach { file ->
+                    if (runCatching { s.deleteFile(file) }.getOrDefault(false)) {
+                        okCount++
+                        if (file.isDirectory) {
+                            encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
+                        }
+                    }
+                }
+            }
+            exitMultiSelect()
+            if (okCount == selected.size) {
+                _events.tryEmit(StorageFileEvent.ShowToast("已删除 $okCount 项"))
+            } else {
+                _events.tryEmit(StorageFileEvent.ShowError("部分删除失败（${okCount}/${selected.size}）"))
+            }
+            refreshCurrentDirectory()
+        }
     }
 
     /** 取消解锁（对话框取消按钮）：清除待解锁文件夹与错误提示。 */
@@ -1025,9 +1188,9 @@ class StorageFileViewModel @Inject constructor(
                 // 文件夹访问加密双保险：加密目录内的文件不写播放历史（history = null 走现有"不记历史"机制）
                 val withinEncrypted = encryptedFolderManager.isWithinEncrypted(library.id, file.path)
 
-                // 查询续播位置
+                // 查询续播位置（已播完的曲目从头播放）
                 val startPositionMs = withContext(Dispatchers.IO) {
-                    playHistoryDao.getPlayHistory(uniqueKey, library.id)?.videoPosition ?: 0L
+                    playHistoryDao.getPlayHistory(uniqueKey, library.id)?.resumeStartPositionMs() ?: 0L
                 }
 
                 // 构造同目录播放列表（仅视频文件，按当前排序顺序）
@@ -1143,6 +1306,51 @@ class StorageFileViewModel @Inject constructor(
      * 用于用户首次下载时选择目录后，自动保存为下载目录并添加到存储源。
      */
     fun setDownloadDirAndDownload(file: StorageFile, treeUri: String, dirName: String) {
+        setDownloadDir(treeUri, dirName)
+        downloadFile(file, treeUri, dirName)
+    }
+
+    /**
+     * 批量下载选中文件（多选模式）。
+     *
+     * 与 [downloadFile] 相同语义：仅非目录文件逐个加入下载队列，
+     * uniqueKey 与播放历史保持一致，任务去重由 [DownloadManager.addTask] 处理。
+     * 完成后退出多选模式。
+     *
+     * @param files 待下载文件列表（自动过滤目录）
+     * @param targetStorageUrl 目标存储 tree URI，null 表示下载到缓存
+     * @param targetStorageName 目标存储显示名，null 时显示"缓存"
+     */
+    fun downloadFiles(files: List<StorageFile>, targetStorageUrl: String?, targetStorageName: String?) {
+        val library = currentLibrary ?: return
+        val filesToDownload = files.filter { !it.isDirectory }
+        if (filesToDownload.isEmpty()) return
+        filesToDownload.forEach { file ->
+            downloadManager.addTask(
+                storageId = library.id,
+                filePath = file.path,
+                fileName = file.name,
+                uniqueKey = "${library.id}:${file.path}",
+                totalBytes = file.length,
+                targetStorageUrl = targetStorageUrl,
+                targetStorageName = targetStorageName,
+            )
+        }
+        exitMultiSelect()
+        _events.tryEmit(StorageFileEvent.ShowToast("已将 ${filesToDownload.size} 个文件添加到下载队列"))
+    }
+
+    /**
+     * 设置下载目录并批量下载文件（多选模式）。
+     * 用于用户首次批量下载时选择目录后，自动保存为下载目录并添加到存储源。
+     */
+    fun setDownloadDirAndDownloadFiles(files: List<StorageFile>, treeUri: String, dirName: String) {
+        setDownloadDir(treeUri, dirName)
+        downloadFiles(files, treeUri, dirName)
+    }
+
+    /** 保存下载目录并注册为外部存储源（首次下载目录选择时调用）。 */
+    private fun setDownloadDir(treeUri: String, dirName: String) {
         DownloadSettings.setDownloadDir(treeUri, dirName)
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
@@ -1159,7 +1367,6 @@ class StorageFileViewModel @Inject constructor(
                 }
             }
         }
-        downloadFile(file, treeUri, dirName)
     }
 
     // ---- 快速访问（长按文件） ----

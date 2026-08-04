@@ -53,11 +53,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiSectionHeader
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiThumbCard
+import com.nichx.niplayer.designsystem.components.showNiMessage
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
 import com.nichx.niplayer.designsystem.iconstyle.NiIconStyleSpec
@@ -98,7 +100,7 @@ fun SearchScreen(
                 is SearchEvent.NavigateToStorageFile ->
                     onNavigateToStorageFile(event.libraryId, event.relativePath)
 
-                is SearchEvent.ShowError -> snackbarHostState.showSnackbar(event.message)
+                is SearchEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
             }
         }
     }

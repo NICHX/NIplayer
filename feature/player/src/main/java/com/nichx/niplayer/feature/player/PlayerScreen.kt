@@ -2236,6 +2236,7 @@ private fun PlayerProgressBar(
     abLoopB: Long?,
     onSeek: (Float) -> Unit,
     onSeekFinished: () -> Unit,
+    onDragFractionChange: (Float?) -> Unit = {},
     bookmarkPositions: List<Long> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
@@ -2258,6 +2259,7 @@ private fun PlayerProgressBar(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     isDragging.value = true
                     dragFraction = (down.position.x / size.width).coerceIn(0f, 1f)
+                    onDragFractionChange(dragFraction)
                     onSeek(dragFraction)
 
                     while (true) {
@@ -2265,10 +2267,12 @@ private fun PlayerProgressBar(
                         val change = event.changes.firstOrNull() ?: break
                         if (!change.pressed) {
                             isDragging.value = false
+                            onDragFractionChange(null)
                             onSeekFinished()
                             break
                         }
                         dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                        onDragFractionChange(dragFraction)
                         onSeek(dragFraction)
                         change.consume()
                     }
@@ -3056,6 +3060,8 @@ private fun PlayerControllerLayer(
                 .navigationBarsPadding()
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         ) {
+            // 拖动进度条时记录预览位置（fraction），时间文本跟随显示目标时间
+            var dragFractionPreview by remember { mutableStateOf<Float?>(null) }
             PlayerProgressBar(
                 positionFraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
                 bufferedFraction = if (durationMs > 0) bufferedMs.toFloat() / durationMs else 0f,
@@ -3064,24 +3070,26 @@ private fun PlayerControllerLayer(
                 abLoopB = abLoopB,
                 onSeek = onSeek,
                 onSeekFinished = onSeekFinished,
+                onDragFractionChange = { dragFractionPreview = it },
                 bookmarkPositions = bookmarkPositions,
             )
 
             Spacer(Modifier.height(2.dp))
 
+            val previewPos = dragFractionPreview?.let { (it * durationMs).toLong() } ?: positionMs
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = formatTime(positionMs),
+                    text = formatTime(previewPos),
                     color = Color.White.copy(alpha = 0.8f),
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
                 )
                 Text(
-                    text = "-${formatTime((durationMs - positionMs).coerceAtLeast(0L))}",
+                    text = "-${formatTime((durationMs - previewPos).coerceAtLeast(0L))}",
                     color = Color.White.copy(alpha = 0.6f),
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,

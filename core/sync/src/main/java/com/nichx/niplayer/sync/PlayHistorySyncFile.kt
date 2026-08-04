@@ -13,6 +13,9 @@ import java.util.Date
  *
  * 文件内容 = 本设备持有的"权威快照"（全量 records + 本设备发起的删除 tombstone），
  * 同步时整文件覆盖上传，拉取后按记录级 last-write-wins 合并。
+ *
+ * [version] 用于协议演进；[lastSyncedAt] 记录本设备最后一次成功上传时间，
+ * 作为废弃设备判定的心跳（活动设备至少每 24h 强制上传一次保持心跳）。
  */
 
 /** 记录业务键分隔符：存储源 id 与 unique_key（unique_key 可能含普通分隔符，用 SOH 控制符绝对分隔）。 */
@@ -26,12 +29,16 @@ fun recordKey(storageId: Int, uniqueKey: String): String =
 @JsonClass(generateAdapter = true)
 data class PlayHistorySyncFile(
     val deviceId: String,
+    /** 协议版本，供未来协议演进判定。 */
+    val version: Int = 1,
     /** 本文件内记录的最大 updated_at（合并基线 / 游标）。 */
     val updatedAt: Long = 0,
     /** 本设备当前持有的全部播放历史记录。 */
     val records: List<SyncRecord> = emptyList(),
     /** 本设备发起的删除 tombstone（key -> 删除时间）。 */
     val deletes: List<SyncDelete> = emptyList(),
+    /** 本设备最后一次成功上传时间（ms），0 表示旧格式文件（未写心跳）。 */
+    val lastSyncedAt: Long = 0,
 )
 
 /** 单条播放历史记录（不含 DB 自增 id 与跨设备无意义的 subtitle/audio/torrent 字段）。 */

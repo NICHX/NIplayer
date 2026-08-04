@@ -44,6 +44,8 @@ fun HomeScreen(
     onNavigateToSearch: () -> Unit = {},
     onNavigateToPlayHistory: () -> Unit = {},
     onNavigateToQuickAccess: () -> Unit = {},
+    onOpenPlaylists: () -> Unit = {},
+    onOpenPlaylist: (Int) -> Unit = {},
     onPlayVideo: () -> Unit = {},
     onNavigateToImageViewer: () -> Unit = {},
     onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit = { _, _ -> },
@@ -117,6 +119,8 @@ fun HomeScreen(
             onNavigateToSearch = onNavigateToSearch,
             onNavigateToPlayHistory = onNavigateToPlayHistory,
             onNavigateToQuickAccess = onNavigateToQuickAccess,
+            onOpenPlaylists = onOpenPlaylists,
+            onOpenPlaylist = onOpenPlaylist,
             onPlayVideo = onPlayVideo,
             onNavigateToImageViewer = onNavigateToImageViewer,
             onNavigateToStoragePlus = onNavigateToStoragePlus,
@@ -126,6 +130,12 @@ fun HomeScreen(
             tabs = tabs,
             currentRoute = currentRoute,
             onTabSelected = onTabSelected,
+            onTabLongClicked = { tab ->
+                // 长按媒体库按钮：关闭文件浏览页，回到存储源列表
+                if (tab.route == HomeTab.LIBRARY.route && fbStorageId > 0) {
+                    closeFileBrowser()
+                }
+            },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .widthIn(max = bottomBarMaxWidth),
@@ -148,6 +158,8 @@ private fun HomeTabContent(
     onNavigateToSearch: () -> Unit,
     onNavigateToPlayHistory: () -> Unit,
     onNavigateToQuickAccess: () -> Unit,
+    onOpenPlaylists: () -> Unit,
+    onOpenPlaylist: (Int) -> Unit,
     onPlayVideo: () -> Unit,
     onNavigateToImageViewer: () -> Unit,
     onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit,
@@ -165,6 +177,8 @@ private fun HomeTabContent(
                 onNavigateToSearch = onNavigateToSearch,
                 onNavigateToPlayHistory = onNavigateToPlayHistory,
                 onNavigateToQuickAccess = onNavigateToQuickAccess,
+                onOpenPlaylists = onOpenPlaylists,
+                onOpenPlaylist = onOpenPlaylist,
                 onNavigateToStorageFile = onOpenFileBrowser,
                 onPlayVideo = onPlayVideo,
                 onNavigateToSettings = { onNavigateToGlobal(Routes.User.SWITCH_THEME) },

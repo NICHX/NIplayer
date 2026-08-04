@@ -11,7 +11,6 @@ import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.storage.StorageFactory
-import com.nichx.niplayer.storage.security.PasswordVault
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -54,7 +53,6 @@ class StoragePlusViewModel @Inject constructor(
     private val playHistoryDao: PlayHistoryDao,
     private val downloadTaskDao: DownloadTaskDao,
     private val storageFactory: StorageFactory,
-    private val passwordVault: PasswordVault,
 ) : ViewModel() {
 
     private val routeType: String = savedStateHandle.get<String>("type") ?: ""
@@ -256,10 +254,8 @@ class StoragePlusViewModel @Inject constructor(
 
     private fun buildLibrary(state: StoragePlusUiState): MediaLibraryEntity {
         val id = if (storageId > 0) storageId else 0
-        // BUG-33：加密密码后再写入 DB，明文密码不落盘。
-        // 匿名模式下 password 为 null（不加密 null）；Keystore 不可用时回退明文（保持可用）。
-        val encryptedPassword = if (state.isAnonymous) null
-        else passwordVault.encrypt(state.password)
+        // 密码明文存储（v13 起，移除 PasswordVault 加密）
+        val plainPassword = if (state.isAnonymous) null else state.password.ifBlank { null }
         return when (state.mediaType) {
             MediaType.WEBDAV_SERVER -> {
                 val protocol = if (state.webDavUseHttps) "https://" else "http://"
@@ -270,7 +266,7 @@ class StoragePlusViewModel @Inject constructor(
                     url = fullUrl,
                     mediaType = MediaType.WEBDAV_SERVER,
                     account = if (state.isAnonymous) null else state.account,
-                    password = encryptedPassword,
+                    password = plainPassword,
                     isAnonymous = state.isAnonymous,
                     describe = fullUrl,
                     webDavStrict = state.webDavStrict,
@@ -285,7 +281,7 @@ class StoragePlusViewModel @Inject constructor(
                     url = state.url,
                     mediaType = MediaType.SMB_SERVER,
                     account = if (state.isAnonymous) null else state.account,
-                    password = encryptedPassword,
+                    password = plainPassword,
                     isAnonymous = state.isAnonymous,
                     // BUG-32：域/工作组，匿名时忽略
                     domain = if (state.isAnonymous) null
@@ -330,8 +326,7 @@ class StoragePlusViewModel @Inject constructor(
             url = strippedUrl,
             mediaType = mediaType,
             account = account.orEmpty(),
-            // BUG-33：编辑时解密密码回填表单，Keystore 不可用时回退空字符串（用户重新输入）
-            password = passwordVault.decrypt(password).orEmpty(),
+            password = password.orEmpty(),
             isAnonymous = isAnonymous,
             port = port,
             webDavStrict = webDavStrict,

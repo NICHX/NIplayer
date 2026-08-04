@@ -116,4 +116,17 @@ object Routes {
     object ImageViewer {
         const val VIEWER = "image_viewer/viewer"
     }
+
+    /** 播放列表系统（扩展功能方案二）。 */
+    object Playlist {
+        const val LIST = "playlist/list"
+
+        const val DETAIL = "playlist/detail"
+
+        /** 带参路由模板，注册到 NavHost：`playlist/detail/{playlistId}`。 */
+        const val DETAIL_ROUTE = "$DETAIL/{playlistId}"
+
+        /** 构造歌单详情导航路由：`playlist/detail/3`。 */
+        fun detailRoute(playlistId: Int): String = "$DETAIL/$playlistId"
+    }
 }

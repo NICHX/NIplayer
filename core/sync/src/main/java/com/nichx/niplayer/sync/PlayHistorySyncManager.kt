@@ -3,8 +3,10 @@ package com.nichx.niplayer.sync
 import android.util.Log
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
+import com.nichx.niplayer.database.dao.SyncConflictDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
+import com.nichx.niplayer.database.entity.SyncConflictEntity
 import com.nichx.niplayer.database.entity.SyncDeleteLogEntity
 import com.nichx.niplayer.datastore.PlayHistorySyncSettings
 import com.nichx.niplayer.datastore.WebDavSettings
@@ -41,6 +43,16 @@ sealed interface SyncUiState {
  * - 删除传播：tombstone（key + deletedAt），其他设备拉取时删除 updatedAt <= deletedAt 的记录，
  *   并把 tombstone 吸收进自己的文件继续传播，防止记录"复活"
  *
+ * 增量优化：
+ * - 增量拉取：按 (lastModified, length) 指纹跳过未变化的远端设备文件
+ * - 增量上传：记录/墓碑均未变化且心跳未过期时跳过整文件上传
+ * - 墓碑 GC：超过 [TOMBSTONE_RETENTION_MS]（30 天）的 tombstone 视为已传播，写回时清除
+ * - 废弃设备清理：超 [STALE_DEVICE_MS]（90 天）未同步的远端设备文件删除
+ * - 时钟防护：按远端文件 lastModified（服务器时间）估算该设备时钟偏移，比较前校正，
+ *   缓解跨设备时钟偏差导致的误删 / 误覆盖
+ * - 冲突感知：两端在 [CONFLICT_WINDOW_MS] 内同时修改且内容不同 → 写入 sync_conflict 表，
+ *   LWW 仍按时间戳决出胜者，败者数据保留供用户选择
+ *
  * 同步状态（[state]）供「备份与同步」页卡片与播放历史页 TopBar 指示器共用，
  * 上次同步结果持久化在 [PlayHistorySyncSettings]。
  */
@@ -48,6 +60,7 @@ sealed interface SyncUiState {
 class PlayHistorySyncManager @Inject constructor(
     private val playHistoryDao: PlayHistoryDao,
     private val syncDeleteLogDao: SyncDeleteLogDao,
+    private val syncConflictDao: SyncConflictDao,
     private val mediaLibraryDao: MediaLibraryDao,
     private val storageFactory: StorageFactory,
 ) {
@@ -77,7 +90,8 @@ class PlayHistorySyncManager @Inject constructor(
      * 执行一次完整同步（push → pull → 吸收）。
      *
      * 前置条件：同步开关已启用、已选择 WebDAV 服务器。
-     * [auto] 为 true 时（启动 / 播放器退出自动触发）受最小间隔防抖限制，避免高频同步。
+     * [auto] 为 true 时（启动拉取 / 播放器退出推送）受最小间隔防抖限制；但本地有待推送
+     * 内容（记录变更或未同步墓碑）时跳过防抖，保证进度与删除尽快传播，防抖只约束无变更的纯拉取。
      * 失败时保留游标，下次重试（上传/合并均幂等）。
      *
      * @return 是否同步成功
@@ -92,8 +106,16 @@ class PlayHistorySyncManager @Inject constructor(
             recordResult(false, "未选择 WebDAV 服务器")
             return false
         }
-        // 自动同步最小间隔防抖（手动同步不受限制）
-        if (auto && System.currentTimeMillis() - PlayHistorySyncSettings.lastSyncTime < MIN_AUTO_INTERVAL_MS) {
+        // 自动同步最小间隔防抖（手动同步不受限制）。
+        // 基准取 lastSyncedAt（仅同步成功后推进）：失败不推迟下次重试。
+        // 内容感知：本地有待推送内容（记录 updatedAt > 游标 或 未同步墓碑）时跳过防抖，
+        // 保证播放进度与删除尽快传播；防抖只约束"无变更的纯拉取"，避免启动等低频场景重复拉取。
+        val hasPendingLocalChanges =
+            playHistoryDao.getChangesSinceTimestamp(PlayHistorySyncSettings.lastSyncedAt).isNotEmpty() ||
+                syncDeleteLogDao.countUnsynced() > 0
+        if (auto && !hasPendingLocalChanges &&
+            System.currentTimeMillis() - PlayHistorySyncSettings.lastSyncedAt < MIN_AUTO_INTERVAL_MS
+        ) {
             return false
         }
         PlayHistorySyncSettings.ensureDeviceId()
@@ -101,9 +123,14 @@ class PlayHistorySyncManager @Inject constructor(
         return mutex.withLock {
             _state.value = SyncUiState.Syncing
             try {
-                doSync(libraryId)
-                _state.value = SyncUiState.Done(true, "同步成功")
-                recordResult(true, "同步成功")
+                val conflictCount = doSync(libraryId)
+                val message = if (conflictCount > 0) {
+                    "同步成功，发现 $conflictCount 条冲突待处理"
+                } else {
+                    "同步成功"
+                }
+                _state.value = SyncUiState.Done(true, message)
+                recordResult(true, message)
                 true
             } catch (e: CancellationException) {
                 throw e
@@ -117,17 +144,18 @@ class PlayHistorySyncManager @Inject constructor(
         }
     }
 
-    private suspend fun doSync(libraryId: Int) {
+    private suspend fun doSync(libraryId: Int): Int {
         val library = mediaLibraryDao.getById(libraryId)
             ?: throw IllegalStateException("未找到所选 WebDAV 服务器")
         val deviceId = PlayHistorySyncSettings.deviceId
         val fileName = "play_history_$deviceId.json"
 
-        withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             val storage = storageFactory.create(library)
                 ?: throw IllegalStateException("无法连接 WebDAV 服务器")
             verifyConnection(storage)
-
+            val now = System.currentTimeMillis()
+            var conflictCount = 0
             // 本地当前全量记录（key -> entity）
             val localEntities = playHistoryDao.getAll()
                 .filter { it.storageId != null }
@@ -161,18 +189,40 @@ class PlayHistorySyncManager @Inject constructor(
                 },
             )
 
-            // 2) pull：合并各远端设备文件（跳过自己）
+            // 2) pull：合并各远端设备文件（跳过自己），按指纹跳过未变化的文件
             var maxRemoteUpdatedAt = 0L
             val remoteFiles = listSyncFiles(storage, deviceId)
             for (remoteFile in remoteFiles) {
+                // 增量拉取：与上次成功同步记录的 (mtime, length) 一致则跳过下载解析。
+                // mtime 粒度粗（如 WebDAV 1s）时可能跳过一次中间版本，但 LWW 合并单调收敛，仅延迟不丢最终态
+                val meta = PlayHistorySyncSettings.getRemoteFileMeta(remoteFile.name)
+                if (meta != null && meta.mtime > 0 &&
+                    meta.mtime == remoteFile.lastModified && meta.length == remoteFile.length
+                ) {
+                    continue
+                }
+
                 val remote = readDeviceFile(storage, remoteFile.name)
                     ?: continue
                 maxRemoteUpdatedAt = maxOf(maxRemoteUpdatedAt, remote.updatedAt)
+                PlayHistorySyncSettings.setRemoteFileMeta(
+                    remoteFile.name,
+                    remoteFile.lastModified,
+                    remoteFile.length,
+                    remote.lastSyncedAt,
+                )
 
-                // a. 应用远端 tombstone：删除本地 updatedAt <= deletedAt 的记录
+                // P2-3 时钟防护：文件 lastModified 是服务器时间（该设备上次上传时刻）。
+                // 若文件内 updatedAt 明显晚于服务器时间，说明该设备时钟偏快，
+                // 偏移量 ≈ updatedAt - lastModified。比较前将该设备时间戳统一减掉偏移量，
+                // 避免"偏快设备"的删除 / 覆盖误压本机真实更新的数据（本机视为与服务器时间对齐）
+                val remoteSkew = (remote.updatedAt - remoteFile.lastModified).coerceAtLeast(0L)
+
+                // a. 应用远端 tombstone：删除本地 updatedAt <= 校正后 deletedAt 的记录
                 for (del in remote.deletes) {
+                    val effDeletedAt = (del.deletedAt - remoteSkew).coerceAtLeast(0L)
                     localEntities.remove(del.key)?.let { entity ->
-                        if (entity.updatedAt <= del.deletedAt) {
+                        if (entity.updatedAt <= effDeletedAt) {
                             playHistoryDao.delete(entity.id)
                             // 标记已同步，避免删除回传（本设备文件 deletes 中已含该 tombstone）
                             syncDeleteLogDao.insert(
@@ -185,7 +235,7 @@ class PlayHistorySyncManager @Inject constructor(
                             )
                         }
                     }
-                    // 吸收 tombstone 进本设备文件，继续传播
+                    // 吸收 tombstone 进本设备文件，继续传播（保留原始时间戳，跨设备传播依赖它）
                     val old = localFile.deletes.firstOrNull { it.key == del.key }
                     if (old == null || del.deletedAt > old.deletedAt) {
                         localFile = localFile.copy(
@@ -194,51 +244,110 @@ class PlayHistorySyncManager @Inject constructor(
                     }
                 }
 
-                // b. 合并远端记录：last-write-wins
+                // b. 合并远端记录：last-write-wins（时间戳经时钟校正后比较）
                 val localTombstones = localFile.deletes.associateBy { it.key }
                 for (record in remote.records) {
+                    val effUpdatedAt = (record.updatedAt - remoteSkew).coerceAtLeast(0L)
                     val local = localEntities[record.key]
                     when {
                         local == null -> {
                             // 被 tombstone 命中则不复活
                             val tomb = localTombstones[record.key]
-                            if (tomb == null || record.updatedAt > tomb.deletedAt) {
+                            if (tomb == null || effUpdatedAt > tomb.deletedAt) {
                                 val entity = record.toEntity()
                                 playHistoryDao.insert(entity)
                                 localEntities[record.key] = entity
                             }
                         }
-                        record.updatedAt > local.updatedAt -> {
-                            local.applyRemote(record)
-                            playHistoryDao.update(local)
-                            localEntities[record.key] = local
+                        else -> {
+                            // P2-2 冲突感知：两端在冲突窗口内各自修改且合并字段不同 → 记录冲突现场
+                            if (kotlin.math.abs(effUpdatedAt - local.updatedAt) <= CONFLICT_WINDOW_MS &&
+                                conflictsWith(local, record)
+                            ) {
+                                conflictCount++
+                                syncConflictDao.insert(
+                                    SyncConflictEntity(
+                                        recordKey = record.key,
+                                        storageId = record.storageId,
+                                        uniqueKey = record.uniqueKey,
+                                        videoName = record.videoName,
+                                        localVideoPosition = local.videoPosition,
+                                        localVideoDuration = local.videoDuration,
+                                        localUpdatedAt = local.updatedAt,
+                                        localPlayTime = local.playTime.time,
+                                        remoteVideoPosition = record.videoPosition,
+                                        remoteVideoDuration = record.videoDuration,
+                                        remoteUpdatedAt = record.updatedAt,
+                                        createdAt = now,
+                                    ),
+                                )
+                            }
+                            if (effUpdatedAt > local.updatedAt) {
+                                local.applyRemote(record)
+                                playHistoryDao.update(local)
+                                localEntities[record.key] = local
+                            }
                         }
                     }
                 }
                 maxRemoteUpdatedAt = maxOf(maxRemoteUpdatedAt, remote.records.maxOfOrNull { it.updatedAt } ?: 0)
             }
 
-            // 3) 写回本设备文件：当前本地全量记录 + 吸收的 tombstone
+            // 3) 墓碑 GC：清掉已超过保留期的 tombstone（视为已传播到所有设备），止住云端文件膨胀。
+            //    代价：离线超过保留期的设备重连后可能复活已删记录（业界标准取舍，同 Cassandra gc_grace_seconds）
+            val gcCutoff = now - TOMBSTONE_RETENTION_MS
+            val keptDeletes = localFile.deletes.filter { it.deletedAt > gcCutoff }
+
+            // 4) 写回本设备文件：当前本地全量记录 + 保留的 tombstone
             val mergedRecords = localEntities.values
                 .mapNotNull { it.toSyncRecord() }
                 .sortedBy { it.key }
             val maxLocalUpdatedAt = mergedRecords.maxOfOrNull { it.updatedAt } ?: 0
-            localFile = localFile.copy(
+            val maxTombstoneDeletedAt = keptDeletes.maxOfOrNull { it.deletedAt } ?: 0
+            val newFile = PlayHistorySyncFile(
+                deviceId = deviceId,
+                version = PROTOCOL_VERSION,
+                updatedAt = maxOf(maxLocalUpdatedAt, maxRemoteUpdatedAt, maxTombstoneDeletedAt, localFile.updatedAt),
                 records = mergedRecords,
-                updatedAt = maxOf(maxLocalUpdatedAt, maxRemoteUpdatedAt, localFile.updatedAt),
+                deletes = keptDeletes.sortedBy { it.key },
+                lastSyncedAt = now,
             )
-            saveDeviceFile(storage, fileName, localFile)
 
-            // 4) 推进游标并清理已同步的删除日志
+            // 增量上传：记录与墓碑均未变化且心跳未过期时跳过上传，避免全量重传。
+            // 心跳保证活动设备文件至少每 HEARTBEAT_INTERVAL_MS 更新一次，供废弃设备判定
+            val heartbeatExpired = now - localFile.lastSyncedAt >= HEARTBEAT_INTERVAL_MS
+            val contentChanged = newFile.records != localFile.records || newFile.deletes != localFile.deletes
+            if (contentChanged || heartbeatExpired) {
+                saveDeviceFile(storage, fileName, newFile)
+            }
+
+            // 5) 废弃设备文件清理：超 90 天未同步的远端设备文件删除。
+            //    旧格式文件（无心跳）回退用文件 lastModified 判定；无法判定（两者均 0）则跳过
+            for (remoteFile in remoteFiles) {
+                val remoteMeta = PlayHistorySyncSettings.getRemoteFileMeta(remoteFile.name)
+                val heartbeat = if (remoteMeta != null && remoteMeta.syncedAt > 0) {
+                    remoteMeta.syncedAt
+                } else {
+                    remoteFile.lastModified
+                }
+                if (heartbeat > 0 && now - heartbeat > STALE_DEVICE_MS) {
+                    storage.deleteFile(remoteFile)
+                    PlayHistorySyncSettings.clearRemoteFileMeta(remoteFile.name)
+                    Log.i(TAG, "清理废弃设备文件 ${remoteFile.name}")
+                }
+            }
+
+            // 6) 推进游标并清理已同步的删除日志
             PlayHistorySyncSettings.lastSyncedAt = maxOf(
                 PlayHistorySyncSettings.lastSyncedAt,
-                localFile.updatedAt,
+                newFile.updatedAt,
             )
             val syncedIds = unsyncedDeletes.map { it.id }
             if (syncedIds.isNotEmpty()) {
                 syncDeleteLogDao.markAsSynced(syncedIds)
                 syncDeleteLogDao.deleteSynced()
             }
+            conflictCount
         }
     }
 
@@ -299,14 +408,33 @@ class PlayHistorySyncManager @Inject constructor(
         }
     }
 
-    /** 覆盖上传本设备文件。 */
+    /** 覆盖上传本设备文件，上传后读回校验防静默损坏。 */
     private suspend fun saveDeviceFile(storage: Storage, fileName: String, file: PlayHistorySyncFile) {
         ensureSyncDirectory(storage)
+        val json = syncFileAdapter.toJson(file)
         val ok = storage.saveFile(
             "$SYNC_SUB_DIR/$fileName",
-            syncFileAdapter.toJson(file).toByteArray(Charsets.UTF_8),
+            json.toByteArray(Charsets.UTF_8),
         )
         if (!ok) throw IllegalStateException("上传失败，请检查服务器配置")
+
+        // P2-1 上传校验：读回比对内容（Moshi 序列化顺序确定，全等比较可信）。
+        // 读回失败仅告警不阻断——瞬时网络抖动不应把一次成功上传标记为失败
+        try {
+            val fileRef = object : AbstractStorageFile(
+                path = "$SYNC_SUB_DIR/$fileName",
+                name = fileName,
+                isDirectory = false,
+            ) {}
+            val readBack = storage.openInputStream(fileRef).use { it.readBytes().toString(Charsets.UTF_8) }
+            if (readBack != json) {
+                throw IllegalStateException("上传校验失败：服务端内容不一致")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "上传校验读取失败: ${e.message}")
+        }
     }
 
     private fun recordResult(success: Boolean, message: String) {
@@ -323,6 +451,12 @@ class PlayHistorySyncManager @Inject constructor(
         updatedAt = remote.updatedAt
     }
 
+    /** 两端记录的合并字段是否存在实质差异（仅比较会在合并时被覆盖的字段）。 */
+    private fun conflictsWith(local: PlayHistoryEntity, remote: SyncRecord): Boolean =
+        local.videoPosition != remote.videoPosition ||
+            local.videoDuration != remote.videoDuration ||
+            local.playTime.time != remote.playTime
+
     companion object {
         private const val TAG = "PlayHistorySync"
 
@@ -330,8 +464,23 @@ class PlayHistorySyncManager @Inject constructor(
         const val SYNC_ROOT_DIR = "NIplayer_backup"
         const val SYNC_SUB_DIR = "NIplayer_backup/sync"
 
-        /** 自动同步最小间隔（ms）：5 分钟防抖。 */
-        private const val MIN_AUTO_INTERVAL_MS = 5 * 60 * 1000L
+        /** 自动同步最小间隔（ms）：60 秒防抖。 */
+        private const val MIN_AUTO_INTERVAL_MS = 60 * 1000L
+
+        /** 墓碑保留期（ms）：30 天。超过后视为已传播到所有活动设备，可安全清除。 */
+        private const val TOMBSTONE_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
+
+        /** 心跳间隔（ms）：24 小时。活动设备即使无数据变化也强制上传一次，保持文件心跳。 */
+        private const val HEARTBEAT_INTERVAL_MS = 24L * 60 * 60 * 1000
+
+        /** 废弃设备判定阈值（ms）：90 天未同步视为废弃，同步时清理其云端文件。 */
+        private const val STALE_DEVICE_MS = 90L * 24 * 60 * 60 * 1000
+
+        /** 冲突判定窗口（ms）：两端更新时间差在 10 秒内视为并发修改。 */
+        private const val CONFLICT_WINDOW_MS = 10 * 1000L
+
+        /** 云端文件协议版本。 */
+        private const val PROTOCOL_VERSION = 1
 
         private const val TABLE_PLAY_HISTORY = "play_history"
     }

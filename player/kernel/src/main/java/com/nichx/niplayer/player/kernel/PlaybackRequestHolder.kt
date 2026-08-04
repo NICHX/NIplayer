@@ -64,6 +64,8 @@ fun isAudioFile(name: String): Boolean = MediaFileTypes.isAudioFile(name)
  * @param storageId 关联存储库 ID（可空，本地/直链无存储库）
  * @param storagePath 存储库内相对路径（可空，仅 SMB/WebDAV/External 有值）
  * @param httpHeader HTTP 请求头 JSON（可空，WebDAV 认证等）
+ * @param playlistId 来源歌单 ID（可空）。从歌单播放时记录，恢复播放时据此从歌单还原
+ *   播放列表（而非后台列目录）。null 表示非歌单来源（文件夹连播）
  */
 data class HistoryDescriptor(
     val uniqueKey: String,
@@ -73,6 +75,7 @@ data class HistoryDescriptor(
     val storagePath: String? = null,
     val httpHeader: String? = null,
     val fileSize: Long = 0L,
+    val playlistId: Int? = null,
 )
 
 /**

@@ -4,25 +4,45 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.os.Build
+import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import com.nichx.niplayer.datastore.PlayerSettings
+import com.nichx.niplayer.datastore.ThumbnailSettings
+import com.nichx.niplayer.database.dao.MediaLibraryDao
+import com.nichx.niplayer.database.dao.PlayHistoryDao
+import com.nichx.niplayer.database.entity.PlayHistoryEntity
+import com.nichx.niplayer.database.entity.resumeStartPositionMs
+import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.database.security.EncryptedFolderManager
+import com.nichx.niplayer.player.kernel.HistoryDescriptor
+import com.nichx.niplayer.player.kernel.MediaSourceBuilder
 import com.nichx.niplayer.player.kernel.NxMediaSource
 import com.nichx.niplayer.player.kernel.PlaylistItem
 import com.nichx.niplayer.player.kernel.audio.NiEqualizer
+import com.nichx.niplayer.storage.StorageFactory
+import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
+import java.io.FileOutputStream
+import java.util.Date
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,13 +50,33 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * 音频播放模式（0=顺序循环 / 1=随机 / 2=单曲循环）。
+ *
+ * 索引与 [PlayerSettings.audioPlayModeIndex] 对齐，保证切换与持久化一致。
+ */
+enum class PlayMode(val label: String) {
+    Loop("顺序播放"),
+    Shuffle("随机播放"),
+    Single("单曲循环"),
+}
 
 @OptIn(UnstableApi::class)
 @Singleton
 class AudioPlaybackManager @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val mediaLibraryDao: MediaLibraryDao,
+    private val storageFactory: StorageFactory,
+    private val playHistoryDao: PlayHistoryDao,
+    private val encryptedFolderManager: EncryptedFolderManager,
+    private val thumbnailManager: ThumbnailManager,
+    private val musicMetadataService: MusicMetadataService,
 ) {
     private var exoPlayer: ExoPlayer? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -69,21 +109,176 @@ class AudioPlaybackManager @Inject constructor(
     private val _currentIndex = MutableStateFlow(-1)
     val currentIndex: StateFlow<Int> = _currentIndex.asStateFlow()
 
+    /** 当前播放模式索引，从持久化设置恢复。 */
+    private val _playModeIndex = MutableStateFlow(PlayerSettings.audioPlayModeIndex)
+    val playModeIndex: StateFlow<Int> = _playModeIndex.asStateFlow()
+
+    /** 循环切换播放模式（顺序→随机→单曲→顺序），并持久化。 */
+    fun cyclePlayMode() {
+        val next = (_playModeIndex.value + 1) % PlayMode.entries.size
+        _playModeIndex.value = next
+        PlayerSettings.audioPlayModeIndex = next
+    }
+
+    /** 当前播放倍速，UI 可订阅显示；由 [setPlaybackSpeed] 修改，切歌后保持。 */
+    private val _playbackSpeed = MutableStateFlow(1f)
+    val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
+
+    /**
+     * 设置播放倍速。ExoPlayer 对音频/视频均原生支持变速，切歌（重新
+     * setMediaSource）后速度保持，无需每次切歌重新应用。
+     */
+    fun setPlaybackSpeed(speed: Float) {
+        val clamped = speed.coerceAtLeast(0.25f)
+        _playbackSpeed.value = clamped
+        applyPlaybackParameters(clamped)
+    }
+
+    /** 音调保持（变速不变调）。与视频侧一致，通过 PlaybackParameters 手动应用。 */
+    private var _pitchPreservation = PlayerSettings.pitchPreservationEnabled
+    fun setPitchPreservation(enabled: Boolean) {
+        _pitchPreservation = enabled
+        applyPlaybackParameters(_playbackSpeed.value)
+    }
+
+    /** 应用倍速与音调参数（pitch=1 保持音调；pitch=speed 变速变调）。 */
+    private fun applyPlaybackParameters(speed: Float) {
+        val pitch = if (_pitchPreservation) 1.0f else speed
+        exoPlayer?.setPlaybackParameters(PlaybackParameters(speed, pitch))
+    }
+
     private val _lrcText = MutableStateFlow<String?>(null)
     val lrcText: StateFlow<String?> = _lrcText.asStateFlow()
+
+    /** 提示类消息回调（如"已通过 API 获取歌词"），UI 层注册后转为 Snackbar。 */
+    var onMessage: ((String) -> Unit)? = null
+
+    /**
+     * 为当前曲目异步加载 LRC 歌词，结果写入 [lrcText]。
+     * 优先级：同目录 .lrc（远程走 Storage 流，本地走 File）→ lrcapi 兜底。
+     * 与封面一致，挂在 Manager 常驻协程上，不依赖 UI 层存活，切歌即加载。
+     */
+    fun loadLrcForCurrentSong() {
+        val history = currentHistory ?: return
+        val storageId = history.storageId
+        val filePath = history.storagePath ?: return
+        scope.launch(Dispatchers.IO) {
+            try {
+                val fileName = filePath.substringAfterLast('/')
+                val nameWithoutExt = fileName.substringBeforeLast('.')
+                val dirPath = filePath.substringBeforeLast('/')
+                val lrcFilePath = if (dirPath == filePath) {
+                    "$nameWithoutExt.lrc"
+                } else {
+                    "$dirPath/$nameWithoutExt.lrc"
+                }
+
+                // 优先级1: 同目录本地/远程 LRC 文件
+                var found = false
+                if (nameWithoutExt.isNotEmpty() && nameWithoutExt != fileName) {
+                    if (storageId != null) {
+                        // Remote storage (SMB/WebDAV): read LRC via Storage.openInputStream
+                        val library = mediaLibraryDao.getById(storageId) ?: return@launch
+                        val storage = storageFactory.create(library) ?: return@launch
+                        try {
+                            val lrcFile = MediaSourceBuilder.createVirtualFile(lrcFilePath, "$nameWithoutExt.lrc")
+                            storage.openInputStream(lrcFile)?.use { input ->
+                                val text = input.bufferedReader().readText()
+                                if (text.isNotBlank()) {
+                                    _lrcText.value = text
+                                    found = true
+                                    return@launch
+                                }
+                            }
+                        } finally {
+                            storage.close()
+                        }
+                    } else {
+                        // Local file: try direct File access
+                        val lrcFile = File(lrcFilePath)
+                        if (lrcFile.exists()) {
+                            val text = lrcFile.readText()
+                            _lrcText.value = text
+                            found = true
+                            return@launch
+                        }
+                    }
+                }
+
+                // 优先级2: 从 lrcapi 远程获取歌词（仅在已配置时启用）
+                if (!found && musicMetadataService.isConfigured() && nameWithoutExt.isNotEmpty()) {
+                    val localFilePath = if (filePath.startsWith("/")) filePath else ""
+                    val result = musicMetadataService.fetchLyrics(
+                        title = nameWithoutExt,
+                        artist = "",
+                        path = localFilePath,
+                    )
+                    if (result.isSuccess) {
+                        val content = result.getOrNull()
+                        if (!content.isNullOrBlank()) {
+                            saveLrcToCache(nameWithoutExt, content)
+                            _lrcText.value = content
+                            android.util.Log.i(TAG, "从API加载歌词成功: $nameWithoutExt, 长度: ${content.length}")
+                            onMessage?.invoke("已通过 API 获取歌词：$nameWithoutExt")
+                            return@launch
+                        }
+                    } else {
+                        android.util.Log.w(TAG, "从API加载歌词失败: ${result.exceptionOrNull()?.message}")
+                    }
+                }
+
+                _lrcText.value = null
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _lrcText.value = null
+            }
+        }
+    }
+
+    private fun saveLrcToCache(nameWithoutExt: String, content: String) {
+        val lrcDir = File(context.cacheDir, "lrc_cache")
+        if (!lrcDir.exists()) lrcDir.mkdirs()
+        val lrcFile = File(lrcDir, "$nameWithoutExt.lrc")
+        lrcFile.writeText(content)
+    }
 
     private var _currentSource: NxMediaSource? = null
     val currentSource: NxMediaSource? get() = _currentSource
     private var _currentPositionMs: Long = 0L
 
+    /**
+     * 待生效的 seek 目标位置（ms）。seekTo 为异步操作，ExoPlayer 执行完成前
+     * [currentPosition] 仍是旧值，轮询协程若在此期间覆盖 [_positionMs] 会导致
+     * 进度条"先回旧位置再跳到位"的闪跳。此标记用于告知轮询协程暂停同步。
+     */
+    private var _pendingSeekMs: Long? = null
+
+    /** seekTo 调用时刻（elapsedRealtime），轮询协程据此等待 seek 生效静默期。 */
+    private var _pendingSeekSetAt: Long = 0L
+
+    /** 网络类播放错误自动重试次数（成功播放后清零）。 */
+    private var autoRetryCount = 0
+
     private var lastCoverBitmap: Bitmap? = null
 
-    /** playNext/playPrevious 触发切歌时通知外部。外部监听者（PlayerViewModel）收到后执行实际 source 切换。 */
-    var onPlayNextRequest: (() -> Unit)? = null
-    var onPlayPreviousRequest: (() -> Unit)? = null
+    /** 封面提取协程 Job，切歌时取消旧的避免旧封面覆盖新封面。 */
+    private var audioCoverJob: Job? = null
 
     /** 播放错误时通知外部。外部监听者（PlayerViewModel）收到后通过 messageEvent 展示给用户。 */
     var onPlaybackError: ((String) -> Unit)? = null
+
+    /**
+     * 切歌成功（[switchToIndex] 完成）时通知外部，参数为新曲目的历史描述符。
+     * 外部监听者（PlayerViewModel）据此刷新封面 / LRC 等 UI 状态。
+     */
+    var onTrackChanged: ((HistoryDescriptor) -> Unit)? = null
+
+    /** 当前播放曲目的历史描述符，Manager 自维护（切歌时更新，供进度保存使用）。 */
+    @Volatile
+    var currentHistory: HistoryDescriptor? = null
+
+    /** 串行化切歌全流程，避免快速连续切歌时进度保存与状态覆盖竞争。 */
+    private val switchMutex = Mutex()
 
     /** 当前播放错误信息，null 表示无错误。UI 层据此显示错误状态。 */
     private val _playbackError = MutableStateFlow<String?>(null)
@@ -162,12 +357,26 @@ class AudioPlaybackManager @Inject constructor(
                     }
                 }
                 Player.STATE_ENDED -> {
+                    // 曲目播放完毕先保存最终进度（_currentPositionMs 为最后一次轮询的实际位置，
+                    // 约等于时长；极短曲目可能未及轮询，退化为用时长作为最终位置），再清零 UI 位置，
+                    // 最后按播放模式切换下一首。原实现靠外部回调保存进度，UI 层销毁后进度会丢失。
+                    val endedDuration = _durationMs.value
+                    val endedPosition = _currentPositionMs.takeIf { it > 0 } ?: endedDuration
                     _positionMs.value = 0L
                     _isPlaying.value = false
+                    if (endedPosition > 0) {
+                        saveFinalProgress(endedPosition, endedDuration)
+                    }
                     scope.launch {
-                        // 播放完毕自动下一首
+                        // 播放完毕按播放模式处理
                         if (_currentIndex.value >= 0 && _playlist.value.isNotEmpty()) {
-                            playNext()
+                            when (PlayMode.entries[_playModeIndex.value]) {
+                                PlayMode.Single -> {
+                                    seekTo(0L)
+                                    exoPlayer?.playWhenReady = true
+                                }
+                                PlayMode.Shuffle, PlayMode.Loop -> playNext()
+                            }
                         }
                     }
                 }
@@ -176,6 +385,8 @@ class AudioPlaybackManager @Inject constructor(
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _isPlaying.value = isPlaying
+            // 成功恢复播放：重置自动重试计数，供下次网络故障再次使用
+            if (isPlaying) autoRetryCount = 0
         }
 
         override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -215,6 +426,37 @@ class AudioPlaybackManager @Inject constructor(
             }
             _playbackError.value = msg
             onPlaybackError?.invoke(msg)
+
+            // 自动重试：仅对网络/IO 类可恢复错误（SMB/WebDAV 临时断网、连接超时等），
+            // 有限次数 + 指数退避（1s/2s/4s），确定性错误（401/403/404/5xx）不重试。
+            if (shouldAutoRetry(error)) {
+                if (autoRetryCount < MAX_AUTO_RETRY) {
+                    autoRetryCount++
+                    val backoffMs = AUTO_RETRY_BASE_MS shl (autoRetryCount - 1)
+                    android.util.Log.w(TAG, "播放失败，${autoRetryCount}/$MAX_AUTO_RETRY 次自动重试，${backoffMs}ms 后重试")
+                    scope.launch {
+                        delay(backoffMs)
+                        retry()
+                    }
+                } else {
+                    // 达到上限：本次会话不再自动重试，等待用户手动操作（重试按钮/切歌）
+                    autoRetryCount = 0
+                }
+            }
+        }
+    }
+
+    /** 判断播放错误是否值得自动重试（网络/IO 类可恢复错误，排除 HTTP 确定性错误）。 */
+    private fun shouldAutoRetry(error: androidx.media3.common.PlaybackException): Boolean {
+        // 有明确 HTTP 响应码（401/403/404/5xx 等）属确定性错误，重试无意义
+        if (extractHttpStatusCode(error) != null) return false
+        // 通过 errorCode 精确识别网络/超时类错误，避免对解码/格式错误盲目重试
+        return when (error.errorCode) {
+            androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            androidx.media3.common.PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+            androidx.media3.common.PlaybackException.ERROR_CODE_TIMEOUT -> true
+            else -> false
         }
     }
 
@@ -225,16 +467,54 @@ class AudioPlaybackManager @Inject constructor(
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+        // 与视频侧对齐：变速播放时默认保持音调不变
+        val restoredSpeed = PlayerSettings.audioSpeedIndex.let { idx ->
+            AudioPlaybackSpeedValues.getOrNull(idx) ?: 1f
+        }
+        player.setPlaybackParameters(
+            PlaybackParameters(
+                restoredSpeed,
+                if (PlayerSettings.pitchPreservationEnabled) 1.0f else restoredSpeed,
+            ),
+        )
+        _playbackSpeed.value = restoredSpeed
         player.addListener(playerListener)
         exoPlayer = player
 
         scope.launch {
+            // 周期保存调度：首次 5s 保存快照，之后每 30s 一次。
+            // 该逻辑挂在 Manager 的常驻协程上，不依赖 UI 层（PlayerViewModel）存活，
+            // MusicBar 场景 / 进程被杀前也能定期落盘当前曲目进度。
+            var playedSeconds = 0
+            var nextSaveAt = PROGRESS_FIRST_SAVE_DELAY_S
             while (isActive) {
                 val p = exoPlayer ?: break
-                if (p.isPlaying) {
-                    _positionMs.value = p.currentPosition.coerceAtLeast(0)
+                val current = p.currentPosition.coerceAtLeast(0)
+                val pending = _pendingSeekMs
+                if (pending != null) {
+                    // seek 生效静默期（250ms）：期间不覆盖 UI 位置，等待 seek 实际生效。
+                    // 否则 seek 朝后（目标 < 当前）时旧位置仍 >= 目标，pending 会被过早
+                    // 清除并用旧值覆盖 UI，造成"先回旧位置再跳到位"的闪跳。
+                    val seekAge = SystemClock.elapsedRealtime() - _pendingSeekSetAt
+                    if (seekAge >= SEEK_SETTLE_MS && current >= pending) {
+                        _pendingSeekMs = null
+                        _positionMs.value = current
+                    }
+                } else if (p.isPlaying) {
+                    _positionMs.value = current
                 }
-                _currentPositionMs = exoPlayer?.currentPosition?.coerceAtLeast(0) ?: 0L
+                _currentPositionMs = current
+
+                // 周期保存：仅播放中保存（避免 STATE_ENDED 后 position=0 覆盖进度）
+                playedSeconds++
+                if (playedSeconds >= nextSaveAt) {
+                    nextSaveAt = playedSeconds + PROGRESS_SAVE_INTERVAL_S
+                    if (p.isPlaying) {
+                        runCatching { saveCurrentProgress() }.onFailure { e ->
+                            android.util.Log.w(TAG, "周期性保存进度失败: ${e.message}", e)
+                        }
+                    }
+                }
                 delay(1000)
             }
         }
@@ -251,6 +531,7 @@ class AudioPlaybackManager @Inject constructor(
         startPositionMs: Long = 0L,
         playlist: List<PlaylistItem> = emptyList(),
         startIndex: Int = -1,
+        history: HistoryDescriptor? = null,
     ) {
         val player = ensurePlayer()
 
@@ -263,8 +544,19 @@ class AudioPlaybackManager @Inject constructor(
         _durationMs.value = 0L
         _playlist.value = playlist
         _currentIndex.value = startIndex
+        // 同步当前曲目的历史描述符（切歌/首播均在此更新，供进度保存使用）
+        currentHistory = history
+        // 异步提取新曲目封面（缓存命中立即替换，未命中则 Storage/API 提取；
+        // 提取期间保留上一曲封面，避免切歌瞬间闪烁空白）
+        if (history != null) {
+            refreshAudioCover(history)
+            // 异步加载同目录/远程歌词（与封面一致，不依赖 UI 层存活）
+            loadLrcForCurrentSong()
+        }
         // 清除上次的播放错误，让 UI 恢复正常显示
         _playbackError.value = null
+        // 切歌时清除残留的 seek 标记，避免影响新曲目的进度显示
+        _pendingSeekMs = null
 
         val metadata = MediaMetadata.Builder()
             .setTitle(title)
@@ -331,39 +623,399 @@ class AudioPlaybackManager @Inject constructor(
     }
 
     fun seekTo(positionMs: Long) {
-        exoPlayer?.seekTo(positionMs.coerceAtLeast(0))
+        val player = exoPlayer ?: return
+        val target = positionMs.coerceAtLeast(0)
+        // 先标记 pending 并立即更新 UI 位置，避免轮询协程用旧的 currentPosition 覆盖导致闪跳
+        _pendingSeekMs = target
+        _pendingSeekSetAt = SystemClock.elapsedRealtime()
+        _positionMs.value = target
+        player.seekTo(target)
     }
 
-    /** 请求切换到下一首。只更新索引，实际 source 切换由外部（PlayerViewModel）处理。 */
-    fun requestNext() {
+    /**
+     * 计算下一首索引。依据播放模式：
+     * - 顺序循环：末位回到 0
+     * - 随机：随机挑选，避免与当前相同（列表 > 1 时）
+     * - 单曲循环：返回当前索引（保持重播）
+     */
+    fun nextIndex(current: Int): Int {
+        val size = _playlist.value.size
+        if (size == 0) return -1
+        return when (PlayMode.entries[_playModeIndex.value]) {
+            PlayMode.Loop -> if (current >= size - 1) 0 else current + 1
+            PlayMode.Single -> current.coerceIn(0, size - 1)
+            PlayMode.Shuffle -> {
+                if (size <= 1) current.coerceIn(0, size - 1)
+                else {
+                    var next = kotlin.random.Random.nextInt(size)
+                    while (next == current) {
+                        next = kotlin.random.Random.nextInt(size)
+                    }
+                    next
+                }
+            }
+        }
+    }
+
+    /** 计算上一首索引（仅顺序模式支持，随机/单曲循环同样向前回退一位）。 */
+    fun previousIndex(current: Int): Int {
+        val size = _playlist.value.size
+        if (size == 0) return -1
+        return if (current <= 0) size - 1 else current - 1
+    }
+
+    /**
+     * 切换到指定索引的曲目（音频全流程：保存旧进度 → 查库 → 重建 Storage → 建 Source →
+     * 查续播位置 → 播放 → 记录历史 → 通知 UI 刷新封面/LRC）。
+     *
+     * 该能力下沉自 PlayerViewModel（原 playAtIndex 音频分支），使切歌不再依赖 UI 层存活，
+     * MusicBar / 通知栏 / 全屏页统一走此处。失败返回 false 且不中断当前播放。
+     */
+    suspend fun switchToIndex(index: Int): Boolean {
         val list = _playlist.value
-        val nextIndex = _currentIndex.value + 1
-        if (list.isEmpty() || nextIndex >= list.size) return
-        _currentIndex.value = nextIndex
-        onPlayNextRequest?.invoke()
+        if (index !in list.indices) return false
+        val item = list[index]
+        return switchMutex.withLock {
+            try {
+                // 切歌前先保存当前曲目进度（position=0 时内部跳过，避免覆盖）
+                saveCurrentProgress()
+
+                val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(item.libraryId) }
+                    ?: return@withLock false
+                val storage = withContext(Dispatchers.IO) { storageFactory.create(library) }
+                    ?: return@withLock false
+                val file = MediaSourceBuilder.createVirtualFile(item.filePath, item.fileName, item.fileSize)
+                val uniqueKey = "${library.id}:${item.filePath}"
+                // W-N7：以 uniqueKey 作为 mediaId，与应用层唯一键一致，便于 MediaSession 集成
+                val source = MediaSourceBuilder.buildMediaSource(storage, file, mediaId = uniqueKey)
+                val startPositionMs = withContext(Dispatchers.IO) {
+                    playHistoryDao.getPlayHistory(uniqueKey, library.id)?.resumeStartPositionMs() ?: 0L
+                }
+
+                val newHistory = HistoryDescriptor(
+                    uniqueKey = uniqueKey,
+                    url = item.filePath,
+                    mediaTypeValue = item.mediaTypeValue,
+                    storageId = library.id,
+                    storagePath = item.filePath,
+                    fileSize = item.fileSize,
+                    playlistId = currentHistory?.playlistId,
+                )
+                play(
+                    source = source,
+                    title = item.fileName,
+                    coverPath = _audioCoverPath.value,
+                    artist = item.fileName,
+                    startPositionMs = startPositionMs,
+                    playlist = _playlist.value,
+                    startIndex = index,
+                    history = newHistory,
+                )
+                recordPlayStart(newHistory, item.fileName, startPositionMs)
+                onTrackChanged?.invoke(newHistory)
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "switchToIndex($index) failed", e)
+                onPlaybackError?.invoke("切换失败：${e.message ?: e::class.simpleName}")
+                false
+            }
+        }
     }
 
-    /** 请求切换到上一首。只更新索引，实际 source 切换由外部（PlayerViewModel）处理。 */
-    fun requestPrevious() {
-        val list = _playlist.value
-        val prevIndex = _currentIndex.value - 1
-        if (list.isEmpty() || prevIndex < 0) return
-        _currentIndex.value = prevIndex
-        onPlayPreviousRequest?.invoke()
-    }
-
-    /** 播放下一首。更新索引并通知外部进行实际切换。 */
+    /** 播放下一首（按当前播放模式计算索引，内部直接切歌，不依赖外部回调）。 */
     fun playNext() {
-        requestNext()
+        if (_playlist.value.isEmpty()) return
+        scope.launch {
+            // 索引在 Mutex 排队执行时计算，连点下一首时每次读取最新 currentIndex，
+            // 保证快速连点 3 次依次切到 1、2、3 而非都基于调用时刻的旧索引
+            val index = nextIndex(_currentIndex.value)
+            if (index >= 0) switchToIndex(index)
+        }
     }
 
-    /** 播放上一首。更新索引并通知外部进行实际切换。 */
+    /** 播放上一首（向前回退一位，内部直接切歌，不依赖外部回调）。 */
     fun playPrevious() {
-        requestPrevious()
+        if (_playlist.value.isEmpty()) return
+        scope.launch {
+            // 与 playNext 一致：索引在排队执行时计算，避免连点回退时跳位
+            val index = previousIndex(_currentIndex.value)
+            if (index >= 0) switchToIndex(index)
+        }
     }
 
-    fun setLrcText(text: String?) {
-        _lrcText.value = text
+    /** 是否有活跃的音频会话（列表非空且当前曲目有效）。 */
+    fun hasActiveAudio(): Boolean = _currentTitle.value.isNotEmpty() && _playlist.value.isNotEmpty()
+
+    /** 是否还存在下一首（通知栏「下一曲」按钮可用性）。 */
+    fun hasNextInPlaylist(): Boolean {
+        val size = _playlist.value.size
+        if (size == 0) return false
+        return when (PlayMode.entries[_playModeIndex.value]) {
+            PlayMode.Single -> true
+            PlayMode.Loop, PlayMode.Shuffle -> size > 1
+        }
+    }
+
+    /** 是否还存在上一首（通知栏「上一曲」按钮可用性）。 */
+    fun hasPreviousInPlaylist(): Boolean = _playlist.value.size > 1
+
+    /** 同步保存当前播放进度（切歌前 / UI 退出时调用）。position=0 时跳过，避免覆盖已有进度。 */
+    suspend fun saveCurrentProgress() {
+        val history = currentHistory ?: return
+        val storageId = history.storageId ?: return
+        val position = _positionMs.value
+        if (position <= 0) return
+        saveProgressInternal(history, storageId, position, _durationMs.value)
+    }
+
+    /** 曲目播放结束（STATE_ENDED）时保存最终进度。 */
+    private fun saveFinalProgress(positionMs: Long, durationMs: Long) {
+        val history = currentHistory ?: return
+        val storageId = history.storageId ?: return
+        if (positionMs <= 0) return
+        scope.launch {
+            saveProgressInternal(history, storageId, positionMs, durationMs)
+        }
+    }
+
+    /**
+     * 进度落盘内部实现（upsert），由 [saveCurrentProgress] / [saveFinalProgress] 复用。
+     *
+     * 用 PlayHistoryDao.upsertProgress（@Transaction 包裹 query+update/insert），Room 在
+     * 数据库层加事务锁串行化，确保与记录历史的并发安全。
+     */
+    private suspend fun saveProgressInternal(
+        history: HistoryDescriptor,
+        storageId: Int,
+        position: Long,
+        duration: Long,
+    ) {
+        // 文件夹访问加密：加密目录内的文件不写入播放历史（含进度）
+        if (encryptedFolderManager.isWithinEncrypted(storageId, history.storagePath)) return
+        withContext(Dispatchers.IO + NonCancellable) {
+            val mediaType = MediaType.fromValue(history.mediaTypeValue)
+            val title = history.url.substringAfterLast('/')
+            val newEntity = PlayHistoryEntity(
+                videoName = title,
+                url = history.url,
+                mediaType = mediaType,
+                videoPosition = position,
+                videoDuration = duration,
+                playTime = Date(),
+                uniqueKey = history.uniqueKey,
+                storagePath = history.storagePath,
+                storageId = storageId,
+                httpHeader = history.httpHeader,
+            )
+            playHistoryDao.upsertProgress(
+                uniqueKey = history.uniqueKey,
+                storageId = storageId,
+                newPosition = position,
+                newDuration = duration,
+                newPlayTime = newEntity.playTime,
+                newEntity = newEntity,
+            )
+        }
+    }
+
+    /** 记录新曲目开始播放（切歌后调用），写入 play_history 作为历史来源。 */
+    private suspend fun recordPlayStart(
+        history: HistoryDescriptor,
+        title: String,
+        startPositionMs: Long,
+    ) {
+        val storageId = history.storageId ?: return
+        // 文件夹访问加密：加密目录内的文件不写入播放历史
+        if (encryptedFolderManager.isWithinEncrypted(storageId, history.storagePath)) return
+        val mediaType = MediaType.fromValue(history.mediaTypeValue)
+        val now = Date()
+        val newEntity = PlayHistoryEntity(
+            videoName = title,
+            url = history.url,
+            mediaType = mediaType,
+            videoPosition = startPositionMs,
+            playTime = now,
+            uniqueKey = history.uniqueKey,
+            storagePath = history.storagePath,
+            storageId = storageId,
+            httpHeader = history.httpHeader,
+            playlistId = history.playlistId,
+        )
+        playHistoryDao.upsertPlayStart(
+            uniqueKey = history.uniqueKey,
+            storageId = storageId,
+            newPlayTime = now,
+            newEntity = newEntity,
+        )
+    }
+
+    /**
+     * 为指定曲目异步提取专辑封面，结果通过 [_audioCoverPath] 暴露。
+     *
+     * 封面提取从 PlayerViewModel 下沉到 Manager：MusicBar / 全屏页 / 通知栏
+     * 统一订阅 [_audioCoverPath]，无论 UI 层（PlayerViewModel）是否存活，
+     * 切歌后封面都能同步更新。优先级：本地缓存 → Storage 提取 → API 兜底。
+     */
+    private fun refreshAudioCover(history: HistoryDescriptor) {
+        // 受总开关与音频封面开关双重控制
+        if (!ThumbnailSettings.generateThumbnail || !ThumbnailSettings.generateForAudio) {
+            _audioCoverPath.value = null
+            setCoverBitmap(null)
+            return
+        }
+        val sid = history.storageId
+        if (sid != null) {
+            // 播放后生成策略检查：关闭模式不提取封面
+            if (!ThumbnailSettings.shouldGenerateOnPlayback(sid)) {
+                _audioCoverPath.value = null
+                setCoverBitmap(null)
+                return
+            }
+            loadStorageAudioCover(history, sid)
+            return
+        }
+        // 无 storageId（本地直链/下载缓存），走 MediaMetadataRetriever 本地提取
+        loadLocalAudioCover()
+    }
+
+    /** 通过 Storage 抽象层提取音频封面（SMB/WebDAV/ExternalStorage）。 */
+    private fun loadStorageAudioCover(history: HistoryDescriptor, sid: Int) {
+        val filePath = history.storagePath ?: return
+        val fileName = history.url.substringAfterLast('/')
+
+        // 先检查本地缓存，命中则直接返回，避免创建不必要的 Storage 连接
+        val cachedPath = thumbnailManager.getCachedAudioCoverPath(sid, filePath)
+        if (cachedPath != null) {
+            _audioCoverPath.value = cachedPath
+            updateCoverPath(cachedPath)
+            return
+        }
+
+        // 取消旧的封面生成协程，避免快速切歌时旧协程完成后覆盖新歌封面
+        audioCoverJob?.cancel()
+        audioCoverJob = scope.launch(Dispatchers.IO) {
+            try {
+                val library = mediaLibraryDao.getById(sid) ?: return@launch
+                val storage = storageFactory.create(library) ?: return@launch
+                try {
+                    val file = MediaSourceBuilder.createVirtualFile(filePath, fileName)
+                    var loaded = false
+                    thumbnailManager.preloadAudioCovers(storage, sid, listOf(file)) { _, coverPath ->
+                        _audioCoverPath.value = coverPath
+                        updateCoverPath(coverPath)
+                        loaded = true
+                    }
+                    if (!loaded) {
+                        val path = thumbnailManager.generateAudioCover(storage, sid, file)
+                        if (path != null) {
+                            thumbnailManager.uploadAudioCover(storage, file)
+                        }
+                        if (path != null) {
+                            _audioCoverPath.value = path
+                            updateCoverPath(path)
+                        } else {
+                            // 本地封面提取失败，尝试从 API 获取
+                            fetchAudioCoverFromApi(fileName)
+                        }
+                    }
+                } finally {
+                    storage.close()
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _audioCoverPath.value = null
+                updateCoverPath(null)
+            }
+        }
+    }
+
+    /** 本地文件（下载缓存/SAF content://）直接通过 MediaMetadataRetriever 提取封面。 */
+    private fun loadLocalAudioCover() {
+        val source = _currentSource as? NxMediaSource.Local ?: return
+        audioCoverJob?.cancel()
+        audioCoverJob = scope.launch(Dispatchers.IO) {
+            try {
+                val uri = source.uri
+                val cacheKey = "local_audio_${md5(uri.toString())}"
+                val cacheFile = File(context.cacheDir, "audio_covers/$cacheKey.jpg")
+                if (cacheFile.exists() && cacheFile.length() > 0) {
+                    val path = cacheFile.absolutePath
+                    _audioCoverPath.value = path
+                    updateCoverPath(path)
+                    return@launch
+                }
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, uri)
+                    val pictureData = retriever.embeddedPicture
+                    if (pictureData != null) {
+                        val bitmap = BitmapFactory.decodeByteArray(pictureData, 0, pictureData.size)
+                        if (bitmap != null) {
+                            cacheFile.parentFile?.mkdirs()
+                            FileOutputStream(cacheFile).use { out ->
+                                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                            }
+                            val path = cacheFile.absolutePath
+                            _audioCoverPath.value = path
+                            updateCoverPath(path)
+                        }
+                    } else {
+                        // 本地无嵌入封面，尝试从 API 获取
+                        val nameWithoutExt = source.uri.pathSegments.lastOrNull()
+                            ?.substringBeforeLast('.') ?: ""
+                        if (nameWithoutExt.isNotEmpty()) {
+                            fetchAudioCoverFromApi(nameWithoutExt)
+                        } else {
+                            _audioCoverPath.value = null
+                            updateCoverPath(null)
+                        }
+                    }
+                } finally {
+                    retriever.release()
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _audioCoverPath.value = null
+                updateCoverPath(null)
+            }
+        }
+    }
+
+    /** 从 lrcapi 获取封面并缓存到本地（本地封面提取失败时的兜底）。 */
+    private fun fetchAudioCoverFromApi(nameWithoutExt: String) {
+        if (!musicMetadataService.isConfigured()) return
+        scope.launch(Dispatchers.IO) {
+            try {
+                val result = musicMetadataService.fetchCover(title = nameWithoutExt)
+                if (result.isSuccess) {
+                    val coverBytes = result.getOrNull()
+                    if (coverBytes != null && coverBytes.isNotEmpty()) {
+                        val coverDir = File(context.cacheDir, "audio_covers")
+                        if (!coverDir.exists()) coverDir.mkdirs()
+                        val coverFile = File(coverDir, "api_${md5(nameWithoutExt)}.jpg")
+                        coverFile.writeBytes(coverBytes)
+                        val path = coverFile.absolutePath
+                        _audioCoverPath.value = path
+                        updateCoverPath(path)
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+    }
+
+    /** 字符串 MD5 哈希，用于本地缓存文件名。 */
+    private fun md5(input: String): String {
+        try {
+            val digest = java.security.MessageDigest.getInstance("MD5")
+            val bytes = digest.digest(input.toByteArray())
+            return bytes.joinToString("") { "%02x".format(it) }
+        } catch (_: Exception) {
+            return input.hashCode().toUInt().toString(16)
+        }
     }
 
     fun pausePlayback() {
@@ -372,7 +1024,9 @@ class AudioPlaybackManager @Inject constructor(
 
     fun stopPlayback() {
         exoPlayer?.stop()
+        _pendingSeekMs = null
         _positionMs.value = 0L
+        _durationMs.value = 0L
         _isPlaying.value = false
         _currentSource = null
         _currentTitle.value = ""
@@ -381,6 +1035,7 @@ class AudioPlaybackManager @Inject constructor(
         setCoverBitmap(null)
         _playlist.value = emptyList()
         _currentIndex.value = -1
+        currentHistory = null
         _lrcText.value = null
         _playbackError.value = null
         closeStorageAsync()
@@ -438,6 +1093,9 @@ class AudioPlaybackManager @Inject constructor(
             startPositionMs = _currentPositionMs,
             playlist = _playlist.value,
             startIndex = _currentIndex.value,
+            // 保留历史描述符：play() 内部 currentHistory = history，缺省会置 null，
+            // 导致重试后切歌/周期保存全部失效
+            history = currentHistory,
         )
     }
 
@@ -462,12 +1120,37 @@ class AudioPlaybackManager @Inject constructor(
         }
     }
 
-    private companion object {
+    companion object {
+        private const val TAG = "AudioPlaybackManager"
+
         /** F-02 爆音修复：均衡器淡入淡出步数（10 步 ≈ 100ms）。 */
         private const val EQ_FADE_STEPS = 10
 
         /** F-02 爆音修复：均衡器淡入淡出每步间隔（ms）。 */
         private const val EQ_FADE_STEP_DELAY_MS = 10L
+
+        /** seek 生效静默期（ms）：seekTo 后此窗口内轮询协程不覆盖 UI 位置。 */
+        private const val SEEK_SETTLE_MS = 250L
+
+        /** 网络类错误自动重试最大次数。 */
+        private const val MAX_AUTO_RETRY = 3
+
+        /** 自动重试初始退避（ms），每次翻倍：1s、2s、4s。 */
+        private const val AUTO_RETRY_BASE_MS = 1000L
+
+        /** 周期保存：首次保存延迟（s），进入播放后尽快落盘初始进度快照。 */
+        private const val PROGRESS_FIRST_SAVE_DELAY_S = 5
+
+        /** 周期保存：后续保存间隔（s）。 */
+        private const val PROGRESS_SAVE_INTERVAL_S = 30
+
+        /**
+         * 音频播放倍速档位（0.5x / 1.0x / 1.5x / 2.0x 四档）。
+         *
+         * 音频独立于视频的 8 档（SPEED_VALUES），并通过
+         * PlayerSettings.audioSpeedIndex 单独持久化选择结果。
+         */
+        val AudioPlaybackSpeedValues = listOf(0.5f, 1.0f, 1.5f, 2.0f)
 
         /**
          * 从异常链中提取 HTTP 状态码。

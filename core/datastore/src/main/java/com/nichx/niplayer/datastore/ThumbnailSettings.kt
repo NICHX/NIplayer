@@ -119,6 +119,30 @@ object ThumbnailSettings {
         }
     }
 
+    /**
+     * 导出所有存储源级别生成策略覆盖（供备份）。
+     *
+     * 遍历 MMKV 中所有 `thumbnail_lib_mode_*` 与旧版 `thumbnail_lib_enabled_*` 键，
+     * 通过 [getLibraryGenerationMode] 取得有效策略（含旧版布尔开关迁移），
+     * 返回 libId -> mode key 映射。空 map 表示无任何覆盖。
+     */
+    fun snapshotAllLibraryModes(): Map<Int, String> = buildMap {
+        val keys = mmkv.allKeys() ?: return@buildMap
+        val seen = mutableSetOf<Int>()
+        for (key in keys) {
+            val libId = when {
+                key.startsWith(KEY_PREFIX_LIBRARY_MODE) ->
+                    key.removePrefix(KEY_PREFIX_LIBRARY_MODE).toIntOrNull()
+                key.startsWith(KEY_PREFIX_LIBRARY_ENABLED) ->
+                    key.removePrefix(KEY_PREFIX_LIBRARY_ENABLED).toIntOrNull()
+                else -> null
+            }
+            if (libId != null && seen.add(libId)) {
+                getLibraryGenerationMode(libId)?.let { mode -> put(libId, mode.key) }
+            }
+        }
+    }
+
     /** 存储源生效的生成策略：存储源级覆盖优先，否则全局策略。 */
     fun effectiveMode(libId: Int): ThumbnailGenerationMode =
         getLibraryGenerationMode(libId) ?: generationMode
