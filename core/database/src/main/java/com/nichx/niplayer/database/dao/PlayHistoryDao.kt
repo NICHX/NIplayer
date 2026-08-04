@@ -282,8 +282,9 @@ interface PlayHistoryDao {
      * .PlayerViewModel.recordPlayStart] 的 query-then-update/insert 模式。
      *
      * 语义：
-     * - existing != null：仅刷新 [playTime]（刷新"最近播放"排序），**不覆盖** videoPosition
-     *   （BUG-H3：避免未播放时用 startPositionMs 覆盖已有进度）
+     * - existing != null：刷新 [playTime]（刷新"最近播放"排序），**不覆盖** videoPosition
+     *   （BUG-H3：避免未播放时用 startPositionMs 覆盖已有进度）；
+     *   更新 [playlistId] 为本次播放来源（歌单播放时记录歌单 ID，文件夹播放时置 null）
      * - existing == null：用 [newEntity] insert（videoPosition=startPositionMs 作为初始值）
      *
      * @Transaction 保证并发安全，避免两个协程同时查到 existing==null 都走 insert 路径
@@ -307,6 +308,8 @@ interface PlayHistoryDao {
             existing.playTime = newPlayTime
             // 刷新 updated_at 供增量同步（play_history 云同步）
             existing.updatedAt = System.currentTimeMillis()
+            // 更新来源歌单：从歌单播放时记录 playlistId，从文件夹播放时清除（null）
+            existing.playlistId = newEntity.playlistId
             update(existing)
         } else {
             insert(newEntity)
