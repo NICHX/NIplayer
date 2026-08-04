@@ -35,6 +35,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
+import com.nichx.niplayer.database.entity.SyncConflictEntity
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
@@ -107,6 +109,8 @@ fun PlayHistoryScreen(
     val scope = rememberCoroutineScope()
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val syncConfig by viewModel.syncConfig.collectAsStateWithLifecycle()
+    val conflicts by viewModel.conflicts.collectAsStateWithLifecycle()
+    var showConflicts by remember { mutableStateOf(false) }
 
     // 同步结果短暂展示后消退（对勾 / 错误角标回到待机）
     LaunchedEffect(syncState) {
@@ -204,6 +208,31 @@ fun PlayHistoryScreen(
                     }
                 }
                 return@Column
+            }
+            if (conflicts.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f))
+                        .clickable { showConflicts = true }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CloudSync,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    Text(
+                        text = "有 ${conflicts.size} 条同步冲突待处理，点击解决",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
             if (hasHistory) {
                 Row(
@@ -333,6 +362,48 @@ fun PlayHistoryScreen(
         }
     }
 
+    if (showConflicts) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showConflicts = false },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            tonalElevation = 2.dp,
+        ) {
+            Column(modifier = Modifier.padding(bottom = 32.dp)) {
+                Text(
+                    text = "同步冲突",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                )
+                Text(
+                    text = "两台设备在相近时间各自修改了同一条历史，请选择保留哪个版本。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+                )
+                Spacer(Modifier.height(8.dp))
+                conflicts.forEachIndexed { index, conflict ->
+                    if (index > 0) {
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp))
+                    }
+                    ConflictItem(
+                        conflict = conflict,
+                        onKeepLocal = {
+                            viewModel.resolveConflictKeepLocal(conflict)
+                            if (conflicts.size == 1) showConflicts = false
+                        },
+                        onKeepRemote = {
+                            viewModel.resolveConflictKeepRemote(conflict)
+                            if (conflicts.size == 1) showConflicts = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+
     if (showDeleteAllDialog) {
         NiConfirmDialog(
             title = "清空历史",
@@ -415,4 +486,75 @@ private fun HistoryItemSkeleton() {
         }
     }
     Spacer(Modifier.height(8.dp))
+}
+
+@Composable
+private fun ConflictItem(
+    conflict: SyncConflictEntity,
+    onKeepLocal: () -> Unit,
+    onKeepRemote: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
+        Text(
+            text = conflict.videoName,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "本机",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "进度 ${formatPositionMs(conflict.localVideoPosition)} / ${formatPositionMs(conflict.localVideoDuration)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "更新于 ${formatPlayTime(Date(conflict.localPlayTime))}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "云端",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+                Text(
+                    text = "进度 ${formatPositionMs(conflict.remoteVideoPosition)} / ${formatPositionMs(conflict.remoteVideoDuration)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "更新于 ${formatPlayTime(Date(conflict.remoteUpdatedAt))}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = onKeepLocal) { Text("保留本机") }
+            TextButton(onClick = onKeepRemote) { Text("保留云端") }
+        }
+    }
+}
+
+private fun formatPositionMs(ms: Long): String {
+    if (ms <= 0) return "--:--"
+    val totalSeconds = ms / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
+    }
 }

@@ -11,6 +11,7 @@ import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.PlaylistDao
 import com.nichx.niplayer.database.dao.PlaylistItemDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
+import com.nichx.niplayer.database.dao.SyncConflictDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.dao.VideoBookmarkDao
 import com.nichx.niplayer.database.dao.VideoDao
@@ -42,6 +43,9 @@ object DatabaseModule {
                 NiplayerDatabase.MIGRATION_8_9,
                 NiplayerDatabase.MIGRATION_9_10,
                 NiplayerDatabase.MIGRATION_10_11,
+                NiplayerDatabase.MIGRATION_11_12,
+                NiplayerDatabase.MIGRATION_12_13,
+                NiplayerDatabase.MIGRATION_13_14,
             )
             .fallbackToDestructiveMigration(true)
             .build()
@@ -66,6 +70,9 @@ object DatabaseModule {
 
     @Provides
     fun provideSyncDeleteLogDao(db: NiplayerDatabase): SyncDeleteLogDao = db.getSyncDeleteLogDao()
+
+    @Provides
+    fun provideSyncConflictDao(db: NiplayerDatabase): SyncConflictDao = db.getSyncConflictDao()
 
     @Provides
     fun provideVideoBookmarkDao(db: NiplayerDatabase): VideoBookmarkDao = db.getVideoBookmarkDao()

@@ -30,6 +30,10 @@ interface PlaylistItemDao {
     )
     suspend fun getByPlaylist(playlistId: Int): List<PlaylistItemEntity>
 
+    /** 全量查询（suspend），用于备份导出。 */
+    @Query("SELECT * FROM playlist_item ORDER BY playlist_id ASC, sort_order ASC, id ASC")
+    suspend fun getAll(): List<PlaylistItemEntity>
+
     /** 追加条目：已存在（playlist_id, file_path）的自动去重，返回插入后的行 id（-1 表示重复跳过）。 */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(items: List<PlaylistItemEntity>): List<Long>
@@ -42,6 +46,10 @@ interface PlaylistItemDao {
 
     @Query("DELETE FROM playlist_item WHERE playlist_id = :playlistId")
     suspend fun deleteByPlaylist(playlistId: Int)
+
+    /** 清空全表，用于恢复前清库。 */
+    @Query("DELETE FROM playlist_item")
+    suspend fun deleteAll()
 
     /** 每个歌单的首个条目（封面生成用）。 */
     @Query(

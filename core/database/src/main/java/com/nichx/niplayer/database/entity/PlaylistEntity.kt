@@ -3,6 +3,7 @@ package com.nichx.niplayer.database.entity
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.squareup.moshi.JsonClass
 import java.util.Date
 
 /**
@@ -11,6 +12,7 @@ import java.util.Date
  * 对应扩展功能方案二「播放列表系统」：从临时连播（PlaylistHolder 内存态）升级为
  * 可持久化、可编辑、可跨目录混合条目的歌单。条目见 [PlaylistItemEntity]。
  */
+@JsonClass(generateAdapter = true)
 @Entity(tableName = "playlist")
 data class PlaylistEntity(
     @PrimaryKey(autoGenerate = true) var id: Int = 0,

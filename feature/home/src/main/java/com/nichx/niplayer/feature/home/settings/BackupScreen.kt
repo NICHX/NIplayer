@@ -196,7 +196,7 @@ fun BackupScreen(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = "• 备份文件为明文 JSON，不含加密\n• 存储源密码已由系统密钥库加密，跨设备恢复后需重新输入\n• 播放历史经「播放历史云同步」跨设备同步，不随备份文件恢复\n• 云同步与备份共用同一 WebDAV 服务器，同步文件位于 NIplayer_backup/sync/ 子目录\n• 恢复操作会替换当前存储源、快速访问、书签、扩展目录数据\n• 音乐 API、Assrt 字幕配置及主题、播放器、字幕样式、均衡器、缩略图、文件浏览、视频扩展名、下载目录等应用设置随备份导出/恢复",
+                        text = "• 备份为明文 JSON，含存储源密码（明文，便于跨设备迁移）\n• 备份内容：存储源、快速访问、视频书签、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图/文件浏览等全部应用设置\n• 恢复默认合并模式：备份覆盖同主键项，本机独有数据保留；选择替换模式则清空后重插\n• 播放历史经「播放历史云同步」跨设备同步，不随备份文件恢复\n• 云备份文件名含设备标识，便于多设备区分\n• 云同步与备份共用同一 WebDAV 服务器，同步文件位于 NIplayer_backup/sync/ 子目录",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 18.sp,
@@ -238,14 +238,12 @@ fun BackupScreen(
         is BackupUiState.ImportSuccess -> {
             val msg = buildString {
                 append("恢复完成\n\n")
-                append("存储源: ${s.summary.mediaLibraries} 条\n")
-                append("快速访问: ${s.summary.quickAccesses} 条\n")
-                append("视频书签: ${s.summary.videoBookmarks} 条\n")
-                append("扩展目录: ${s.summary.extendFolders} 条\n")
-                append("音乐 API: ${if (s.summary.lrcApiConfigured) "已恢复" else "无配置"}\n")
-                append("Assrt 字幕: ${if (s.summary.assrtConfigured) "已恢复" else "无配置"}\n")
-                append("应用设置: ${if (s.summary.appSettingsRestored) "已恢复" else "旧版备份无设置"}\n\n")
-                append("播放历史不受影响")
+                if (s.summary.descriptions.isEmpty()) {
+                    append("备份文件无数据")
+                } else {
+                    s.summary.descriptions.forEach { append(it).append('\n') }
+                    append("\n播放历史不受影响")
+                }
             }
             ResultDialog(
                 title = "恢复完成",
@@ -279,8 +277,8 @@ fun BackupScreen(
             },
         ) {
             Text(
-                text = "将从所选文件恢复存储源、快速访问、视频书签、扩展目录、音乐 API、Assrt 字幕配置及主题、播放器、字幕样式、均衡器、缩略图等应用设置。" +
-                    "当前数据将被替换，播放历史不受影响。此操作不可撤销，是否继续？",
+                text = "将从所选文件恢复存储源、快速访问、视频书签、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图等全部应用设置。" +
+                    "默认合并模式：备份覆盖同主键项，本机独有数据保留。播放历史不受影响。此操作不可撤销，是否继续？",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -304,8 +302,8 @@ fun BackupScreen(
             },
         ) {
             Text(
-                text = "将从服务器下载备份文件 $fileName 并恢复存储源、快速访问、视频书签、扩展目录、音乐 API、Assrt 字幕配置及主题、播放器、字幕样式、均衡器、缩略图等应用设置。" +
-                    "当前数据将被替换，播放历史不受影响。此操作不可撤销，是否继续？",
+                text = "将从服务器下载备份文件 $fileName 并恢复存储源、快速访问、视频书签、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图等全部应用设置。" +
+                    "默认合并模式：备份覆盖同主键项，本机独有数据保留。播放历史不受影响。此操作不可撤销，是否继续？",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -832,7 +830,7 @@ private fun LocalBackupCard(
             )
         }
         Text(
-            text = "将存储源、快速访问、书签、扩展目录、音乐 API、Assrt 字幕配置及主题、播放器、字幕样式、均衡器、缩略图等应用设置导出为 JSON 文件，或从备份文件恢复。播放历史不包含在备份中。",
+            text = "将存储源、快速访问、书签、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图等全部应用设置导出为 JSON 文件，或从备份文件恢复。播放历史不包含在备份中。",
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             lineHeight = 18.sp,

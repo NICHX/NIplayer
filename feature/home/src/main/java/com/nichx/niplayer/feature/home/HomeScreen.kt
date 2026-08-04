@@ -130,6 +130,12 @@ fun HomeScreen(
             tabs = tabs,
             currentRoute = currentRoute,
             onTabSelected = onTabSelected,
+            onTabLongClicked = { tab ->
+                // 长按媒体库按钮：关闭文件浏览页，回到存储源列表
+                if (tab.route == HomeTab.LIBRARY.route && fbStorageId > 0) {
+                    closeFileBrowser()
+                }
+            },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .widthIn(max = bottomBarMaxWidth),
@@ -182,7 +188,6 @@ private fun HomeTabContent(
                     LibraryScreen(
                         onNavigateToStorageFile = onOpenFileBrowser,
                         onNavigateToStoragePlus = onNavigateToStoragePlus,
-                        onOpenPlaylists = onOpenPlaylists,
                     )
                 } else {
                     Box(
