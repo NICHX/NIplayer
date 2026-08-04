@@ -49,6 +49,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.nichx.niplayer.datastore.LanguageSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.theme.NiTheme
@@ -67,6 +68,7 @@ import com.nichx.niplayer.feature.home.settings.CacheManagerScreen
 import com.nichx.niplayer.feature.home.settings.DownloadManagerScreen
 import com.nichx.niplayer.feature.home.settings.EqualizerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.LrcApiSettingsScreen
+import com.nichx.niplayer.feature.home.settings.LanguageScreen
 import com.nichx.niplayer.feature.home.settings.PlaybackStatsScreen
 import com.nichx.niplayer.feature.home.settings.PlayerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.ScanManagerScreen
@@ -87,6 +89,10 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var audioPlaybackManager: AudioPlaybackManager
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LanguageSettings.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -360,6 +366,13 @@ class MainActivity : ComponentActivity() {
                             exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
                         ) {
                             ThemeScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = Routes.User.LANGUAGE,
+                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
+                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
+                        ) {
+                            LanguageScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.SETTING_PLAYER,
