@@ -16,6 +16,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.player.kernel.NxMediaSource
 import com.nichx.niplayer.player.kernel.PlaylistItem
 import com.nichx.niplayer.player.kernel.audio.NiEqualizer
@@ -32,6 +33,17 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * 音频播放模式（0=顺序循环 / 1=随机 / 2=单曲循环）。
+ *
+ * 索引与 [PlayerSettings.audioPlayModeIndex] 对齐，保证切换与持久化一致。
+ */
+enum class PlayMode(val label: String) {
+    Loop("顺序播放"),
+    Shuffle("随机播放"),
+    Single("单曲循环"),
+}
 
 @OptIn(UnstableApi::class)
 @Singleton
@@ -69,12 +81,30 @@ class AudioPlaybackManager @Inject constructor(
     private val _currentIndex = MutableStateFlow(-1)
     val currentIndex: StateFlow<Int> = _currentIndex.asStateFlow()
 
+    /** 当前播放模式索引，从持久化设置恢复。 */
+    private val _playModeIndex = MutableStateFlow(PlayerSettings.audioPlayModeIndex)
+    val playModeIndex: StateFlow<Int> = _playModeIndex.asStateFlow()
+
+    /** 循环切换播放模式（顺序→随机→单曲→顺序），并持久化。 */
+    fun cyclePlayMode() {
+        val next = (_playModeIndex.value + 1) % PlayMode.entries.size
+        _playModeIndex.value = next
+        PlayerSettings.audioPlayModeIndex = next
+    }
+
     private val _lrcText = MutableStateFlow<String?>(null)
     val lrcText: StateFlow<String?> = _lrcText.asStateFlow()
 
     private var _currentSource: NxMediaSource? = null
     val currentSource: NxMediaSource? get() = _currentSource
     private var _currentPositionMs: Long = 0L
+
+    /**
+     * 待生效的 seek 目标位置（ms）。seekTo 为异步操作，ExoPlayer 执行完成前
+     * [currentPosition] 仍是旧值，轮询协程若在此期间覆盖 [_positionMs] 会导致
+     * 进度条"先回旧位置再跳到位"的闪跳。此标记用于告知轮询协程暂停同步。
+     */
+    private var _pendingSeekMs: Long? = null
 
     private var lastCoverBitmap: Bitmap? = null
 
@@ -165,9 +195,17 @@ class AudioPlaybackManager @Inject constructor(
                     _positionMs.value = 0L
                     _isPlaying.value = false
                     scope.launch {
-                        // 播放完毕自动下一首
+                        // 播放完毕按播放模式处理：单曲循环重播当前，顺序/随机进入下一首
                         if (_currentIndex.value >= 0 && _playlist.value.isNotEmpty()) {
-                            playNext()
+                            when (PlayMode.entries[_playModeIndex.value]) {
+                                PlayMode.Single -> {
+                                    // 单曲循环：重播当前曲目（seek 后需恢复播放）
+                                    seekTo(0L)
+                                    exoPlayer?.playWhenReady = true
+                                }
+                                PlayMode.Shuffle,
+                                PlayMode.Loop -> playNext()
+                            }
                         }
                     }
                 }
@@ -231,10 +269,19 @@ class AudioPlaybackManager @Inject constructor(
         scope.launch {
             while (isActive) {
                 val p = exoPlayer ?: break
-                if (p.isPlaying) {
-                    _positionMs.value = p.currentPosition.coerceAtLeast(0)
+                val current = p.currentPosition.coerceAtLeast(0)
+                val pending = _pendingSeekMs
+                if (pending != null) {
+                    // seek 尚未生效：currentPosition 可能仍是旧值。一旦追上目标位置即视为完成。
+                    if (current >= pending) {
+                        _pendingSeekMs = null
+                        _positionMs.value = current
+                    }
+                    // 若 seek 朝后（current 仍 < pending），继续保持 pending，不覆盖 UI 位置
+                } else if (p.isPlaying) {
+                    _positionMs.value = current
                 }
-                _currentPositionMs = exoPlayer?.currentPosition?.coerceAtLeast(0) ?: 0L
+                _currentPositionMs = current
                 delay(1000)
             }
         }
@@ -265,6 +312,8 @@ class AudioPlaybackManager @Inject constructor(
         _currentIndex.value = startIndex
         // 清除上次的播放错误，让 UI 恢复正常显示
         _playbackError.value = null
+        // 切歌时清除残留的 seek 标记，避免影响新曲目的进度显示
+        _pendingSeekMs = null
 
         val metadata = MediaMetadata.Builder()
             .setTitle(title)
@@ -331,24 +380,55 @@ class AudioPlaybackManager @Inject constructor(
     }
 
     fun seekTo(positionMs: Long) {
-        exoPlayer?.seekTo(positionMs.coerceAtLeast(0))
+        val player = exoPlayer ?: return
+        val target = positionMs.coerceAtLeast(0)
+        // 先标记 pending 并立即更新 UI 位置，避免轮询协程用旧的 currentPosition 覆盖导致闪跳
+        _pendingSeekMs = target
+        _positionMs.value = target
+        player.seekTo(target)
     }
 
-    /** 请求切换到下一首。只更新索引，实际 source 切换由外部（PlayerViewModel）处理。 */
+    /**
+     * 计算下一首索引。依据播放模式：
+     * - 顺序循环：末位回到 0
+     * - 随机：随机挑选，避免与当前相同（列表 > 1 时）
+     * - 单曲循环：返回当前索引（保持重播）
+     */
+    fun nextIndex(current: Int): Int {
+        val size = _playlist.value.size
+        if (size == 0) return -1
+        return when (PlayMode.entries[_playModeIndex.value]) {
+            PlayMode.Loop -> if (current >= size - 1) 0 else current + 1
+            PlayMode.Single -> current.coerceIn(0, size - 1)
+            PlayMode.Shuffle -> {
+                if (size <= 1) current.coerceIn(0, size - 1)
+                else {
+                    var next = kotlin.random.Random.nextInt(size)
+                    while (next == current) {
+                        next = kotlin.random.Random.nextInt(size)
+                    }
+                    next
+                }
+            }
+        }
+    }
+
+    /** 计算上一首索引（仅顺序模式支持，随机/单曲循环同样向前回退一位）。 */
+    fun previousIndex(current: Int): Int {
+        val size = _playlist.value.size
+        if (size == 0) return -1
+        return if (current <= 0) size - 1 else current - 1
+    }
+
+    /** 请求切换到下一首。仅触发回调，实际索引计算与 source 切换由 PlayerViewModel.playNext 完成。 */
     fun requestNext() {
-        val list = _playlist.value
-        val nextIndex = _currentIndex.value + 1
-        if (list.isEmpty() || nextIndex >= list.size) return
-        _currentIndex.value = nextIndex
+        if (_playlist.value.isEmpty()) return
         onPlayNextRequest?.invoke()
     }
 
-    /** 请求切换到上一首。只更新索引，实际 source 切换由外部（PlayerViewModel）处理。 */
+    /** 请求切换到上一首。仅触发回调，实际索引计算与 source 切换由 PlayerViewModel.playPrevious 完成。 */
     fun requestPrevious() {
-        val list = _playlist.value
-        val prevIndex = _currentIndex.value - 1
-        if (list.isEmpty() || prevIndex < 0) return
-        _currentIndex.value = prevIndex
+        if (_playlist.value.isEmpty()) return
         onPlayPreviousRequest?.invoke()
     }
 
@@ -372,6 +452,7 @@ class AudioPlaybackManager @Inject constructor(
 
     fun stopPlayback() {
         exoPlayer?.stop()
+        _pendingSeekMs = null
         _positionMs.value = 0L
         _isPlaying.value = false
         _currentSource = null
@@ -463,6 +544,8 @@ class AudioPlaybackManager @Inject constructor(
     }
 
     private companion object {
+        private const val TAG = "AudioPlaybackManager"
+
         /** F-02 爆音修复：均衡器淡入淡出步数（10 步 ≈ 100ms）。 */
         private const val EQ_FADE_STEPS = 10
 

@@ -19,14 +19,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,8 +48,6 @@ fun PlaylistSheet(
     playMode: Int,
     onDismiss: () -> Unit,
     onPlayAtIndex: (Int) -> Unit,
-    onSwitchPlayMode: () -> Unit,
-    onSaveToPlaylist: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val surface = MaterialTheme.colorScheme.surface
@@ -83,52 +78,16 @@ fun PlaylistSheet(
                     fontWeight = FontWeight.Bold,
                 )
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val modeLabel = when (playMode % 3) {
-                        0 -> "顺序播放"
-                        1 -> "随机播放"
-                        else -> "单曲循环"
-                    }
-                    Text(
-                        text = modeLabel,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = onSurface.copy(alpha = 0.6f),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = onSwitchPlayMode,
-                        modifier = Modifier.size(28.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.PlayArrow,
-                            contentDescription = modeLabel,
-                            tint = onSurface.copy(alpha = 0.6f),
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
+                val modeLabel = when (playMode % 3) {
+                    0 -> "顺序播放"
+                    1 -> "随机播放"
+                    else -> "单曲循环"
                 }
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = onSaveToPlaylist) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlaylistAdd,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "保存为歌单",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                Text(
+                    text = modeLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = onSurface.copy(alpha = 0.6f),
+                )
             }
 
             if (playlist.isEmpty()) {
