@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircleOutline
@@ -257,7 +258,7 @@ enum class SettingsGroup(
     ),
     APPEARANCE(
         labelRes = R.string.settings_group_appearance,
-        entries = listOf(SettingsEntry.THEME),
+        entries = listOf(SettingsEntry.THEME, SettingsEntry.LANGUAGE),
     ),
     ABOUT(
         labelRes = R.string.settings_group_about,
@@ -327,6 +328,13 @@ enum class SettingsEntry(
         subtitleRes = R.string.settings_entry_theme_sub,
         icon = Icons.Filled.Palette,
         iconBg = Color(0xFF00ACC1),
+    ),
+    LANGUAGE(
+        route = Routes.User.LANGUAGE,
+        titleRes = R.string.settings_entry_language,
+        subtitleRes = R.string.settings_entry_language_sub,
+        icon = Icons.Filled.Language,
+        iconBg = Color(0xFF6A1B9A),
     ),
     UPDATE(
         route = null,

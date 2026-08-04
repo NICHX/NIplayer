@@ -353,6 +353,8 @@
     <string name="settings_entry_backup_sub">Export or restore settings</string>
     <string name="settings_entry_theme">Theme</string>
     <string name="settings_entry_theme_sub">Appearance and color scheme</string>
+    <string name="settings_entry_language">Language</string>
+    <string name="settings_entry_language_sub">App interface language</string>
     <string name="settings_entry_update">Check for updates</string>
     <string name="settings_entry_update_sub">Check and download new versions</string>
     <string name="settings_entry_about">About</string>
@@ -576,6 +578,14 @@
     <string name="theme_scheme_caramel_desc">Caramel</string>
     <string name="theme_scheme_forest_desc">Forest</string>
     <string name="theme_scheme_slate_desc">Slate</string>
+
+    <!-- Language (LanguageScreen) -->
+    <string name="language_title">Language</string>
+    <string name="language_mode">Interface language</string>
+    <string name="language_mode_system">Follow system</string>
+    <string name="language_mode_chinese">简体中文</string>
+    <string name="language_mode_english">English</string>
+    <string name="language_hint">The interface will restart immediately after switching to take effect</string>
 
     <!-- Update check (UpdateDialogs / UpdateManager / UpdateViewModel) -->
     <string name="update_check_title">Check for updates</string>
