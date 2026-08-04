@@ -25,6 +25,7 @@ object PlayerSettings {
     private const val KEY_SEEK_SENSITIVITY = "player_seek_sensitivity"
     private const val KEY_DOUBLE_TAP_STEP_SECONDS = "player_double_tap_step_seconds"
     private const val KEY_AUDIO_PLAY_MODE_INDEX = "player_audio_play_mode_index"
+    private const val KEY_AUDIO_SPEED_INDEX = "player_audio_speed_index"
 
     /** 允许的长按倍速候选值（UI 选择用）。 */
     val LONG_PRESS_SPEED_OPTIONS: List<Float> = listOf(1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
@@ -90,6 +91,16 @@ object PlayerSettings {
     var audioPlayModeIndex: Int
         get() = mmkv.decodeInt(KEY_AUDIO_PLAY_MODE_INDEX, 0)
         set(value) { mmkv.encode(KEY_AUDIO_PLAY_MODE_INDEX, value) }
+
+    /**
+     * 音频播放倍速索引（AudioPlaybackManager.AudioPlaybackSpeedValues 索引）。
+     *
+     * 音频倍速档位（0.5/1/1.5/2 四档）与视频（8 档）不同，故独立持久化，
+     * 不与视频共享 [lastSpeedIndex]，避免索引语义错位。
+     */
+    var audioSpeedIndex: Int
+        get() = mmkv.decodeInt(KEY_AUDIO_SPEED_INDEX, 1)
+        set(value) { mmkv.encode(KEY_AUDIO_SPEED_INDEX, value) }
 
     // region 黑边检测结果缓存
 

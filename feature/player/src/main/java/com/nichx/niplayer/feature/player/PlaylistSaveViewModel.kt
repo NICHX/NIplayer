@@ -27,16 +27,16 @@ sealed class SavePlaylistTarget {
     data class Existing(val playlistId: Int) : SavePlaylistTarget()
 }
 
-/** 播放页「保存为歌单」结果事件。 */
+/** 播放页「添加到歌单」结果事件。 */
 sealed class PlaylistSaveEvent {
-    /** 保存成功，[addedCount] 为实际新增条数，[playlistName] 为目标歌单名。 */
+    /** 添加成功，[addedCount] 为实际新增条数（0 表示重复），[playlistName] 为目标歌单名。 */
     data class Saved(val addedCount: Int, val playlistName: String) : PlaylistSaveEvent()
 }
 
 /**
- * 播放页「保存为歌单」ViewModel（扩展功能方案二 · 入口①）。
+ * 播放页「添加到歌单」ViewModel。
  *
- * 将当前播放列表（[PlaylistItem] 列表）持久化到已有歌单或新建歌单，
+ * 将当前正在播放的歌曲（[items] 通常为单元素列表）持久化到已有歌单或新建歌单，
  * 复用 [PlaylistItemDao.addItems] 的唯一索引去重（重复文件自动跳过）。
  */
 @HiltViewModel
@@ -56,7 +56,7 @@ class PlaylistSaveViewModel @Inject constructor(
     private val _events = MutableSharedFlow<PlaylistSaveEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<PlaylistSaveEvent> = _events.asSharedFlow()
 
-    /** 保存播放列表到目标歌单；仅保留音频条目，重复文件自动跳过。 */
+    /** 添加当前歌曲到目标歌单；重复文件自动跳过。 */
     fun save(target: SavePlaylistTarget, newName: String, items: List<PlaylistItem>) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {

@@ -46,6 +46,7 @@ object DatabaseModule {
                 NiplayerDatabase.MIGRATION_11_12,
                 NiplayerDatabase.MIGRATION_12_13,
                 NiplayerDatabase.MIGRATION_13_14,
+                NiplayerDatabase.MIGRATION_14_15,
             )
             .fallbackToDestructiveMigration(true)
             .build()

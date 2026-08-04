@@ -107,8 +107,11 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHostState
+import com.nichx.niplayer.common.error.NiMessage
+import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiTextField
+import com.nichx.niplayer.designsystem.components.showNiMessage
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -307,8 +310,8 @@ fun FileBrowserOverlay(
             when (event) {
                 is StorageFileEvent.NavigateToPlayer -> onPlayVideo()
                 is StorageFileEvent.NavigateToImageViewer -> onNavigateToImageViewer()
-                is StorageFileEvent.ShowError -> snackbarHostState.showSnackbar(event.message)
-                is StorageFileEvent.ShowToast -> snackbarHostState.showSnackbar(event.message)
+                is StorageFileEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
+                is StorageFileEvent.ShowToast -> snackbarHostState.showNiMessage(NiMessage.info(event.message))
                 is StorageFileEvent.ShowQuickAccessMenu ->
                     fileMenu = event.file to event.isFavorited
             }
@@ -461,7 +464,12 @@ fun FileBrowserOverlay(
             )
             }
         },
-        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState, topAligned = true) },
+        snackbarHost = {
+            NiSnackbarHost(
+                hostState = snackbarHostState,
+                bottomObstruction = NiSnackbarDefaults.MINI_PLAYER_OBSTRUCTION,
+            )
+        },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             Column(modifier = Modifier.fillMaxSize()) {

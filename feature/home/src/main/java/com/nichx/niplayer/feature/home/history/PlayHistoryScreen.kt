@@ -60,12 +60,14 @@ import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
+import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiSectionHeader
 import com.nichx.niplayer.designsystem.components.NiSkeletonBox
 import com.nichx.niplayer.designsystem.components.NiSkeletonLine
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiThumbCard
 import com.nichx.niplayer.designsystem.components.NiTopBar
+import com.nichx.niplayer.designsystem.components.showNiMessage
 import com.nichx.niplayer.sync.SyncUiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -123,9 +125,9 @@ fun PlayHistoryScreen(
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is PlayHistoryEvent.Toast -> snackbarHostState.showSnackbar(event.message)
+                is PlayHistoryEvent.Toast -> snackbarHostState.showNiMessage(NiMessage.info(event.message))
                 is PlayHistoryEvent.NavigateToPlayer -> onNavigateToPlayVideo()
-                is PlayHistoryEvent.ShowError -> snackbarHostState.showSnackbar(event.message)
+                is PlayHistoryEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
                 else -> {}
             }
         }
@@ -146,7 +148,7 @@ fun PlayHistoryScreen(
                                 onClick = {
                                     if (showError) {
                                         scope.launch {
-                                            snackbarHostState.showSnackbar(done?.message ?: "同步失败")
+                                            snackbarHostState.showNiMessage(NiMessage.error(done?.message ?: "同步失败"))
                                         }
                                     } else {
                                         viewModel.syncNow()

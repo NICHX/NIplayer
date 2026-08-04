@@ -37,6 +37,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 import kotlin.math.absoluteValue
@@ -94,12 +95,11 @@ fun LyricsView(
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
-    // 拆分测量用当前行最宽渲染样式（titleLarge + Bold）。
+    // 测量样式基准：当前行最宽渲染样式（titleLarge + Bold）。
     // 这样无论该行是当前行（titleLarge+Bold）还是普通行（titleMedium），
     // 渲染宽度都不超过测量宽度，整句完整自动换行、永不截断。
-    val measureStyle = MaterialTheme.typography.titleLarge.copy(
-        fontWeight = FontWeight.Bold,
-    )
+    // 大屏自适应：最终字号按 scale 等比放大（见下方 BoxWithConstraints）。
+    val baseTitleLarge = MaterialTheme.typography.titleLarge
 
     val currentSentenceIndex = remember(currentPositionMs, lrcLines) {
         if (lrcLines.isEmpty()) 0 else {
@@ -118,11 +118,25 @@ fun LyricsView(
 
     BoxWithConstraints(modifier = modifier) {
         val maxWidthPx = with(density) { (maxWidth - 48.dp).toPx() }
-        val rowHeightPx = with(density) { ROW_HEIGHT.toPx() }
+
+        // 大屏自适应：可用宽度越宽，行高与字号等比放大，
+        // 避免大屏（平板/大屏手机横屏）下歌词行数少、字体显小
+        val scale = when {
+            maxWidth < 420.dp -> 1f
+            maxWidth < 560.dp -> 1.15f
+            else -> 1.3f
+        }
+        val rowHeight = ROW_HEIGHT * scale
+        val rowHeightPx = with(density) { rowHeight.toPx() }
+        // 测量样式同步放大：保证拆行测量与渲染字号一致
+        val scaledMeasureStyle = baseTitleLarge.copy(
+            fontSize = baseTitleLarge.fontSize * scale,
+            fontWeight = FontWeight.Bold,
+        )
 
         // 物理行拆分：先按可用宽度把每句完整拆成多行（不限行数），
         // 再对每句限制最多 MAX_PHYSICAL_LINES_PER_SENTENCE 行，超出部分截断并给末行加省略号。
-        val rows = remember(lrcLines, maxWidthPx, measureStyle, density) {
+        val rows = remember(lrcLines, maxWidthPx, scaledMeasureStyle, density) {
             val all = buildList {
                 lrcLines.forEachIndexed { sentenceIndex, line ->
                     if (line.text.isBlank()) {
@@ -131,7 +145,7 @@ fun LyricsView(
                     }
                     val measured = textMeasurer.measure(
                         text = line.text,
-                        style = measureStyle,
+                        style = scaledMeasureStyle,
                         constraints = Constraints(
                             maxWidth = maxWidthPx.toInt().coerceAtLeast(1),
                         ),
@@ -183,10 +197,10 @@ fun LyricsView(
         }
 
         val viewportLines = with(density) {
-            (maxHeight / ROW_HEIGHT).toInt().coerceAtLeast(3)
+            (maxHeight / rowHeight).toInt().coerceAtLeast(3)
         }.let { minOf(it, maxVisibleLines) }
 
-        val viewportHeightPx = with(density) { (ROW_HEIGHT * viewportLines).toPx() }
+        val viewportHeightPx = with(density) { (rowHeight * viewportLines).toPx() }
 
         // 精确居中：contentPadding 上下对称 = (视口高 − 行高) / 2，
         // 无偏移 animateScrollToItem 滚动后当前行中心即视口中心
@@ -237,6 +251,8 @@ fun LyricsView(
                             },
                             distanceFromCurrent = index - currentRowIndex,
                             viewportLines = viewportLines,
+                            rowHeight = rowHeight,
+                            scale = scale,
                             wordTimes = if (row.lineIndexInSentence == 0) {
                                 lrcLines[row.sentenceIndex].wordTimes
                             } else emptyList(),
@@ -258,6 +274,8 @@ private fun LyricRowItem(
     onClick: () -> Unit,
     distanceFromCurrent: Int,
     viewportLines: Int,
+    rowHeight: Dp,
+    scale: Float,
     wordTimes: List<Pair<String, Long>>,
     currentPositionMs: Long,
 ) {
@@ -316,16 +334,20 @@ private fun LyricRowItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(ROW_HEIGHT)
+            .height(rowHeight)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = displayText ?: AnnotatedString(text),
             style = if (isCurrent) {
-                MaterialTheme.typography.titleLarge
+                MaterialTheme.typography.titleLarge.copy(
+                    fontSize = MaterialTheme.typography.titleLarge.fontSize * scale,
+                )
             } else {
-                MaterialTheme.typography.titleMedium
+                MaterialTheme.typography.titleMedium.copy(
+                    fontSize = MaterialTheme.typography.titleMedium.fontSize * scale,
+                )
             },
             color = if (isCurrent) primary.copy(alpha = animAlpha)
             else onSurface.copy(alpha = animAlpha),

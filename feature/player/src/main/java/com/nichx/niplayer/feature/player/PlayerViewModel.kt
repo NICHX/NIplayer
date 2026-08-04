@@ -3,8 +3,6 @@ package com.nichx.niplayer.feature.player
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -19,6 +17,7 @@ import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.VideoBookmarkDao
 import com.nichx.niplayer.database.security.EncryptedFolderManager
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
+import com.nichx.niplayer.database.entity.resumeStartPositionMs
 import com.nichx.niplayer.database.entity.VideoBookmarkEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.datastore.PlayerSettings
@@ -76,7 +75,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
-import java.io.FileOutputStream
 import java.util.Date
 import javax.inject.Inject
 
@@ -118,7 +116,6 @@ class PlayerViewModel @Inject constructor(
     private val thumbnailManager: ThumbnailManager,
     private val audioPlaybackManager: AudioPlaybackManager,
     private val downloadManager: com.nichx.niplayer.storage.download.DownloadManager,
-    private val musicMetadataService: MusicMetadataService,
     private val appScope: AppCoroutineScope,
     private val encryptedFolderManager: EncryptedFolderManager,
     private val syncManager: PlayHistorySyncManager,
@@ -263,16 +260,8 @@ class PlayerViewModel @Inject constructor(
     private val _networkSpeed = MutableStateFlow(0L)
     val networkSpeed: StateFlow<Long> = _networkSpeed.asStateFlow()
 
-    /** 音频专辑封面本地缓存路径，null 表示无封面/尚未提取/非音频。 */
-    private val _audioCoverPath = MutableStateFlow<String?>(null)
-    val audioCoverPath: StateFlow<String?> = _audioCoverPath.asStateFlow()
-
-    /** N-001 修复：音频封面异步生成 Job，用于切歌时取消旧协程，避免封面错乱。 */
-    private var audioCoverJob: Job? = null
-
-    /** LRC 歌词原始文本内容，null 表示未找到歌词。 */
-    private val _lrcText = MutableStateFlow<String?>(null)
-    val lrcText: StateFlow<String?> = _lrcText.asStateFlow()
+    /** LRC 歌词已下沉 AudioPlaybackManager（UI 订阅 manager.lrcText），
+     *  封面同理（manager.audioCoverPath），此处不再维护副本。 */
 
     /**
      * 外挂字幕渲染引擎。
@@ -785,7 +774,8 @@ class PlayerViewModel @Inject constructor(
 
             if (request.isAudio) {
                 // 音频：直接委托给 AudioPlaybackManager，单 ExoPlayer 架构
-                // 不占用 NxPlayer，无需 bridgeToBackgroundPlayback
+                // 不占用 NxPlayer，无需 bridgeToBackgroundPlayback；
+                // history 一并传入，Manager 自维护当前历史（供切歌/进度保存使用）
                 audioPlaybackManager.play(
                     source = request.source,
                     title = request.title,
@@ -794,17 +784,10 @@ class PlayerViewModel @Inject constructor(
                     startPositionMs = request.startPositionMs,
                     playlist = _playlist.value,
                     startIndex = _currentIndex.value,
+                    history = request.history,
                 )
-                loadAudioCover()
-                loadLrcForCurrentSong()
-
-                // 注册切歌回调，AudioPlaybackManager 触发时由 ViewModel 执行实际 source 切换
-                audioPlaybackManager.onPlayNextRequest = { playNext() }
-                audioPlaybackManager.onPlayPreviousRequest = { playPrevious() }
-                // 注册播放错误回调，通过 messageEvent 展示 Snackbar 提示
-                audioPlaybackManager.onPlaybackError = { msg ->
-                    _messageEvent.tryEmit(msg)
-                }
+                // 封面/歌词提取与加载已下沉 AudioPlaybackManager（play 内部异步触发）
+                registerAudioCallbacks()
             } else {
                 // 视频：使用 NxPlayer
                 swapStorage(extractStorageFromSource(request.source))
@@ -837,6 +820,11 @@ class PlayerViewModel @Inject constructor(
                     }
                 }
             }
+        } ?: run {
+            // 从 MusicBar 切回全屏：无新播放请求，但音频仍在后台播放。
+            // ViewModel 重建后回调已在 onCleared 中置空，恢复会话并重注册，
+            // 否则歌曲播完无法自动切歌、全屏「上一曲/下一曲」按钮也失效。
+            restoreAudioSessionFromManager()
         }
 
         // 监听播放结束，自动播放下一首（仅视频，音频由 AudioPlaybackManager 的 STATE_ENDED 处理）
@@ -888,6 +876,9 @@ class PlayerViewModel @Inject constructor(
         // 现首次保存提前到 [PROGRESS_FIRST_SAVE_DELAY_MS]（5s），后续按
         // [PROGRESS_SAVE_INTERVAL_MS]（30s）周期保存。5s 足以等播放稳定后写入初始位置。
         viewModelScope.launch {
+            // 音频周期保存已下沉 AudioPlaybackManager 轮询协程（不依赖 ViewModel 存活，
+            // MusicBar 场景下 ViewModel 销毁后仍持续落盘），此处仅服务视频。
+            if (isAudioPlayback) return@launch
             // 首次延迟短，确保进入后立即有进度快照
             delay(PROGRESS_FIRST_SAVE_DELAY_MS)
             runCatching { saveProgress() }.onFailure { e ->
@@ -915,6 +906,57 @@ class PlayerViewModel @Inject constructor(
                 playlistHolder.clear()
             }
         }
+    }
+
+    /**
+     * 注册 AudioPlaybackManager 回调，使播放器单例的事件由本 ViewModel 接管。
+     *
+     * 切歌能力已下沉到 Manager 内部（switchToIndex），此处仅订阅：
+     * - onPlaybackError：展示 Snackbar 错误提示
+     * - onTrackChanged：切歌成功后同步当前历史并刷新封面 / LRC
+     *
+     * 必须在音频会话有效时调用（首次播放请求或从 MusicBar 恢复会话），并仅在
+     * [onCleared] 中置空，保证单例不持有已销毁 ViewModel 的引用。
+     */
+    private fun registerAudioCallbacks() {
+        // 注册播放错误回调，通过 messageEvent 展示 Snackbar 提示
+        audioPlaybackManager.onPlaybackError = { msg ->
+            _messageEvent.tryEmit(msg)
+        }
+        // 提示类消息（如"已通过 API 获取歌词"）转为 Snackbar
+        audioPlaybackManager.onMessage = { msg ->
+            _messageEvent.tryEmit(msg)
+        }
+        // 切歌成功后同步当前历史描述符并刷新书签键（封面/歌词由 Manager 自管，
+        // 分别经 audioCoverPath / lrcText 暴露，UI 订阅 StateFlow 即可，无需重复加载）
+        audioPlaybackManager.onTrackChanged = { descriptor ->
+            currentHistory = descriptor
+            _currentBookmarkKey.value = descriptor.uniqueKey to (descriptor.storageId ?: -1)
+        }
+    }
+
+    /**
+     * 从 MusicBar 切回全屏时恢复 UI 状态。
+     *
+     * 场景：全屏播放器 → 切到 MusicBar（ViewModel 销毁，onCleared 置空回调）→ 点击
+     * MusicBar 回全屏（ViewModel 重建，但 playbackRequestHolder 请求已消费，play()
+     * 分支不执行）。此时音频仍由单例 AudioPlaybackManager 在后台播放，本方法从单例
+     * 恢复播放列表/当前索引并重注册回调；切歌本身由 Manager 自管，无需重建会话。
+     */
+    private fun restoreAudioSessionFromManager() {
+        if (!audioPlaybackManager.hasActiveAudio()) return
+        val mgrPlaylist = audioPlaybackManager.playlist.value
+        val mgrIndex = audioPlaybackManager.currentIndex.value
+        val item = mgrPlaylist.getOrNull(mgrIndex) ?: return
+        isAudioPlayback = true
+        _playlist.value = mgrPlaylist
+        _currentIndex.value = mgrIndex
+        _title.value = item.fileName
+        currentHistory = audioPlaybackManager.currentHistory
+        _currentBookmarkKey.value = (currentHistory?.uniqueKey ?: "") to (currentHistory?.storageId ?: -1)
+        registerAudioCallbacks()
+        // 恢复路径不触发 onTrackChanged（无切歌）；封面/歌词均由 Manager 自管，
+        // UI 订阅 audioCoverPath / lrcText 即可，此处无需主动刷新
     }
 
     /**
@@ -1053,9 +1095,7 @@ class PlayerViewModel @Inject constructor(
      */
     fun playNext() {
         if (isAudioPlayback) {
-            val index = audioPlaybackManager.nextIndex(_currentIndex.value)
-            if (index < 0) return
-            playAtIndex(index)
+            audioPlaybackManager.playNext()
         } else {
             val list = _playlist.value
             val nextIndex = _currentIndex.value + 1
@@ -1067,9 +1107,7 @@ class PlayerViewModel @Inject constructor(
     /** 播放上一首。已在列表首项时不做操作。 */
     fun playPrevious() {
         if (isAudioPlayback) {
-            val index = audioPlaybackManager.previousIndex(_currentIndex.value)
-            if (index < 0) return
-            playAtIndex(index)
+            audioPlaybackManager.playPrevious()
         } else {
             val list = _playlist.value
             val prevIndex = _currentIndex.value - 1
@@ -1089,7 +1127,35 @@ class PlayerViewModel @Inject constructor(
      * BUG-P2 修复：切换到新曲目前，先保存当前曲目的播放进度，
      * 避免 currentHistory 被覆盖后旧进度丢失。
      */
+    /**
+     * 播放列表中指定索引的项。
+     *
+     * 音频项：切歌全流程已下沉 [AudioPlaybackManager.switchToIndex]（保存旧进度 → 查库 →
+     * 重建 Storage → 建源 → 查续播位置 → 播放 → 记录历史 → 回调刷新封面/LRC），
+     * 本方法仅转发并同步标题。
+     *
+     * 视频项：走 [playVideoAtIndex]（原逻辑，含 Mutex 串行化与进度保存）。
+     */
     fun playAtIndex(index: Int) {
+        val list = _playlist.value
+        if (index !in list.indices) return
+        val item = list[index]
+
+        if (isAudioFile(item.fileName)) {
+            _title.value = item.fileName
+            viewModelScope.launch { audioPlaybackManager.switchToIndex(index) }
+            return
+        }
+        playVideoAtIndex(index)
+    }
+
+    /**
+     * 视频项切歌：查询存储源 → 重建 Storage → 构造 NxMediaSource → setSource → 播放。
+     *
+     * BUG-P2 修复：切换到新曲目前，先保存当前曲目的播放进度，
+     * 避免 currentHistory 被覆盖后旧进度丢失。
+     */
+    private fun playVideoAtIndex(index: Int) {
         val list = _playlist.value
         if (index !in list.indices) return
         val item = list[index]
@@ -1113,7 +1179,7 @@ class PlayerViewModel @Inject constructor(
                     // 与应用层 uniqueKey 一致，便于未来 MediaSession 集成。
                     val source = MediaSourceBuilder.buildMediaSource(storage, file, mediaId = uniqueKey)
                     val startPositionMs = withContext(Dispatchers.IO) {
-                        playHistoryDao.getPlayHistory(uniqueKey, library.id)?.videoPosition ?: 0L
+                        playHistoryDao.getPlayHistory(uniqueKey, library.id)?.resumeStartPositionMs() ?: 0L
                     }
 
                     _title.value = item.fileName
@@ -1130,49 +1196,33 @@ class PlayerViewModel @Inject constructor(
                         _currentBookmarkKey.value = it.uniqueKey to it.storageId
                     }
 
-                    isAudioPlayback = isAudioFile(item.fileName)
-                    if (isAudioPlayback) {
-                        // 音频：委托给 AudioPlaybackManager，单播放器架构
-                        audioPlaybackManager.play(
-                            source = source,
-                            title = item.fileName,
-                            coverPath = _audioCoverPath.value,
-                            artist = item.fileName,
-                            startPositionMs = startPositionMs,
-                            playlist = _playlist.value,
-                            startIndex = index,
-                        )
-                        loadAudioCover()
-                        loadLrcForCurrentSong()
-                    } else {
-                        // 视频：使用 NxPlayer
-                        swapStorage(extractStorageFromSource(source))
-                        // W-M8 修复：同 init 路径，startPositionMs 直接传给 setSource。
-                        player.setSource(source, startPositionMs)
-                        player.prepare()
-                        player.play()
+                    isAudioPlayback = false
+                    // 视频：使用 NxPlayer
+                    swapStorage(extractStorageFromSource(source))
+                    // W-M8 修复：同 init 路径，startPositionMs 直接传给 setSource。
+                    player.setSource(source, startPositionMs)
+                    player.prepare()
+                    player.play()
 
-                        // 字幕清理（仅视频）
-                        subtitleEngine.clear()
-                        player.setSubtitleOffsetMs(0L)
-                        val existingSub = withContext(Dispatchers.IO) {
-                            playHistoryDao.getPlayHistory(currentHistory!!.uniqueKey, library.id)
-                        }
-                        existingSub?.subtitlePath?.takeIf { it.isNotBlank() }?.let { path ->
-                            loadPersistedSubtitle(path)
-                        }
-
-                        _audioCoverPath.value = null
-                        _lrcText.value = null
+                    // 字幕清理（仅视频）
+                    subtitleEngine.clear()
+                    player.setSubtitleOffsetMs(0L)
+                    val existingSub = withContext(Dispatchers.IO) {
+                        playHistoryDao.getPlayHistory(currentHistory!!.uniqueKey, library.id)
+                    }
+                    existingSub?.subtitlePath?.takeIf { it.isNotBlank() }?.let { path ->
+                        loadPersistedSubtitle(path)
                     }
 
+                    // 视频路径清理：封面/歌词由 Manager 自管（audioCoverPath/lrcText），
+                    // 下次音频播放时在 play() 内自动刷新，此处无需清空副本
                     // 切歌后更新 lastPlaybackRequest，避免 retryPlayback/restartFromStart 复用已关闭的旧源
                     lastPlaybackRequest = PlaybackRequest(
                         source = source,
                         title = item.fileName,
                         startPositionMs = startPositionMs,
                         history = currentHistory,
-                        isAudio = isAudioPlayback,
+                        isAudio = false,
                     )
 
                     recordPlayStart(currentHistory!!, item.fileName, startPositionMs)
@@ -1219,265 +1269,6 @@ class PlayerViewModel @Inject constructor(
                 try { old.close() } catch (_: Exception) {}
             }
         }
-    }
-
-    /** 音频文件：异步提取专辑封面到本地缓存，更新 [audioCoverPath]。 */
-    private fun loadAudioCover() {
-        // 受总开关与音频封面开关双重控制
-        if (!ThumbnailSettings.generateThumbnail || !ThumbnailSettings.generateForAudio) {
-            _audioCoverPath.value = null
-            return
-        }
-        val history = currentHistory
-        if (history != null) {
-            val sid = history.storageId
-            if (sid != null) {
-                // 播放后生成策略检查：关闭模式不提取封面（播放中提取属正常行为，非关闭模式均放行）
-                if (!ThumbnailSettings.shouldGenerateOnPlayback(sid)) {
-                    _audioCoverPath.value = null
-                    return
-                }
-                loadStorageAudioCover(history, sid)
-                return
-            }
-        }
-        // 无历史或 storageId 时（如从下载管理打开本地文件），尝试直接提取本地封面
-        loadLocalAudioCover()
-    }
-
-    /** 通过 Storage 抽象层提取音频封面（SMB/WebDAV/ExternalStorage）。 */
-    private fun loadStorageAudioCover(history: HistoryDescriptor, sid: Int) {
-        val filePath = history.storagePath ?: return
-        val fileName = history.url.substringAfterLast('/')
-
-        // N-002 修复：先检查本地缓存，命中则直接返回，避免创建不必要的 Storage 连接。
-        val cachedPath = thumbnailManager.getCachedAudioCoverPath(sid, filePath)
-        if (cachedPath != null) {
-            _audioCoverPath.value = cachedPath
-            audioPlaybackManager.updateCoverPath(cachedPath)
-            return
-        }
-
-        // N-001 修复：取消旧的封面生成协程，避免快速切歌时旧协程完成后覆盖新歌封面。
-        audioCoverJob?.cancel()
-        audioCoverJob = viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val library = mediaLibraryDao.getById(sid) ?: return@launch
-                val storage = storageFactory.create(library) ?: return@launch
-                try {
-                    val file = MediaSourceBuilder.createVirtualFile(filePath, fileName)
-                    var loaded = false
-                    thumbnailManager.preloadAudioCovers(storage, sid, listOf(file)) { _, coverPath ->
-                        _audioCoverPath.value = coverPath
-                        audioPlaybackManager.updateCoverPath(coverPath)
-                        loaded = true
-                    }
-                    if (!loaded) {
-                        val path = thumbnailManager.generateAudioCover(storage, sid, file)
-                        if (path != null) {
-                            thumbnailManager.uploadAudioCover(storage, file)
-                        }
-                        if (path != null) {
-                            _audioCoverPath.value = path
-                            audioPlaybackManager.updateCoverPath(path)
-                        } else {
-                            // 本地封面提取失败，尝试从 API 获取
-                            fetchAudioCoverFromApi(fileName)
-                        }
-                    }
-                } finally {
-                    storage.close()
-                }
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                _audioCoverPath.value = null
-                audioPlaybackManager.updateCoverPath(null)
-            }
-        }
-    }
-
-    /** 本地文件（下载缓存/SAF content://）直接通过 MediaMetadataRetriever 提取封面。 */
-    private fun loadLocalAudioCover() {
-        val source = lastPlaybackRequest?.source as? NxMediaSource.Local ?: return
-        audioCoverJob?.cancel()
-        audioCoverJob = viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val uri = source.uri
-                val cacheKey = "local_audio_${md5(uri.toString())}"
-                val cacheFile = File(appContext.cacheDir, "audio_covers/$cacheKey.jpg")
-                if (cacheFile.exists() && cacheFile.length() > 0) {
-                    val path = cacheFile.absolutePath
-                    _audioCoverPath.value = path
-                    audioPlaybackManager.updateCoverPath(path)
-                    return@launch
-                }
-                val retriever = MediaMetadataRetriever()
-                try {
-                    retriever.setDataSource(appContext, uri)
-                    val pictureData = retriever.embeddedPicture
-                    if (pictureData != null) {
-                        val bitmap = BitmapFactory.decodeByteArray(pictureData, 0, pictureData.size)
-                        if (bitmap != null) {
-                            cacheFile.parentFile?.mkdirs()
-                            FileOutputStream(cacheFile).use { out ->
-                                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
-                            }
-                            val path = cacheFile.absolutePath
-                            _audioCoverPath.value = path
-                            audioPlaybackManager.updateCoverPath(path)
-                        }
-                    } else {
-                        // 本地无嵌入封面，尝试从 API 获取
-                        val nameWithoutExt = source.uri.pathSegments.lastOrNull()
-                            ?.substringBeforeLast('.') ?: ""
-                        if (nameWithoutExt.isNotEmpty()) {
-                            fetchAudioCoverFromApi(nameWithoutExt)
-                        } else {
-                            _audioCoverPath.value = null
-                            audioPlaybackManager.updateCoverPath(null)
-                        }
-                    }
-                } finally {
-                    retriever.release()
-                }
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                _audioCoverPath.value = null
-                audioPlaybackManager.updateCoverPath(null)
-            }
-        }
-    }
-
-    /** 从 lrcapi 获取封面并缓存到本地。 */
-    private fun fetchAudioCoverFromApi(nameWithoutExt: String) {
-        if (!musicMetadataService.isConfigured()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                android.util.Log.i("PlayerViewModel", "开始从API加载封面: $nameWithoutExt")
-                val result = musicMetadataService.fetchCover(title = nameWithoutExt)
-                if (result.isSuccess) {
-                    val coverBytes = result.getOrNull()
-                    if (coverBytes != null && coverBytes.isNotEmpty()) {
-                        val coverDir = File(appContext.cacheDir, "audio_covers")
-                        if (!coverDir.exists()) coverDir.mkdirs()
-                        val coverFile = File(coverDir, "api_${md5(nameWithoutExt)}.jpg")
-                        coverFile.writeBytes(coverBytes)
-                        val path = coverFile.absolutePath
-                        _audioCoverPath.value = path
-                        audioPlaybackManager.updateCoverPath(path)
-                        android.util.Log.i("PlayerViewModel", "从API加载封面成功: $nameWithoutExt, 大小: ${coverBytes.size} bytes")
-                        _messageEvent.tryEmit("已通过 API 获取封面：$nameWithoutExt")
-                    }
-                } else {
-                    android.util.Log.w("PlayerViewModel", "从API加载封面失败: ${result.exceptionOrNull()?.message}")
-                }
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                android.util.Log.e("PlayerViewModel", "从API加载封面异常", e)
-            }
-        }
-    }
-
-    /** 字符串 MD5 哈希，用于本地缓存文件名。 */
-    private fun md5(input: String): String {
-        try {
-            val digest = java.security.MessageDigest.getInstance("MD5")
-            val bytes = digest.digest(input.toByteArray())
-            return bytes.joinToString("") { "%02x".format(it) }
-        } catch (_: Exception) {
-            return input.hashCode().toUInt().toString(16)
-        }
-    }
-
-    /** 为当前歌曲异步加载 LRC 歌词。 */
-    private fun loadLrcForCurrentSong() {
-        val history = currentHistory ?: return
-        val storageId = history.storageId
-        val filePath = history.storagePath ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val fileName = filePath.substringAfterLast('/')
-                val nameWithoutExt = fileName.substringBeforeLast('.')
-                val dirPath = filePath.substringBeforeLast('/')
-                val lrcFilePath = if (dirPath == filePath) {
-                    "$nameWithoutExt.lrc"
-                } else {
-                    "$dirPath/$nameWithoutExt.lrc"
-                }
-
-                // 优先级1: 同目录本地/远程 LRC 文件
-                var found = false
-                if (nameWithoutExt.isNotEmpty() && nameWithoutExt != fileName) {
-                    if (storageId != null) {
-                        // Remote storage (SMB/WebDAV): read LRC via Storage.openInputStream
-                        val library = mediaLibraryDao.getById(storageId) ?: return@launch
-                        val storage = storageFactory.create(library) ?: return@launch
-                        try {
-                            val lrcFile = MediaSourceBuilder.createVirtualFile(lrcFilePath, "$nameWithoutExt.lrc")
-                            storage.openInputStream(lrcFile)?.use { input ->
-                                val text = input.bufferedReader().readText()
-                                if (text.isNotBlank()) {
-                                    _lrcText.value = text
-                                    audioPlaybackManager.setLrcText(text)
-                                    found = true
-                                    return@launch
-                                }
-                            }
-                        } finally {
-                            storage.close()
-                        }
-                    } else {
-                        // Local file: try direct File access
-                        val lrcFile = File(lrcFilePath)
-                        if (lrcFile.exists()) {
-                            val text = lrcFile.readText()
-                            _lrcText.value = text
-                            audioPlaybackManager.setLrcText(text)
-                            found = true
-                            return@launch
-                        }
-                    }
-                }
-
-                // 优先级2: 从 lrcapi 远程获取歌词（仅在已配置时启用）
-                if (!found && musicMetadataService.isConfigured() && nameWithoutExt.isNotEmpty()) {
-                    val localFilePath = if (filePath.startsWith("/")) filePath else ""
-                    val result = musicMetadataService.fetchLyrics(
-                        title = nameWithoutExt,
-                        artist = "",
-                        path = localFilePath,
-                    )
-                    if (result.isSuccess) {
-                        val content = result.getOrNull()
-                        if (!content.isNullOrBlank()) {
-                            val cacheFile = saveLrcToCache(nameWithoutExt, content)
-                            _lrcText.value = content
-                            audioPlaybackManager.setLrcText(content)
-                            android.util.Log.i("PlayerViewModel", "从API加载歌词成功: $nameWithoutExt, 长度: ${content.length}")
-                            _messageEvent.tryEmit("已通过 API 获取歌词：$nameWithoutExt")
-                            return@launch
-                        }
-                    } else {
-                        android.util.Log.w("PlayerViewModel", "从API加载歌词失败: ${result.exceptionOrNull()?.message}")
-                    }
-                }
-
-                _lrcText.value = null
-                audioPlaybackManager.setLrcText(null)
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                _lrcText.value = null
-                audioPlaybackManager.setLrcText(null)
-            }
-        }
-    }
-
-    private fun saveLrcToCache(nameWithoutExt: String, content: String): File {
-        val lrcDir = File(appContext.cacheDir, "lrc_cache")
-        if (!lrcDir.exists()) lrcDir.mkdirs()
-        val lrcFile = File(lrcDir, "$nameWithoutExt.lrc")
-        lrcFile.writeText(content)
-        return lrcFile
     }
 
     /** 根据当前状态切换播放/暂停。Ended 状态下调用会从头播放。 */
@@ -1844,20 +1635,18 @@ class PlayerViewModel @Inject constructor(
     fun saveProgress() {
         val history = currentHistory ?: return
         val storageId = history.storageId ?: return
+        // 音频走 AudioPlaybackManager 的 ExoPlayer，进度与历史均由 Manager 自维护；
+        // 此处仅对视频（NxPlayer）做中途进度保存。
+        if (isAudioPlayback) {
+            viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+                audioPlaybackManager.saveCurrentProgress()
+            }
+            return
+        }
         // BUG-24 修复：播放器处于 Error / Idle 状态时 player.positionMs 可能为 0
         // （如 SMB 断网后 onPlayerError 触发，exoPlayer.currentPosition 归零）。
         // 若此时调用 saveProgressInternal 会用 0 覆盖 DB 中已有进度（如 1 小时），
         // 导致用户下次恢复从头播放。仅在播放中/暂停/就绪/缓冲状态下保存。
-        // 音频走 AudioPlaybackManager 的 ExoPlayer，不走 NxPlayer，需分别校验状态
-        if (isAudioPlayback) {
-            val position = audioPlaybackManager.positionMs.value
-            val duration = audioPlaybackManager.durationMs.value
-            if (position <= 0) return
-            viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-                saveProgressInternal(history, storageId, position, duration)
-            }
-            return
-        }
         val state = player.state.value
         if (state !is PlaybackState.Playing &&
             state !is PlaybackState.Paused &&
@@ -1891,14 +1680,8 @@ class PlayerViewModel @Inject constructor(
     private suspend fun saveProgressSync() {
         val history = currentHistory ?: return
         val storageId = history.storageId ?: return
-        // 音频走 AudioPlaybackManager 的 ExoPlayer，不走 NxPlayer，需分别校验状态
-        if (isAudioPlayback) {
-            val position = audioPlaybackManager.positionMs.value
-            val duration = audioPlaybackManager.durationMs.value
-            if (position <= 0) return
-            saveProgressInternal(history, storageId, position, duration)
-            return
-        }
+        // 音频切歌的进度保存在 AudioPlaybackManager.switchToIndex 内部完成，
+        // 此方法仅服务视频切歌场景（NxPlayer 状态机）。
         val state = player.state.value
         if (state !is PlaybackState.Playing &&
             state !is PlaybackState.Paused &&
@@ -1963,10 +1746,10 @@ class PlayerViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        // 清理 AudioPlaybackManager 回调，避免 @Singleton 持有已销毁的 ViewModel 导致泄漏与后台切歌失效
-        audioPlaybackManager.onPlayNextRequest = null
-        audioPlaybackManager.onPlayPreviousRequest = null
+        // 清理 AudioPlaybackManager 回调，避免 @Singleton 持有已销毁的 ViewModel 导致泄漏
         audioPlaybackManager.onPlaybackError = null
+        audioPlaybackManager.onMessage = null
+        audioPlaybackManager.onTrackChanged = null
 
         // HDR 播放已在 shouldCaptureThumbnailOnExit 中拦截（PixelCopy 对 HDR surface
         // 抓帧不可靠，走 getFrameAtTime 路径），lastFrameBitmap 为 null 时此处不会执行；
@@ -1996,6 +1779,9 @@ class PlayerViewModel @Inject constructor(
 
         val history = currentHistory
         val storageId = history?.storageId
+        // 音频场景的 currentHistory 与 Manager 内部历史同步（restore/onTrackChanged 均赋值），
+        // history==null 时 Manager 侧同样无历史可保存，故统一用简单非空 guard 提前返回，
+        // 保证 Kotlin 对 val 的 smart-cast 在下方 appScope.launch 闭包内仍然生效。
         if (history == null || storageId == null) return
 
         // BUG-H7 修复：onCleared 后 viewModelScope 已取消，改用独立协程作用域异步保存。
@@ -2017,7 +1803,13 @@ class PlayerViewModel @Inject constructor(
             //    导致 DB 中无记录，此处必须兜底 insert，否则进度会静默丢失
             //    （WebDAV/SMB 音频起播快、用户易快速返回，是高发场景）
             withContext(NonCancellable) {
-                saveProgressInternal(history, storageId, position, duration)
+                // 音频进度由 Manager 自维护（currentHistory 在 Manager 内部），
+                // 视频仍由 ViewModel 直接落库
+                if (isAudioPlayback) {
+                    audioPlaybackManager.saveCurrentProgress()
+                } else {
+                    saveProgressInternal(history, storageId, position, duration)
+                }
             }
 
             // 2. 视频缩略图生成（音频跳过：音频无视频帧，getFrameAtTime 必然返回 null，

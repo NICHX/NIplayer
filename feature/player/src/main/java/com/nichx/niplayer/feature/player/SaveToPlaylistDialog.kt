@@ -38,17 +38,17 @@ import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.player.kernel.PlaylistItem
 
 /**
- * 播放页「保存为歌单」Dialog（扩展功能方案二 · 入口①）。
+ * 播放页「添加到歌单」Dialog。
  *
- * 将当前播放列表保存到已有歌单或新建歌单；重复文件由唯一索引自动跳过。
- * 保存成功后通过 [onSaved] 回调消息文本，由调用方提示。
+ * 将当前正在播放的歌曲（[items] 通常为单元素列表）保存到已有歌单或新建歌单；
+ * 重复文件由唯一索引自动跳过。保存成功后通过 [onSaved] 回调消息文本，由调用方提示。
  *
  * 容器使用设计系统主题自适应的 [NiInfoDialog]（浅色/深色跟随应用主题），
  * 不复用播放器视频场景专用的暗色 [PlayerDialog]。
  */
 @Composable
 fun SaveToPlaylistDialog(
-    playlist: List<PlaylistItem>,
+    items: List<PlaylistItem>,
     onDismiss: () -> Unit,
     onSaved: (String) -> Unit,
     viewModel: PlaylistSaveViewModel = hiltViewModel(),
@@ -56,15 +56,16 @@ fun SaveToPlaylistDialog(
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     var target by remember { mutableStateOf<SavePlaylistTarget>(SavePlaylistTarget.New) }
     var newName by remember { mutableStateOf("") }
+    val currentItem = items.firstOrNull()
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 is PlaylistSaveEvent.Saved -> {
                     val message = if (event.addedCount == 0) {
-                        "所选文件已全部存在于歌单「${event.playlistName}」"
+                        "当前歌曲已存在于歌单「${event.playlistName}」"
                     } else {
-                        "已保存 ${event.addedCount} 个文件到歌单「${event.playlistName}」"
+                        "已添加当前歌曲到歌单「${event.playlistName}」"
                     }
                     onSaved(message)
                     onDismiss()
@@ -79,7 +80,7 @@ fun SaveToPlaylistDialog(
     }
 
     NiInfoDialog(
-        title = "保存为歌单",
+        title = "添加到歌单",
         onDismiss = onDismiss,
         actions = {
             TextButton(onClick = onDismiss) {
@@ -88,12 +89,12 @@ fun SaveToPlaylistDialog(
             Spacer(Modifier.width(8.dp))
             TextButton(
                 onClick = {
-                    viewModel.save(target, newName, playlist)
+                    viewModel.save(target, newName, items)
                 },
                 enabled = canSave,
             ) {
                 Text(
-                    "保存",
+                    "添加",
                     color = if (canSave) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -101,7 +102,7 @@ fun SaveToPlaylistDialog(
         },
     ) {
         Text(
-            text = "当前播放列表（${playlist.size} 个文件）",
+            text = currentItem?.let { "当前播放：${it.fileName}" } ?: "没有正在播放的歌曲",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -109,7 +110,7 @@ fun SaveToPlaylistDialog(
 
         SaveTargetRow(
             label = "新建歌单",
-            hint = "为当前播放列表创建新歌单",
+            hint = "为当前歌曲创建新歌单",
             selected = target is SavePlaylistTarget.New,
             onClick = { target = SavePlaylistTarget.New },
         )
