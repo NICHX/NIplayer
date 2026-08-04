@@ -184,6 +184,9 @@ class MainActivity : ComponentActivity() {
                                 onOpenPlaylists = {
                                     navController.navigate(Routes.Playlist.LIST)
                                 },
+                                onOpenPlaylist = { playlistId ->
+                                    navController.navigate(Routes.Playlist.detailRoute(playlistId))
+                                },
                                 onPlayVideo = { navController.navigate(Routes.Player.GUARD) },
                                 onNavigateToImageViewer = {
                                     navController.navigate(Routes.ImageViewer.VIEWER)

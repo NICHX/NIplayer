@@ -1,8 +1,6 @@
 package com.nichx.niplayer.feature.player
 
 import android.content.res.Configuration
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -30,6 +28,7 @@ import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
@@ -47,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,12 +70,6 @@ import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import java.util.Locale
 import kotlinx.coroutines.launch
-
-private enum class PlayMode(val label: String) {
-    Loop("顺序播放"),
-    Shuffle("随机播放"),
-    Single("单曲循环"),
-}
 
 @Composable
 fun AudioPlayerScreen(
@@ -112,7 +106,9 @@ fun AudioPlayerScreen(
 
     val hasActiveContent = title.isNotEmpty()
 
-    var playMode by remember { mutableIntStateOf(0) }
+    // 播放模式由 AudioPlaybackManager 统一管理（含持久化），UI 只读订阅
+    val playMode by audioPlaybackManager?.playModeIndex?.collectAsStateWithLifecycle()
+        ?: remember { mutableIntStateOf(0) }
     val mode = PlayMode.entries[playMode]
     val modeIcon = when (mode) {
         PlayMode.Loop -> Icons.Rounded.Repeat
@@ -157,11 +153,12 @@ fun AudioPlayerScreen(
                 playMode = playMode,
                 modeIcon = modeIcon,
                 modeLabel = mode.label,
-                onCyclePlayMode = { playMode = (playMode + 1) % PlayMode.entries.size },
+                onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
                 onShowPlaylist = { showPlaylist = true },
                 onBack = onBack,
                 onDownload = { viewModel.downloadCurrentFile() },
                 onEqualizer = onEqualizer,
+                onAddToPlaylist = { showSavePlaylistDialog = true },
             )
         } else {
             PortraitLayout(
@@ -187,11 +184,12 @@ fun AudioPlayerScreen(
                 modeIcon = modeIcon,
                 modeLabel = mode.label,
                 onToggleLyrics = { showLyrics = !showLyrics },
-                onCyclePlayMode = { playMode = (playMode + 1) % PlayMode.entries.size },
+                onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
                 onShowPlaylist = { showPlaylist = true },
                 onBack = onBack,
                 onDownload = { viewModel.downloadCurrentFile() },
                 onEqualizer = onEqualizer,
+                onAddToPlaylist = { showSavePlaylistDialog = true },
             )
         }
 
@@ -202,13 +200,6 @@ fun AudioPlayerScreen(
                 playMode = playMode,
                 onDismiss = { showPlaylist = false },
                 onPlayAtIndex = { index -> viewModel.playAtIndex(index) },
-                onSwitchPlayMode = {
-                    playMode = (playMode + 1) % PlayMode.entries.size
-                },
-                onSaveToPlaylist = {
-                    showPlaylist = false
-                    showSavePlaylistDialog = true
-                },
             )
         }
 
@@ -309,6 +300,7 @@ private fun PortraitLayout(
     onBack: () -> Unit,
     onDownload: () -> Unit,
     onEqualizer: () -> Unit = {},
+    onAddToPlaylist: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
 
@@ -322,6 +314,7 @@ private fun PortraitLayout(
             onBack = onBack,
             onDownload = onDownload,
             onEqualizer = onEqualizer,
+            onAddToPlaylist = onAddToPlaylist,
         )
 
         Box(
@@ -396,14 +389,22 @@ private fun PortraitLayout(
                     .padding(horizontal = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = onSurface,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = onSurface,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(2f),
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                }
 
                 Spacer(modifier = Modifier.height(4.dp))
 
@@ -481,6 +482,7 @@ private fun LandscapeLayout(
     onBack: () -> Unit,
     onDownload: () -> Unit,
     onEqualizer: () -> Unit = {},
+    onAddToPlaylist: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
 
@@ -494,6 +496,7 @@ private fun LandscapeLayout(
             onBack = onBack,
             onDownload = onDownload,
             onEqualizer = onEqualizer,
+            onAddToPlaylist = onAddToPlaylist,
         )
 
         Row(
@@ -663,6 +666,7 @@ private fun TopBar(
     onBack: () -> Unit,
     onDownload: () -> Unit = {},
     onEqualizer: () -> Unit = {},
+    onAddToPlaylist: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     Row(
@@ -727,6 +731,22 @@ private fun TopBar(
                 )
             }
         }
+
+        IconButton(onClick = onAddToPlaylist) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(onSurface.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PlaylistAdd,
+                    contentDescription = "添加到歌单",
+                    tint = onSurface.copy(alpha = 0.8f),
+                )
+            }
+        }
     }
 }
 
@@ -739,15 +759,24 @@ private fun ProgressSection(
     val onSurface = MaterialTheme.colorScheme.onSurface
     val primary = MaterialTheme.colorScheme.primary
     val duration = durationMs.coerceAtLeast(1L)
-    val sliderPos by animateFloatAsState(
-        targetValue = positionMs.toFloat().coerceIn(0f, duration.toFloat()),
-        animationSpec = tween(durationMillis = 200),
-        label = "sliderPosition",
-    )
+
+    // 拖动进度条时以本地值驱动滑块（跟手），松手才提交 seek
+    var dragging by remember { mutableStateOf(false) }
+    var dragValue by remember { mutableFloatStateOf(0f) }
+    val sliderPos = if (dragging) dragValue else positionMs.toFloat().coerceIn(0f, duration.toFloat())
 
     Slider(
         value = sliderPos,
-        onValueChange = { onSeek(it.toLong()) },
+        onValueChange = {
+            dragging = true
+            dragValue = it
+        },
+        onValueChangeFinished = {
+            if (dragging) {
+                onSeek(dragValue.toLong())
+                dragging = false
+            }
+        },
         valueRange = 0f..duration.toFloat(),
         colors = SliderDefaults.colors(
             thumbColor = primary,

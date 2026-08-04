@@ -50,6 +50,7 @@ import com.nichx.niplayer.database.entity.VideoEntity
  * - v9: 新增 video_bookmark 表（F-19 视频书签）
  * - v10: 新增 encrypted_folder 表（文件夹访问加密）
  * - v11: 新增 playlist / playlist_item 表（扩展功能方案二：播放列表系统）
+ * - v12: play_history 表新增 playlist_id 列（记录来源歌单，恢复播放时还原歌单播放列表）
  */
 @Database(
     entities = [
@@ -65,7 +66,7 @@ import com.nichx.niplayer.database.entity.VideoEntity
         PlaylistEntity::class,
         PlaylistItemEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 @TypeConverters(

@@ -247,13 +247,13 @@ fun FileBrowserOverlay(
     }
 
     val context = LocalContext.current
-    var pendingDownloadFile by remember { mutableStateOf<StorageFile?>(null) }
+    var pendingDownloadFiles by remember { mutableStateOf<List<StorageFile>>(emptyList()) }
     val downloadTargetLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { treeUri ->
-        val file = pendingDownloadFile
-        pendingDownloadFile = null
-        if (treeUri == null || file == null) return@rememberLauncherForActivityResult
+        val files = pendingDownloadFiles
+        pendingDownloadFiles = emptyList()
+        if (treeUri == null || files.isEmpty()) return@rememberLauncherForActivityResult
         try {
             context.contentResolver.takePersistableUriPermission(
                 treeUri,
@@ -261,7 +261,11 @@ fun FileBrowserOverlay(
             )
         } catch (_: SecurityException) { }
         val dirName = DocumentFile.fromTreeUri(context, treeUri)?.name ?: "下载目录"
-        viewModel.setDownloadDirAndDownload(file, treeUri.toString(), dirName)
+        if (files.size == 1) {
+            viewModel.setDownloadDirAndDownload(files.first(), treeUri.toString(), dirName)
+        } else {
+            viewModel.setDownloadDirAndDownloadFiles(files, treeUri.toString(), dirName)
+        }
     }
 
     // 上传文件 launcher：选择单个文件（任意类型），传给 ViewModel 上传到当前目录
@@ -596,13 +600,29 @@ fun FileBrowserOverlay(
                 }
             }
 
-            // 多选模式底部操作栏：全选 / 添加到歌单 / 删除
+            // 多选模式底部操作栏：全选 / 添加到歌单(仅选中含音频时) / 下载 / 删除
             if (isMultiSelect) {
+                val selectedFiles = uiState.files.filter { it.path in selectedPaths && !it.isDirectory }
+                val selectedHasAudio = selectedFiles.any { MediaFileTypes.isAudioFile(it.name) }
                 MultiSelectActionBar(
                     selectedCount = selectedPaths.size,
                     allSelected = selectedPaths.size >= uiState.files.count { !it.isDirectory } && uiState.files.any { !it.isDirectory },
+                    hasAudio = selectedHasAudio,
+                    hasDownloadable = selectedFiles.isNotEmpty(),
                     onSelectAll = viewModel::selectAllFiles,
                     onAddToPlaylist = { showPlaylistPicker = true },
+                    onDownload = {
+                        if (DownloadSettings.isDownloadDirSet) {
+                            viewModel.downloadFiles(
+                                selectedFiles,
+                                DownloadSettings.downloadDirUri,
+                                DownloadSettings.downloadDirName,
+                            )
+                        } else {
+                            pendingDownloadFiles = selectedFiles
+                            downloadTargetLauncher.launch(null)
+                        }
+                    },
                     onDelete = { showBatchDeleteConfirm = true },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -614,9 +634,16 @@ fun FileBrowserOverlay(
     }
 
     if (showBatchDeleteConfirm) {
+        val selectedForDelete = uiState.files.filter { it.path in selectedPaths }
+        val deleteFileCount = selectedForDelete.count { !it.isDirectory }
+        val deleteDirCount = selectedForDelete.count { it.isDirectory }
         NiConfirmDialog(
             title = "删除所选",
-            text = "确定删除已选择的 ${selectedPaths.size} 项？该操作不可恢复。",
+            text = "确定删除已选择的 ${selectedForDelete.size} 项" +
+                "（$deleteFileCount 个文件${if (deleteDirCount > 0) "、$deleteDirCount 个文件夹" else ""}）？" +
+                "该操作不可恢复。",
+            confirmText = "删除",
+            confirmDanger = true,
             onConfirm = {
                 showBatchDeleteConfirm = false
                 viewModel.deleteSelected()
@@ -672,7 +699,7 @@ fun FileBrowserOverlay(
                         DownloadSettings.downloadDirName,
                     )
                 } else {
-                    pendingDownloadFile = file
+                    pendingDownloadFiles = listOf(file)
                     downloadTargetLauncher.launch(null)
                 }
             },
@@ -2215,13 +2242,16 @@ fun ResetFolderPasswordDialog(
     }
 }
 
-/** 多选模式底部操作栏：全选 / 添加到歌单 / 删除。 */
+/** 多选模式底部操作栏：全选 / 添加到歌单 / 下载 / 删除。 */
 @Composable
 private fun MultiSelectActionBar(
     selectedCount: Int,
     allSelected: Boolean,
+    hasAudio: Boolean,
+    hasDownloadable: Boolean,
     onSelectAll: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onDownload: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2246,13 +2276,24 @@ private fun MultiSelectActionBar(
                 onClick = onSelectAll,
                 modifier = Modifier.weight(1f),
             )
-            ActionBarItem(
-                icon = Icons.Rounded.PlaylistAdd,
-                label = "添加到歌单",
-                enabled = selectedCount > 0,
-                onClick = onAddToPlaylist,
-                modifier = Modifier.weight(1f),
-            )
+            if (hasAudio) {
+                ActionBarItem(
+                    icon = Icons.Rounded.PlaylistAdd,
+                    label = "添加到歌单",
+                    enabled = selectedCount > 0,
+                    onClick = onAddToPlaylist,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (hasDownloadable) {
+                ActionBarItem(
+                    icon = Icons.Rounded.Download,
+                    label = "下载",
+                    enabled = selectedCount > 0,
+                    onClick = onDownload,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             ActionBarItem(
                 icon = Icons.Rounded.Delete,
                 label = "删除",
