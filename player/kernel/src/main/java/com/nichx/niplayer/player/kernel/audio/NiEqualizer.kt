@@ -51,11 +51,18 @@ class NiEqualizer {
     /**
      * 绑定到指定 audioSessionId，创建 Equalizer 并应用 [AudioSettings] 配置。
      *
+     * 当均衡器关闭（[AudioSettings.equalizerEnabled] = false）时不创建 Equalizer 实例：
+     * 在已活跃的 AudioTrack 上插入并启用效果链本身会产生瞬态爆响，
+     * 即便增益全为 0（unity）也无法避免——这是 AudioFlinger 效果链插入的底层行为。
+     * 仅在用户实际开启均衡器时才 attach，从根源消除首次播放爆响。
+     *
      * @param audioSessionId ExoPlayer 的 audioSessionId，必须 > 0
      */
     fun attach(audioSessionId: Int) {
         if (audioSessionId <= 0) return
         release()
+        // 均衡器关闭时不创建效果实例，避免效果链插入产生爆响
+        if (!AudioSettings.equalizerEnabled) return
         runCatching {
             val eq = Equalizer(0, audioSessionId)
             equalizer = eq
@@ -77,23 +84,34 @@ class NiEqualizer {
     fun applySettings() {
         val eq = equalizer ?: return
         runCatching {
-            eq.enabled = true
-            if (AudioSettings.equalizerEnabled) {
-                val presetIndex = AudioSettings.equalizerPresetIndex
-                if (presetIndex >= 0 && presetIndex < eq.numberOfPresets) {
-                    eq.usePreset(presetIndex.toShort())
-                } else {
-                    // 自定义模式：逐 band 设置增益
-                    for (band in 0 until eq.numberOfBands.toInt()) {
-                        val level = AudioSettings.getBandLevel(band)
-                        eq.setBandLevel(band.toShort(), level.toShort())
-                    }
-                }
+            if (!eq.enabled) {
+                // 首次启用：先写入目标增益，再 enable，避免默认增益窗口
+                applyTargetLevels(eq)
+                eq.enabled = true
             } else {
-                // 关闭：拉平所有频段（0 mB = unity 增益），等效旁路但不拆除效果链
+                // 已启用：直接更新参数（效果链不重建，无爆音）
+                applyTargetLevels(eq)
+            }
+        }
+    }
+
+    /** 从 [AudioSettings] 读取目标配置并写入 [eq] 的频段参数（不改变 enabled 状态）。 */
+    private fun applyTargetLevels(eq: Equalizer) {
+        if (AudioSettings.equalizerEnabled) {
+            val presetIndex = AudioSettings.equalizerPresetIndex
+            if (presetIndex >= 0 && presetIndex < eq.numberOfPresets) {
+                eq.usePreset(presetIndex.toShort())
+            } else {
+                // 自定义模式：逐 band 设置增益
                 for (band in 0 until eq.numberOfBands.toInt()) {
-                    eq.setBandLevel(band.toShort(), 0)
+                    val level = AudioSettings.getBandLevel(band)
+                    eq.setBandLevel(band.toShort(), level.toShort())
                 }
+            }
+        } else {
+            // 关闭：拉平所有频段（0 mB = unity 增益），等效旁路但不拆除效果链
+            for (band in 0 until eq.numberOfBands.toInt()) {
+                eq.setBandLevel(band.toShort(), 0)
             }
         }
     }

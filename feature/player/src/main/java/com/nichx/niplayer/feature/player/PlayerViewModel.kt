@@ -1045,25 +1045,36 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 播放下一首。无下一首时（已在列表末尾）不做操作。
+     * 播放下一首。
      *
-     * 重建播放源：通过 [PlaylistItem.libraryId] 查询 [com.nichx.niplayer.database
-     * .entity.MediaLibraryEntity]，用 [StorageFactory] 重建 Storage，
-     * 再用 [MediaSourceBuilder] 构造播放源。
+     * 索引由 [AudioPlaybackManager] 按当前播放模式计算（顺序循环/随机/单曲循环），
+     * 统一规则避免 UI 按钮与播放结束自动切换行为不一致。
      */
     fun playNext() {
-        val list = _playlist.value
-        val nextIndex = _currentIndex.value + 1
-        if (list.isEmpty() || nextIndex >= list.size) return
-        playAtIndex(nextIndex)
+        if (isAudioPlayback) {
+            val index = audioPlaybackManager.nextIndex(_currentIndex.value)
+            if (index < 0) return
+            playAtIndex(index)
+        } else {
+            val list = _playlist.value
+            val nextIndex = _currentIndex.value + 1
+            if (list.isEmpty() || nextIndex >= list.size) return
+            playAtIndex(nextIndex)
+        }
     }
 
     /** 播放上一首。已在列表首项时不做操作。 */
     fun playPrevious() {
-        val list = _playlist.value
-        val prevIndex = _currentIndex.value - 1
-        if (list.isEmpty() || prevIndex < 0) return
-        playAtIndex(prevIndex)
+        if (isAudioPlayback) {
+            val index = audioPlaybackManager.previousIndex(_currentIndex.value)
+            if (index < 0) return
+            playAtIndex(index)
+        } else {
+            val list = _playlist.value
+            val prevIndex = _currentIndex.value - 1
+            if (list.isEmpty() || prevIndex < 0) return
+            playAtIndex(prevIndex)
+        }
     }
 
     /**
