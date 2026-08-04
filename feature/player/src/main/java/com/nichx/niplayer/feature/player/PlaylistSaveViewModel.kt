@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.player
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.PlaylistDao
@@ -10,6 +11,7 @@ import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.player.kernel.PlaylistItem
 import com.nichx.niplayer.player.kernel.isAudioFile
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -41,6 +43,7 @@ sealed class PlaylistSaveEvent {
  */
 @HiltViewModel
 class PlaylistSaveViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val playlistDao: PlaylistDao,
     private val playlistItemDao: PlaylistItemDao,
 ) : ViewModel() {
@@ -62,7 +65,12 @@ class PlaylistSaveViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 val audioItems = items.filter { isAudioFile(it.fileName) }
                 if (audioItems.isEmpty()) {
-                    _events.tryEmit(PlaylistSaveEvent.Saved(0, newName.trim().ifBlank { "歌单" }))
+                    _events.tryEmit(
+                        PlaylistSaveEvent.Saved(
+                            0,
+                            newName.trim().ifBlank { context.getString(R.string.player_default_playlist_name) },
+                        ),
+                    )
                     return@withContext
                 }
                 val playlistId = when (target) {
@@ -85,7 +93,7 @@ class PlaylistSaveViewModel @Inject constructor(
                 playlistDao.touch(playlistId, System.currentTimeMillis())
                 val name = if (target is SavePlaylistTarget.Existing) {
                     playlists.value.firstOrNull { it.playlist.id == playlistId }?.playlist?.name
-                        ?: "歌单"
+                        ?: context.getString(R.string.player_default_playlist_name)
                 } else {
                     newName.trim()
                 }

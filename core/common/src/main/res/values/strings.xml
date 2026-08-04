@@ -1,0 +1,10 @@
+<resources>
+    <!-- 错误分类默认文案（ErrorType.defaultMessageRes） -->
+    <string name="error_type_network">网络异常</string>
+    <string name="error_type_auth">账号密码错误</string>
+    <string name="error_type_file">文件不存在</string>
+    <string name="error_type_storage">存储源连接失败</string>
+    <string name="error_type_decode">解码失败</string>
+    <string name="error_type_database">数据读写失败</string>
+    <string name="error_type_unknown">发生错误</string>
+</resources>

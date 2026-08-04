@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.imageviewer
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -92,7 +94,7 @@ fun ImageViewerScreen(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "返回",
+                contentDescription = stringResource(R.string.back),
                 tint = Color.White,
             )
         }
@@ -228,7 +230,7 @@ private fun ZoomableImagePage(
     ) {
         when {
             isLoading -> CircularProgressIndicator(color = Color.White)
-            loadError -> Text("加载失败", color = Color.White.copy(alpha = 0.7f))
+            loadError -> Text(stringResource(R.string.image_viewer_load_error), color = Color.White.copy(alpha = 0.7f))
             imageModel != null -> {
                 val coilModel = when (val m = imageModel!!) {
                     is ImageModel.Url -> {

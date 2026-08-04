@@ -1,0 +1,9 @@
+<resources>
+    <!-- 存储类型名称（MediaType.storageNameRes） -->
+    <string name="media_type_local">本地视频库</string>
+    <string name="media_type_external">设备存储库</string>
+    <string name="media_type_smb">SMB服务器</string>
+    <string name="media_type_webdav">WebDav服务器</string>
+    <string name="media_type_other">外部服务器</string>
+    <string name="media_type_quick_access">快速访问</string>
+</resources>

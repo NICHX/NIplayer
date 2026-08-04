@@ -13,6 +13,7 @@ import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.nichx.niplayer.datastore.UpdateSettings
+import com.nichx.niplayer.feature.home.R
 import com.nichx.niplayer.network.update.GitHubApi
 import com.nichx.niplayer.network.update.GitHubAsset
 import com.nichx.niplayer.network.update.GitHubRelease
@@ -88,7 +89,7 @@ class UpdateManager @Inject constructor(
                 )
             }
         } catch (e: Exception) {
-            UpdateCheckOutcome.Error(e.message ?: "网络异常")
+            UpdateCheckOutcome.Error(e.message ?: context.getString(R.string.update_network_error))
         }
     }
 
@@ -104,7 +105,7 @@ class UpdateManager @Inject constructor(
             ?: "NIplayer-$version.apk"
         registerReceiverIfNeeded()
         val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("NIplayer 新版本 $version")
+            .setTitle(context.getString(R.string.update_notification_title, version))
             .setDescription(fileName)
             .setNotificationVisibility(
                 DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
@@ -273,11 +274,12 @@ class UpdateManager @Inject constructor(
         val cursor = try {
             downloadManager.query(DownloadManager.Query().setFilterById(id))
         } catch (_: Exception) {
-            return "下载失败"
+            return context.getString(R.string.update_download_failed)
         }
         cursor.use {
-            if (!it.moveToFirst()) return "下载失败"
-            return it.getString(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)) ?: "下载失败"
+            if (!it.moveToFirst()) return context.getString(R.string.update_download_failed)
+            return it.getString(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                ?: context.getString(R.string.update_download_failed)
         }
     }
 

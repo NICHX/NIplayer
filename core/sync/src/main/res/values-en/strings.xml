@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sync errors -->
+    <string name="sync_error_operation_failed">Operation failed</string>
+    <!-- Sync status messages -->
+    <string name="sync_success">Sync successful</string>
+    <string name="sync_success_with_conflicts">Sync successful, %1$d conflict(s) to resolve</string>
+    <string name="sync_error_no_server_selected">No WebDAV server selected</string>
+    <string name="sync_error_server_not_found">Selected WebDAV server not found</string>
+    <string name="sync_error_cannot_connect">Cannot connect to WebDAV server</string>
+    <string name="sync_error_connect_failed">Cannot connect to server: %1$s</string>
+    <string name="sync_error_network">Network error</string>
+    <string name="sync_error_create_dir_failed">Failed to create sync directory %1$s</string>
+    <string name="sync_error_upload_failed">Upload failed, please check server configuration</string>
+    <string name="sync_error_upload_mismatch">Upload verification failed: server content mismatch</string>
+</resources>

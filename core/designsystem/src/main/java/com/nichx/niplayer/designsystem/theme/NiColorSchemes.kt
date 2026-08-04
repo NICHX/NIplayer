@@ -1,5 +1,7 @@
 package com.nichx.niplayer.designsystem.theme
 
+import androidx.annotation.StringRes
+import com.nichx.niplayer.designsystem.R
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.compositionLocalOf
@@ -12,21 +14,22 @@ import androidx.compose.ui.graphics.Color
  * 按 quiz-platform 的设计哲学，每个方案是一组「完整氛围色板」，覆盖主色、次级色、
  * 页面背景、卡片表面、描边色和缩略图渐变，切换时整页氛围变化。
  *
- * 分 3 个分类：冷色系 / 暖色系 / 自然色系。
+ * 分 3 个分类：冷色系 / 暖色系 / 自然色系。展示文案经 [labelRes]/[categoryRes] 资源化，
+ * 支持 i18n（见 core/designsystem res）。
  */
-enum class NiScheme(val label: String, val category: String) {
-    BLUE("蓝色", "冷色系"),
-    INDIGO("靛蓝", "冷色系"),
-    CYAN("青色", "冷色系"),
-    SLATE("石板", "冷色系"),
-    PURPLE("紫色", "暖色系"),
-    ROSE("玫瑰", "暖色系"),
-    CORAL("珊瑚", "暖色系"),
-    PINK("粉红", "暖色系"),
-    TEAL("青绿", "自然色系"),
-    GREEN("翠绿", "自然色系"),
-    FOREST("森林", "自然色系"),
-    CARAMEL("焦糖", "自然色系");
+enum class NiScheme(@StringRes val labelRes: Int, @StringRes val categoryRes: Int) {
+    BLUE(R.string.color_scheme_blue, R.string.color_scheme_category_cool),
+    INDIGO(R.string.color_scheme_indigo, R.string.color_scheme_category_cool),
+    CYAN(R.string.color_scheme_cyan, R.string.color_scheme_category_cool),
+    SLATE(R.string.color_scheme_slate, R.string.color_scheme_category_cool),
+    PURPLE(R.string.color_scheme_purple, R.string.color_scheme_category_warm),
+    ROSE(R.string.color_scheme_rose, R.string.color_scheme_category_warm),
+    CORAL(R.string.color_scheme_coral, R.string.color_scheme_category_warm),
+    PINK(R.string.color_scheme_pink, R.string.color_scheme_category_warm),
+    TEAL(R.string.color_scheme_teal, R.string.color_scheme_category_nature),
+    GREEN(R.string.color_scheme_green, R.string.color_scheme_category_nature),
+    FOREST(R.string.color_scheme_forest, R.string.color_scheme_category_nature),
+    CARAMEL(R.string.color_scheme_caramel, R.string.color_scheme_category_nature);
 }
 
 /**

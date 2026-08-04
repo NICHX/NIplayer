@@ -1,0 +1,204 @@
+<resources>
+    <!-- Common actions -->
+    <string name="player_confirm">OK</string>
+    <string name="player_cancel">Cancel</string>
+    <string name="player_retry">Retry</string>
+    <string name="player_back">Back</string>
+    <string name="player_more">More</string>
+    <string name="player_close">Close</string>
+    <string name="player_previous">Previous</string>
+    <string name="player_previous_track">Previous track</string>
+    <string name="player_play">Play</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_next">Next</string>
+    <string name="player_next_track">Next track</string>
+    <string name="player_playlist">Playlist</string>
+    <string name="player_playlist_with_count">Playlist (%1$d)</string>
+    <string name="player_playlist_empty">Playlist is empty</string>
+    <string name="player_play_mode_order">Sequential</string>
+    <string name="player_play_mode_shuffle">Shuffle</string>
+    <string name="player_play_mode_single">Repeat one</string>
+    <string name="player_unknown_song">Unknown song</string>
+    <string name="player_unknown_error">Unknown error</string>
+
+    <!-- Playback errors -->
+    <string name="player_error_title">Playback failed</string>
+    <string name="player_error_hint">Playback error</string>
+    <string name="player_play_from_start">Play from start</string>
+    <string name="player_exit">Exit</string>
+    <string name="player_no_source">No playback source</string>
+    <string name="player_play_failed_401">Playback failed: incorrect credentials or expired token (401)</string>
+    <string name="player_play_failed_403">Playback failed: no access permission (403)</string>
+    <string name="player_play_failed_404">Playback failed: file not found, it may have been moved or deleted (404)</string>
+    <string name="player_play_failed_server">Playback failed: server error (%1$s)</string>
+    <string name="player_play_failed_http">Playback failed: HTTP %1$s</string>
+    <string name="player_play_failed_file_not_found">Playback failed: file not found, it may have been moved or deleted</string>
+    <string name="player_play_failed_network">Playback failed: network error (%1$s)</string>
+    <string name="player_play_failed_generic">Playback failed: %1$s</string>
+    <string name="player_switch_failed">Switch failed: %1$s</string>
+
+    <!-- Player OSD hints -->
+    <string name="player_unlock_screen_first">Please unlock the screen first</string>
+    <string name="player_screenshot_failed_not_ready">Screenshot failed: player not ready</string>
+    <string name="player_screenshot_failed_size">Screenshot failed: invalid frame size</string>
+    <string name="player_screenshot_failed_pixelcopy">Screenshot failed: PixelCopy error %1$s</string>
+    <string name="player_screenshot_failed_generic">Screenshot failed: %1$s</string>
+    <string name="player_screenshot_saved">Screenshot saved: %1$s</string>
+    <string name="player_seek_forward_seconds">Forward %1$ds</string>
+    <string name="player_seek_backward_seconds">Backward %1$ds</string>
+    <string name="player_bookmark_added">Bookmark added</string>
+    <string name="player_scale_hint">Aspect ratio: %1$s</string>
+    <string name="player_speed_locked">%1$s  Locked · Tap to unlock</string>
+    <string name="player_speed_long_press">%1$s  Hold to fast forward</string>
+    <string name="player_speed_lock_on_release">Release to lock %1$s</string>
+    <string name="player_speed_release_to_lock">↓ Release to lock speed</string>
+    <string name="player_crop_black_bar_on">Crop black bars: On</string>
+    <string name="player_crop_black_bar_off">Crop black bars: Off</string>
+    <string name="player_black_bar_crop_on">Smart black bar crop: On</string>
+    <string name="player_black_bar_crop_off">Smart black bar crop: Off</string>
+    <string name="player_long_press_speed">Long-press speed</string>
+    <string name="player_sleep_timer">Sleep timer</string>
+    <string name="player_sleep_timer_minutes">%1$d min</string>
+    <string name="player_sleep_timer_off">Turn off timer</string>
+    <string name="player_media_info">Media info</string>
+    <string name="player_no_media_info">No media info</string>
+    <string name="player_media_info_video_codec">Video codec</string>
+    <string name="player_media_info_audio_codec">Audio codec</string>
+    <string name="player_media_info_resolution">Resolution</string>
+    <string name="player_media_info_bitrate">Bitrate</string>
+    <string name="player_media_info_frame_rate">Frame rate</string>
+    <string name="player_media_info_hdr">HDR</string>
+    <string name="player_media_info_unknown">Unknown</string>
+    <string name="player_media_info_unsupported">Unsupported</string>
+    <string name="player_picture_in_picture">Picture-in-picture</string>
+    <string name="player_bookmark">Bookmarks</string>
+    <string name="player_resume_title">Resume playback</string>
+    <string name="player_resume_text">You watched up to %1$s last time. Continue playing?</string>
+    <string name="player_resume_continue">Continue</string>
+    <string name="player_download_dir_not_set">Please set a download directory in the download manager page first</string>
+    <string name="player_added_to_download_queue">Added to download queue</string>
+    <string name="player_lyrics_fetched">Lyrics fetched via API: %1$s</string>
+    <string name="player_scale_fit">Fit</string>
+    <string name="player_scale_crop">Crop</string>
+    <string name="player_scale_stretch">Stretch</string>
+    <string name="player_speed_menu_title">Playback speed</string>
+
+    <!-- Episodes / Bookmarks -->
+    <string name="player_episode_list">Episodes (%1$d/%2$d)</string>
+    <string name="player_episode_list_icon">Episode list</string>
+    <string name="player_episode_previous">Previous episode</string>
+    <string name="player_episode_next">Next episode</string>
+    <string name="player_bookmark_list">Bookmarks (%1$d)</string>
+    <string name="player_bookmark_empty">No bookmarks yet. Tap the bookmark icon in the top bar to add a marker at the current position</string>
+    <string name="player_delete_bookmark">Delete bookmark</string>
+    <string name="player_add_bookmark">Add bookmark</string>
+    <string name="player_unlock">Unlock</string>
+    <string name="player_lock">Lock</string>
+    <string name="player_rotate_screen">Rotate screen</string>
+    <string name="player_screenshot">Screenshot</string>
+    <string name="player_speed_icon">Speed</string>
+    <string name="player_scale_icon">Aspect ratio</string>
+    <string name="player_unmute">Unmute</string>
+    <string name="player_mute">Mute</string>
+    <string name="player_rewind_10s">Back 10 seconds</string>
+    <string name="player_forward_10s">Forward 10 seconds</string>
+    <string name="player_download_icon">Download</string>
+    <string name="player_equalizer">Equalizer</string>
+    <string name="player_current_speed">Current speed</string>
+    <string name="player_playback_error">Playback error</string>
+
+    <!-- Subtitles -->
+    <string name="player_subtitle">Subtitles</string>
+    <string name="player_subtitle_off">Off</string>
+    <string name="player_subtitle_none">No subtitle</string>
+    <string name="player_subtitle_auto">Auto</string>
+    <string name="player_subtitle_auto_used">Using: %1$s</string>
+    <string name="player_subtitle_auto_by_language">Select automatically based on language preference</string>
+    <string name="player_subtitle_embedded">Embedded subtitles</string>
+    <string name="player_subtitle_delay">Subtitle delay</string>
+    <string name="player_subtitle_reset">Reset</string>
+    <string name="player_subtitle_external_only">Only applies to external subtitles</string>
+    <string name="player_subtitle_external">External subtitles</string>
+    <string name="player_subtitle_search">Search subtitles</string>
+    <string name="player_subtitle_style">Subtitle style</string>
+    <string name="player_audio_track">Audio track</string>
+    <string name="player_audio_track_auto">Auto</string>
+
+    <!-- A-B loop -->
+    <string name="player_ab_loop_title">A-B Loop</string>
+    <string name="player_ab_loop_point_a">Point A</string>
+    <string name="player_ab_loop_point_b">Point B</string>
+    <string name="player_ab_loop_not_set">Not set</string>
+    <string name="player_ab_loop_set_a">Set point A %1$s</string>
+    <string name="player_ab_loop_set_b">Set point B %1$s</string>
+    <string name="player_ab_loop_a_value">Point A %1$s</string>
+    <string name="player_ab_loop_b_value">Point B %1$s</string>
+    <string name="player_ab_loop_active">Looping between %1$s ~ %2$s</string>
+    <string name="player_ab_loop_a_set_prompt">Point A set, now set point B</string>
+    <string name="player_ab_loop_b_set_prompt">Play to the target position, then tap "Set point A"</string>
+    <string name="player_ab_loop_clear">Clear</string>
+    <string name="player_ab_loop_quick_hint">Quick tip: long-press the A-B button on the controller to quickly set points A/B</string>
+    <string name="player_ab_loop_a_set_osd">Point A: %1$s</string>
+    <string name="player_ab_loop_b_set_osd">Point B: %1$s</string>
+    <string name="player_ab_loop_cleared_osd">A-B loop cleared</string>
+
+    <!-- Save to playlist -->
+    <string name="player_save_to_playlist">Add to playlist</string>
+    <string name="player_save_add">Add</string>
+    <string name="player_save_current_playing">Now playing: %1$s</string>
+    <string name="player_save_no_playing">No song is currently playing</string>
+    <string name="player_save_new_playlist">New playlist</string>
+    <string name="player_save_new_playlist_hint">Create a new playlist for the current song</string>
+    <string name="player_save_playlist_name">Playlist name</string>
+    <string name="player_save_playlist_name_placeholder">e.g. My Favorites</string>
+    <string name="player_save_to_existing">Save to existing playlist</string>
+    <string name="player_save_item_count">%1$d items</string>
+    <string name="player_save_already_exists">The current song already exists in "%1$s"</string>
+    <string name="player_save_success">Added the current song to "%1$s"</string>
+    <string name="player_default_playlist_name">Playlist</string>
+
+    <!-- Media notification -->
+    <string name="player_notification_playing">Playing</string>
+    <string name="player_notification_channel">Music playback</string>
+    <string name="player_notification_channel_desc">Music playback controls</string>
+
+    <!-- Subtitle search -->
+    <string name="subtitle_search_title">Search subtitles</string>
+    <string name="subtitle_search_placeholder">Enter search keywords</string>
+    <string name="subtitle_search_action">Search</string>
+    <string name="subtitle_search_downloading">Downloading subtitle...</string>
+    <string name="subtitle_search_loading_detail">Loading details...</string>
+    <string name="subtitle_search_token_required">Please set the ASSRT Token first</string>
+    <string name="subtitle_search_input_hint">Enter keywords to search subtitles</string>
+    <string name="subtitle_search_unknown">Unknown subtitle</string>
+    <string name="subtitle_search_download">Download</string>
+    <string name="subtitle_search_token_title">Set ASSRT Token</string>
+    <string name="subtitle_search_token_desc">Register at assrt.net to get an API Token for subtitle search.</string>
+    <string name="subtitle_search_token_placeholder">Enter ASSRT Token</string>
+    <string name="subtitle_search_save">Save</string>
+    <string name="subtitle_search_failed">Search failed</string>
+    <string name="subtitle_search_no_link">No download link found</string>
+    <string name="subtitle_search_load_detail_failed">Failed to load details</string>
+    <string name="subtitle_search_download_failed">Download failed</string>
+
+    <!-- Subtitle style -->
+    <string name="subtitle_style_title">Subtitle style</string>
+    <string name="subtitle_font_label">Font</string>
+    <string name="subtitle_size_label">Size</string>
+    <string name="subtitle_color_label">Text color</string>
+    <string name="subtitle_outline_width_label">Outline width</string>
+    <string name="subtitle_outline_color_label">Outline color</string>
+    <string name="subtitle_bottom_padding_label">Bottom margin</string>
+    <string name="subtitle_font_default">Default font</string>
+    <string name="subtitle_size_medium">Medium</string>
+    <string name="subtitle_color_white">White</string>
+    <string name="subtitle_outline_medium">Medium</string>
+    <string name="subtitle_outline_color_black">Black</string>
+    <string name="subtitle_bottom_padding_medium">Medium</string>
+    <string name="subtitle_apply_embedded">Apply embedded style</string>
+    <string name="subtitle_apply_embedded_desc">Use the color and style from the subtitle file itself</string>
+    <string name="subtitle_done">Done</string>
+
+    <!-- Lyrics -->
+    <string name="lyrics_empty">No lyrics</string>
+</resources>

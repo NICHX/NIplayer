@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.library
 
+import com.nichx.niplayer.feature.home.R
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -61,6 +62,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -116,16 +118,16 @@ fun StoragePlusScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (viewModel.isEditMode) "编辑存储源" else "添加存储源") },
+                title = { Text(if (viewModel.isEditMode) stringResource(R.string.storage_plus_edit_title) else stringResource(R.string.storage_plus_add_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
                     if (viewModel.isEditMode) {
                         IconButton(onClick = { showDeleteDialog = true }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "删除")
+                            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete))
                         }
                     }
                 },
@@ -151,15 +153,15 @@ fun StoragePlusScreen(
             StorageTypeBadge(type = state.mediaType, extraColors = extraColors)
 
             FormCard(
-                title = "基本信息",
+                title = stringResource(R.string.storage_plus_basic_info),
                 icon = Icons.Filled.Info,
                 iconBg = Color(0xFF2095F4),
             ) {
                 FormTextField(
-                    label = "显示名称",
+                    label = stringResource(R.string.storage_plus_display_name),
                     value = state.displayName,
                     onValueChange = viewModel::updateDisplayName,
-                    placeholder = "留空使用默认名",
+                    placeholder = stringResource(R.string.storage_plus_default_name_hint),
                 )
             }
 
@@ -173,7 +175,7 @@ fun StoragePlusScreen(
                 MediaType.EXTERNAL_STORAGE -> ExternalCard(state, extraColors) {
                     treeLauncher.launch(null)
                 }
-                else -> Text("不支持的存储类型")
+                else -> Text(stringResource(R.string.storage_plus_unsupported_type))
             }
 
             state.testResult?.let { ok ->
@@ -184,14 +186,14 @@ fun StoragePlusScreen(
 
     if (showDeleteDialog) {
         NiConfirmDialog(
-            title = "删除存储源",
-            text = "确定删除「${state.displayName.ifBlank { state.url }}」？",
+            title = stringResource(R.string.storage_plus_delete_title),
+            text = stringResource(R.string.storage_plus_delete_confirm, state.displayName.ifBlank { state.url }),
             onConfirm = {
                 showDeleteDialog = false
                 viewModel.delete()
             },
             onDismiss = { showDeleteDialog = false },
-            confirmText = "删除",
+            confirmText = stringResource(R.string.delete),
         )
     }
 }
@@ -204,10 +206,10 @@ private fun StorageTypeBadge(
     extraColors: NiExtraColors,
 ) {
     val (label, icon, color) = when (type) {
-        MediaType.WEBDAV_SERVER -> Triple("WebDAV 服务器", Icons.Filled.CloudQueue, extraColors.storageWebdavColor)
-        MediaType.SMB_SERVER -> Triple("SMB 共享", Icons.Filled.CloudQueue, extraColors.storageSmbColor)
-        MediaType.EXTERNAL_STORAGE -> Triple("外部存储", Icons.Filled.FolderOpen, extraColors.storageExternalColor)
-        else -> Triple("未知", Icons.Filled.Info, Color.Gray)
+        MediaType.WEBDAV_SERVER -> Triple(stringResource(R.string.storage_type_webdav), Icons.Filled.CloudQueue, extraColors.storageWebdavColor)
+        MediaType.SMB_SERVER -> Triple(stringResource(R.string.storage_type_smb), Icons.Filled.CloudQueue, extraColors.storageSmbColor)
+        MediaType.EXTERNAL_STORAGE -> Triple(stringResource(R.string.storage_type_external), Icons.Filled.FolderOpen, extraColors.storageExternalColor)
+        else -> Triple(stringResource(R.string.storage_type_unknown), Icons.Filled.Info, Color.Gray)
     }
 
     Box(
@@ -240,7 +242,7 @@ private fun StorageTypeBadge(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "存储源类型",
+                    text = stringResource(R.string.storage_plus_type),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                 )
@@ -308,12 +310,12 @@ private fun TestResultCard(ok: Boolean) {
         bgColor = Color(0xFF2E7D32).copy(alpha = 0.08f)
         icon = Icons.Filled.Check
         tintColor = Color(0xFF2E7D32)
-        label = "连接成功"
+        label = stringResource(R.string.storage_plus_connect_success)
     } else {
         bgColor = Color(0xFFD32F2F).copy(alpha = 0.08f)
         icon = Icons.Filled.Warning
         tintColor = Color(0xFFD32F2F)
-        label = "连接失败"
+        label = stringResource(R.string.storage_plus_connect_failed)
     }
     Box(
         modifier = Modifier
@@ -352,12 +354,12 @@ private fun WebDavCards(
     val extraColors = NiExtraColors.current
 
     FormCard(
-        title = "连接配置",
+        title = stringResource(R.string.storage_plus_connection_title),
         icon = Icons.Filled.CloudQueue,
         iconBg = extraColors.storageWebdavColor,
     ) {
         SegmentedRow(
-            label = "协议",
+            label = stringResource(R.string.storage_plus_protocol),
             leftLabel = "http://",
             rightLabel = "https://",
             isLeftSelected = !state.webDavUseHttps,
@@ -365,34 +367,34 @@ private fun WebDavCards(
             onRight = { vm.updateWebDavUseHttps(true) },
         )
         FormTextField(
-            label = "服务器地址",
+            label = stringResource(R.string.storage_plus_server_url),
             value = state.url,
             onValueChange = vm::updateUrl,
-            placeholder = "例如 example.com/webdav",
+            placeholder = "example.com/webdav",
         )
     }
 
     FormCard(
-        title = "认证设置",
+        title = stringResource(R.string.storage_plus_auth_title),
         icon = Icons.Filled.Lock,
         iconBg = extraColors.storageWebdavColor,
     ) {
         SegmentedRow(
-            label = "登录方式",
-            leftLabel = "匿名",
-            rightLabel = "账号",
+            label = stringResource(R.string.storage_plus_login_method),
+            leftLabel = stringResource(R.string.storage_plus_anonymous),
+            rightLabel = stringResource(R.string.storage_plus_account),
             isLeftSelected = state.isAnonymous,
             onLeft = { vm.updateAnonymous(true) },
             onRight = { vm.updateAnonymous(false) },
         )
         if (!state.isAnonymous) {
             FormTextField(
-                label = "账号",
+                label = stringResource(R.string.storage_plus_username),
                 value = state.account,
                 onValueChange = vm::updateAccount,
             )
             PasswordField(
-                label = "密码",
+                label = stringResource(R.string.storage_plus_password),
                 value = state.password,
                 onValueChange = vm::updatePassword,
                 visible = passwordVisible,
@@ -402,23 +404,23 @@ private fun WebDavCards(
     }
 
     FormCard(
-        title = "高级设置",
+        title = stringResource(R.string.storage_plus_advanced_title),
         icon = Icons.Filled.Settings,
         iconBg = extraColors.storageWebdavColor,
     ) {
         SegmentedRow(
-            label = "解析模式",
-            leftLabel = "严格",
-            rightLabel = "普通",
+            label = stringResource(R.string.storage_plus_parse_mode),
+            leftLabel = stringResource(R.string.storage_plus_parse_strict),
+            rightLabel = stringResource(R.string.storage_plus_parse_normal),
             isLeftSelected = state.webDavStrict,
             onLeft = { vm.updateWebDavStrict(true) },
             onRight = { vm.updateWebDavStrict(false) },
         )
         FieldDescription(
             text = if (state.webDavStrict)
-                "严格模式：文件名大小写敏感，按原始名称精确匹配"
+                stringResource(R.string.storage_plus_parse_strict_desc)
             else
-                "普通模式：自动处理文件名编码差异，容错性更好",
+                stringResource(R.string.storage_plus_parse_normal_desc),
         )
     }
 }
@@ -435,84 +437,84 @@ private fun SmbCards(
     val extraColors = NiExtraColors.current
 
     FormCard(
-        title = "连接配置",
+        title = stringResource(R.string.storage_plus_connection_title),
         icon = Icons.Filled.CloudQueue,
         iconBg = extraColors.storageSmbColor,
     ) {
         FormTextField(
-            label = "IP 地址",
+            label = stringResource(R.string.storage_plus_ip),
             value = state.url,
             onValueChange = vm::updateUrl,
-            placeholder = "如 192.168.1.1",
+            placeholder = "192.168.1.1",
         )
         FormTextField(
-            label = "端口",
+            label = stringResource(R.string.storage_plus_port),
             value = if (state.port == 0) "" else state.port.toString(),
             onValueChange = vm::updatePort,
             keyboardType = KeyboardType.Number,
-            placeholder = "默认 445",
+            placeholder = "445",
         )
         FormTextField(
-            label = "共享路径",
+            label = stringResource(R.string.storage_plus_share_path),
             value = state.smbSharePath,
             onValueChange = vm::updateSmbSharePath,
-            placeholder = "可选，预设共享目录",
+            placeholder = stringResource(R.string.storage_plus_share_path_hint),
         )
     }
 
     FormCard(
-        title = "认证设置",
+        title = stringResource(R.string.storage_plus_auth_title),
         icon = Icons.Filled.Lock,
         iconBg = extraColors.storageSmbColor,
     ) {
         SegmentedRow(
-            label = "登录方式",
-            leftLabel = "匿名",
-            rightLabel = "账号",
+            label = stringResource(R.string.storage_plus_login_method),
+            leftLabel = stringResource(R.string.storage_plus_anonymous),
+            rightLabel = stringResource(R.string.storage_plus_account),
             isLeftSelected = state.isAnonymous,
             onLeft = { vm.updateAnonymous(true) },
             onRight = { vm.updateAnonymous(false) },
         )
         if (!state.isAnonymous) {
             FormTextField(
-                label = "账号",
+                label = stringResource(R.string.storage_plus_username),
                 value = state.account,
                 onValueChange = vm::updateAccount,
             )
             PasswordField(
-                label = "密码",
+                label = stringResource(R.string.storage_plus_password),
                 value = state.password,
                 onValueChange = vm::updatePassword,
                 visible = passwordVisible,
                 onToggleVisible = onTogglePassword,
             )
             FormTextField(
-                label = "域/工作组",
+                label = stringResource(R.string.storage_plus_domain),
                 value = state.domain,
                 onValueChange = vm::updateDomain,
-                placeholder = "可选，如 WORKGROUP 或 CORP",
+                placeholder = stringResource(R.string.storage_plus_domain_hint),
             )
         }
     }
 
     FormCard(
-        title = "高级设置",
+        title = stringResource(R.string.storage_plus_advanced_title),
         icon = Icons.Filled.Settings,
         iconBg = extraColors.storageSmbColor,
     ) {
         SegmentedRow(
-            label = "加密传输",
-            leftLabel = "关闭",
-            rightLabel = "开启",
+            label = stringResource(R.string.storage_plus_encryption),
+            leftLabel = stringResource(R.string.storage_plus_encryption_off),
+            rightLabel = stringResource(R.string.storage_plus_encryption_on),
             isLeftSelected = !state.smbEncryption,
             onLeft = { vm.updateSmbEncryption(false) },
             onRight = { vm.updateSmbEncryption(true) },
         )
         FieldDescription(
             text = if (state.smbEncryption)
-                "开启加密传输（SMB 3.0+），防止数据在传输过程中被窃听"
+                stringResource(R.string.storage_plus_encryption_on_desc)
             else
-                "关闭加密传输可获得更好的兼容性与传输速度",
+                stringResource(R.string.storage_plus_encryption_off_desc),
         )
     }
 }
@@ -526,7 +528,7 @@ private fun ExternalCard(
     onSelect: () -> Unit,
 ) {
     FormCard(
-        title = "目录选择",
+        title = stringResource(R.string.storage_plus_dir_picker_title),
         icon = Icons.Filled.FolderOpen,
         iconBg = extraColors.storageExternalColor,
     ) {
@@ -538,7 +540,13 @@ private fun ExternalCard(
         ) {
             Icon(Icons.Filled.Folder, contentDescription = null)
             Spacer(Modifier.size(8.dp))
-            Text(if (state.externalUri.isBlank()) "选择根目录" else "重新选择根目录")
+            Text(
+                if (state.externalUri.isBlank()) {
+                    stringResource(R.string.storage_plus_select_root_dir)
+                } else {
+                    stringResource(R.string.storage_plus_reselect_root_dir)
+                },
+            )
         }
         if (state.externalUri.isNotBlank()) {
             Text(
@@ -590,7 +598,7 @@ private fun PasswordField(
         else PasswordVisualTransformation(),
         trailingIcon = {
             TextButton(onClick = { onToggleVisible(!visible) }) {
-                Text(if (visible) "隐藏" else "显示")
+                Text(if (visible) stringResource(R.string.hide) else stringResource(R.string.show))
             }
         },
         modifier = Modifier
@@ -668,7 +676,7 @@ private fun StorageFormBottomBar(
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    Text("测试连接")
+                    Text(stringResource(R.string.storage_plus_test_connection))
                 }
             }
             Button(
@@ -683,7 +691,7 @@ private fun StorageFormBottomBar(
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 } else {
-                    Text("保存")
+                    Text(stringResource(R.string.save))
                 }
             }
         } else {
@@ -699,7 +707,7 @@ private fun StorageFormBottomBar(
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 } else {
-                    Text("保存")
+                    Text(stringResource(R.string.save))
                 }
             }
         }

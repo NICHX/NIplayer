@@ -140,6 +140,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -258,6 +259,12 @@ fun PlayerScreen(
     var keyboardMuteVolume by remember { mutableIntStateOf(-1) }
     var scaleHint by remember { mutableStateOf<String?>(null) }
     var infoOsd by remember { mutableStateOf<String?>(null) }
+    val scaleNames = listOf(
+        stringResource(R.string.player_scale_fit),
+        stringResource(R.string.player_scale_crop),
+        stringResource(R.string.player_scale_stretch),
+        "16:9",
+    )
     val tapHandler = remember { Handler(Looper.getMainLooper()) }
     var pendingSingleTap by remember { mutableStateOf<Runnable?>(null) }
 
@@ -460,12 +467,12 @@ fun PlayerScreen(
         val sv = surfaceViewRef
         val act = activity
         if (sv == null || act == null) {
-            infoOsd = "截图失败：播放器未就绪"
+            infoOsd = context.getString(R.string.player_screenshot_failed_not_ready)
         } else {
             val w = sv.width
             val h = sv.height
             if (w <= 0 || h <= 0) {
-                infoOsd = "截图失败：画面尺寸无效"
+                infoOsd = context.getString(R.string.player_screenshot_failed_size)
             } else {
                 val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                 try {
@@ -473,11 +480,14 @@ fun PlayerScreen(
                         if (result == PixelCopy.SUCCESS) {
                             viewModel.saveScreenshot(bitmap)
                         } else {
-                            infoOsd = "截图失败：PixelCopy 错误 $result"
+                            infoOsd = context.getString(R.string.player_screenshot_failed_pixelcopy, result)
                         }
                     }, Handler(Looper.getMainLooper()))
                 } catch (e: Exception) {
-                    infoOsd = "截图失败：${e.message}"
+                    infoOsd = context.getString(
+                        R.string.player_screenshot_failed_generic,
+                        e.message ?: context.getString(R.string.player_unknown_error),
+                    )
                 }
             }
         }
@@ -509,7 +519,7 @@ fun PlayerScreen(
                 // 锁屏核心目的就是防误触，包括系统后退；用户需先解锁再退出
                 Key.Escape -> {
                     if (locked) {
-                        infoOsd = "请先解锁屏幕"
+                        infoOsd = context.getString(R.string.player_unlock_screen_first)
                         true
                     } else {
                         capturedBack(); true
@@ -865,13 +875,13 @@ fun PlayerScreen(
                                             when {
                                                 startX < third -> {
                                                     viewModel.seekTo((positionMs - doubleTapStepMs).coerceAtLeast(0L))
-                                                    infoOsd = "快退${doubleTapStepMs / 1000}秒"
+                                                    infoOsd = context.getString(R.string.player_seek_backward_seconds, doubleTapStepMs / 1000)
                                                 }
                                                 startX > size.width * 2f / 3f -> {
                                                     viewModel.seekTo(
                                                         (positionMs + doubleTapStepMs).coerceAtMost(durationMs.coerceAtLeast(1L)),
                                                     )
-                                                    infoOsd = "快进${doubleTapStepMs / 1000}秒"
+                                                    infoOsd = context.getString(R.string.player_seek_forward_seconds, doubleTapStepMs / 1000)
                                                 }
                                                 else -> {
                                                     viewModel.togglePlayPause()
@@ -988,13 +998,13 @@ fun PlayerScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text(
-                        text = "播放出错",
+                        text = stringResource(R.string.player_error_hint),
                         color = Color.White,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = err.cause.message ?: err.cause::class.simpleName ?: "未知错误",
+                        text = err.cause.message ?: err.cause::class.simpleName ?: stringResource(R.string.player_unknown_error),
                         color = Color.White.copy(alpha = 0.7f),
                         style = MaterialTheme.typography.bodySmall,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -1008,7 +1018,7 @@ fun PlayerScreen(
                                 contentColor = MaterialTheme.colorScheme.primary,
                             ),
                         ) {
-                            Text("重试")
+                            Text(stringResource(R.string.player_retry))
                         }
                         TextButton(
                             onClick = { viewModel.restartFromStart() },
@@ -1016,7 +1026,7 @@ fun PlayerScreen(
                                 contentColor = Color.White,
                             ),
                         ) {
-                            Text("从头播放")
+                            Text(stringResource(R.string.player_play_from_start))
                         }
                         TextButton(
                             onClick = { capturedBack() },
@@ -1024,7 +1034,7 @@ fun PlayerScreen(
                                 contentColor = Color.White.copy(alpha = 0.7f),
                             ),
                         ) {
-                            Text("退出")
+                            Text(stringResource(R.string.player_exit))
                         }
                     }
                 }
@@ -1083,7 +1093,7 @@ fun PlayerScreen(
                     onToggleAudioTrackMenu = { showAudioTrackMenu = !showAudioTrackMenu },
                     onCycleScale = {
                         val newIndex = viewModel.cycleScaleMode()
-                        scaleHint = SCALE_NAMES[newIndex]
+                        scaleHint = scaleNames[newIndex]
                     },
                     onAddSubtitle = { showSubtitleMenu = true },
                     onSearchSubtitle = { showSubtitleSearch = true },
@@ -1118,7 +1128,7 @@ fun PlayerScreen(
                     bookmarkPositions = bookmarks.map { it.positionMs },
                     onAddBookmark = {
                         viewModel.addBookmark()
-                        infoOsd = "已添加书签"
+                        infoOsd = context.getString(R.string.player_bookmark_added)
                     },
                     onDownload = { viewModel.downloadCurrentFile() },
                 )
@@ -1127,9 +1137,9 @@ fun PlayerScreen(
 
         if (!isInPip) longPressSpeedActive?.let { speed ->
             val osdText = when {
-                longPressSpeedLocked -> "${formatSpeed(speed)}  已锁定 · 点击解除"
-                inLockZone -> "松手锁定 ${formatSpeed(speed)}"
-                else -> "${formatSpeed(speed)}  长按快进"
+                longPressSpeedLocked -> stringResource(R.string.player_speed_locked, formatSpeed(speed))
+                inLockZone -> stringResource(R.string.player_speed_lock_on_release, formatSpeed(speed))
+                else -> stringResource(R.string.player_speed_long_press, formatSpeed(speed))
             }
             Box(
                 modifier = Modifier
@@ -1187,7 +1197,7 @@ fun PlayerScreen(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = "画面比例：$hint",
+                        text = stringResource(R.string.player_scale_hint, hint),
                         color = Color.White,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
@@ -1228,7 +1238,7 @@ fun PlayerScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "↓ 松手锁定倍速",
+                    text = stringResource(R.string.player_speed_release_to_lock),
                     color = Color.White,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
@@ -1271,7 +1281,7 @@ fun PlayerScreen(
         if (showAudioTrackMenu) {
             val audioItems = buildList {
                 add(NiDialogItem(
-                    label = "自动",
+                    label = stringResource(R.string.player_audio_track_auto),
                     isSelected = selectedAudioTrackIndex == -1,
                     onClick = {
                         viewModel.selectAudioTrack(-1)
@@ -1290,7 +1300,7 @@ fun PlayerScreen(
                 }
             }
             PlayerListDialog(
-                title = "音轨",
+                title = stringResource(R.string.player_audio_track),
                 items = audioItems,
                 onDismiss = { showAudioTrackMenu = false },
             )
@@ -1351,7 +1361,7 @@ fun PlayerScreen(
                     showMoreMenu = false
                     autoBlackBarCrop = !autoBlackBarCrop
                     PlayerSettings.autoDetectBlackBars = autoBlackBarCrop
-                    infoOsd = if (autoBlackBarCrop) "智能去黑边：已开启" else "智能去黑边：已关闭"
+                    infoOsd = if (autoBlackBarCrop) context.getString(R.string.player_black_bar_crop_on) else context.getString(R.string.player_black_bar_crop_off)
                     if (autoBlackBarCrop) {
                         triggerBlackBarDetection()
                     } else {
@@ -1375,17 +1385,17 @@ fun PlayerScreen(
 
         if (showSleepTimerDialog) {
             val items = buildList {
-                add(NiDialogItem(label = "15 分钟", onClick = { viewModel.startSleepTimer(15); showSleepTimerDialog = false }))
-                add(NiDialogItem(label = "30 分钟", onClick = { viewModel.startSleepTimer(30); showSleepTimerDialog = false }))
-                add(NiDialogItem(label = "60 分钟", onClick = { viewModel.startSleepTimer(60); showSleepTimerDialog = false }))
-                add(NiDialogItem(label = "90 分钟", onClick = { viewModel.startSleepTimer(90); showSleepTimerDialog = false }))
-                add(NiDialogItem(label = "120 分钟", onClick = { viewModel.startSleepTimer(120); showSleepTimerDialog = false }))
+                add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_minutes, 15), onClick = { viewModel.startSleepTimer(15); showSleepTimerDialog = false }))
+                add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_minutes, 30), onClick = { viewModel.startSleepTimer(30); showSleepTimerDialog = false }))
+                add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_minutes, 60), onClick = { viewModel.startSleepTimer(60); showSleepTimerDialog = false }))
+                add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_minutes, 90), onClick = { viewModel.startSleepTimer(90); showSleepTimerDialog = false }))
+                add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_minutes, 120), onClick = { viewModel.startSleepTimer(120); showSleepTimerDialog = false }))
                 if (sleepTimerRemaining != null) {
-                    add(NiDialogItem(label = "关闭定时", onClick = { viewModel.cancelSleepTimer(); showSleepTimerDialog = false }))
+                    add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_off), onClick = { viewModel.cancelSleepTimer(); showSleepTimerDialog = false }))
                 }
             }
             PlayerListDialog(
-                title = "睡眠定时",
+                title = stringResource(R.string.player_sleep_timer),
                 items = items,
                 onDismiss = { showSleepTimerDialog = false },
             )
@@ -1404,7 +1414,7 @@ fun PlayerScreen(
                 )
             }
             PlayerListDialog(
-                title = "长按倍速",
+                title = stringResource(R.string.player_long_press_speed),
                 items = items,
                 onDismiss = { showLongPressSpeedDialog = false },
             )
@@ -1412,30 +1422,30 @@ fun PlayerScreen(
 
         if (showMediaInfoDrawer) {
             PlayerInfoDialog(
-                title = "媒体信息",
+                title = stringResource(R.string.player_media_info),
                 onDismiss = { showMediaInfoDrawer = false },
             ) {
                 val info = mediaInfo
                 if (info == null) {
                     Text(
-                        text = "暂无媒体信息",
+                        text = stringResource(R.string.player_no_media_info),
                         color = PlayerDialogColors.textSecondary,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(vertical = 24.dp),
                     )
                 } else {
-                    MediaInfoRow("视频编码", info.videoCodec ?: "未知")
-                    MediaInfoRow("音频编码", info.audioCodec ?: "未知")
-                    MediaInfoRow("分辨率", info.resolution ?: "未知")
+                    MediaInfoRow(stringResource(R.string.player_media_info_video_codec), info.videoCodec ?: stringResource(R.string.player_media_info_unknown))
+                    MediaInfoRow(stringResource(R.string.player_media_info_audio_codec), info.audioCodec ?: stringResource(R.string.player_media_info_unknown))
+                    MediaInfoRow(stringResource(R.string.player_media_info_resolution), info.resolution ?: stringResource(R.string.player_media_info_unknown))
                     MediaInfoRow(
-                        "码率",
-                        info.bitrate?.let { "${it / 1000} kbps" } ?: "未知",
+                        stringResource(R.string.player_media_info_bitrate),
+                        info.bitrate?.let { "${it / 1000} kbps" } ?: stringResource(R.string.player_media_info_unknown),
                     )
                     MediaInfoRow(
-                        "帧率",
-                        info.frameRate?.let { String.format(Locale.US, "%.2f fps", it) } ?: "未知",
+                        stringResource(R.string.player_media_info_frame_rate),
+                        info.frameRate?.let { String.format(Locale.US, "%.2f fps", it) } ?: stringResource(R.string.player_media_info_unknown),
                     )
-                    MediaInfoRow("HDR", info.hdrType ?: "不支持")
+                    MediaInfoRow(stringResource(R.string.player_media_info_hdr), info.hdrType ?: stringResource(R.string.player_media_info_unsupported))
                 }
             }
         }
@@ -1480,15 +1490,15 @@ fun PlayerScreen(
         resumeDialogMs?.let { savedPosition ->
             val resumeTime = formatTime(savedPosition)
             PlayerConfirmDialog(
-                title = "续播提示",
-                text = "检测到上次观看到 $resumeTime，是否继续播放？",
+                title = stringResource(R.string.player_resume_title),
+                text = stringResource(R.string.player_resume_text, resumeTime),
                 onConfirm = { resumeDialogMs = null },
                 onDismiss = {
                     viewModel.seekTo(0)
                     resumeDialogMs = null
                 },
-                confirmText = "继续播放",
-                dismissText = "从头播放",
+                confirmText = stringResource(R.string.player_resume_continue),
+                dismissText = stringResource(R.string.player_play_from_start),
             )
         }
     }
@@ -1511,12 +1521,12 @@ private fun MoreMenuDialog(
 ) {
     val pipEnabled = videoSize.isValid
     val actions = listOf(
-        MoreAction(Icons.Rounded.Crop, if (blackBarCropActive) "去黑边：开" else "去黑边：关", onToggleBlackBarCrop, isActive = blackBarCropActive),
-        MoreAction(Icons.Rounded.Speed, "长按倍速", onLongPressSpeed),
-        MoreAction(Icons.Rounded.PictureInPictureAlt, "画中画", onPictureInPicture, enabled = pipEnabled),
-        MoreAction(Icons.Rounded.Bedtime, "睡眠定时", onSleepTimer),
-        MoreAction(Icons.Rounded.Info, "媒体信息", onMediaInfo),
-        MoreAction(Icons.Rounded.Bookmark, "书签", onShowBookmarks),
+        MoreAction(Icons.Rounded.Crop, if (blackBarCropActive) stringResource(R.string.player_crop_black_bar_on) else stringResource(R.string.player_crop_black_bar_off), onToggleBlackBarCrop, isActive = blackBarCropActive),
+        MoreAction(Icons.Rounded.Speed, stringResource(R.string.player_long_press_speed), onLongPressSpeed),
+        MoreAction(Icons.Rounded.PictureInPictureAlt, stringResource(R.string.player_picture_in_picture), onPictureInPicture, enabled = pipEnabled),
+        MoreAction(Icons.Rounded.Bedtime, stringResource(R.string.player_sleep_timer), onSleepTimer),
+        MoreAction(Icons.Rounded.Info, stringResource(R.string.player_media_info), onMediaInfo),
+        MoreAction(Icons.Rounded.Bookmark, stringResource(R.string.player_bookmark), onShowBookmarks),
     )
     val primary = MaterialTheme.colorScheme.primary
     val onSurface = PlayerDialogColors.textPrimary
@@ -1524,7 +1534,7 @@ private fun MoreMenuDialog(
     val outlineVariant = PlayerDialogColors.divider
     PlayerDialog(onDismiss = onDismiss, maxWidth = 320, scrollable = false) {
         Text(
-            text = "更多",
+            text = stringResource(R.string.player_more),
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             color = onSurface,
             fontSize = 16.sp,
@@ -1639,13 +1649,13 @@ private fun NoSourceHint(onBack: () -> Unit) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = "无播放源",
+            text = stringResource(R.string.player_no_source),
             color = Color.White.copy(alpha = 0.6f),
             fontSize = 18.sp,
         )
         Spacer(Modifier.height(12.dp))
         Button(onClick = onBack) {
-            Text("返回")
+            Text(stringResource(R.string.player_back))
         }
     }
 }
@@ -1779,8 +1789,8 @@ private fun AbLoopDialog(
     val isActive = abLoopA != null && abLoopB != null && abLoopB > abLoopA
     val aSet = abLoopA != null
     val posFormatted = formatTime(positionMs)
-    val aFormatted = abLoopA?.let { formatTime(it) } ?: "未设置"
-    val bFormatted = abLoopB?.let { formatTime(it) } ?: "未设置"
+    val aFormatted = abLoopA?.let { formatTime(it) } ?: stringResource(R.string.player_ab_loop_not_set)
+    val bFormatted = abLoopB?.let { formatTime(it) } ?: stringResource(R.string.player_ab_loop_not_set)
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1812,7 +1822,7 @@ private fun AbLoopDialog(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "A-B 段循环",
+                        text = stringResource(R.string.player_ab_loop_title),
                         color = PlayerDialogColors.textPrimary,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -1839,7 +1849,7 @@ private fun AbLoopDialog(
                         verticalAlignment = Alignment.Bottom,
                     ) {
                         Column {
-                            Text("起点 A", fontSize = 11.sp, color = onSurfaceVariant)
+                            Text(stringResource(R.string.player_ab_loop_point_a), fontSize = 11.sp, color = onSurfaceVariant)
                             Spacer(Modifier.height(4.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
@@ -1850,7 +1860,7 @@ private fun AbLoopDialog(
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
-                                    text = if (aSet) aFormatted else "未设置",
+                                    text = if (aSet) aFormatted else stringResource(R.string.player_ab_loop_not_set),
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace,
@@ -1859,11 +1869,11 @@ private fun AbLoopDialog(
                             }
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("终点 B", fontSize = 11.sp, color = onSurfaceVariant)
+                            Text(stringResource(R.string.player_ab_loop_point_b), fontSize = 11.sp, color = onSurfaceVariant)
                             Spacer(Modifier.height(4.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = if (abLoopB != null) bFormatted else "未设置",
+                                    text = if (abLoopB != null) bFormatted else stringResource(R.string.player_ab_loop_not_set),
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace,
@@ -1950,7 +1960,7 @@ private fun AbLoopDialog(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            text = if (aSet) "起点 $aFormatted" else "设起点 $posFormatted",
+                            text = if (aSet) stringResource(R.string.player_ab_loop_a_value, aFormatted) else stringResource(R.string.player_ab_loop_set_a, posFormatted),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                         )
@@ -1962,7 +1972,7 @@ private fun AbLoopDialog(
                         shape = RoundedCornerShape(12.dp),
                     ) {
                         Text(
-                            text = if (abLoopB != null) "终点 $bFormatted" else "设终点 $posFormatted",
+                            text = if (abLoopB != null) stringResource(R.string.player_ab_loop_b_value, bFormatted) else stringResource(R.string.player_ab_loop_set_b, posFormatted),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                         )
@@ -1993,9 +2003,9 @@ private fun AbLoopDialog(
                     ) {
                         Text(
                             text = when {
-                                isActive -> "正在 ${aFormatted} ~ $bFormatted 之间循环"
-                                aSet -> "起点已设，请设置终点 B"
-                                else -> "播放到目标位置后点击「设起点」"
+                                isActive -> stringResource(R.string.player_ab_loop_active, aFormatted, bFormatted)
+                                aSet -> stringResource(R.string.player_ab_loop_a_set_prompt)
+                                else -> stringResource(R.string.player_ab_loop_b_set_prompt)
                             },
                             fontSize = 12.sp,
                             color = when {
@@ -2019,7 +2029,7 @@ private fun AbLoopDialog(
                                 modifier = Modifier.size(14.dp),
                             )
                             Spacer(Modifier.width(2.dp))
-                            Text("清除", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Text(stringResource(R.string.player_ab_loop_clear), fontSize = 12.sp, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
@@ -2031,7 +2041,7 @@ private fun AbLoopDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "快速操作：长按控制器上的 A-B 按钮可快速设置起点/终点",
+                        text = stringResource(R.string.player_ab_loop_quick_hint),
                         color = onSurfaceVariant,
                         fontSize = 10.sp,
                         lineHeight = 14.sp,
@@ -2066,7 +2076,7 @@ private fun PlaylistDialog(
         ) {
             Column(modifier = Modifier.padding(vertical = 8.dp)) {
                 Text(
-                    text = "剧集列表 (${currentIndex + 1}/${playlist.size})",
+                    text = stringResource(R.string.player_episode_list, currentIndex + 1, playlist.size),
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                     color = onSurface,
                     fontSize = 16.sp,
@@ -2152,7 +2162,7 @@ private fun BookmarkListDialog(
         ) {
             Column(modifier = Modifier.padding(vertical = 8.dp)) {
                 Text(
-                    text = "书签列表 (${bookmarks.size})",
+                    text = stringResource(R.string.player_bookmark_list, bookmarks.size),
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                     color = onSurface,
                     fontSize = 16.sp,
@@ -2161,7 +2171,7 @@ private fun BookmarkListDialog(
                 PlayerDialogDivider()
                 if (bookmarks.isEmpty()) {
                     Text(
-                        text = "暂无书签，点击顶栏书签图标可在当前进度添加标记",
+                        text = stringResource(R.string.player_bookmark_empty),
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
                         color = onSurface.copy(alpha = 0.5f),
                         fontSize = 13.sp,
@@ -2213,7 +2223,7 @@ private fun BookmarkListDialog(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Close,
-                                        contentDescription = "删除书签",
+                                        contentDescription = stringResource(R.string.player_delete_bookmark),
                                         tint = onSurface.copy(alpha = 0.5f),
                                         modifier = Modifier.size(18.dp),
                                     )
@@ -2392,7 +2402,7 @@ private fun SubtitleManageDialog(
     val outlineVariant = PlayerDialogColors.divider
     PlayerDialog(onDismiss = onDismiss, maxWidth = 360, maxHeight = 560) {
         Text(
-            text = "字幕",
+            text = stringResource(R.string.player_subtitle),
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
             color = onSurface,
             fontSize = 18.sp,
@@ -2410,17 +2420,17 @@ private fun SubtitleManageDialog(
                     null
                 }
                 val trackItems = buildList<TrackOption> {
-                    add(TrackOption("关闭", -2, "无字幕显示"))
+                    add(TrackOption(stringResource(R.string.player_subtitle_off), -2, stringResource(R.string.player_subtitle_none)))
                     add(
                         TrackOption(
-                            "自动",
+                            stringResource(R.string.player_subtitle_auto),
                             -1,
-                            autoSelectedTrack?.let { "已使用：${it.label}" }
-                                ?: "根据语言偏好自动选择",
+                            autoSelectedTrack?.let { stringResource(R.string.player_subtitle_auto_used, it.label) }
+                                ?: stringResource(R.string.player_subtitle_auto_by_language),
                         )
                     )
                     subtitleTracks.forEach { track ->
-                        add(TrackOption(track.label, track.index, "内嵌字幕"))
+                        add(TrackOption(track.label, track.index, stringResource(R.string.player_subtitle_embedded)))
                     }
                 }
 
@@ -2505,14 +2515,14 @@ private fun SubtitleManageDialog(
                         Spacer(Modifier.width(6.dp))
                         Column {
                             Text(
-                                text = "字幕延迟",
+                                text = stringResource(R.string.player_subtitle_delay),
                                 color = onSurface.copy(alpha = 0.7f),
                                 fontSize = 14.sp,
                             )
                             // 内嵌字幕偏移 STUB 提示：media3 暂无 setSubtitleOffsetMs API（issue #1976 Open）
                             // 仅外挂字幕（SubtitleEngine）真实生效
                             Text(
-                                text = "仅外挂字幕生效",
+                                text = stringResource(R.string.player_subtitle_external_only),
                                 color = onSurface.copy(alpha = 0.4f),
                                 fontSize = 10.sp,
                             )
@@ -2545,7 +2555,7 @@ private fun SubtitleManageDialog(
                         -1000L to "-1s",
                         -500L to "-0.5s",
                         -100L to "-0.1s",
-                        0L to "重置",
+                        0L to stringResource(R.string.player_subtitle_reset),
                         100L to "+0.1s",
                         500L to "+0.5s",
                         1000L to "+1s",
@@ -2594,7 +2604,7 @@ private fun SubtitleManageDialog(
                             modifier = Modifier.size(16.dp),
                         )
                         Spacer(Modifier.width(4.dp))
-                        Text("外挂字幕", fontSize = 13.sp)
+                        Text(stringResource(R.string.player_subtitle_external), fontSize = 13.sp)
                     }
                     OutlinedButton(
                         onClick = onSearch,
@@ -2607,7 +2617,7 @@ private fun SubtitleManageDialog(
                             modifier = Modifier.size(16.dp),
                         )
                         Spacer(Modifier.width(4.dp))
-                        Text("搜索字幕", fontSize = 13.sp)
+                        Text(stringResource(R.string.player_subtitle_search), fontSize = 13.sp)
                     }
                 }
 
@@ -2625,7 +2635,7 @@ private fun SubtitleManageDialog(
                         modifier = Modifier.size(16.dp),
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text("字幕样式", fontSize = 13.sp)
+                    Text(stringResource(R.string.player_subtitle_style), fontSize = 13.sp)
                 }
     }
 }
@@ -2660,7 +2670,6 @@ private fun MediaInfoRow(label: String, value: String) {
 
 private val SPEED_LABELS = listOf("0.5x", "1.0x", "1.25x", "1.5x", "2.0x", "2.5x", "3.0x", "4.0x")
 private val SPEED_VALUES = listOf(0.5f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f, 4.0f)
-private val SCALE_NAMES = listOf("适应", "裁剪", "拉伸", "16:9")
 
 @Composable
 private fun SpeedMenuDialog(
@@ -2672,7 +2681,7 @@ private fun SpeedMenuDialog(
     val onSurface = PlayerDialogColors.textPrimary
     PlayerDialog(onDismiss = onDismiss, maxWidth = 320, scrollable = false) {
         Text(
-            text = "播放倍速",
+            text = stringResource(R.string.player_speed_menu_title),
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             color = onSurface,
             fontSize = 16.sp,
@@ -2730,7 +2739,7 @@ private fun LockedOverlay(onToggleLock: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.Rounded.Lock,
-                contentDescription = "解锁",
+                contentDescription = stringResource(R.string.player_unlock),
                 tint = Color.White,
                 modifier = Modifier.size(36.dp),
             )
@@ -2848,7 +2857,7 @@ private fun PlayerControllerLayer(
             IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "返回",
+                    contentDescription = stringResource(R.string.player_back),
                     tint = Color.White,
                     modifier = Modifier.size(26.dp),
                 )
@@ -2925,7 +2934,7 @@ private fun PlayerControllerLayer(
             IconButton(onClick = onToggleMoreMenu, modifier = Modifier.size(44.dp)) {
                 Icon(
                     imageVector = Icons.Rounded.MoreVert,
-                    contentDescription = "更多",
+                    contentDescription = stringResource(R.string.player_more),
                     tint = Color.White,
                     modifier = Modifier.size(24.dp),
                 )
@@ -2967,7 +2976,7 @@ private fun PlayerControllerLayer(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.ScreenRotation,
-                        contentDescription = "旋转屏幕",
+                        contentDescription = stringResource(R.string.player_rotate_screen),
                         tint = Color.White,
                         modifier = Modifier.size(24.dp),
                     )
@@ -2990,7 +2999,7 @@ private fun PlayerControllerLayer(
                             abLoopA != null -> Icons.Rounded.RepeatOne
                             else -> Icons.Rounded.Repeat
                         },
-                        contentDescription = "A-B 循环",
+                        contentDescription = stringResource(R.string.player_ab_loop_title),
                         tint = when {
                             abLoopA != null && abLoopB != null && abLoopB > abLoopA -> Color(0xFFFFAB40)
                             abLoopA != null -> Color(0xFFFFAB40).copy(alpha = 0.6f)
@@ -3010,7 +3019,7 @@ private fun PlayerControllerLayer(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.BookmarkAdd,
-                        contentDescription = "添加书签",
+                        contentDescription = stringResource(R.string.player_add_bookmark),
                         tint = Color.White,
                         modifier = Modifier.size(24.dp),
                     )
@@ -3029,7 +3038,7 @@ private fun PlayerControllerLayer(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.LockOpen,
-                        contentDescription = "锁定",
+                        contentDescription = stringResource(R.string.player_lock),
                         tint = Color.White.copy(alpha = 0.9f),
                         modifier = Modifier.size(24.dp),
                     )
@@ -3045,7 +3054,7 @@ private fun PlayerControllerLayer(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.PhotoCamera,
-                        contentDescription = "截图",
+                        contentDescription = stringResource(R.string.player_screenshot),
                         tint = Color.White,
                         modifier = Modifier.size(24.dp),
                     )
@@ -3113,7 +3122,7 @@ private fun PlayerControllerLayer(
                         IconButton(onClick = onToggleSpeedMenu, modifier = Modifier.size(44.dp)) {
                             Icon(
                                 imageVector = Icons.Rounded.Speed,
-                                contentDescription = "倍速",
+                                contentDescription = stringResource(R.string.player_speed_icon),
                                 tint = if (speedIndex != 1) primary else Color.White.copy(alpha = 0.85f),
                                 modifier = Modifier.size(22.dp),
                             )
@@ -3142,7 +3151,7 @@ private fun PlayerControllerLayer(
                         IconButton(onClick = onCycleScale, modifier = Modifier.size(44.dp)) {
                             Icon(
                                 imageVector = Icons.Rounded.AspectRatio,
-                                contentDescription = "画面比例",
+                                contentDescription = stringResource(R.string.player_scale_icon),
                                 tint = if (scaleIndex != 0) primary else Color.White.copy(alpha = 0.85f),
                                 modifier = Modifier.size(22.dp),
                             )
@@ -3175,7 +3184,7 @@ private fun PlayerControllerLayer(
                         Icon(
                             imageVector = if (muted) Icons.AutoMirrored.Rounded.VolumeOff
                                 else Icons.AutoMirrored.Rounded.VolumeUp,
-                            contentDescription = if (muted) "取消静音" else "静音",
+                            contentDescription = if (muted) stringResource(R.string.player_unmute) else stringResource(R.string.player_mute),
                             tint = if (muted) primary else Color.White.copy(alpha = 0.85f),
                             modifier = Modifier.size(22.dp),
                         )
@@ -3190,7 +3199,7 @@ private fun PlayerControllerLayer(
                         IconButton(onClick = onSkipPrevious, modifier = Modifier.size(44.dp)) {
                             Icon(
                                 imageVector = Icons.Rounded.SkipPrevious,
-                                contentDescription = "上一集",
+                                contentDescription = stringResource(R.string.player_episode_previous),
                                 tint = Color.White,
                                 modifier = Modifier.size(24.dp),
                             )
@@ -3199,7 +3208,7 @@ private fun PlayerControllerLayer(
                     IconButton(onClick = onRewind, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = Icons.Rounded.Replay10,
-                            contentDescription = "后退10秒",
+                            contentDescription = stringResource(R.string.player_rewind_10s),
                             tint = Color.White,
                             modifier = Modifier.size(26.dp),
                         )
@@ -3213,7 +3222,7 @@ private fun PlayerControllerLayer(
                     ) {
                         Icon(
                             imageVector = if (state is PlaybackState.Playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = if (state is PlaybackState.Playing) "暂停" else "播放",
+                            contentDescription = if (state is PlaybackState.Playing) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
                             tint = Color.White,
                             modifier = Modifier.size(32.dp),
                         )
@@ -3221,7 +3230,7 @@ private fun PlayerControllerLayer(
                     IconButton(onClick = onForward, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = Icons.Rounded.Forward10,
-                            contentDescription = "前进10秒",
+                            contentDescription = stringResource(R.string.player_forward_10s),
                             tint = Color.White,
                             modifier = Modifier.size(26.dp),
                         )
@@ -3230,7 +3239,7 @@ private fun PlayerControllerLayer(
                         IconButton(onClick = onSkipNext, modifier = Modifier.size(44.dp)) {
                             Icon(
                                 imageVector = Icons.Rounded.SkipNext,
-                                contentDescription = "下一集",
+                                contentDescription = stringResource(R.string.player_episode_next),
                                 tint = Color.White,
                                 modifier = Modifier.size(24.dp),
                             )
@@ -3246,7 +3255,7 @@ private fun PlayerControllerLayer(
                         IconButton(onClick = onDownload, modifier = Modifier.size(44.dp)) {
                             Icon(
                                 imageVector = Icons.Rounded.ArrowDownward,
-                                contentDescription = "下载",
+                                contentDescription = stringResource(R.string.player_download_icon),
                                 tint = Color.White.copy(alpha = 0.85f),
                                 modifier = Modifier.size(22.dp),
                             )
@@ -3255,7 +3264,7 @@ private fun PlayerControllerLayer(
                     IconButton(onClick = onToggleAudioTrackMenu, modifier = Modifier.size(44.dp)) {
                         Icon(
                             imageVector = Icons.Rounded.MusicNote,
-                            contentDescription = "音轨",
+                            contentDescription = stringResource(R.string.player_audio_track),
                             tint = Color.White.copy(alpha = 0.85f),
                             modifier = Modifier.size(22.dp),
                         )
@@ -3263,7 +3272,7 @@ private fun PlayerControllerLayer(
                     IconButton(onClick = onAddSubtitle, modifier = Modifier.size(44.dp)) {
                         Icon(
                             imageVector = Icons.Rounded.Subtitles,
-                            contentDescription = "字幕",
+                            contentDescription = stringResource(R.string.player_subtitle),
                             tint = Color.White.copy(alpha = 0.85f),
                             modifier = Modifier.size(22.dp),
                         )
@@ -3272,7 +3281,7 @@ private fun PlayerControllerLayer(
                         IconButton(onClick = onTogglePlaylistDialog, modifier = Modifier.size(44.dp)) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.ViewList,
-                                contentDescription = "剧集列表",
+                                contentDescription = stringResource(R.string.player_episode_list_icon),
                                 tint = Color.White.copy(alpha = 0.85f),
                                 modifier = Modifier.size(22.dp),
                             )

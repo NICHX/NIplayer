@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.library
 
+import com.nichx.niplayer.feature.home.R
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -130,17 +131,17 @@ class StorageFileViewModel @Inject constructor(
     /**
      * W-N1 / W-N12 修复：将异常转换为面向用户的中文错误提示。
      *
-     * - [WebDavHttpException]：使用 [WebDavHttpException.friendlyMessage]
+     * - [WebDavHttpException]：使用 [WebDavHttpException.friendlyMessageRes]
      *   按 HTTP 响应码分类（401 账号密码错误 / 403 无权限 / 404 不存在 / 5xx 服务器异常）
      * - [java.net.UnknownHostException] / [java.net.SocketTimeoutException]：网络异常提示
      * - 其他：回退到 e.message 或通用错误
      */
     private fun Throwable.toFriendlyMessage(): String = when (this) {
-        is WebDavHttpException -> friendlyMessage
-        is java.net.UnknownHostException -> "无法连接到服务器，请检查网络或地址"
-        is java.net.SocketTimeoutException -> "连接超时，请检查网络或服务器响应"
-        is java.net.ConnectException -> "连接被拒绝，请检查服务器是否运行"
-        else -> message ?: "未知错误"
+        is WebDavHttpException -> context.getString(friendlyMessageRes, code)
+        is java.net.UnknownHostException -> context.getString(R.string.error_network_host)
+        is java.net.SocketTimeoutException -> context.getString(R.string.error_network_timeout)
+        is java.net.ConnectException -> context.getString(R.string.error_network_connect)
+        else -> message ?: context.getString(R.string.error_unknown)
     }
 
     /** 当前 Storage 实例，loadRoot 成功后赋值。 */
@@ -272,7 +273,7 @@ class StorageFileViewModel @Inject constructor(
             it.path in _selectedPaths.value && !it.isDirectory && MediaFileTypes.isAudioFile(it.name)
         }
         if (selected.isEmpty()) {
-            _events.tryEmit(StorageFileEvent.ShowToast("仅支持添加音频文件"))
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_audio_only)))
             return
         }
         val entities = selected.map {
@@ -297,11 +298,11 @@ class StorageFileViewModel @Inject constructor(
             val skipped = selected.size - inserted
             val message = when {
                 inserted > 0 && skipped > 0 ->
-                    "已添加 $inserted 个条目到歌单，跳过 $skipped 个重复"
+                    context.getString(R.string.storage_file_added_skipped, inserted, skipped)
                 inserted > 0 ->
-                    "已添加 $inserted 个条目到歌单"
+                    context.getString(R.string.storage_file_added_to_playlist, inserted)
                 else ->
-                    "所选音频已全部在歌单中"
+                    context.getString(R.string.storage_file_all_in_playlist)
             }
             _events.tryEmit(StorageFileEvent.ShowToast(message))
         }
@@ -318,7 +319,7 @@ class StorageFileViewModel @Inject constructor(
             it.path in _selectedPaths.value && !it.isDirectory && MediaFileTypes.isAudioFile(it.name)
         }
         if (selected.isEmpty()) {
-            _events.tryEmit(StorageFileEvent.ShowToast("仅支持添加音频文件"))
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_audio_only)))
             return
         }
         viewModelScope.launch {
@@ -339,7 +340,15 @@ class StorageFileViewModel @Inject constructor(
                 }.getOrDefault(0)
             }
             exitMultiSelect()
-            _events.tryEmit(StorageFileEvent.ShowToast(if (added > 0) "已创建歌单「$trimmed」并添加 $added 个条目" else "已创建歌单「$trimmed」"))
+            _events.tryEmit(
+                StorageFileEvent.ShowToast(
+                    if (added > 0) {
+                        context.getString(R.string.storage_file_created_and_added, trimmed, added)
+                    } else {
+                        context.getString(R.string.storage_file_created, trimmed)
+                    },
+                ),
+            )
         }
     }
 
@@ -362,9 +371,9 @@ class StorageFileViewModel @Inject constructor(
             }
             exitMultiSelect()
             if (okCount == selected.size) {
-                _events.tryEmit(StorageFileEvent.ShowToast("已删除 $okCount 项"))
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_deleted_count, okCount)))
             } else {
-                _events.tryEmit(StorageFileEvent.ShowError("部分删除失败（${okCount}/${selected.size}）"))
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_delete_partial, okCount, selected.size)))
             }
             refreshCurrentDirectory()
         }
@@ -388,14 +397,20 @@ class StorageFileViewModel @Inject constructor(
         viewModelScope.launch {
             val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(storageId) }
             if (library == null) {
-                _uiState.update { it.copy(isLoading = false, error = "存储源不存在") }
+                _uiState.update { it.copy(isLoading = false, error = context.getString(R.string.storage_file_library_missing)) }
                 return@launch
             }
             try {
                 val s = storageFactory.create(library)
                 if (s == null) {
                     _uiState.update {
-                        it.copy(isLoading = false, error = "不支持的存储类型：${library.mediaType.storageName}")
+                        it.copy(
+                            isLoading = false,
+                            error = context.getString(
+                                R.string.play_error_unsupported_storage,
+                                context.getString(library.mediaType.storageNameRes),
+                            ),
+                        )
                     }
                     return@launch
                 }
@@ -460,11 +475,11 @@ class StorageFileViewModel @Inject constructor(
             if (encryptedFolderManager.unlockWithPassword(sid, folder.path, password)) {
                 _pendingUnlockFolder.value = null
                 _unlockError.value = null
-                _events.tryEmit(StorageFileEvent.ShowToast("已解锁 ${folder.name}"))
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_unlocked, folder.name)))
                 entryPathStack.addLast(folder.path)
                 listDirectory(folder) { directoryStack.addLast(folder) }
             } else {
-                _unlockError.value = "密码错误，请重试"
+                _unlockError.value = context.getString(R.string.storage_file_wrong_password)
             }
         }
     }
@@ -474,7 +489,7 @@ class StorageFileViewModel @Inject constructor(
         val sid = storageId
         viewModelScope.launch {
             encryptedFolderManager.setPassword(sid, folder.path, password)
-            _events.tryEmit(StorageFileEvent.ShowToast("已加密 ${folder.name}，其中文件不再计入播放历史"))
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_encrypted, folder.name)))
         }
     }
 
@@ -483,9 +498,9 @@ class StorageFileViewModel @Inject constructor(
         val sid = storageId
         viewModelScope.launch {
             if (encryptedFolderManager.removePassword(sid, folder.path, password)) {
-                _events.tryEmit(StorageFileEvent.ShowToast("已取消加密 ${folder.name}"))
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_decrypted, folder.name)))
             } else {
-                _events.tryEmit(StorageFileEvent.ShowError("密码错误，请重试"))
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_wrong_password)))
             }
         }
     }
@@ -495,9 +510,9 @@ class StorageFileViewModel @Inject constructor(
         val sid = storageId
         viewModelScope.launch {
             if (encryptedFolderManager.changePassword(sid, folder.path, oldPassword, newPassword)) {
-                _events.tryEmit(StorageFileEvent.ShowToast("已修改 ${folder.name} 的访问密码"))
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_password_changed, folder.name)))
             } else {
-                _events.tryEmit(StorageFileEvent.ShowError("当前密码错误，请重试"))
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_wrong_current_password)))
             }
         }
     }
@@ -1218,7 +1233,7 @@ class StorageFileViewModel @Inject constructor(
                 )
                 _events.tryEmit(StorageFileEvent.NavigateToPlayer)
             } catch (e: Exception) {
-                _events.tryEmit(StorageFileEvent.ShowError(e.message ?: "无法打开播放源"))
+                _events.tryEmit(StorageFileEvent.ShowError(e.message ?: context.getString(R.string.play_error_open_failed)))
             }
         }
     }
@@ -1298,7 +1313,7 @@ class StorageFileViewModel @Inject constructor(
             targetStorageUrl = targetStorageUrl,
             targetStorageName = targetStorageName,
         )
-        _events.tryEmit(StorageFileEvent.ShowToast("已添加到下载队列"))
+        _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_added_to_download)))
     }
 
     /**
@@ -1337,7 +1352,7 @@ class StorageFileViewModel @Inject constructor(
             )
         }
         exitMultiSelect()
-        _events.tryEmit(StorageFileEvent.ShowToast("已将 ${filesToDownload.size} 个文件添加到下载队列"))
+        _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_batch_download_added, filesToDownload.size)))
     }
 
     /**
@@ -1358,7 +1373,7 @@ class StorageFileViewModel @Inject constructor(
                 if (existing == null) {
                     mediaLibraryDao.insert(
                         MediaLibraryEntity(
-                            displayName = dirName.ifBlank { "下载目录" },
+                            displayName = dirName.ifBlank { context.getString(R.string.download_dir_default_name) },
                             url = treeUri,
                             mediaType = MediaType.EXTERNAL_STORAGE,
                             describe = treeUri,
@@ -1398,7 +1413,7 @@ class StorageFileViewModel @Inject constructor(
                     )
                 )
             }
-            _events.tryEmit(StorageFileEvent.ShowToast("已添加到快速访问"))
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_qa_added)))
         }
     }
 
@@ -1409,7 +1424,7 @@ class StorageFileViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 quickAccessDao.delete(library.id, file.path)
             }
-            _events.tryEmit(StorageFileEvent.ShowToast("已从快速访问移除"))
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_qa_removed)))
         }
     }
 
@@ -1438,7 +1453,7 @@ class StorageFileViewModel @Inject constructor(
                 runCatching { s.rename(file, newName.trim()) }.getOrDefault(false)
             }
             if (ok) {
-                _events.tryEmit(StorageFileEvent.ShowToast("已重命名为 ${newName.trim()}"))
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_renamed, newName.trim())))
                 // 文件夹访问加密联动：目录重命名时同步更新加密配置前缀
                 if (file.isDirectory) {
                     val oldPath = file.path.trimEnd('/')
@@ -1449,7 +1464,7 @@ class StorageFileViewModel @Inject constructor(
                 }
                 refreshCurrentDirectory()
             } else {
-                _events.tryEmit(StorageFileEvent.ShowError("重命名失败，请检查名称是否合法或已存在"))
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_rename_failed)))
             }
         }
     }
@@ -1468,10 +1483,10 @@ class StorageFileViewModel @Inject constructor(
                 runCatching { s.move(file, targetDirectory) }.getOrDefault(false)
             }
             if (ok) {
-                _events.tryEmit(StorageFileEvent.ShowToast("已移动到 ${targetDirectory.name}"))
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_moved, targetDirectory.name)))
                 refreshCurrentDirectory()
             } else {
-                _events.tryEmit(StorageFileEvent.ShowError("移动失败，目标可能已存在同名文件"))
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_move_failed)))
             }
         }
     }
@@ -1492,10 +1507,10 @@ class StorageFileViewModel @Inject constructor(
                 runCatching { s.createDirectory(newPath) }.getOrDefault(false)
             }
             if (ok) {
-                _events.tryEmit(StorageFileEvent.ShowToast("已创建文件夹 ${name.trim()}"))
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_folder_created, name.trim())))
                 refreshCurrentDirectory()
             } else {
-                _events.tryEmit(StorageFileEvent.ShowError("创建文件夹失败，可能已存在同名项"))
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_folder_create_failed)))
             }
         }
     }
@@ -1515,7 +1530,7 @@ class StorageFileViewModel @Inject constructor(
         val remotePath = if (currentDir.path.isEmpty()) fileName
         else "${currentDir.path}/$fileName"
         viewModelScope.launch {
-            _events.tryEmit(StorageFileEvent.ShowToast("正在上传 $fileName ..."))
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_uploading, fileName)))
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
                     context.contentResolver.openInputStream(uri)?.use { input ->
@@ -1524,10 +1539,10 @@ class StorageFileViewModel @Inject constructor(
                 }.getOrDefault(false)
             }
             if (ok) {
-                _events.tryEmit(StorageFileEvent.ShowToast("已上传 $fileName"))
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_uploaded, fileName)))
                 refreshCurrentDirectory()
             } else {
-                _events.tryEmit(StorageFileEvent.ShowError("上传失败，请检查网络或权限"))
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_upload_failed)))
             }
         }
     }
@@ -1544,14 +1559,14 @@ class StorageFileViewModel @Inject constructor(
                 runCatching { s.deleteFile(file) }.getOrDefault(false)
             }
             if (ok) {
-                _events.tryEmit(StorageFileEvent.ShowToast("已删除 ${file.name}"))
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_deleted, file.name)))
                 // 文件夹访问加密联动：目录删除时清理其前缀下的加密配置
                 if (file.isDirectory) {
                     encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
                 }
                 refreshCurrentDirectory()
             } else {
-                _events.tryEmit(StorageFileEvent.ShowError("删除失败，目录可能非空或无权限"))
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_delete_failed)))
             }
         }
     }

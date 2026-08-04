@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -38,6 +39,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 import java.io.File
 import javax.inject.Inject
 
@@ -186,7 +188,7 @@ class DownloadManagerViewModel @Inject constructor(
                 if (existing == null) {
                     mediaLibraryDao.insert(
                         MediaLibraryEntity(
-                            displayName = dirName.ifBlank { "下载目录" },
+                            displayName = dirName.ifBlank { context.getString(R.string.download_dir_default_name) },
                             url = treeUri,
                             mediaType = MediaType.EXTERNAL_STORAGE,
                             describe = treeUri,
@@ -361,34 +363,34 @@ class DownloadManagerViewModel @Inject constructor(
             it.task.state == DownloadState.DOWNLOADING || it.task.state == DownloadState.WAITING
         }.sortedBy { it.task.id }
         if (active.isNotEmpty()) {
-            sections.add(DownloadGroupedItem.Section("下载中", active.size))
+            sections.add(DownloadGroupedItem.Section(context.getString(R.string.download_state_downloading), active.size))
             sections.addAll(active.map { DownloadGroupedItem.Task(it) })
         }
 
         val paused = displays.filter { it.task.state == DownloadState.PAUSED }.sortedBy { it.task.id }
         if (paused.isNotEmpty()) {
-            sections.add(DownloadGroupedItem.Section("已暂停", paused.size))
+            sections.add(DownloadGroupedItem.Section(context.getString(R.string.download_state_paused), paused.size))
             sections.addAll(paused.map { DownloadGroupedItem.Task(it) })
         }
 
         val completed = displays.filter { it.task.state == DownloadState.COMPLETED }
             .sortedByDescending { it.task.id }
         if (completed.isNotEmpty()) {
-            sections.add(DownloadGroupedItem.Section("已完成", completed.size))
+            sections.add(DownloadGroupedItem.Section(context.getString(R.string.download_state_completed), completed.size))
             sections.addAll(completed.map { DownloadGroupedItem.Task(it) })
         }
 
         val failed = displays.filter { it.task.state == DownloadState.FAILED }
             .sortedByDescending { it.task.id }
         if (failed.isNotEmpty()) {
-            sections.add(DownloadGroupedItem.Section("失败", failed.size))
+            sections.add(DownloadGroupedItem.Section(context.getString(R.string.download_state_failed), failed.size))
             sections.addAll(failed.map { DownloadGroupedItem.Task(it) })
         }
 
         val cancelled = displays.filter { it.task.state == DownloadState.CANCELLED }
             .sortedByDescending { it.task.id }
         if (cancelled.isNotEmpty()) {
-            sections.add(DownloadGroupedItem.Section("已取消", cancelled.size))
+            sections.add(DownloadGroupedItem.Section(context.getString(R.string.download_state_cancelled), cancelled.size))
             sections.addAll(cancelled.map { DownloadGroupedItem.Task(it) })
         }
 
@@ -407,9 +409,9 @@ class DownloadManagerViewModel @Inject constructor(
         val m = (seconds % 3600) / 60
         val s = seconds % 60
         return when {
-            h > 0 -> "${h}时${m}分${s}秒"
-            m > 0 -> "${m}分${s}秒"
-            else -> "${s}秒"
+            h > 0 -> String.format(Locale.ROOT, context.getString(R.string.download_eta_hms), h, m, s)
+            m > 0 -> String.format(Locale.ROOT, context.getString(R.string.download_eta_ms), m, s)
+            else -> String.format(Locale.ROOT, context.getString(R.string.download_eta_s), s)
         }
     }
 }

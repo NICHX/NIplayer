@@ -1,5 +1,6 @@
 package com.nichx.niplayer.datastore
 
+import androidx.annotation.StringRes
 import com.tencent.mmkv.MMKV
 
 /**
@@ -164,10 +165,10 @@ object ThumbnailSettings {
  *   （文件已被读取，属正常行为，规避浏览时批量读取导致的网盘封控）
  * - [OFF]：不生成缩略图，仅使用已有缓存
  */
-enum class ThumbnailGenerationMode(val key: String, val label: String) {
-    ALL("all", "全部生成"),
-    AFTER_PLAY("after_play", "仅播放后生成"),
-    OFF("off", "关闭");
+enum class ThumbnailGenerationMode(val key: String, @StringRes val labelRes: Int) {
+    ALL("all", R.string.thumbnail_mode_all),
+    AFTER_PLAY("after_play", R.string.thumbnail_mode_after_play),
+    OFF("off", R.string.thumbnail_mode_off);
 
     companion object {
         fun fromKey(key: String): ThumbnailGenerationMode =
@@ -176,11 +177,11 @@ enum class ThumbnailGenerationMode(val key: String, val label: String) {
 }
 
 /** 取帧位置策略枚举。 */
-enum class ThumbnailFramePosition(val key: String, val label: String) {
-    POS_5S("5s", "第 5 秒"),
-    POS_10_PCT("10pct", "10% 位置"),
-    POS_50_PCT("50pct", "50% 位置"),
-    POS_CUSTOM("custom", "自定义秒数");
+enum class ThumbnailFramePosition(val key: String, @StringRes val labelRes: Int) {
+    POS_5S("5s", R.string.thumbnail_frame_5s),
+    POS_10_PCT("10pct", R.string.thumbnail_frame_10pct),
+    POS_50_PCT("50pct", R.string.thumbnail_frame_50pct),
+    POS_CUSTOM("custom", R.string.thumbnail_frame_custom);
 
     companion object {
         fun fromKey(key: String): ThumbnailFramePosition =

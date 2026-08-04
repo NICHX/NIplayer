@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.search
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -114,12 +116,12 @@ fun SearchScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "搜索",
+                title = stringResource(R.string.search_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.back),
                         )
                     }
                 },
@@ -135,7 +137,7 @@ fun SearchScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
                     .focusRequester(focusRequester),
-                placeholder = "搜索播放历史、快速访问和存储源",
+                placeholder = stringResource(R.string.search_placeholder),
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Filled.Search,
@@ -148,7 +150,7 @@ fun SearchScreen(
                         IconButton(onClick = { viewModel.setSearchQuery("") }) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
-                                contentDescription = "清空",
+                                contentDescription = stringResource(R.string.clear),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -187,8 +189,8 @@ private fun SearchHintState(modifier: Modifier = Modifier) {
     ) {
         NiEmptyState(
             icon = Icons.Filled.Search,
-            text = "搜索本地内容",
-            hint = "可搜索播放历史、快速访问和存储源名称",
+            text = stringResource(R.string.search_hint_title),
+            hint = stringResource(R.string.search_hint_body),
         )
     }
 }
@@ -213,8 +215,8 @@ private fun SearchEmptyState(modifier: Modifier = Modifier) {
     ) {
         NiEmptyState(
             icon = Icons.Filled.Search,
-            text = "未找到相关内容",
-            hint = "换个关键词试试，仅支持本地已浏览过的内容",
+            text = stringResource(R.string.search_empty_title),
+            hint = stringResource(R.string.search_empty_hint),
         )
     }
 }
@@ -235,7 +237,7 @@ private fun SearchResultList(
         if (state.histories.isNotEmpty()) {
             item(key = "header_history") {
                 NiSectionHeader(
-                    title = "播放历史",
+                    title = stringResource(R.string.search_section_history),
                     count = state.histories.size,
                     onClick = null,
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -253,7 +255,7 @@ private fun SearchResultList(
         if (state.quickAccessItems.isNotEmpty()) {
             item(key = "header_quick_access") {
                 NiSectionHeader(
-                    title = "快速访问",
+                    title = stringResource(R.string.search_section_quick_access),
                     count = state.quickAccessItems.size,
                     onClick = null,
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -271,7 +273,7 @@ private fun SearchResultList(
         if (state.libraries.isNotEmpty()) {
             item(key = "header_library") {
                 NiSectionHeader(
-                    title = "存储源",
+                    title = stringResource(R.string.search_section_library),
                     count = state.libraries.size,
                     onClick = null,
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -321,13 +323,13 @@ private fun QuickAccessResultRow(
     onClick: () -> Unit,
 ) {
     val entity = item.entity
-    val libraryName = item.libraryName ?: "未知存储源"
+    val libraryName = item.libraryName ?: stringResource(R.string.search_unknown_storage)
     if (entity.isDirectory) {
         SearchResultRow(
             icon = Icons.Filled.Folder,
             iconStyle = NiAppIconStyle,
             title = entity.name,
-            subtitle = "$libraryName · 文件夹",
+            subtitle = stringResource(R.string.search_folder_subtitle, libraryName),
             subtitleDimmed = !item.libraryValid,
             onClick = onClick,
         )
@@ -350,10 +352,11 @@ private fun QuickAccessResultRow(
     Spacer(Modifier.height(8.dp))
 }
 
+@Composable
 private fun mediaLabelForFile(isAudio: Boolean, isImage: Boolean): String = when {
-    isAudio -> "音乐"
-    isImage -> "图片"
-    else -> "视频"
+    isAudio -> stringResource(R.string.storage_file_type_audio)
+    isImage -> stringResource(R.string.storage_file_type_image)
+    else -> stringResource(R.string.storage_file_type_video)
 }
 
 /** 存储源结果行：类型图标 + 名称 + 类型名，点击打开文件浏览根目录。 */
@@ -372,7 +375,7 @@ private fun LibraryResultRow(
         icon = icon,
         iconStyle = NiAppIconStyle,
         title = library.displayName,
-        subtitle = library.mediaType.storageName,
+        subtitle = stringResource(library.mediaType.storageNameRes),
         onClick = onClick,
     )
 }
@@ -439,13 +442,14 @@ private fun SearchResultRow(
     }
 }
 
+@Composable
 private fun mediaTypeLabel(type: MediaType): String = when (type) {
-    MediaType.LOCAL_STORAGE -> "本地"
-    MediaType.EXTERNAL_STORAGE -> "设备"
+    MediaType.LOCAL_STORAGE -> stringResource(R.string.storage_type_local)
+    MediaType.EXTERNAL_STORAGE -> stringResource(R.string.storage_type_device)
     MediaType.SMB_SERVER -> "SMB"
     MediaType.WEBDAV_SERVER -> "WebDAV"
-    MediaType.QUICK_ACCESS -> "快捷"
-    else -> "其他"
+    MediaType.QUICK_ACCESS -> stringResource(R.string.storage_type_quick)
+    else -> stringResource(R.string.storage_type_other)
 }
 
 private fun formatPlayTime(date: Date): String {

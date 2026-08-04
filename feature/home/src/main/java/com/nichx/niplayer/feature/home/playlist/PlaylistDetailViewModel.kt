@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.playlist
 
+import com.nichx.niplayer.feature.home.R
+import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,6 +17,7 @@ import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +44,7 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class PlaylistDetailViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
     private val playlistDao: PlaylistDao,
     private val playlistItemDao: PlaylistItemDao,
@@ -130,7 +134,7 @@ class PlaylistDetailViewModel @Inject constructor(
             MediaFileTypes.isAudioFile(it.fileName)
         }
         if (audioItems.isEmpty()) {
-            _events.tryEmit(PlaylistDetailEvent.ShowError("歌单中没有音频文件"))
+            _events.tryEmit(PlaylistDetailEvent.ShowError(context.getString(R.string.playlist_detail_no_audio)))
             return
         }
         viewModelScope.launch {
@@ -152,7 +156,7 @@ class PlaylistDetailViewModel @Inject constructor(
             MediaFileTypes.isAudioFile(it.fileName)
         }
         if (audioItems.isEmpty()) {
-            _events.tryEmit(PlaylistDetailEvent.ShowError("歌单中没有音频文件"))
+            _events.tryEmit(PlaylistDetailEvent.ShowError(context.getString(R.string.playlist_detail_no_audio)))
             return
         }
         if (index !in audioItems.indices) return
@@ -206,7 +210,12 @@ class PlaylistDetailViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 playlistDao.setPinned(playlistId, pinned, System.currentTimeMillis())
             }
-            _events.tryEmit(PlaylistDetailEvent.ShowMessage(if (pinned) "已置顶" else "已取消置顶"))
+            _events.tryEmit(
+                PlaylistDetailEvent.ShowMessage(
+                    if (pinned) context.getString(R.string.playlist_detail_pinned)
+                    else context.getString(R.string.playlist_detail_unpinned),
+                ),
+            )
         }
     }
 
@@ -229,7 +238,7 @@ class PlaylistDetailViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 playlistDao.renamePlaylist(playlistId, trimmed, System.currentTimeMillis())
             }
-            _events.tryEmit(PlaylistDetailEvent.ShowMessage("已重命名为「$trimmed」"))
+            _events.tryEmit(PlaylistDetailEvent.ShowMessage(context.getString(R.string.playlist_renamed, trimmed)))
         }
     }
 
@@ -237,11 +246,11 @@ class PlaylistDetailViewModel @Inject constructor(
     fun duplicatePlaylist() {
         val name = playlist.value?.name ?: return
         viewModelScope.launch {
-            val newName = "$name 副本"
+            val newName = context.getString(R.string.playlist_duplicate_name, name)
             withContext(Dispatchers.IO) {
                 playlistItemDao.duplicatePlaylist(playlistId, newName, playlistDao)
             }
-            _events.tryEmit(PlaylistDetailEvent.ShowMessage("已复制为歌单「$newName」"))
+            _events.tryEmit(PlaylistDetailEvent.ShowMessage(context.getString(R.string.playlist_duplicated, newName)))
         }
     }
 
@@ -258,9 +267,9 @@ class PlaylistDetailViewModel @Inject constructor(
             _events.tryEmit(
                 PlaylistDetailEvent.ShowMessage(
                     if (added > 0) {
-                        "已合并 $added 个条目到「$targetName」"
+                        context.getString(R.string.playlist_detail_merged_into, added, targetName)
                     } else {
-                        "「$sourceName」的条目已全部存在于「$targetName」"
+                        context.getString(R.string.playlist_detail_all_exist_in, sourceName, targetName)
                     },
                 ),
             )
@@ -280,9 +289,9 @@ class PlaylistDetailViewModel @Inject constructor(
             _events.tryEmit(
                 PlaylistDetailEvent.ShowMessage(
                     if (added > 0) {
-                        "已复制 $added 个条目到「$targetName」"
+                        context.getString(R.string.playlist_detail_copied_into, added, targetName)
                     } else {
-                        "所选条目已全部存在于「$targetName」"
+                        context.getString(R.string.playlist_detail_selected_all_exist, targetName)
                     },
                 ),
             )
@@ -302,9 +311,9 @@ class PlaylistDetailViewModel @Inject constructor(
             _events.tryEmit(
                 PlaylistDetailEvent.ShowMessage(
                     if (added > 0) {
-                        "已移动 $added 个条目到「$targetName」"
+                        context.getString(R.string.playlist_detail_moved_into, added, targetName)
                     } else {
-                        "所选条目已全部存在于「$targetName」，已从本歌单移除"
+                        context.getString(R.string.playlist_detail_moved_all_exist, targetName)
                     },
                 ),
             )

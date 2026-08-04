@@ -1,0 +1,48 @@
+<resources>
+    <!-- Subtitle size options (SubtitleSettings.TEXT_SIZE_OPTIONS) -->
+    <string name="subtitle_size_small">Small</string>
+    <string name="subtitle_size_medium">Medium</string>
+    <string name="subtitle_size_large">Large</string>
+    <string name="subtitle_size_xlarge">Extra large</string>
+
+    <!-- Subtitle font family options (SubtitleSettings.FONT_FAMILY_OPTIONS) -->
+    <string name="subtitle_font_default">Default (sans-serif)</string>
+    <string name="subtitle_font_serif">Serif</string>
+    <string name="subtitle_font_monospace">Monospace</string>
+    <string name="subtitle_font_compact_sans">Condensed sans-serif</string>
+
+    <!-- Subtitle font color options (SubtitleSettings.FONT_COLOR_OPTIONS) -->
+    <string name="subtitle_color_white">White</string>
+    <string name="subtitle_color_yellow">Yellow</string>
+    <string name="subtitle_color_cyan">Cyan</string>
+    <string name="subtitle_color_light_gray">Light gray</string>
+    <string name="subtitle_color_black">Black</string>
+
+    <!-- Subtitle outline width options (SubtitleSettings.OUTLINE_WIDTH_OPTIONS) -->
+    <string name="subtitle_outline_none">None</string>
+    <string name="subtitle_outline_thin">Thin</string>
+    <string name="subtitle_outline_medium">Medium</string>
+    <string name="subtitle_outline_thick">Thick</string>
+
+    <!-- Subtitle outline color options (SubtitleSettings.OUTLINE_COLOR_OPTIONS) -->
+    <string name="subtitle_outline_color_black">Black</string>
+    <string name="subtitle_outline_color_white">White</string>
+    <string name="subtitle_outline_color_dark_gray">Dark gray</string>
+    <string name="subtitle_outline_color_red">Red</string>
+
+    <!-- Subtitle bottom padding options (SubtitleSettings.BOTTOM_PADDING_OPTIONS) -->
+    <string name="subtitle_bottom_padding_near">Near</string>
+    <string name="subtitle_bottom_padding_medium">Medium</string>
+    <string name="subtitle_bottom_padding_far">Far</string>
+
+    <!-- Thumbnail generation modes (ThumbnailGenerationMode.labelRes) -->
+    <string name="thumbnail_mode_all">Generate all</string>
+    <string name="thumbnail_mode_after_play">Generate after playback</string>
+    <string name="thumbnail_mode_off">Off</string>
+
+    <!-- Thumbnail frame positions (ThumbnailFramePosition.labelRes) -->
+    <string name="thumbnail_frame_5s">5th second</string>
+    <string name="thumbnail_frame_10pct">10% position</string>
+    <string name="thumbnail_frame_50pct">50% position</string>
+    <string name="thumbnail_frame_custom">Custom seconds</string>
+</resources>

@@ -1,5 +1,7 @@
 package com.nichx.niplayer.common.error
 
+import androidx.annotation.StringRes
+
 /**
  * Snackbar 消息严重级别（O-25）。
  *
@@ -23,18 +25,21 @@ enum class NiMessageSeverity {
  * 由 ViewModel 单向 emit，UI 层 collect 后交由 [com.nichx.niplayer.designsystem.components.NiSnackbarHost] 渲染。
  *
  * - [severity] 决定配色与图标；
- * - [message] 为主文案（必填）；
+ * - [messageRes] 为 i18n 文案资源 ID（非 0 时优先使用，UI 层经 stringResource 解析，支持 [messageArgs] 占位符）；
+ * - [message] 为动态文案（如文件名、异常原文等无法资源化的内容，[messageRes] 为 0 时使用）；
  * - [details] 为可展开详情（可选，如异常堆栈/URL），用户点击"详情"展开查看。
  *
- * 可由 [AppError] 便捷构造：`NiMessage.from(AppError.Network("SMB 超时"))`。
+ * 可由 [AppError] 便捷构造：`NiMessage.from(AppError.Network())`。
  */
 data class NiMessage(
     val severity: NiMessageSeverity,
     val message: String,
+    @StringRes val messageRes: Int = 0,
+    val messageArgs: List<Any> = emptyList(),
     val details: String? = null,
 ) {
     companion object {
-        /** 由 [AppError] 构造 [NiMessage]，文案取 [AppError.displayMessage]。 */
+        /** 由 [AppError] 构造 [NiMessage]：文案取 [AppError.displayMessageRes]（动态 [AppError.message] 优先）。 */
         fun from(error: AppError, details: String? = null): NiMessage {
             val severity = when (error.type) {
                 ErrorType.NETWORK,
@@ -48,21 +53,34 @@ data class NiMessage(
             }
             return NiMessage(
                 severity = severity,
-                message = error.displayMessage,
+                message = error.message.orEmpty(),
+                messageRes = if (error.message == null) error.displayMessageRes else 0,
                 details = details ?: error.cause?.message,
             )
         }
 
+        /** 便捷构造信息级消息（资源 ID 版，支持格式化占位符）。 */
+        fun info(@StringRes messageRes: Int, vararg args: Any): NiMessage =
+            NiMessage(NiMessageSeverity.INFO, "", messageRes = messageRes, messageArgs = args.toList())
+
         /** 便捷构造信息级消息。 */
         fun info(message: String, details: String? = null): NiMessage =
-            NiMessage(NiMessageSeverity.INFO, message, details)
+            NiMessage(NiMessageSeverity.INFO, message, details = details)
+
+        /** 便捷构造错误级消息（资源 ID 版，支持格式化占位符）。 */
+        fun error(@StringRes messageRes: Int, vararg args: Any): NiMessage =
+            NiMessage(NiMessageSeverity.ERROR, "", messageRes = messageRes, messageArgs = args.toList())
 
         /** 便捷构造错误级消息。 */
         fun error(message: String, details: String? = null): NiMessage =
-            NiMessage(NiMessageSeverity.ERROR, message, details)
+            NiMessage(NiMessageSeverity.ERROR, message, details = details)
+
+        /** 便捷构造警告级消息（资源 ID 版，支持格式化占位符）。 */
+        fun warning(@StringRes messageRes: Int, vararg args: Any): NiMessage =
+            NiMessage(NiMessageSeverity.WARNING, "", messageRes = messageRes, messageArgs = args.toList())
 
         /** 便捷构造警告级消息。 */
         fun warning(message: String, details: String? = null): NiMessage =
-            NiMessage(NiMessageSeverity.WARNING, message, details)
+            NiMessage(NiMessageSeverity.WARNING, message, details = details)
     }
 }

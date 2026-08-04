@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
@@ -103,10 +105,10 @@ fun BackupScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "备份与同步",
+                title = stringResource(R.string.backup_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
             )
@@ -190,13 +192,13 @@ fun BackupScreen(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "注意事项",
+                        text = stringResource(R.string.backup_notes_title),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = "• 备份为明文 JSON，含存储源密码（明文，便于跨设备迁移）\n• 备份内容：存储源、快速访问、视频书签、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图/文件浏览等全部应用设置\n• 恢复默认合并模式：备份覆盖同主键项，本机独有数据保留；选择替换模式则清空后重插\n• 播放历史经「播放历史云同步」跨设备同步，不随备份文件恢复\n• 云备份文件名含设备标识，便于多设备区分\n• 云同步与备份共用同一 WebDAV 服务器，同步文件位于 NIplayer_backup/sync/ 子目录",
+                        text = stringResource(R.string.backup_notes_body),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 18.sp,
@@ -218,7 +220,7 @@ fun BackupScreen(
                 CircularProgressIndicator(color = Color.White)
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "请稍候...",
+                    text = stringResource(R.string.working),
                     color = Color.White,
                     fontSize = 14.sp,
                 )
@@ -230,30 +232,30 @@ fun BackupScreen(
     when (val s = state) {
         is BackupUiState.ExportSuccess -> {
             ResultDialog(
-                title = "备份完成",
+                title = stringResource(R.string.backup_export_done_title),
                 message = s.message,
                 onDismiss = { viewModel.resetState() },
             )
         }
         is BackupUiState.ImportSuccess -> {
             val msg = buildString {
-                append("恢复完成\n\n")
+                append(stringResource(R.string.backup_restore_done_body))
                 if (s.summary.descriptions.isEmpty()) {
-                    append("备份文件无数据")
+                    append(stringResource(R.string.backup_no_data))
                 } else {
                     s.summary.descriptions.forEach { append(it).append('\n') }
-                    append("\n播放历史不受影响")
+                    append(stringResource(R.string.backup_history_untouched))
                 }
             }
             ResultDialog(
-                title = "恢复完成",
+                title = stringResource(R.string.backup_restore_done_title),
                 message = msg,
                 onDismiss = { viewModel.resetState() },
             )
         }
         is BackupUiState.Error -> {
             ResultDialog(
-                title = "操作失败",
+                title = stringResource(R.string.backup_failed_title),
                 message = s.message,
                 onDismiss = { viewModel.resetState() },
             )
@@ -264,21 +266,20 @@ fun BackupScreen(
     // 恢复确认弹窗
     pendingImportUri?.let { uri ->
         NiInfoDialog(
-            title = "确认恢复",
+            title = stringResource(R.string.backup_confirm_restore),
             onDismiss = { pendingImportUri = null },
             actions = {
-                TextButton(onClick = { pendingImportUri = null }) { Text("取消") }
+                TextButton(onClick = { pendingImportUri = null }) { Text(stringResource(R.string.cancel)) }
                 TextButton(
                     onClick = {
                         pendingImportUri = null
                         viewModel.import(resolver, uri)
                     },
-                ) { Text("恢复") }
+                ) { Text(stringResource(R.string.restore)) }
             },
         ) {
             Text(
-                text = "将从所选文件恢复存储源、快速访问、视频书签、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图等全部应用设置。" +
-                    "默认合并模式：备份覆盖同主键项，本机独有数据保留。播放历史不受影响。此操作不可撤销，是否继续？",
+                text = stringResource(R.string.backup_restore_confirm_body),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -287,10 +288,10 @@ fun BackupScreen(
     // WebDAV 恢复确认弹窗
     pendingWebDavRestore?.let { fileName ->
         NiInfoDialog(
-            title = "确认恢复",
+            title = stringResource(R.string.backup_confirm_restore),
             onDismiss = { pendingWebDavRestore = null },
             actions = {
-                TextButton(onClick = { pendingWebDavRestore = null }) { Text("取消") }
+                TextButton(onClick = { pendingWebDavRestore = null }) { Text(stringResource(R.string.cancel)) }
                 TextButton(
                     onClick = {
                         val libraryId = viewModel.selectedWebDavId.value.takeIf { it > 0 }
@@ -298,12 +299,11 @@ fun BackupScreen(
                         pendingWebDavRestore = null
                         viewModel.restoreFromWebDav(libraryId, fileName)
                     },
-                ) { Text("恢复") }
+                ) { Text(stringResource(R.string.restore)) }
             },
         ) {
             Text(
-                text = "将从服务器下载备份文件 $fileName 并恢复存储源、快速访问、视频书签、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图等全部应用设置。" +
-                    "默认合并模式：备份覆盖同主键项，本机独有数据保留。播放历史不受影响。此操作不可撤销，是否继续？",
+                text = stringResource(R.string.backup_webdav_restore_confirm_body, fileName),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -361,12 +361,12 @@ private fun WebDavServerCard(
             }
             Spacer(Modifier.size(10.dp))
             Text(
-                text = "WebDAV 服务器",
+                text = stringResource(R.string.backup_webdav_server),
                 style = MaterialTheme.typography.titleMedium,
             )
         }
         Text(
-            text = "备份与播放历史云同步共用此服务器。备份文件位于 NIplayer_backup 目录，同步文件位于其 sync 子目录。",
+            text = stringResource(R.string.backup_webdav_server_desc),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             lineHeight = 18.sp,
@@ -374,7 +374,7 @@ private fun WebDavServerCard(
 
         if (libraries.isEmpty()) {
             Text(
-                text = "未添加 WebDAV 服务器，请先在「存储」中添加。",
+                text = stringResource(R.string.backup_webdav_no_server),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -387,8 +387,8 @@ private fun WebDavServerCard(
                     value = selected?.displayName ?: "",
                     onValueChange = {},
                     readOnly = true,
-                    label = "WebDAV 服务器",
-                    placeholder = "选择服务器",
+                    label = stringResource(R.string.backup_webdav_server),
+                    placeholder = stringResource(R.string.backup_select_server),
                     colors = dropdownColors,
                     trailingIcon = {
                         Icon(
@@ -456,10 +456,10 @@ private fun PlayHistorySyncCard(
 
     val lastSyncText = if (config.lastSyncTime > 0) {
         val time = SimpleDateFormat("MM-dd HH:mm", LocalLocale.current.platformLocale).format(Date(config.lastSyncTime))
-        if (config.lastSyncSuccess) "上次同步：$time · 成功"
-        else "上次同步：$time · ${config.lastSyncMessage}"
+        if (config.lastSyncSuccess) stringResource(R.string.backup_last_sync_success, time)
+        else stringResource(R.string.backup_last_sync_with_message, time, config.lastSyncMessage)
     } else {
-        "尚未同步"
+        stringResource(R.string.backup_not_synced)
     }
 
     Column(
@@ -487,7 +487,7 @@ private fun PlayHistorySyncCard(
             }
             Spacer(Modifier.size(10.dp))
             Text(
-                text = "播放历史云同步",
+                text = stringResource(R.string.backup_cloud_sync),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )
@@ -502,7 +502,7 @@ private fun PlayHistorySyncCard(
             )
         }
         Text(
-            text = "将播放历史按设备文件同步到服务器的 NIplayer_backup/sync 目录，多设备间自动合并，冲突时保留较新的播放进度。选择服务器后自动启用。",
+            text = stringResource(R.string.backup_cloud_sync_desc),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             lineHeight = 18.sp,
@@ -511,7 +511,7 @@ private fun PlayHistorySyncCard(
         if (config.enabled) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "自动同步（启动 / 退出播放器后）",
+                    text = stringResource(R.string.backup_auto_sync_hint),
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
@@ -544,7 +544,7 @@ private fun PlayHistorySyncCard(
                             modifier = Modifier.size(16.dp),
                         )
                         Spacer(Modifier.size(6.dp))
-                        Text("同步中...")
+                        Text(stringResource(R.string.backup_syncing))
                     } else {
                         Icon(
                             imageVector = Icons.Filled.Sync,
@@ -552,15 +552,15 @@ private fun PlayHistorySyncCard(
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(Modifier.size(6.dp))
-                        Text("立即同步")
+                        Text(stringResource(R.string.backup_sync_now))
                     }
                 }
             }
             Text(
                 text = if (!serverSelected) {
-                    "请先在上方选择 WebDAV 服务器"
+                    stringResource(R.string.backup_select_server_first)
                 } else if (isSyncing) {
-                    "正在同步，请稍候..."
+                    stringResource(R.string.backup_syncing_wait)
                 } else {
                     lastSyncText
                 },
@@ -575,7 +575,7 @@ private fun PlayHistorySyncCard(
             )
         } else {
             Text(
-                text = "开启后，播放历史将跨设备同步。",
+                text = stringResource(R.string.backup_cloud_sync_enable_hint),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -642,7 +642,7 @@ private fun WebDavBackupCard(
             }
             Spacer(Modifier.size(10.dp))
             Text(
-                text = "WebDAV 备份与恢复",
+                text = stringResource(R.string.backup_webdav_backup_restore),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )
@@ -653,14 +653,14 @@ private fun WebDavBackupCard(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Refresh,
-                    contentDescription = "刷新备份文件列表",
+                    contentDescription = stringResource(R.string.backup_refresh_files),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp),
                 )
             }
         }
         Text(
-            text = "将备份文件上传到上方服务器的 NIplayer_backup 目录，或从该目录选择备份文件恢复。",
+            text = stringResource(R.string.backup_webdav_backup_desc),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             lineHeight = 18.sp,
@@ -668,7 +668,7 @@ private fun WebDavBackupCard(
 
         if (!serverSelected) {
             Text(
-                text = "请先在上方选择 WebDAV 服务器",
+                text = stringResource(R.string.backup_select_server_first),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -680,7 +680,7 @@ private fun WebDavBackupCard(
                 )
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    text = "正在加载备份文件...",
+                    text = stringResource(R.string.backup_loading_files),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -697,13 +697,13 @@ private fun WebDavBackupCard(
                     onClick = onRefresh,
                     enabled = enabled,
                 ) {
-                    Text("重试")
+                    Text(stringResource(R.string.retry))
                 }
             }
         } else {
             if (backupFiles.isEmpty()) {
                 Text(
-                    text = "服务器上暂无备份文件",
+                    text = stringResource(R.string.backup_no_files),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -716,8 +716,8 @@ private fun WebDavBackupCard(
                         value = selectedFile?.name ?: "",
                         onValueChange = {},
                         readOnly = true,
-                        label = "备份文件",
-                        placeholder = "选择备份文件",
+                        label = stringResource(R.string.backup_file_label),
+                        placeholder = stringResource(R.string.backup_select_file),
                         colors = dropdownColors,
                         trailingIcon = {
                             Icon(
@@ -777,7 +777,7 @@ private fun WebDavBackupCard(
                     colors = ButtonDefaults.buttonColors(containerColor = webdavColor),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("上传备份")
+                    Text(stringResource(R.string.backup_upload))
                 }
                 OutlinedButton(
                     onClick = onRestore,
@@ -786,7 +786,7 @@ private fun WebDavBackupCard(
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = webdavColor),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("从服务器恢复")
+                    Text(stringResource(R.string.backup_restore_from_server))
                 }
             }
         }
@@ -825,12 +825,12 @@ private fun LocalBackupCard(
             }
             Spacer(Modifier.size(10.dp))
             Text(
-                text = "本机备份与恢复",
+                text = stringResource(R.string.backup_local_title),
                 style = MaterialTheme.typography.titleMedium,
             )
         }
         Text(
-            text = "将存储源、快速访问、书签、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图等全部应用设置导出为 JSON 文件，或从备份文件恢复。播放历史不包含在备份中。",
+            text = stringResource(R.string.backup_local_desc),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             lineHeight = 18.sp,
@@ -851,7 +851,7 @@ private fun LocalBackupCard(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.size(6.dp))
-                Text("导出备份")
+                Text(stringResource(R.string.backup_export))
             }
             Button(
                 onClick = onRestore,
@@ -865,7 +865,7 @@ private fun LocalBackupCard(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.size(6.dp))
-                Text("恢复")
+                Text(stringResource(R.string.restore))
             }
         }
     }
@@ -881,7 +881,7 @@ private fun ResultDialog(
         title = title,
         onDismiss = onDismiss,
         actions = {
-            TextButton(onClick = onDismiss) { Text("确定") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.confirm)) }
         },
     ) {
         Text(

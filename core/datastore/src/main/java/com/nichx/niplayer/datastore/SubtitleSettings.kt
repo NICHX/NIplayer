@@ -108,71 +108,71 @@ object SubtitleSettings {
         get() = mmkv.decodeInt(KEY_BOTTOM_PADDING_DP, 48)
         set(value) { mmkv.encode(KEY_BOTTOM_PADDING_DP, value) }
 
-    /** 字幕字体大小选项（供 UI 选择用）。 */
-    val TEXT_SIZE_OPTIONS: List<Pair<String, Float>> = listOf(
-        "小" to 0.04f,
-        "中" to 0.0533f,
-        "大" to 0.066f,
-        "特大" to 0.08f,
+    /** 字幕字体大小选项（标签资源 ID + 相对视图高度比例，供 UI 选择用）。 */
+    val TEXT_SIZE_OPTIONS: List<Pair<Int, Float>> = listOf(
+        R.string.subtitle_size_small to 0.04f,
+        R.string.subtitle_size_medium to 0.0533f,
+        R.string.subtitle_size_large to 0.066f,
+        R.string.subtitle_size_xlarge to 0.08f,
     )
 
     /**
-     * 字幕字体族选项（key + 显示名）。
+     * 字幕字体族选项（标签资源 ID + key）。
      *
      * UI 层将 key 映射为 Compose FontFamily。仅提供系统内置字体族，无需打包字体文件。
      */
-    val FONT_FAMILY_OPTIONS: List<Pair<String, String>> = listOf(
-        "默认（无衬线）" to FONT_FAMILY_KEY_DEFAULT,
-        "衬线" to FONT_FAMILY_KEY_SERIF,
-        "等宽" to FONT_FAMILY_KEY_MONOSPACE,
-        "紧凑无衬线" to FONT_FAMILY_KEY_SANS_SERIF,
+    val FONT_FAMILY_OPTIONS: List<Pair<Int, String>> = listOf(
+        R.string.subtitle_font_default to FONT_FAMILY_KEY_DEFAULT,
+        R.string.subtitle_font_serif to FONT_FAMILY_KEY_SERIF,
+        R.string.subtitle_font_monospace to FONT_FAMILY_KEY_MONOSPACE,
+        R.string.subtitle_font_compact_sans to FONT_FAMILY_KEY_SANS_SERIF,
     )
 
     /**
-     * 字幕文字颜色选项（显示名 + ARGB Int）。
+     * 字幕文字颜色选项（标签资源 ID + ARGB Int）。
      *
      * 提供常用字幕色：白色（默认）、黄色（影视常用）、青色、浅灰、黑色。
      */
-    val FONT_COLOR_OPTIONS: List<Pair<String, Int>> = listOf(
-        "白色" to 0xFFFFFFFF.toInt(),
-        "黄色" to 0xFFFFEB3B.toInt(),
-        "青色" to 0xFF00E5FF.toInt(),
-        "浅灰" to 0xFFE0E0E0.toInt(),
-        "黑色" to 0xFF000000.toInt(),
+    val FONT_COLOR_OPTIONS: List<Pair<Int, Int>> = listOf(
+        R.string.subtitle_color_white to 0xFFFFFFFF.toInt(),
+        R.string.subtitle_color_yellow to 0xFFFFEB3B.toInt(),
+        R.string.subtitle_color_cyan to 0xFF00E5FF.toInt(),
+        R.string.subtitle_color_light_gray to 0xFFE0E0E0.toInt(),
+        R.string.subtitle_color_black to 0xFF000000.toInt(),
     )
 
     /**
-     * 描边宽度选项（px，相对字号）。
+     * 描边宽度选项（标签资源 ID + px）。
      *
      * "无"=0f（关闭描边）、"细"=1f、"中"=2f（默认）、"粗"=4f。
      */
-    val OUTLINE_WIDTH_OPTIONS: List<Pair<String, Float>> = listOf(
-        "无" to 0f,
-        "细" to 1f,
-        "中" to 2f,
-        "粗" to 4f,
+    val OUTLINE_WIDTH_OPTIONS: List<Pair<Int, Float>> = listOf(
+        R.string.subtitle_outline_none to 0f,
+        R.string.subtitle_outline_thin to 1f,
+        R.string.subtitle_outline_medium to 2f,
+        R.string.subtitle_outline_thick to 4f,
     )
 
     /**
-     * 描边颜色选项（显示名 + ARGB Int）。
+     * 描边颜色选项（标签资源 ID + ARGB Int）。
      *
      * 黑色（默认）、白色、深灰、红色。颜色对比强烈的描边在浅色/深色背景下都可读。
      */
-    val OUTLINE_COLOR_OPTIONS: List<Pair<String, Int>> = listOf(
-        "黑色" to 0xFF000000.toInt(),
-        "白色" to 0xFFFFFFFF.toInt(),
-        "深灰" to 0xFF424242.toInt(),
-        "红色" to 0xFFD32F2F.toInt(),
+    val OUTLINE_COLOR_OPTIONS: List<Pair<Int, Int>> = listOf(
+        R.string.subtitle_outline_color_black to 0xFF000000.toInt(),
+        R.string.subtitle_outline_color_white to 0xFFFFFFFF.toInt(),
+        R.string.subtitle_outline_color_dark_gray to 0xFF424242.toInt(),
+        R.string.subtitle_outline_color_red to 0xFFD32F2F.toInt(),
     )
 
     /**
-     * 底部边距选项（dp）。
+     * 底部边距选项（标签资源 ID + dp）。
      *
      * "近"=24、"中"=48（默认，贴近屏幕底部）、"远"=96（避开控制条与底部安全区）。
      */
-    val BOTTOM_PADDING_OPTIONS: List<Pair<String, Int>> = listOf(
-        "近" to 24,
-        "中" to 48,
-        "远" to 96,
+    val BOTTOM_PADDING_OPTIONS: List<Pair<Int, Int>> = listOf(
+        R.string.subtitle_bottom_padding_near to 24,
+        R.string.subtitle_bottom_padding_medium to 48,
+        R.string.subtitle_bottom_padding_far to 96,
     )
 }

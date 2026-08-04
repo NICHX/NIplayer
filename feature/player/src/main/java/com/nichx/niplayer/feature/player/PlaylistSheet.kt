@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -72,16 +73,20 @@ fun PlaylistSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = if (playlist.isNotEmpty()) "播放列表（${playlist.size}）" else "播放列表",
+                    text = if (playlist.isNotEmpty()) {
+                        stringResource(R.string.player_playlist_with_count, playlist.size)
+                    } else {
+                        stringResource(R.string.player_playlist)
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     color = onSurface,
                     fontWeight = FontWeight.Bold,
                 )
 
                 val modeLabel = when (playMode % 3) {
-                    0 -> "顺序播放"
-                    1 -> "随机播放"
-                    else -> "单曲循环"
+                    0 -> stringResource(R.string.player_play_mode_order)
+                    1 -> stringResource(R.string.player_play_mode_shuffle)
+                    else -> stringResource(R.string.player_play_mode_single)
                 }
                 Text(
                     text = modeLabel,
@@ -92,7 +97,7 @@ fun PlaylistSheet(
 
             if (playlist.isEmpty()) {
                 Text(
-                    text = "播放列表为空",
+                    text = stringResource(R.string.player_playlist_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = onSurface.copy(alpha = 0.4f),
                     modifier = Modifier

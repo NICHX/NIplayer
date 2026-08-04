@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -47,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -82,12 +84,12 @@ fun CacheManagerScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "缓存管理",
+                title = stringResource(R.string.cache_manager_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.back),
                         )
                     }
                 },
@@ -95,7 +97,7 @@ fun CacheManagerScreen(
                     IconButton(onClick = { viewModel.refresh() }) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
-                            contentDescription = "刷新",
+                            contentDescription = stringResource(R.string.cache_manager_refresh),
                         )
                     }
                     IconButton(
@@ -104,7 +106,7 @@ fun CacheManagerScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.DeleteSweep,
-                            contentDescription = "清理全部",
+                            contentDescription = stringResource(R.string.cache_manager_clear_all),
                         )
                     }
                 },
@@ -125,8 +127,8 @@ fun CacheManagerScreen(
             uiState.items.isEmpty() -> {
                 NiEmptyState(
                     icon = Icons.Filled.DeleteSweep,
-                    text = "暂无缓存",
-                    hint = "播放产生的缓存将在此显示",
+                    text = stringResource(R.string.cache_manager_empty),
+                    hint = stringResource(R.string.cache_manager_empty_hint),
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
@@ -150,7 +152,7 @@ fun CacheManagerScreen(
                         ) {
                             Column(modifier = Modifier.padding(20.dp)) {
                                 Text(
-                                    text = "缓存总占用",
+                                    text = stringResource(R.string.cache_manager_total),
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.primary,
                                 )
@@ -161,7 +163,7 @@ fun CacheManagerScreen(
                                 )
                                 Spacer(modifier = Modifier.size(4.dp))
                                 Text(
-                                    text = "${uiState.totalFileCount} 个文件",
+                                    text = stringResource(R.string.cache_manager_file_count, uiState.totalFileCount),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -172,7 +174,7 @@ fun CacheManagerScreen(
                     // ---- 缓存项列表 ----
                     item {
                         Text(
-                            text = "缓存详情",
+                            text = stringResource(R.string.cache_manager_detail),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp),
@@ -210,28 +212,28 @@ fun CacheManagerScreen(
     // ---- 单项清理确认 ----
     pendingClear?.let { item ->
         NiConfirmDialog(
-            title = "清理缓存",
-            text = "确认清理「${item.displayName}」？（${formatSize(item.sizeBytes)}）",
+            title = stringResource(R.string.cache_manager_clear_title),
+            text = stringResource(R.string.cache_manager_clear_confirm, item.displayName, formatSize(item.sizeBytes)),
             onConfirm = {
                 viewModel.clearCache(item)
                 pendingClear = null
             },
             onDismiss = { pendingClear = null },
-            confirmText = "清理",
+            confirmText = stringResource(R.string.cache_manager_clear_confirm_text),
         )
     }
 
     // ---- 全部清理确认 ----
     if (showClearAll) {
         NiConfirmDialog(
-            title = "清理全部缓存",
-            text = "将清理所有缓存数据（${formatSize(uiState.totalSizeBytes)}），此操作不可撤销。",
+            title = stringResource(R.string.cache_manager_clear_all_title),
+            text = stringResource(R.string.cache_manager_clear_all_confirm, formatSize(uiState.totalSizeBytes)),
             onConfirm = {
                 viewModel.clearAll()
                 showClearAll = false
             },
             onDismiss = { showClearAll = false },
-            confirmText = "全部清理",
+            confirmText = stringResource(R.string.cache_manager_clear_all_confirm_text),
         )
     }
 }
@@ -260,7 +262,7 @@ private fun CacheItemRow(
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                text = "${formatSize(item.sizeBytes)} · ${item.fileCount} 个文件",
+                text = stringResource(R.string.cache_manager_item_info, formatSize(item.sizeBytes), item.fileCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -268,7 +270,7 @@ private fun CacheItemRow(
         IconButton(onClick = onClear) {
             Icon(
                 imageVector = Icons.Filled.Delete,
-                contentDescription = "清理",
+                contentDescription = stringResource(R.string.cache_manager_clear_item),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

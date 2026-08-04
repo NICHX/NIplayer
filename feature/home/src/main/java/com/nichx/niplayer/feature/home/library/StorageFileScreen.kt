@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.library
 
+import com.nichx.niplayer.feature.home.R
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -137,6 +138,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -263,7 +265,8 @@ fun FileBrowserOverlay(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
         } catch (_: SecurityException) { }
-        val dirName = DocumentFile.fromTreeUri(context, treeUri)?.name ?: "下载目录"
+        val dirName = DocumentFile.fromTreeUri(context, treeUri)?.name
+            ?: context.getString(R.string.download_dir_default_name)
         if (files.size == 1) {
             viewModel.setDownloadDirAndDownload(files.first(), treeUri.toString(), dirName)
         } else {
@@ -322,7 +325,7 @@ fun FileBrowserOverlay(
         topBar = {
             if (isMultiSelect) {
                 NiTopBar(
-                    title = "已选择 ${selectedPaths.size} 项",
+                    title = stringResource(R.string.storage_file_selected_count, selectedPaths.size),
                     navigationIcon = {
                         IconButton(onClick = viewModel::exitMultiSelect) {
                             NiStyleIcon(
@@ -330,14 +333,14 @@ fun FileBrowserOverlay(
                                 style = NiAppIconStyle,
                                 containerSize = 40.dp,
                                 iconSize = 22.dp,
-                                contentDescription = "取消多选",
+                                contentDescription = stringResource(R.string.storage_file_cancel_multi_select),
                             )
                         }
                     },
                 )
             } else {
             NiTopBar(
-                title = uiState.storageName.ifEmpty { "文件浏览" },
+                title = uiState.storageName.ifEmpty { stringResource(R.string.storage_file_browser_title) },
                 navigationIcon = {
                     IconButton(onClick = {
                         if (uiState.canGoUp) viewModel.goUp() else onBack()
@@ -347,7 +350,9 @@ fun FileBrowserOverlay(
                             style = NiAppIconStyle,
                             containerSize = 40.dp,
                             iconSize = 22.dp,
-                            contentDescription = if (uiState.canGoUp) "返回上级" else "返回",
+                            contentDescription = stringResource(
+                                if (uiState.canGoUp) R.string.storage_file_go_up else R.string.back,
+                            ),
                         )
                     }
                 },
@@ -359,7 +364,7 @@ fun FileBrowserOverlay(
                                 style = NiAppIconStyle,
                                 containerSize = 40.dp,
                                 iconSize = 22.dp,
-                                contentDescription = "排序",
+                                contentDescription = stringResource(R.string.storage_file_sort),
                             )
                         }
                         DropdownMenu(
@@ -371,7 +376,7 @@ fun FileBrowserOverlay(
                             shadowElevation = 6.dp,
                         ) {
                             SortByMenuItem(
-                                label = "名称",
+                                label = stringResource(R.string.storage_file_sort_name),
                                 icon = Icons.Rounded.SortByAlpha,
                                 value = FileBrowserSettings.SortBy.NAME,
                                 current = sortConfig.sortBy,
@@ -380,7 +385,7 @@ fun FileBrowserOverlay(
                                 showSortMenu = false
                             }
                             SortByMenuItem(
-                                label = "修改时间",
+                                label = stringResource(R.string.storage_file_sort_modified),
                                 icon = Icons.Rounded.Schedule,
                                 value = FileBrowserSettings.SortBy.MODIFIED,
                                 current = sortConfig.sortBy,
@@ -389,7 +394,7 @@ fun FileBrowserOverlay(
                                 showSortMenu = false
                             }
                             SortByMenuItem(
-                                label = "大小",
+                                label = stringResource(R.string.storage_file_sort_size),
                                 icon = Icons.Rounded.Storage,
                                 value = FileBrowserSettings.SortBy.SIZE,
                                 current = sortConfig.sortBy,
@@ -398,7 +403,7 @@ fun FileBrowserOverlay(
                                 showSortMenu = false
                             }
                             SortByMenuItem(
-                                label = "类型",
+                                label = stringResource(R.string.storage_file_sort_type),
                                 icon = Icons.Rounded.Category,
                                 value = FileBrowserSettings.SortBy.TYPE,
                                 current = sortConfig.sortBy,
@@ -410,7 +415,10 @@ fun FileBrowserOverlay(
                             DropdownMenuItem(
                                 text = {
                                     Text(
-                                        text = if (sortConfig.ascending) "切换为降序" else "切换为升序",
+                                        text = stringResource(
+                                            if (sortConfig.ascending) R.string.storage_file_sort_to_descending
+                                            else R.string.storage_file_sort_to_ascending,
+                                        ),
                                         color = MaterialTheme.colorScheme.onSurface,
                                     )
                                 },
@@ -440,7 +448,10 @@ fun FileBrowserOverlay(
                             style = NiAppIconStyle,
                             containerSize = 40.dp,
                             iconSize = 22.dp,
-                            contentDescription = if (isGridView) "列表视图" else "网格视图",
+                            contentDescription = stringResource(
+                                if (isGridView) R.string.storage_file_view_list
+                                else R.string.storage_file_view_grid,
+                            ),
                         )
                     }
                     if (activeDownloadCount > 0) {
@@ -455,7 +466,7 @@ fun FileBrowserOverlay(
                                         style = NiAppIconStyle,
                                         containerSize = 40.dp,
                                         iconSize = 22.dp,
-                                        contentDescription = "下载任务",
+                                        contentDescription = stringResource(R.string.storage_file_download_tasks),
                                     )
                             }
                         }
@@ -550,7 +561,7 @@ fun FileBrowserOverlay(
                             else listState.animateScrollToItem(0)
                         }
                     },
-                    contentDescription = "回到顶部",
+                    contentDescription = stringResource(R.string.storage_file_back_to_top),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(start = 16.dp, end = 16.dp, bottom = FabBottomOffset + 88.dp),
@@ -580,7 +591,7 @@ fun FileBrowserOverlay(
                             ) {
                                 NiExtendedFAB(
                                     icon = Icons.Rounded.Upload,
-                                    text = "上传文件",
+                                    text = stringResource(R.string.storage_file_upload),
                                     onClick = {
                                         fabExpanded = false
                                         uploadLauncher.launch(arrayOf("*/*"))
@@ -589,7 +600,7 @@ fun FileBrowserOverlay(
                                 )
                                 NiExtendedFAB(
                                     icon = Icons.Rounded.CreateNewFolder,
-                                    text = "新建文件夹",
+                                    text = stringResource(R.string.storage_file_new_folder),
                                     onClick = {
                                         fabExpanded = false
                                         showCreateFolder = true
@@ -601,7 +612,9 @@ fun FileBrowserOverlay(
                         NiFAB(
                             icon = if (fabExpanded) Icons.Rounded.Close else Icons.Rounded.Add,
                             onClick = { fabExpanded = !fabExpanded },
-                            contentDescription = if (fabExpanded) "收起菜单" else "新建",
+                            contentDescription = stringResource(
+                                if (fabExpanded) R.string.storage_file_collapse_menu else R.string.storage_file_new,
+                            ),
                             variant = NiFabVariant.PRIMARY,
                         )
                     }
@@ -646,11 +659,15 @@ fun FileBrowserOverlay(
         val deleteFileCount = selectedForDelete.count { !it.isDirectory }
         val deleteDirCount = selectedForDelete.count { it.isDirectory }
         NiConfirmDialog(
-            title = "删除所选",
-            text = "确定删除已选择的 ${selectedForDelete.size} 项" +
-                "（$deleteFileCount 个文件${if (deleteDirCount > 0) "、$deleteDirCount 个文件夹" else ""}）？" +
-                "该操作不可恢复。",
-            confirmText = "删除",
+            title = stringResource(R.string.storage_file_delete_selected_title),
+            text = stringResource(
+                if (deleteDirCount > 0) R.string.storage_file_delete_selected_body_dir
+                else R.string.storage_file_delete_selected_body,
+                selectedForDelete.size,
+                deleteFileCount,
+                deleteDirCount,
+            ),
+            confirmText = stringResource(R.string.storage_file_delete),
             confirmDanger = true,
             onConfirm = {
                 showBatchDeleteConfirm = false
@@ -809,9 +826,9 @@ fun FileBrowserOverlay(
 
     showEncryptDialog?.let { folder ->
         FolderPasswordDialog(
-            title = "加密文件夹",
-            subtitle = "为「${folder.name}」设置访问密码。设置后进入该文件夹及其子目录需验证，其中文件的播放不再计入播放历史。",
-            confirmText = "加密",
+            title = stringResource(R.string.storage_file_encrypt_folder),
+            subtitle = stringResource(R.string.storage_file_encrypt_folder_desc, folder.name),
+            confirmText = stringResource(R.string.storage_file_encrypt),
             onDismiss = { showEncryptDialog = null },
             onConfirm = { password ->
                 viewModel.encryptFolder(folder, password)
@@ -823,9 +840,9 @@ fun FileBrowserOverlay(
 
     showDecryptDialog?.let { folder ->
         FolderPasswordDialog(
-            title = "取消加密",
-            subtitle = "取消「${folder.name}」的访问保护，请输入当前密码确认。",
-            confirmText = "取消加密",
+            title = stringResource(R.string.storage_file_decrypt),
+            subtitle = stringResource(R.string.storage_file_decrypt_desc, folder.name),
+            confirmText = stringResource(R.string.storage_file_decrypt_confirm),
             onDismiss = { showDecryptDialog = null },
             onConfirm = { password ->
                 viewModel.decryptFolder(folder, password)
@@ -914,7 +931,7 @@ private fun ThumbnailProgressBar(progress: Int) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "正在生成缩略图…",
+                text = stringResource(R.string.storage_file_generating_thumbnails),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -1010,7 +1027,7 @@ private fun LoadingState() {
             CircularProgressIndicator()
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "正在连接…",
+                text = stringResource(R.string.storage_file_connecting),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -1026,9 +1043,9 @@ private fun ErrorState(message: String, onRetry: () -> Unit) {
     ) {
         NiEmptyState(
             icon = Icons.Rounded.Refresh,
-            text = "加载失败",
+            text = stringResource(R.string.storage_file_load_failed),
             hint = message,
-            actionText = "重试",
+            actionText = stringResource(R.string.retry),
             onAction = onRetry,
         )
     }
@@ -1044,8 +1061,8 @@ private fun EmptyDirState() {
     ) {
         NiEmptyState(
             icon = Icons.Rounded.FolderOpen,
-            text = "空目录",
-            hint = "此目录下没有文件",
+            text = stringResource(R.string.storage_file_empty_dir),
+            hint = stringResource(R.string.storage_file_empty_dir_hint),
         )
     }
 }
@@ -1180,7 +1197,9 @@ private fun FileRow(
         if (isMultiSelect) {
             Icon(
                 imageVector = if (isSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                contentDescription = if (isSelected) "取消选择" else "选择",
+                contentDescription = stringResource(
+                    if (isSelected) R.string.storage_file_deselect else R.string.storage_file_select,
+                ),
                 tint = if (isSelected) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(22.dp),
@@ -1221,7 +1240,7 @@ private fun FileRow(
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.PlayArrow,
-                                contentDescription = "播放",
+                                contentDescription = stringResource(R.string.storage_file_action_play),
                                 tint = Color.White,
                                 modifier = Modifier.size(14.dp),
                             )
@@ -1293,7 +1312,7 @@ private fun FileRow(
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Lock,
-                            contentDescription = "已加密",
+                            contentDescription = stringResource(R.string.storage_file_encrypted),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(10.dp),
                         )
@@ -1333,7 +1352,7 @@ private fun FileRow(
             if (file.isDirectory) {
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "文件夹",
+                    text = stringResource(R.string.storage_file_folder),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                 )
@@ -1350,7 +1369,7 @@ private fun FileRow(
                     style = NiAppIconStyle,
                     containerSize = 32.dp,
                     iconSize = 18.dp,
-                    contentDescription = "更多",
+                    contentDescription = stringResource(R.string.storage_file_more),
                 )
             }
         }
@@ -1511,7 +1530,7 @@ private fun GridFileCard(
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Lock,
-                                contentDescription = "已加密",
+                                contentDescription = stringResource(R.string.storage_file_encrypted),
                                 tint = Color.White,
                                 modifier = Modifier.size(13.dp),
                             )
@@ -1541,9 +1560,9 @@ private fun GridFileCard(
 
                     // 类型角标：左上角，仅在媒体文件显示（多选模式让位于选中指示）
                     val typeLabel = when {
-                        isVideo -> "视频"
-                        isAudio -> "音乐"
-                        isImage -> "图片"
+                        isVideo -> stringResource(R.string.storage_file_type_video)
+                        isAudio -> stringResource(R.string.storage_file_type_audio)
+                        isImage -> stringResource(R.string.storage_file_type_image)
                         else -> null
                     }
                     if (typeLabel != null && !isMultiSelect) {
@@ -1579,7 +1598,7 @@ private fun GridFileCard(
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.PlayArrow,
-                                contentDescription = "播放",
+                                contentDescription = stringResource(R.string.storage_file_action_play),
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp),
                             )
@@ -1673,7 +1692,9 @@ private fun GridFileCard(
                         ) {
                             Icon(
                                 imageVector = if (isSelected) Icons.Rounded.Check else Icons.Rounded.Add,
-                                contentDescription = if (isSelected) "已选择" else "选择",
+                                contentDescription = stringResource(
+                                    if (isSelected) R.string.storage_file_selected else R.string.storage_file_select,
+                                ),
                                 tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.White,
                                 modifier = Modifier.size(16.dp),
                             )
@@ -1742,36 +1763,39 @@ private fun FileActionsSheet(
             if (isPlayable) {
                 ActionRow(
                     icon = Icons.Rounded.PlayArrow,
-                    text = "播放",
+                    text = stringResource(R.string.storage_file_action_play),
                     onClick = onPlay,
                 )
             }
             if (canDownload) {
                 ActionRow(
                     icon = Icons.Rounded.Download,
-                    text = "下载",
+                    text = stringResource(R.string.storage_file_action_download),
                     onClick = onDownload,
                 )
             }
             ActionRow(
                 icon = if (isFavorited) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                text = if (isFavorited) "从快速访问移除" else "添加到快速访问",
+                text = stringResource(
+                    if (isFavorited) R.string.storage_file_action_remove_from_quick_access
+                    else R.string.storage_file_action_add_to_quick_access,
+                ),
                 onClick = onToggleQuickAccess,
             )
             if (showFileManagement) {
                 ActionRow(
                     icon = Icons.Rounded.Edit,
-                    text = "重命名",
+                    text = stringResource(R.string.storage_file_action_rename),
                     onClick = onRename,
                 )
                 ActionRow(
                     icon = Icons.AutoMirrored.Rounded.DriveFileMove,
-                    text = "移动到",
+                    text = stringResource(R.string.storage_file_action_move),
                     onClick = onMove,
                 )
                 ActionRow(
                     icon = Icons.Rounded.Delete,
-                    text = "删除",
+                    text = stringResource(R.string.storage_file_action_delete),
                     onClick = onDelete,
                     tint = MaterialTheme.colorScheme.error,
                 )
@@ -1781,25 +1805,25 @@ private fun FileActionsSheet(
                 if (isEncrypted) {
                     ActionRow(
                         icon = Icons.Rounded.Lock,
-                        text = "修改密码",
+                        text = stringResource(R.string.storage_file_action_reset_password),
                         onClick = onResetPassword,
                     )
                     ActionRow(
                         icon = Icons.Rounded.Lock,
-                        text = "取消加密",
+                        text = stringResource(R.string.storage_file_action_decrypt),
                         onClick = onDecrypt,
                     )
                 } else {
                     ActionRow(
                         icon = Icons.Rounded.Lock,
-                        text = "加密此文件夹",
+                        text = stringResource(R.string.storage_file_action_encrypt_folder),
                         onClick = onEncrypt,
                     )
                 }
             }
             ActionRow(
                 icon = Icons.Rounded.Info,
-                text = "属性",
+                text = stringResource(R.string.storage_file_action_properties),
                 onClick = onShowInfo,
             )
         }
@@ -1865,8 +1889,9 @@ private fun formatFileSize(bytes: Long): String {
 
 @Composable
 private fun FileInfoDialog(file: StorageFile, onDismiss: () -> Unit) {
+    val context = LocalContext.current
     NiInfoDialog(
-        title = "文件属性",
+        title = stringResource(R.string.storage_file_properties_title),
         onDismiss = onDismiss,
     ) {
         Column(
@@ -1876,15 +1901,15 @@ private fun FileInfoDialog(file: StorageFile, onDismiss: () -> Unit) {
                 .heightIn(max = 360.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
-            InfoRow(label = "名称", value = file.name)
+            InfoRow(label = stringResource(R.string.storage_file_info_name), value = file.name)
             if (!file.isDirectory && file.length > 0) {
-                InfoRow(label = "大小", value = formatFileSize(file.length))
+                InfoRow(label = stringResource(R.string.storage_file_info_size), value = formatFileSize(file.length))
             }
             if (file.lastModified > 0) {
-                InfoRow(label = "修改时间", value = formatDate(file.lastModified))
+                InfoRow(label = stringResource(R.string.storage_file_info_modified), value = formatDate(file.lastModified, context))
             }
-            InfoRow(label = "路径", value = file.path)
-            InfoRow(label = "类型", value = fileTypeLabel(file))
+            InfoRow(label = stringResource(R.string.storage_file_info_path), value = file.path)
+            InfoRow(label = stringResource(R.string.storage_file_info_type), value = fileTypeLabel(file, context))
         }
     }
 }
@@ -1908,23 +1933,23 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
-private fun formatDate(timestamp: Long): String {
-    if (timestamp <= 0) return "未知"
+private fun formatDate(timestamp: Long, context: Context): String {
+    if (timestamp <= 0) return context.getString(R.string.storage_file_unknown)
     val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
     return sdf.format(java.util.Date(timestamp))
 }
 
-private fun fileTypeLabel(file: StorageFile): String {
-    if (file.isDirectory) return "文件夹"
+private fun fileTypeLabel(file: StorageFile, context: Context): String {
+    if (file.isDirectory) return context.getString(R.string.storage_file_folder)
     val name = file.name
     val dot = name.lastIndexOf('.')
-    if (dot < 0 || dot == name.length - 1) return "文件"
+    if (dot < 0 || dot == name.length - 1) return context.getString(R.string.storage_file_file)
     val ext = name.substring(dot + 1).uppercase()
     return when {
-        MediaFileTypes.isVideoFile(name) -> "视频 (.$ext)"
-        MediaFileTypes.isAudioFile(name) -> "音频 (.$ext)"
-        MediaFileTypes.isImageFile(name) -> "图片 (.$ext)"
-        else -> "文件 (.$ext)"
+        MediaFileTypes.isVideoFile(name) -> context.getString(R.string.storage_file_type_video_ext, ext)
+        MediaFileTypes.isAudioFile(name) -> context.getString(R.string.storage_file_type_audio_ext, ext)
+        MediaFileTypes.isImageFile(name) -> context.getString(R.string.storage_file_type_image_ext, ext)
+        else -> context.getString(R.string.storage_file_type_file_ext, ext)
     }
 }
 
@@ -1943,20 +1968,20 @@ fun RenameFileDialog(
     var newName by remember { mutableStateOf(initial) }
 
     NiInfoDialog(
-        title = "重命名",
+        title = stringResource(R.string.storage_file_rename_title),
         onDismiss = onDismiss,
         actions = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             TextButton(
                 onClick = { onConfirm(newName.trim()) },
                 enabled = newName.isNotBlank() && newName != initial,
-            ) { Text("确定") }
+            ) { Text(stringResource(R.string.confirm)) }
         },
     ) {
         NiTextField(
             value = newName,
             onValueChange = { newName = it },
-            label = "新名称",
+            label = stringResource(R.string.storage_file_rename_new_name),
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -1970,14 +1995,14 @@ fun MoveTargetDialog(
     onDismiss: () -> Unit,
     onSelect: (StorageFile) -> Unit,
 ) {
-    val title = "移动「$fileName」到"
+    val title = stringResource(R.string.storage_file_move_title, fileName)
     if (targets.isEmpty()) {
         NiInfoDialog(
             title = title,
             onDismiss = onDismiss,
         ) {
             Text(
-                text = "没有可用的目标目录",
+                text = stringResource(R.string.storage_file_move_no_target),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -2006,21 +2031,27 @@ fun DeleteConfirmDialog(
     onConfirm: () -> Unit,
 ) {
     NiInfoDialog(
-        title = "删除${if (isDirectory) "文件夹" else "文件"}",
+        title = stringResource(
+            if (isDirectory) R.string.storage_file_delete_folder
+            else R.string.storage_file_delete_file,
+        ),
         onDismiss = onDismiss,
         actions = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             TextButton(
                 onClick = onConfirm,
                 colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
                     contentColor = MaterialTheme.colorScheme.error,
                 ),
-            ) { Text("删除") }
+            ) { Text(stringResource(R.string.delete)) }
         },
     ) {
         Text(
-            text = "确定要删除「$fileName」吗？" +
-                if (isDirectory) "\n注意：仅当文件夹为空时才能删除。" else "",
+            text = stringResource(
+                if (isDirectory) R.string.storage_file_delete_confirm_dir
+                else R.string.storage_file_delete_confirm_file,
+                fileName,
+            ),
             style = MaterialTheme.typography.bodyMedium,
         )
     }
@@ -2034,20 +2065,20 @@ fun CreateFolderDialog(
 ) {
     var name by remember { mutableStateOf("") }
     NiInfoDialog(
-        title = "新建文件夹",
+        title = stringResource(R.string.storage_file_new_folder),
         onDismiss = onDismiss,
         actions = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             TextButton(
                 onClick = { onConfirm(name.trim()) },
                 enabled = name.isNotBlank(),
-            ) { Text("创建") }
+            ) { Text(stringResource(R.string.create)) }
         },
     ) {
         NiTextField(
             value = name,
             onValueChange = { name = it },
-            label = "文件夹名称",
+            label = stringResource(R.string.storage_file_folder_name),
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -2070,7 +2101,7 @@ fun FolderPasswordDialog(
         title = title,
         onDismiss = onDismiss,
         actions = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             TextButton(
                 onClick = { onConfirm(password.trim()) },
                 enabled = password.length >= 4,
@@ -2087,8 +2118,8 @@ fun FolderPasswordDialog(
             NiTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = "访问密码（至少 4 位）",
-                placeholder = "请输入密码",
+                label = stringResource(R.string.storage_file_password_label_min4),
+                placeholder = stringResource(R.string.storage_file_password_placeholder),
                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -2114,19 +2145,19 @@ fun FolderUnlockDialog(
         keyboardController?.show()
     }
     NiInfoDialog(
-        title = "输入密码解锁",
+        title = stringResource(R.string.storage_file_unlock_title),
         onDismiss = onDismiss,
         actions = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             TextButton(
                 onClick = { onPasswordSubmit(password.trim()) },
                 enabled = password.isNotBlank(),
-            ) { Text("解锁") }
+            ) { Text(stringResource(R.string.storage_file_unlock)) }
         },
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
-                text = "「${folder.name}」已加密，请输入访问密码：",
+                text = stringResource(R.string.storage_file_unlock_body, folder.name),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -2137,8 +2168,8 @@ fun FolderUnlockDialog(
                     password = it
                     onPasswordChange()
                 },
-                label = "访问密码",
-                placeholder = "请输入密码",
+                label = stringResource(R.string.storage_file_password_label),
+                placeholder = stringResource(R.string.storage_file_password_placeholder),
                 isError = errorMessage != null,
                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
@@ -2168,6 +2199,7 @@ fun ResetFolderPasswordDialog(
     var newPassword by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
     // 弹窗显示即自动聚焦"当前密码"输入框并拉起输入法
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -2176,27 +2208,27 @@ fun ResetFolderPasswordDialog(
         keyboardController?.show()
     }
     NiInfoDialog(
-        title = "修改密码",
+        title = stringResource(R.string.storage_file_change_password_title),
         onDismiss = onDismiss,
         actions = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             TextButton(
                 onClick = {
                     if (newPassword.length < 4) {
-                        error = "新密码至少 4 位"
+                        error = context.getString(R.string.storage_file_password_min4_error)
                     } else if (newPassword != confirmPassword) {
-                        error = "两次输入的新密码不一致"
+                        error = context.getString(R.string.storage_file_password_mismatch)
                     } else {
                         onConfirm(oldPassword.trim(), newPassword.trim())
                     }
                 },
                 enabled = oldPassword.isNotBlank() && newPassword.isNotBlank() && confirmPassword.isNotBlank(),
-            ) { Text("保存") }
+            ) { Text(stringResource(R.string.save)) }
         },
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
-                text = "修改「${folder.name}」的访问密码，需验证当前密码。",
+                text = stringResource(R.string.storage_file_change_password_body, folder.name),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -2207,8 +2239,8 @@ fun ResetFolderPasswordDialog(
                     oldPassword = it
                     error = null
                 },
-                label = "当前密码",
-                placeholder = "请输入当前密码",
+                label = stringResource(R.string.storage_file_current_password),
+                placeholder = stringResource(R.string.storage_file_current_password_placeholder),
                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                 focusRequester = focusRequester,
                 modifier = Modifier.fillMaxWidth(),
@@ -2220,8 +2252,8 @@ fun ResetFolderPasswordDialog(
                     newPassword = it
                     error = null
                 },
-                label = "新密码",
-                placeholder = "至少 4 位",
+                label = stringResource(R.string.storage_file_new_password),
+                placeholder = stringResource(R.string.storage_file_new_password_placeholder),
                 isError = error != null,
                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
@@ -2233,8 +2265,8 @@ fun ResetFolderPasswordDialog(
                     confirmPassword = it
                     error = null
                 },
-                label = "确认新密码",
-                placeholder = "再次输入新密码",
+                label = stringResource(R.string.storage_file_confirm_password),
+                placeholder = stringResource(R.string.storage_file_confirm_password_placeholder),
                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -2279,7 +2311,10 @@ private fun MultiSelectActionBar(
         ) {
             ActionBarItem(
                 icon = if (allSelected) Icons.Rounded.Close else Icons.Rounded.SelectAll,
-                label = if (allSelected) "取消全选" else "全选",
+                label = stringResource(
+                    if (allSelected) R.string.storage_file_deselect_all
+                    else R.string.storage_file_select_all,
+                ),
                 enabled = selectedCount > 0,
                 onClick = onSelectAll,
                 modifier = Modifier.weight(1f),
@@ -2287,7 +2322,7 @@ private fun MultiSelectActionBar(
             if (hasAudio) {
                 ActionBarItem(
                     icon = Icons.Rounded.PlaylistAdd,
-                    label = "添加到歌单",
+                    label = stringResource(R.string.storage_file_add_to_playlist),
                     enabled = selectedCount > 0,
                     onClick = onAddToPlaylist,
                     modifier = Modifier.weight(1f),
@@ -2296,7 +2331,7 @@ private fun MultiSelectActionBar(
             if (hasDownloadable) {
                 ActionBarItem(
                     icon = Icons.Rounded.Download,
-                    label = "下载",
+                    label = stringResource(R.string.storage_file_action_download),
                     enabled = selectedCount > 0,
                     onClick = onDownload,
                     modifier = Modifier.weight(1f),
@@ -2304,7 +2339,7 @@ private fun MultiSelectActionBar(
             }
             ActionBarItem(
                 icon = Icons.Rounded.Delete,
-                label = "删除",
+                label = stringResource(R.string.delete),
                 enabled = selectedCount > 0,
                 onClick = onDelete,
                 isDanger = true,
@@ -2372,13 +2407,13 @@ private fun PlaylistPickerSheet(
                 .padding(bottom = 24.dp),
         ) {
             Text(
-                text = "添加到歌单",
+                text = stringResource(R.string.storage_file_add_to_playlist),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
             if (playlists.isEmpty()) {
                 Text(
-                    text = "暂无歌单，请先新建",
+                    text = stringResource(R.string.storage_file_playlist_picker_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
@@ -2410,7 +2445,7 @@ private fun PlaylistPickerSheet(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = "${playlist.itemCount} 个条目",
+                                text = stringResource(R.string.storage_file_playlist_item_count, playlist.itemCount),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.outline,
                             )
@@ -2434,7 +2469,7 @@ private fun PlaylistPickerSheet(
                 )
                 Spacer(Modifier.width(12.dp))
                 Text(
-                    text = "新建歌单",
+                    text = stringResource(R.string.storage_file_new_playlist),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -2451,22 +2486,22 @@ private fun CreatePlaylistNameDialog(
 ) {
     var name by remember { mutableStateOf("") }
     NiInfoDialog(
-        title = "新建歌单",
+        title = stringResource(R.string.storage_file_new_playlist),
         onDismiss = onDismiss,
         actions = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             TextButton(
                 onClick = { onConfirm(name) },
                 enabled = name.isNotBlank(),
-            ) { Text("创建") }
+            ) { Text(stringResource(R.string.create)) }
         },
     ) {
         NiTextField(
             value = name,
             onValueChange = { name = it },
             modifier = Modifier.fillMaxWidth(),
-            label = "歌单名称",
-            placeholder = "例如：我的最爱",
+            label = stringResource(R.string.storage_file_playlist_name),
+            placeholder = stringResource(R.string.storage_file_playlist_name_placeholder),
         )
     }
 }

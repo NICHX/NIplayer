@@ -27,12 +27,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.nichx.niplayer.designsystem.R
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 
 // ──────── 主题感知的磨砂玻璃调色板 ────────
@@ -95,10 +97,12 @@ fun NiConfirmDialog(
     text: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
-    confirmText: String = "确认",
-    dismissText: String = "取消",
+    confirmText: String = "",
+    dismissText: String = "",
     confirmDanger: Boolean = false,
 ) {
+    val resolvedConfirm = if (confirmText.isBlank()) stringResource(R.string.action_confirm) else confirmText
+    val resolvedDismiss = if (dismissText.isBlank()) stringResource(R.string.action_cancel) else dismissText
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -138,12 +142,12 @@ fun NiConfirmDialog(
                     horizontalArrangement = Arrangement.End,
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text(dismissText)
+                        Text(resolvedDismiss)
                     }
                     Spacer(Modifier.width(8.dp))
                     TextButton(onClick = onConfirm) {
                         Text(
-                            text = confirmText,
+                            text = resolvedConfirm,
                             color = if (confirmDanger) MaterialTheme.colorScheme.error
                             else MaterialTheme.colorScheme.primary,
                         )

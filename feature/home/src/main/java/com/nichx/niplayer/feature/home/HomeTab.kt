@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home
 
+import com.nichx.niplayer.feature.home.R
+import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -24,25 +26,25 @@ import com.nichx.niplayer.navigation.Routes
  */
 enum class HomeTab(
     val route: String,
-    val label: String,
+    @StringRes val labelRes: Int,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
 ) {
     HOME(
         route = Routes.Home.HOME,
-        label = "首页",
+        labelRes = R.string.home_tab_home,
         selectedIcon = Icons.Filled.Home,
         unselectedIcon = Icons.Outlined.Home,
     ),
     LIBRARY(
         route = Routes.Home.LIBRARY,
-        label = "媒体库",
+        labelRes = R.string.home_tab_library,
         selectedIcon = Icons.Filled.VideoLibrary,
         unselectedIcon = Icons.Outlined.VideoLibrary,
     ),
     SETTINGS(
         route = Routes.Home.SETTINGS,
-        label = "设置",
+        labelRes = R.string.home_tab_settings,
         selectedIcon = Icons.Filled.Settings,
         unselectedIcon = Icons.Outlined.Settings,
     );

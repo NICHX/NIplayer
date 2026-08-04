@@ -18,8 +18,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.nichx.niplayer.designsystem.R
 
 /**
  * 分区标题：标题 + 计数胶囊 + 查看全部。整行可点击。
@@ -30,8 +32,9 @@ fun NiSectionHeader(
     count: Int,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
-    viewAllText: String = "查看全部",
+    viewAllText: String = "",
 ) {
+    val resolvedViewAll = if (viewAllText.isBlank()) stringResource(R.string.section_view_all) else viewAllText
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -57,7 +60,7 @@ fun NiSectionHeader(
         Spacer(Modifier.weight(1f))
         if (count > 0 && onClick != null) {
             Text(
-                text = viewAllText,
+                text = resolvedViewAll,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Medium,

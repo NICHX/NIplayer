@@ -1,6 +1,8 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
 import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -21,6 +23,7 @@ import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.storage.impl.WebDavHttpException
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +46,7 @@ sealed interface BackupUiState {
 
 @HiltViewModel
 class BackupViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val backupManager: BackupManager,
     private val mediaLibraryDao: MediaLibraryDao,
     private val storageFactory: StorageFactory,
@@ -124,13 +128,13 @@ class BackupViewModel @Inject constructor(
             try {
                 val json = backupManager.exportToJson()
                 val output = resolver.openOutputStream(uri)
-                    ?: throw IllegalStateException("无法打开目标文件")
+                    ?: throw IllegalStateException(context.getString(R.string.backup_error_open_target))
                 output.use { it.write(json.toByteArray(Charsets.UTF_8)) }
-                _state.value = BackupUiState.ExportSuccess("备份成功")
+                _state.value = BackupUiState.ExportSuccess(context.getString(R.string.backup_export_success))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = BackupUiState.Error("备份失败: ${e.toUserMessage()}")
+                _state.value = BackupUiState.Error(context.getString(R.string.backup_failed, e.toUserMessage(context)))
             }
         }
     }
@@ -141,37 +145,37 @@ class BackupViewModel @Inject constructor(
             _state.value = BackupUiState.Working
             try {
                 val library = _webDavLibraries.value.firstOrNull { it.id == libraryId }
-                    ?: throw IllegalStateException("未找到所选 WebDAV 服务器")
+                    ?: throw IllegalStateException(context.getString(R.string.backup_error_webdav_not_found))
                 val json = backupManager.exportToJson()
                 withContext(Dispatchers.IO) {
                     val storage = storageFactory.create(library)
-                        ?: throw IllegalStateException("无法连接 WebDAV 服务器")
+                        ?: throw IllegalStateException(context.getString(R.string.backup_error_connect_webdav))
                     try {
                         storage.testConnection()
                     } catch (e: WebDavHttpException) {
-                        throw IllegalStateException(e.friendlyMessage)
+                        throw IllegalStateException(context.getString(e.friendlyMessageRes, e.code))
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        throw IllegalStateException("无法连接服务器: ${e.message ?: "网络错误"}")
+                        throw IllegalStateException(context.getString(R.string.error_connect_server, e.message ?: context.getString(R.string.error_network)))
                     }
                     if (!storage.createDirectory(WEBDAV_BACKUP_DIR)) {
-                        throw IllegalStateException("无法创建备份目录 $WEBDAV_BACKUP_DIR")
+                        throw IllegalStateException(context.getString(R.string.backup_error_create_dir, WEBDAV_BACKUP_DIR))
                     }
                     val ok = storage.saveFile(
                         "$WEBDAV_BACKUP_DIR/${defaultFileName()}",
                         json.toByteArray(Charsets.UTF_8),
                     )
-                    if (!ok) throw IllegalStateException("上传失败，请检查服务器配置")
+                    if (!ok) throw IllegalStateException(context.getString(R.string.backup_error_upload_config))
                     // 清理当前设备的旧备份，最多保留 3 份
                     pruneDeviceBackups(storage, MAX_BACKUPS_PER_DEVICE)
                 }
-                _state.value = BackupUiState.ExportSuccess("已备份到 ${library.displayName}")
+                _state.value = BackupUiState.ExportSuccess(context.getString(R.string.backup_exported_to, library.displayName))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "WebDAV 备份失败", e)
-                _state.value = BackupUiState.Error("WebDAV 备份失败: ${e.toUserMessage()}")
+                _state.value = BackupUiState.Error(context.getString(R.string.backup_webdav_failed, e.toUserMessage(context)))
             }
         }
     }
@@ -187,15 +191,15 @@ class BackupViewModel @Inject constructor(
                     ?: return@launch
                 val files = withContext(Dispatchers.IO) {
                     val storage = storageFactory.create(library)
-                        ?: throw IllegalStateException("无法连接 WebDAV 服务器")
+                        ?: throw IllegalStateException(context.getString(R.string.backup_error_connect_webdav))
                     try {
                         storage.testConnection()
                     } catch (e: WebDavHttpException) {
-                        throw IllegalStateException(e.friendlyMessage)
+                        throw IllegalStateException(context.getString(e.friendlyMessageRes, e.code))
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        throw IllegalStateException("无法连接服务器: ${e.message ?: "网络错误"}")
+                        throw IllegalStateException(context.getString(R.string.error_connect_server, e.message ?: context.getString(R.string.error_network)))
                     }
                     val dir = object : AbstractStorageFile(WEBDAV_BACKUP_DIR, WEBDAV_BACKUP_DIR, true) {}
                     try {
@@ -207,7 +211,7 @@ class BackupViewModel @Inject constructor(
                         if (e.code == 404) {
                             emptyList()
                         } else {
-                            throw IllegalStateException(e.friendlyMessage)
+                            throw IllegalStateException(context.getString(e.friendlyMessageRes, e.code))
                         }
                     }
                 }
@@ -216,7 +220,7 @@ class BackupViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "加载备份文件列表失败", e)
-                _webDavBackupError.value = "加载失败: ${e.toUserMessage()}"
+                _webDavBackupError.value = context.getString(R.string.backup_load_failed, e.toUserMessage(context))
             } finally {
                 _webDavBackupLoading.value = false
             }
@@ -229,18 +233,18 @@ class BackupViewModel @Inject constructor(
             _state.value = BackupUiState.Working
             try {
                 val library = _webDavLibraries.value.firstOrNull { it.id == libraryId }
-                    ?: throw IllegalStateException("未找到所选 WebDAV 服务器")
+                    ?: throw IllegalStateException(context.getString(R.string.backup_error_webdav_not_found))
                 val json = withContext(Dispatchers.IO) {
                     val storage = storageFactory.create(library)
-                        ?: throw IllegalStateException("无法连接 WebDAV 服务器")
+                        ?: throw IllegalStateException(context.getString(R.string.backup_error_connect_webdav))
                     try {
                         storage.testConnection()
                     } catch (e: WebDavHttpException) {
-                        throw IllegalStateException(e.friendlyMessage)
+                        throw IllegalStateException(context.getString(e.friendlyMessageRes, e.code))
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        throw IllegalStateException("无法连接服务器: ${e.message ?: "网络错误"}")
+                        throw IllegalStateException(context.getString(R.string.error_connect_server, e.message ?: context.getString(R.string.error_network)))
                     }
                     val file = object : AbstractStorageFile(
                         path = "$WEBDAV_BACKUP_DIR/$fileName",
@@ -257,7 +261,7 @@ class BackupViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "WebDAV 恢复失败", e)
-                _state.value = BackupUiState.Error("WebDAV 恢复失败: ${e.toUserMessage()}")
+                _state.value = BackupUiState.Error(context.getString(R.string.backup_webdav_restore_failed, e.toUserMessage(context)))
             }
         }
     }
@@ -268,13 +272,13 @@ class BackupViewModel @Inject constructor(
             try {
                 val json = resolver.openInputStream(uri)?.use { input ->
                     input.readBytes().toString(Charsets.UTF_8)
-                } ?: throw IllegalStateException("无法读取文件")
+                } ?: throw IllegalStateException(context.getString(R.string.backup_error_read_file))
                 val summary = backupManager.importFromJson(json, mode)
                 _state.value = BackupUiState.ImportSuccess(summary)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = BackupUiState.Error("恢复失败: ${e.toUserMessage()}")
+                _state.value = BackupUiState.Error(context.getString(R.string.backup_restore_failed, e.toUserMessage(context)))
             }
         }
     }
@@ -332,8 +336,8 @@ class BackupViewModel @Inject constructor(
 }
 
 /** 将异常转为面向用户的中文提示，避免显示 "null" 或空字符串。 */
-private fun Throwable.toUserMessage(): String = when (this) {
-    is WebDavHttpException -> friendlyMessage
-    is IllegalStateException -> message ?: "操作失败"
+private fun Throwable.toUserMessage(context: Context): String = when (this) {
+    is WebDavHttpException -> context.getString(friendlyMessageRes, code)
+    is IllegalStateException -> message ?: context.getString(R.string.error_operation_failed)
     else -> message ?: toString()
 }

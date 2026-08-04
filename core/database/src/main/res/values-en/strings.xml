@@ -1,0 +1,9 @@
+<resources>
+    <!-- Storage type names (MediaType.storageNameRes) -->
+    <string name="media_type_local">Local Video Library</string>
+    <string name="media_type_external">Device Storage</string>
+    <string name="media_type_smb">SMB Server</string>
+    <string name="media_type_webdav">WebDAV Server</string>
+    <string name="media_type_other">External Server</string>
+    <string name="media_type_quick_access">Quick Access</string>
+</resources>

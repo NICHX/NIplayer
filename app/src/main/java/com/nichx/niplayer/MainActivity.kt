@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -111,18 +112,22 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf((application as NiApplication).previousCrashLog)
                 }
                 crashLog?.let { log ->
+                    val crashDialogTitle = stringResource(R.string.crash_dialog_title)
+                    val crashDialogIgnore = stringResource(R.string.crash_dialog_ignore)
+                    val crashLogCopied = stringResource(R.string.crash_log_copied)
+                    val crashDialogCopyClose = stringResource(R.string.crash_dialog_copy_and_close)
                     NiInfoDialog(
-                        title = "NIplayer 上次异常退出",
+                        title = crashDialogTitle,
                         onDismiss = { crashLog = null },
                         actions = {
-                            TextButton(onClick = { crashLog = null }) { Text("忽略") }
+                            TextButton(onClick = { crashLog = null }) { Text(crashDialogIgnore) }
                             TextButton(onClick = {
                                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE)
                                     as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText("crash_log", log))
-                                Toast.makeText(this, "已复制崩溃日志", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this, crashLogCopied, Toast.LENGTH_SHORT).show()
                                 crashLog = null
-                            }) { Text("复制并关闭") }
+                            }) { Text(crashDialogCopyClose) }
                         },
                     ) {
                         Text(

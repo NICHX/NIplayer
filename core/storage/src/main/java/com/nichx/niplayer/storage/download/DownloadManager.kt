@@ -8,6 +8,7 @@ import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.DownloadState
 import com.nichx.niplayer.database.entity.DownloadTaskEntity
 import com.nichx.niplayer.storage.AbstractStorageFile
+import com.nichx.niplayer.storage.R
 import com.nichx.niplayer.storage.StorageFactory
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -242,13 +243,13 @@ class DownloadManager @Inject constructor(
     private suspend fun processTask(task: DownloadTaskEntity) {
         val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(task.storageId) }
             ?: run {
-                downloadTaskDao.updateState(task.id, DownloadState.FAILED, "存储源已删除")
+                downloadTaskDao.updateState(task.id, DownloadState.FAILED, context.getString(R.string.download_error_storage_deleted))
                 return
             }
 
         val storage = storageFactory.create(library)
             ?: run {
-                downloadTaskDao.updateState(task.id, DownloadState.FAILED, "无法创建存储连接")
+                downloadTaskDao.updateState(task.id, DownloadState.FAILED, context.getString(R.string.download_error_storage_connect))
                 return
             }
 
@@ -289,7 +290,7 @@ class DownloadManager @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            downloadTaskDao.updateState(task.id, DownloadState.FAILED, e.message ?: "打开输入流失败")
+            downloadTaskDao.updateState(task.id, DownloadState.FAILED, e.message ?: context.getString(R.string.download_error_open_stream))
             storage.close()
             return
         }
@@ -308,7 +309,7 @@ class DownloadManager @Inject constructor(
                 downloadTaskDao.updateState(task.id, DownloadState.PAUSED)
             }
         } catch (e: Exception) {
-            downloadTaskDao.updateState(task.id, DownloadState.FAILED, e.message ?: "下载失败")
+            downloadTaskDao.updateState(task.id, DownloadState.FAILED, e.message ?: context.getString(R.string.download_error_failed))
         } finally {
             try { inputStream.close() } catch (_: Exception) {}
             try { storage.close() } catch (_: Exception) {}
@@ -378,25 +379,25 @@ class DownloadManager @Inject constructor(
         offset: Long,
         totalBytes: Long,
     ) {
-        val storageUrl = task.targetStorageUrl ?: throw Exception("目标存储路径为空")
+        val storageUrl = task.targetStorageUrl ?: throw Exception(context.getString(R.string.download_error_target_empty))
         val treeDoc = DocumentFile.fromTreeUri(context, Uri.parse(storageUrl))
-            ?: throw Exception("无法访问目标存储")
+            ?: throw Exception(context.getString(R.string.download_error_target_access))
         val existingDoc = treeDoc.findFile(task.fileName)
         val targetDoc = if (existingDoc != null) {
             if (offset <= 0) {
                 existingDoc.delete()
                 treeDoc.createFile("application/octet-stream", task.fileName)
-                    ?: throw Exception("无法在目标存储创建文件")
+                    ?: throw Exception(context.getString(R.string.download_error_create_file))
             } else {
                 existingDoc
             }
         } else {
             treeDoc.createFile("application/octet-stream", task.fileName)
-                ?: throw Exception("无法在目标存储创建文件")
+                ?: throw Exception(context.getString(R.string.download_error_create_file))
         }
 
         val pfd = context.contentResolver.openFileDescriptor(targetDoc.uri, "wa")
-            ?: throw Exception("无法打开文件描述符")
+            ?: throw Exception(context.getString(R.string.download_error_open_fd))
         pfd.use {
             FileOutputStream(it.fileDescriptor).use { fos ->
                 if (offset > 0) fos.channel.position(offset)

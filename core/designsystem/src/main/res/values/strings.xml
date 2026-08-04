@@ -1,0 +1,30 @@
+<resources>
+    <!-- 通用操作 -->
+    <string name="action_play">播放</string>
+    <string name="action_confirm">确认</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_close">关闭</string>
+    <string name="section_view_all">查看全部</string>
+    <string name="copied">已复制</string>
+    <string name="details">详情</string>
+    <string name="collapse">收起</string>
+
+    <!-- 配色方案（NiScheme.labelRes） -->
+    <string name="color_scheme_blue">蓝色</string>
+    <string name="color_scheme_indigo">靛蓝</string>
+    <string name="color_scheme_cyan">青色</string>
+    <string name="color_scheme_slate">石板</string>
+    <string name="color_scheme_purple">紫色</string>
+    <string name="color_scheme_rose">玫瑰</string>
+    <string name="color_scheme_coral">珊瑚</string>
+    <string name="color_scheme_pink">粉红</string>
+    <string name="color_scheme_teal">青绿</string>
+    <string name="color_scheme_green">翠绿</string>
+    <string name="color_scheme_forest">森林</string>
+    <string name="color_scheme_caramel">焦糖</string>
+
+    <!-- 配色方案分类（NiScheme.categoryRes） -->
+    <string name="color_scheme_category_cool">冷色系</string>
+    <string name="color_scheme_category_warm">暖色系</string>
+    <string name="color_scheme_category_nature">自然色系</string>
+</resources>

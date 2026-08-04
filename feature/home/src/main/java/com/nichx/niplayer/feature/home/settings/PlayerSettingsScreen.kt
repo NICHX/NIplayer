@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -96,27 +98,27 @@ fun PlayerSettingsScreen(
     var modeDialogLibId by remember { mutableStateOf<Int?>(null) }
 
     val longPressTimeoutLabel = when (longPressTimeoutMs) {
-        250 -> "快"
-        400 -> "慢"
-        else -> "标准"
+        250 -> stringResource(R.string.player_speed_fast)
+        400 -> stringResource(R.string.player_speed_slow)
+        else -> stringResource(R.string.player_speed_standard)
     }
     val seekSensitivityLabel = when (seekSensitivity) {
-        1.0f -> "灵敏"
-        2.0f -> "精细"
-        else -> "标准"
+        1.0f -> stringResource(R.string.player_slide_sensitive_short)
+        2.0f -> stringResource(R.string.player_slide_precise_short)
+        else -> stringResource(R.string.player_speed_standard)
     }
     val doubleTapLabel = when (doubleTapStepSeconds) {
-        0 -> "关闭"
-        else -> "${doubleTapStepSeconds} 秒"
+        0 -> stringResource(R.string.player_double_tap_off)
+        else -> stringResource(R.string.player_double_tap_seconds, doubleTapStepSeconds)
     }
 
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "播放器设置",
+                title = stringResource(R.string.player_settings_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
             )
@@ -127,15 +129,15 @@ fun PlayerSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             SettingsGroupSection(
-                title = "播放器内核",
+                title = stringResource(R.string.player_kernel),
                 icon = Icons.Filled.PlayCircleOutline,
                 iconBg = Color(0xFF2095F4),
             ) {
-                SettingInfoRow(label = "当前内核", value = "AndroidX Media3")
+                SettingInfoRow(label = stringResource(R.string.player_current_kernel), value = "AndroidX Media3")
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingSwitchRow(
-                    label = "倍速音调保持",
-                    description = "倍速播放时保持原音调，关闭则变速变调（适合快速浏览）",
+                    label = stringResource(R.string.player_pitch_preserve),
+                    description = stringResource(R.string.player_pitch_preserve_desc),
                     checked = pitchPreservation,
                     onCheckedChange = {
                         pitchPreservation = it
@@ -145,13 +147,13 @@ fun PlayerSettingsScreen(
             }
 
             SettingsGroupSection(
-                title = "字幕",
+                title = stringResource(R.string.player_subtitle_title),
                 icon = Icons.Filled.Subtitles,
                 iconBg = Color(0xFF9C27B0),
             ) {
                 SettingSwitchRow(
-                    label = "自动加载同名字幕",
-                    description = "播放时自动加载同文件夹下同名字幕文件",
+                    label = stringResource(R.string.player_auto_subtitle),
+                    description = stringResource(R.string.player_auto_subtitle_desc),
                     checked = autoLoadSubtitle,
                     onCheckedChange = {
                         autoLoadSubtitle = it
@@ -160,55 +162,55 @@ fun PlayerSettingsScreen(
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingClickRow(
-                    label = "字幕优先级",
-                    value = subtitlePriority.ifEmpty { "默认（按文件名排序）" },
+                    label = stringResource(R.string.player_subtitle_priority),
+                    value = subtitlePriority.ifEmpty { stringResource(R.string.player_subtitle_priority_default) },
                     onClick = { showPriorityDialog = true },
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingClickRow(
                     label = "ASSRT Token",
-                    value = if (SubtitleSettings.assrtToken.isBlank()) "未设置" else "已设置",
+                    value = if (SubtitleSettings.assrtToken.isBlank()) stringResource(R.string.lrcapi_not_set) else stringResource(R.string.lrcapi_auth_set),
                     onClick = { showTokenDialog = true },
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingInfoRow(
-                    label = "字幕样式",
-                    value = "在播放器字幕菜单中调整",
+                    label = stringResource(R.string.player_subtitle_style),
+                    value = stringResource(R.string.player_subtitle_style_value),
                 )
             }
 
             SettingsGroupSection(
-                title = "进度",
+                title = stringResource(R.string.player_progress_title),
                 icon = Icons.Filled.Speed,
                 iconBg = Color(0xFFFF6D00),
             ) {
                 SettingClickRow(
-                    label = "长按倍速触发",
+                    label = stringResource(R.string.player_long_press_speed),
                     value = longPressTimeoutLabel,
                     onClick = { showLongPressDialog = true },
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingClickRow(
-                    label = "滑动快进灵敏度",
+                    label = stringResource(R.string.player_slide_seek_sensitivity),
                     value = seekSensitivityLabel,
                     onClick = { showSeekDialog = true },
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingClickRow(
-                    label = "双击快进",
+                    label = stringResource(R.string.player_double_tap_skip),
                     value = doubleTapLabel,
                     onClick = { showDoubleTapDialog = true },
                 )
             }
 
             SettingsGroupSection(
-                title = "缩略图",
+                title = stringResource(R.string.player_thumbnail_title),
                 icon = Icons.Filled.Wallpaper,
                 iconBg = Color(0xFF00ACC1),
             ) {
                 SettingSwitchRow(
-                    label = "生成缩略图",
-                    description = "总开关",
+                    label = stringResource(R.string.player_thumbnail_enable),
+                    description = stringResource(R.string.player_thumbnail_enable_desc),
                     checked = generateThumbnail,
                     onCheckedChange = {
                         generateThumbnail = it
@@ -218,8 +220,8 @@ fun PlayerSettingsScreen(
                 if (generateThumbnail) {
                     HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     SettingSwitchRow(
-                        label = "视频缩略图",
-                        description = "为视频文件生成缩略图",
+                        label = stringResource(R.string.player_thumbnail_video),
+                        description = stringResource(R.string.player_thumbnail_video_desc),
                         checked = generateForVideo,
                         onCheckedChange = {
                             generateForVideo = it
@@ -228,8 +230,8 @@ fun PlayerSettingsScreen(
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     SettingSwitchRow(
-                        label = "图片缩略图",
-                        description = "为图片文件生成缩略图",
+                        label = stringResource(R.string.player_thumbnail_image),
+                        description = stringResource(R.string.player_thumbnail_image_desc),
                         checked = generateForImage,
                         onCheckedChange = {
                             generateForImage = it
@@ -238,8 +240,8 @@ fun PlayerSettingsScreen(
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     SettingSwitchRow(
-                        label = "音频封面",
-                        description = "提取音频内嵌封面图",
+                        label = stringResource(R.string.player_thumbnail_audio),
+                        description = stringResource(R.string.player_thumbnail_audio_desc),
                         checked = generateForAudio,
                         onCheckedChange = {
                             generateForAudio = it
@@ -248,8 +250,8 @@ fun PlayerSettingsScreen(
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     SettingSwitchRow(
-                        label = "保存到服务器",
-                        description = "远端存储时将缩略图回写到 .thumb/ 目录",
+                        label = stringResource(R.string.player_thumbnail_upload),
+                        description = stringResource(R.string.player_thumbnail_upload_desc),
                         checked = saveInSameDir,
                         onCheckedChange = {
                             saveInSameDir = it
@@ -258,29 +260,29 @@ fun PlayerSettingsScreen(
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     SettingClickRow(
-                        label = "生成时机",
-                        value = generationMode.label,
+                        label = stringResource(R.string.player_thumbnail_timing),
+                        value = stringResource(generationMode.labelRes),
                         onClick = { showGenerationModeDialog = true },
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     SettingClickRow(
-                        label = "取帧位置",
-                        value = ThumbnailFramePosition.fromKey(framePositionKey).label +
-                            if (framePositionKey == "custom") "（${customPositionSeconds}s）" else "",
+                        label = stringResource(R.string.player_thumbnail_frame),
+                        value = stringResource(ThumbnailFramePosition.fromKey(framePositionKey).labelRes) +
+                            if (framePositionKey == "custom") stringResource(R.string.thumbnail_custom_suffix, customPositionSeconds) else "",
                         onClick = { showFramePositionDialog = true },
                     )
                 }
             }
 
             SettingsGroupSection(
-                title = "存储源缩略图",
+                title = stringResource(R.string.player_storage_thumbnail_title),
                 icon = Icons.Filled.CloudQueue,
                 iconBg = Color(0xFF546E7A),
                 action = {
                     IconButton(onClick = { showStorageHelpDialog = true }) {
                         Icon(
                             imageVector = Icons.Filled.Info,
-                            contentDescription = "帮助",
+                            contentDescription = stringResource(R.string.lrcapi_help),
                             tint = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(18.dp),
                         )
@@ -298,22 +300,26 @@ fun PlayerSettingsScreen(
                 }
                 if (displayLibraries.isEmpty()) {
                     SettingInfoRow(
-                        label = "暂无存储源",
-                        value = "添加存储源后将自动显示",
+                        label = stringResource(R.string.player_storage_empty),
+                        value = stringResource(R.string.player_storage_empty_value),
                     )
                 } else {
                     displayLibraries.forEachIndexed { index, lib ->
                         val typeLabel = when (lib.mediaType) {
                             MediaType.SMB_SERVER -> "SMB"
                             MediaType.WEBDAV_SERVER -> "WebDAV"
-                            MediaType.LOCAL_STORAGE -> "本地"
+                            MediaType.LOCAL_STORAGE -> stringResource(R.string.storage_type_local)
                             MediaType.EXTERNAL_STORAGE -> "SAF"
                             else -> ""
                         }
                         val libMode = ThumbnailSettings.getLibraryGenerationMode(lib.id)
                         SettingClickRow(
                             label = lib.displayName,
-                            value = if (libMode == null) "跟随全局（${generationMode.label}）" else libMode.label,
+                            value = if (libMode == null) {
+                                stringResource(R.string.thumbnail_follow_global, stringResource(generationMode.labelRes))
+                            } else {
+                                stringResource(libMode.labelRes)
+                            },
                             description = typeLabel,
                             onClick = { modeDialogLibId = lib.id },
                         )
@@ -328,13 +334,13 @@ fun PlayerSettingsScreen(
             }
 
             SettingsGroupSection(
-                title = "文件浏览",
+                title = stringResource(R.string.player_browser_title),
                 icon = Icons.Filled.FolderOpen,
                 iconBg = Color(0xFF43A047),
             ) {
                 SettingSwitchRow(
-                    label = "仅显示媒体文件",
-                    description = "文件浏览页仅显示视频、音频和图片，隐藏其他文件类型",
+                    label = stringResource(R.string.player_media_only),
+                    description = stringResource(R.string.player_media_only_desc),
                     checked = showOnlyMediaFiles,
                     onCheckedChange = {
                         showOnlyMediaFiles = it
@@ -343,8 +349,8 @@ fun PlayerSettingsScreen(
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingSwitchRow(
-                    label = "显示隐藏文件/文件夹",
-                    description = "显示以 . 开头的隐藏文件和文件夹，如 .thumb/、.DS_Store 等",
+                    label = stringResource(R.string.player_show_hidden),
+                    description = stringResource(R.string.player_show_hidden_desc),
                     checked = showHiddenFiles,
                     onCheckedChange = {
                         showHiddenFiles = it
@@ -357,12 +363,12 @@ fun PlayerSettingsScreen(
 
     if (showFramePositionDialog) {
         NiListItemDialog(
-            title = "取帧位置",
+            title = stringResource(R.string.player_frame_position_title),
             onDismiss = { showFramePositionDialog = false },
             items = ThumbnailFramePosition.entries.map { option ->
                 NiDialogItem(
-                    label = option.label +
-                        if (option.key == "custom") "（${customPositionSeconds}s）" else "",
+                    label = stringResource(option.labelRes) +
+                        if (option.key == "custom") stringResource(R.string.thumbnail_custom_suffix, customPositionSeconds) else "",
                     isSelected = framePositionKey == option.key,
                     onClick = {
                         if (option.key == "custom") {
@@ -382,10 +388,10 @@ fun PlayerSettingsScreen(
     if (showCustomPositionDialog) {
         var seconds by rememberSaveable { mutableStateOf(customPositionSeconds.toString()) }
         NiInfoDialog(
-            title = "自定义秒数",
+            title = stringResource(R.string.player_custom_seconds_title),
             onDismiss = { showCustomPositionDialog = false },
             actions = {
-                TextButton(onClick = { showCustomPositionDialog = false }) { Text("取消") }
+                TextButton(onClick = { showCustomPositionDialog = false }) { Text(stringResource(R.string.cancel)) }
                 TextButton(onClick = {
                     val s = seconds.toIntOrNull() ?: 10
                     if (s > 0) {
@@ -395,11 +401,11 @@ fun PlayerSettingsScreen(
                         ThumbnailSettings.framePositionKey = "custom"
                     }
                     showCustomPositionDialog = false
-                }) { Text("保存") }
+                }) { Text(stringResource(R.string.save)) }
             },
         ) {
             Text(
-                "输入从第几秒取帧。",
+                stringResource(R.string.player_custom_seconds_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -409,7 +415,7 @@ fun PlayerSettingsScreen(
                 onValueChange = { seconds = it.filter { c -> c.isDigit() } },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = "10",
-                label = "秒",
+                label = stringResource(R.string.player_seconds_label),
             )
         }
     }
@@ -417,18 +423,18 @@ fun PlayerSettingsScreen(
     if (showTokenDialog) {
         var token by rememberSaveable { mutableStateOf(SubtitleSettings.assrtToken) }
         NiInfoDialog(
-            title = "设置 ASSRT Token",
+            title = stringResource(R.string.player_assrt_token_title),
             onDismiss = { showTokenDialog = false },
             actions = {
-                TextButton(onClick = { showTokenDialog = false }) { Text("取消") }
+                TextButton(onClick = { showTokenDialog = false }) { Text(stringResource(R.string.cancel)) }
                 TextButton(onClick = {
                     SubtitleSettings.assrtToken = token
                     showTokenDialog = false
-                }) { Text("保存") }
+                }) { Text(stringResource(R.string.save)) }
             },
         ) {
             Text(
-                "在 assrt.net 注册获取 API Token，用于字幕搜索。",
+                stringResource(R.string.player_assrt_token_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -437,7 +443,7 @@ fun PlayerSettingsScreen(
                 value = token,
                 onValueChange = { token = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = "输入 ASSRT Token",
+                placeholder = stringResource(R.string.player_assrt_token_placeholder),
             )
         }
     }
@@ -445,19 +451,19 @@ fun PlayerSettingsScreen(
     if (showPriorityDialog) {
         var priority by rememberSaveable { mutableStateOf(subtitlePriority) }
         NiInfoDialog(
-            title = "字幕优先级",
+            title = stringResource(R.string.player_priority_title),
             onDismiss = { showPriorityDialog = false },
             actions = {
-                TextButton(onClick = { showPriorityDialog = false }) { Text("取消") }
+                TextButton(onClick = { showPriorityDialog = false }) { Text(stringResource(R.string.cancel)) }
                 TextButton(onClick = {
                     subtitlePriority = priority
                     SubtitleSettings.subtitlePriority = priority
                     showPriorityDialog = false
-                }) { Text("保存") }
+                }) { Text(stringResource(R.string.save)) }
             },
         ) {
             Text(
-                "按逗号分隔的扩展名或语言标识，如 \"chs,cht\"。留空则按文件名排序。",
+                stringResource(R.string.player_priority_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -466,16 +472,20 @@ fun PlayerSettingsScreen(
                 value = priority,
                 onValueChange = { priority = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = "如：chs,cht",
+                placeholder = stringResource(R.string.player_priority_placeholder),
             )
         }
     }
 
     if (showLongPressDialog) {
         NiListItemDialog(
-            title = "长按倍速触发",
+            title = stringResource(R.string.player_long_press_title),
             onDismiss = { showLongPressDialog = false },
-            items = listOf(250 to "快（0.25 秒）", 300 to "标准（0.3 秒）", 400 to "慢（0.4 秒）")
+            items = listOf(
+                250 to stringResource(R.string.player_long_press_fast),
+                300 to stringResource(R.string.player_long_press_standard),
+                400 to stringResource(R.string.player_long_press_slow),
+            )
                 .map { (option, label) ->
                     NiDialogItem(
                         label = label,
@@ -492,9 +502,13 @@ fun PlayerSettingsScreen(
 
     if (showSeekDialog) {
         NiListItemDialog(
-            title = "滑动快进灵敏度",
+            title = stringResource(R.string.player_slide_title),
             onDismiss = { showSeekDialog = false },
-            items = listOf(1.0f to "灵敏（1 屏）", 1.5f to "标准（1.5 屏）", 2.0f to "精细（2 屏）")
+            items = listOf(
+                1.0f to stringResource(R.string.player_slide_sensitive),
+                1.5f to stringResource(R.string.player_slide_standard),
+                2.0f to stringResource(R.string.player_slide_precise),
+            )
                 .map { (option, label) ->
                     NiDialogItem(
                         label = label,
@@ -511,9 +525,14 @@ fun PlayerSettingsScreen(
 
     if (showDoubleTapDialog) {
         NiListItemDialog(
-            title = "双击快进",
+            title = stringResource(R.string.player_double_tap_title),
             onDismiss = { showDoubleTapDialog = false },
-            items = listOf(0 to "关闭", 5 to "5 秒", 10 to "10 秒", 30 to "30 秒")
+            items = listOf(
+                0 to stringResource(R.string.player_double_tap_off),
+                5 to stringResource(R.string.player_double_tap_seconds, 5),
+                10 to stringResource(R.string.player_double_tap_seconds, 10),
+                30 to stringResource(R.string.player_double_tap_seconds, 30),
+            )
                 .map { (option, label) ->
                     NiDialogItem(
                         label = label,
@@ -530,11 +549,11 @@ fun PlayerSettingsScreen(
 
     if (showGenerationModeDialog) {
         NiListItemDialog(
-            title = "生成时机",
+            title = stringResource(R.string.player_thumbnail_timing_title),
             onDismiss = { showGenerationModeDialog = false },
             items = ThumbnailGenerationMode.entries.map { option ->
                 NiDialogItem(
-                    label = option.label,
+                    label = stringResource(option.labelRes),
                     isSelected = generationMode == option,
                     onClick = {
                         generationMode = option
@@ -553,14 +572,17 @@ fun PlayerSettingsScreen(
         var selectedMode by rememberSaveable(dialogLibId) {
             mutableStateOf(ThumbnailSettings.getLibraryGenerationMode(dialogLibId))
         }
-        val dialogTitle = "${lib?.displayName ?: "存储源"} 生成策略"
+        val dialogTitle = stringResource(
+            R.string.player_storage_policy_title,
+            lib?.displayName ?: stringResource(R.string.player_storage_policy_fallback),
+        )
         NiListItemDialog(
             title = dialogTitle,
             onDismiss = { modeDialogLibId = null },
             items = buildList {
                 add(
                     NiDialogItem(
-                        label = "跟随全局（${generationMode.label}）",
+                        label = stringResource(R.string.thumbnail_follow_global, stringResource(generationMode.labelRes)),
                         isSelected = selectedMode == null,
                         onClick = {
                             selectedMode = null
@@ -572,7 +594,7 @@ fun PlayerSettingsScreen(
                 ThumbnailGenerationMode.entries.forEach { option ->
                     add(
                         NiDialogItem(
-                            label = option.label,
+                            label = stringResource(option.labelRes),
                             isSelected = selectedMode == option,
                             onClick = {
                                 selectedMode = option
@@ -588,20 +610,16 @@ fun PlayerSettingsScreen(
 
     if (showStorageHelpDialog) {
         NiInfoDialog(
-            title = "存储源缩略图",
+            title = stringResource(R.string.player_storage_thumbnail_title),
             onDismiss = { showStorageHelpDialog = false },
         ) {
             Text(
-                "每个存储源可独立设置缩略图生成策略，覆盖全局“生成时机”。",
+                stringResource(R.string.player_storage_help_intro),
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(Modifier.size(12.dp))
             Text(
-                "跟随全局：使用全局“生成时机”设置。\n" +
-                    "全部生成：浏览时预加载并批量生成缩略图。\n" +
-                    "仅播放后生成：浏览时仅加载已有缓存，播放退出后再生成，\n" +
-                    "  适合网盘类存储，避免频繁读写触发风控限制。\n" +
-                    "关闭：不生成缩略图。",
+                stringResource(R.string.player_storage_help_detail),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )

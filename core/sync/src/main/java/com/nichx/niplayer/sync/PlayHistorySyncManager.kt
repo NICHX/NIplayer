@@ -1,5 +1,6 @@
 package com.nichx.niplayer.sync
 
+import android.content.Context
 import android.util.Log
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
@@ -16,6 +17,7 @@ import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.storage.impl.WebDavHttpException
 import com.squareup.moshi.Moshi
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,6 +60,7 @@ sealed interface SyncUiState {
  */
 @Singleton
 class PlayHistorySyncManager @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val playHistoryDao: PlayHistoryDao,
     private val syncDeleteLogDao: SyncDeleteLogDao,
     private val syncConflictDao: SyncConflictDao,
@@ -103,7 +106,7 @@ class PlayHistorySyncManager @Inject constructor(
             return false
         }
         if (libraryId < 0) {
-            recordResult(false, "未选择 WebDAV 服务器")
+            recordResult(false, context.getString(R.string.sync_error_no_server_selected))
             return false
         }
         // 自动同步最小间隔防抖（手动同步不受限制）。
@@ -125,9 +128,9 @@ class PlayHistorySyncManager @Inject constructor(
             try {
                 val conflictCount = doSync(libraryId)
                 val message = if (conflictCount > 0) {
-                    "同步成功，发现 $conflictCount 条冲突待处理"
+                    context.getString(R.string.sync_success_with_conflicts, conflictCount)
                 } else {
-                    "同步成功"
+                    context.getString(R.string.sync_success)
                 }
                 _state.value = SyncUiState.Done(true, message)
                 recordResult(true, message)
@@ -136,7 +139,7 @@ class PlayHistorySyncManager @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "播放历史同步失败", e)
-                val message = e.toUserMessage()
+                val message = e.toUserMessage(context)
                 _state.value = SyncUiState.Done(false, message)
                 recordResult(false, message)
                 false
@@ -146,13 +149,13 @@ class PlayHistorySyncManager @Inject constructor(
 
     private suspend fun doSync(libraryId: Int): Int {
         val library = mediaLibraryDao.getById(libraryId)
-            ?: throw IllegalStateException("未找到所选 WebDAV 服务器")
+            ?: throw IllegalStateException(context.getString(R.string.sync_error_server_not_found))
         val deviceId = PlayHistorySyncSettings.deviceId
         val fileName = "play_history_$deviceId.json"
 
         return withContext(Dispatchers.IO) {
             val storage = storageFactory.create(library)
-                ?: throw IllegalStateException("无法连接 WebDAV 服务器")
+                ?: throw IllegalStateException(context.getString(R.string.sync_error_cannot_connect))
             verifyConnection(storage)
             val now = System.currentTimeMillis()
             var conflictCount = 0
@@ -355,11 +358,16 @@ class PlayHistorySyncManager @Inject constructor(
         try {
             storage.testConnection()
         } catch (e: WebDavHttpException) {
-            throw IllegalStateException(e.friendlyMessage)
+            throw IllegalStateException(context.getString(e.friendlyMessageRes, e.code))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            throw IllegalStateException("无法连接服务器: ${e.message ?: "网络错误"}")
+            throw IllegalStateException(
+                context.getString(
+                    R.string.sync_error_connect_failed,
+                    e.message ?: context.getString(R.string.sync_error_network),
+                ),
+            )
         }
     }
 
@@ -401,10 +409,10 @@ class PlayHistorySyncManager @Inject constructor(
     /** 确保 sync 子目录存在（MKCOL 单级，需逐级创建）。 */
     private suspend fun ensureSyncDirectory(storage: Storage) {
         if (!storage.createDirectory(SYNC_ROOT_DIR)) {
-            throw IllegalStateException("无法创建同步目录 $SYNC_ROOT_DIR")
+            throw IllegalStateException(context.getString(R.string.sync_error_create_dir_failed, SYNC_ROOT_DIR))
         }
         if (!storage.createDirectory(SYNC_SUB_DIR)) {
-            throw IllegalStateException("无法创建同步目录 $SYNC_SUB_DIR")
+            throw IllegalStateException(context.getString(R.string.sync_error_create_dir_failed, SYNC_SUB_DIR))
         }
     }
 
@@ -416,7 +424,7 @@ class PlayHistorySyncManager @Inject constructor(
             "$SYNC_SUB_DIR/$fileName",
             json.toByteArray(Charsets.UTF_8),
         )
-        if (!ok) throw IllegalStateException("上传失败，请检查服务器配置")
+        if (!ok) throw IllegalStateException(context.getString(R.string.sync_error_upload_failed))
 
         // P2-1 上传校验：读回比对内容（Moshi 序列化顺序确定，全等比较可信）。
         // 读回失败仅告警不阻断——瞬时网络抖动不应把一次成功上传标记为失败
@@ -428,7 +436,7 @@ class PlayHistorySyncManager @Inject constructor(
             ) {}
             val readBack = storage.openInputStream(fileRef).use { it.readBytes().toString(Charsets.UTF_8) }
             if (readBack != json) {
-                throw IllegalStateException("上传校验失败：服务端内容不一致")
+                throw IllegalStateException(context.getString(R.string.sync_error_upload_mismatch))
             }
         } catch (e: CancellationException) {
             throw e
@@ -487,8 +495,8 @@ class PlayHistorySyncManager @Inject constructor(
 }
 
 /** 将异常转为面向用户的中文提示。 */
-private fun Throwable.toUserMessage(): String = when (this) {
-    is WebDavHttpException -> friendlyMessage
-    is IllegalStateException -> message ?: "操作失败"
+private fun Throwable.toUserMessage(context: Context): String = when (this) {
+    is WebDavHttpException -> context.getString(friendlyMessageRes, code)
+    is IllegalStateException -> message ?: context.getString(R.string.sync_error_operation_failed)
     else -> message ?: toString()
 }

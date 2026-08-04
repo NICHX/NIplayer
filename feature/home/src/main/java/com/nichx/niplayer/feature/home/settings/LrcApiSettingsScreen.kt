@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,10 +60,10 @@ fun LrcApiSettingsScreen(
     Scaffold(
         topBar = {
             NiTopBar(
-                title = "音乐元数据",
+                title = stringResource(R.string.lrcapi_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
             )
@@ -72,14 +74,14 @@ fun LrcApiSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             SettingsGroupSection(
-                title = "API 接口",
+                title = stringResource(R.string.lrcapi_api_title),
                 icon = Icons.Filled.Link,
                 iconBg = Color(0xFFE91E63),
                 action = {
                     IconButton(onClick = { showHelpDialog = true }) {
                         Icon(
                             imageVector = Icons.Filled.Info,
-                            contentDescription = "帮助",
+                            contentDescription = stringResource(R.string.lrcapi_help),
                             tint = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(18.dp),
                         )
@@ -87,8 +89,8 @@ fun LrcApiSettingsScreen(
                 },
             ) {
                 SettingClickRow(
-                    label = "API 地址",
-                    value = apiUrl.ifEmpty { "未设置" },
+                    label = stringResource(R.string.lrcapi_url_label),
+                    value = apiUrl.ifEmpty { stringResource(R.string.lrcapi_not_set) },
                     onClick = { showApiUrlDialog = true },
                 )
                 HorizontalDivider(
@@ -96,28 +98,28 @@ fun LrcApiSettingsScreen(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 )
                 SettingClickRow(
-                    label = "身份验证",
-                    value = if (apiAuth.isBlank()) "未设置" else "已设置",
+                    label = stringResource(R.string.lrcapi_auth_label),
+                    value = if (apiAuth.isBlank()) stringResource(R.string.lrcapi_not_set) else stringResource(R.string.lrcapi_auth_set),
                     onClick = { showApiAuthDialog = true },
                 )
             }
 
             SettingsGroupSection(
-                title = "说明",
+                title = stringResource(R.string.lrcapi_note_title),
                 icon = Icons.Filled.Info,
                 iconBg = Color(0xFF757575),
             ) {
                 SettingInfoRow(
-                    label = "歌词获取",
-                    value = "播放时自动通过 API 获取",
+                    label = stringResource(R.string.lrcapi_lyrics_label),
+                    value = stringResource(R.string.lrcapi_lyrics_value),
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 56.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 )
                 SettingInfoRow(
-                    label = "封面获取",
-                    value = "浏览及播放时自动回退到 API",
+                    label = stringResource(R.string.lrcapi_cover_label),
+                    value = stringResource(R.string.lrcapi_cover_value),
                 )
             }
         }
@@ -126,19 +128,19 @@ fun LrcApiSettingsScreen(
     if (showApiUrlDialog) {
         var input by rememberSaveable { mutableStateOf(apiUrl) }
         NiInfoDialog(
-            title = "API 地址",
+            title = stringResource(R.string.lrcapi_url_dialog_title),
             onDismiss = { showApiUrlDialog = false },
             actions = {
-                TextButton(onClick = { showApiUrlDialog = false }) { Text("取消") }
+                TextButton(onClick = { showApiUrlDialog = false }) { Text(stringResource(R.string.cancel)) }
                 TextButton(onClick = {
                     apiUrl = input
                     LrcApiSettings.apiUrl = input
                     showApiUrlDialog = false
-                }) { Text("保存") }
+                }) { Text(stringResource(R.string.save)) }
             },
         ) {
             Text(
-                "请输入 lrcapi 服务地址，如 http://192.168.1.100:8080。",
+                stringResource(R.string.lrcapi_url_dialog_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -148,7 +150,7 @@ fun LrcApiSettingsScreen(
                 onValueChange = { input = it },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = "http://192.168.1.100:8080",
-                label = "服务器地址",
+                label = stringResource(R.string.lrcapi_server_label),
             )
         }
     }
@@ -156,19 +158,19 @@ fun LrcApiSettingsScreen(
     if (showApiAuthDialog) {
         var input by rememberSaveable { mutableStateOf(apiAuth) }
         NiInfoDialog(
-            title = "身份验证",
+            title = stringResource(R.string.lrcapi_auth_dialog_title),
             onDismiss = { showApiAuthDialog = false },
             actions = {
-                TextButton(onClick = { showApiAuthDialog = false }) { Text("取消") }
+                TextButton(onClick = { showApiAuthDialog = false }) { Text(stringResource(R.string.cancel)) }
                 TextButton(onClick = {
                     apiAuth = input
                     LrcApiSettings.apiAuth = input
                     showApiAuthDialog = false
-                }) { Text("保存") }
+                }) { Text(stringResource(R.string.save)) }
             },
         ) {
             Text(
-                "如果 API 需要 Authorization header，在此输入 token 值。留空表示不需要验证。",
+                stringResource(R.string.lrcapi_auth_dialog_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -177,7 +179,7 @@ fun LrcApiSettingsScreen(
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = "输入 Authorization token",
+                placeholder = stringResource(R.string.lrcapi_auth_placeholder),
                 label = "Token",
             )
         }
@@ -185,34 +187,34 @@ fun LrcApiSettingsScreen(
 
     if (showHelpDialog) {
         NiInfoDialog(
-            title = "音乐元数据 API",
+            title = stringResource(R.string.lrcapi_help_title),
             onDismiss = { showHelpDialog = false },
         ) {
             Text(
-                "配置 lrcapi 服务后，NIplayer 可在以下场景获取音乐元数据：",
+                stringResource(R.string.lrcapi_help_intro),
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(Modifier.size(12.dp))
             Text(
-                "1. 浏览文件夹时，音频文件无内嵌封面和目录封面时自动回退到 API 获取封面。",
+                stringResource(R.string.lrcapi_help_point1),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
             Spacer(Modifier.size(8.dp))
             Text(
-                "2. 播放音频时，优先加载同目录歌词文件，不存在时通过 API 获取歌词。",
+                stringResource(R.string.lrcapi_help_point2),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
             Spacer(Modifier.size(12.dp))
             Text(
-                "API 接口约定：",
+                stringResource(R.string.lrcapi_help_api_title),
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.size(4.dp))
             Text(
-                "• GET /lyrics?title=&artist=&album=&path=\n• GET /cover?title=&artist=&album=",
+                stringResource(R.string.lrcapi_help_api_body),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )

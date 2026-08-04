@@ -3,9 +3,11 @@ package com.nichx.niplayer.storage.impl
 import android.net.Uri
 import android.util.Log
 import android.util.Xml
+import androidx.annotation.StringRes
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.storage.AbstractStorage
 import com.nichx.niplayer.storage.AbstractStorageFile
+import com.nichx.niplayer.storage.R
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.storage.StorageFile
 import okhttp3.Credentials
@@ -35,7 +37,7 @@ import javax.net.ssl.X509TrustManager
  * 继承 [IOException] 保持与现有 catch 兼容性，调用方可通过 `is WebDavHttpException`
  * 区分 HTTP 错误码与网络异常，决定是否重试。
  *
- * W-N1 / W-N12 修复：[friendlyMessage] 提供面向用户的中文错误提示，
+ * W-N1 / W-N12 修复：[friendlyMessageRes] 提供面向用户的错误提示资源 ID，
  * 调用方（ViewModel）优先使用此属性而非 [message]（含英文技术细节）。
  *
  * 作为顶层类声明（原嵌套在 [WebDavStorage.companion] 中），便于外部模块
@@ -49,7 +51,7 @@ class WebDavHttpException(
     message: String,
 ) : IOException(message) {
     /**
-     * 面向用户的中文错误提示，按 HTTP 响应码分类。
+     * 面向用户的错误提示资源 ID，按 HTTP 响应码分类，调用方用 `context.getString(friendlyMessageRes, code)` 解析。
      *
      * - 401：账号密码错误 → 提示重新编辑存储源
      * - 403：无权限 → 提示检查权限
@@ -57,14 +59,15 @@ class WebDavHttpException(
      * - 5xx：服务器错误 → 提示服务器异常
      * - 其他：通用错误提示
      */
-    val friendlyMessage: String
+    @get:StringRes
+    val friendlyMessageRes: Int
         get() = when (code) {
-            401 -> "账号或密码错误，请编辑存储源重新输入凭据"
-            403 -> "无访问权限，请检查账号权限或共享路径"
-            404 -> "资源不存在，路径可能已删除或移动"
-            in 400..499 -> "请求被服务器拒绝（HTTP $code）"
-            in 500..599 -> "服务器异常，请稍后重试（HTTP $code）"
-            else -> "WebDAV 请求失败（HTTP $code）"
+            401 -> R.string.webdav_error_401
+            403 -> R.string.webdav_error_403
+            404 -> R.string.webdav_error_404
+            in 400..499 -> R.string.webdav_error_4xx
+            in 500..599 -> R.string.webdav_error_5xx
+            else -> R.string.webdav_error_generic
         }
 }
 

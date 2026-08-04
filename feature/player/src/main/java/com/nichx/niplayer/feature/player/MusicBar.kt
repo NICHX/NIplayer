@@ -50,6 +50,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -296,7 +297,7 @@ private fun FloatingMiniPlayerCard(
                     IconButton(onClick = onPrevious, modifier = Modifier.size(24.dp)) {
                         Icon(
                             imageVector = Icons.Filled.SkipPrevious,
-                            contentDescription = "上一曲",
+                            contentDescription = stringResource(R.string.player_previous_track),
                             tint = Color.White,
                             modifier = Modifier.size(15.dp),
                         )
@@ -305,7 +306,7 @@ private fun FloatingMiniPlayerCard(
                     IconButton(onClick = onPlayPause, modifier = Modifier.size(28.dp)) {
                         Icon(
                             imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (isPlaying) "暂停" else "播放",
+                            contentDescription = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
                             tint = Color.White,
                             modifier = Modifier.size(20.dp),
                         )
@@ -314,7 +315,7 @@ private fun FloatingMiniPlayerCard(
                     IconButton(onClick = onNext, modifier = Modifier.size(24.dp)) {
                         Icon(
                             imageVector = Icons.Filled.SkipNext,
-                            contentDescription = "下一曲",
+                            contentDescription = stringResource(R.string.player_next_track),
                             tint = Color.White,
                             modifier = Modifier.size(15.dp),
                         )
@@ -331,7 +332,7 @@ private fun FloatingMiniPlayerCard(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Close,
-                    contentDescription = "关闭",
+                    contentDescription = stringResource(R.string.player_close),
                     tint = Color.White,
                     modifier = Modifier.size(18.dp),
                 )

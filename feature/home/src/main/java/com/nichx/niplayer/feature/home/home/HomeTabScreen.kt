@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.home
 
+import com.nichx.niplayer.feature.home.R
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -186,7 +188,7 @@ fun HomeTabScreen(
                                 style = NiAppIconStyle,
                                 containerSize = 40.dp,
                                 iconSize = 22.dp,
-                                contentDescription = "搜索",
+                                contentDescription = stringResource(R.string.search),
                             )
                         }
                         IconButton(onClick = onNavigateToPlayHistory) {
@@ -195,7 +197,7 @@ fun HomeTabScreen(
                                 style = NiAppIconStyle,
                                 containerSize = 40.dp,
                                 iconSize = 22.dp,
-                                contentDescription = "播放历史",
+                                contentDescription = stringResource(R.string.play_history_title),
                             )
                         }
                         IconButton(onClick = onNavigateToSettings) {
@@ -204,7 +206,7 @@ fun HomeTabScreen(
                                 style = NiAppIconStyle,
                                 containerSize = 40.dp,
                                 iconSize = 22.dp,
-                                contentDescription = "设置",
+                                contentDescription = stringResource(R.string.settings),
                             )
                         }
                     },
@@ -316,8 +318,8 @@ private fun HomeMagazineLayout(
                 item(key = "empty_all") {
                     NiEmptyState(
                         icon = Icons.Rounded.Star,
-                        text = "暂无内容",
-                        hint = "从媒体库添加存储源开始使用",
+                        text = stringResource(R.string.home_empty_title),
+                        hint = stringResource(R.string.home_empty_hint),
                         modifier = Modifier.padding(horizontal = screenOuter),
                     )
                 }
@@ -363,7 +365,7 @@ private fun HomeMagazineLayout(
                 if (recentAudioPlays.isNotEmpty()) {
                     item(key = "recent_audio_header") {
                         NiSectionHeader(
-                            title = "最近播放音乐",
+                            title = stringResource(R.string.home_recent_audio),
                             count = recentAudioPlays.size,
                             onClick = onNavigateToPlayHistory,
                             modifier = Modifier.padding(horizontal = screenOuter),
@@ -387,7 +389,7 @@ private fun HomeMagazineLayout(
                 if (quickAccessItems.isNotEmpty()) {
                     item(key = "qa_header") {
                         NiSectionHeader(
-                            title = "快速访问",
+                            title = stringResource(R.string.quick_access_title),
                             count = quickAccessItems.size,
                             onClick = onNavigateToQuickAccess,
                             modifier = Modifier.padding(horizontal = screenOuter),
@@ -408,7 +410,7 @@ private fun HomeMagazineLayout(
                 if (playlists.isNotEmpty()) {
                     item(key = "playlists_header") {
                         NiSectionHeader(
-                            title = "歌单",
+                            title = stringResource(R.string.home_tab_playlists),
                             count = playlists.size,
                             onClick = onOpenPlaylists,
                             modifier = Modifier.padding(horizontal = screenOuter),
@@ -513,7 +515,7 @@ private fun CinematicHeroBanner(
                     .padding(horizontal = 22.dp, vertical = 18.dp),
             ) {
                 Text(
-                    text = "继续播放",
+                    text = stringResource(R.string.home_continue_play),
                     style = MaterialTheme.typography.labelLarge,
                     color = Color.White.copy(alpha = 0.92f),
                     fontWeight = FontWeight.SemiBold,
@@ -544,7 +546,7 @@ private fun CinematicHeroBanner(
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.PlayArrow,
-                            contentDescription = "播放",
+                            contentDescription = stringResource(R.string.play),
                             tint = Color.White,
                             modifier = Modifier.size(30.dp),
                         )
@@ -567,7 +569,7 @@ private fun CinematicHeroBanner(
                         }
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "继续播放",
+                            text = stringResource(R.string.home_continue_play),
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.6f),
                         )
@@ -624,8 +626,8 @@ private fun HomeSingleColumnLayout(
                 item(key = "empty_all") {
                     NiEmptyState(
                         icon = Icons.Rounded.Star,
-                        text = "暂无内容",
-                        hint = "从媒体库添加存储源开始使用",
+                        text = stringResource(R.string.home_empty_title),
+                        hint = stringResource(R.string.home_empty_hint),
                     )
                 }
             } else {
@@ -673,7 +675,7 @@ private fun HomeSingleColumnLayout(
                     if (recentAudioPlays.isNotEmpty()) {
                         item(key = "recent_audio_header") {
                             NiSectionHeader(
-                                title = "最近播放音乐",
+                                title = stringResource(R.string.home_recent_audio),
                                 count = recentAudioPlays.size,
                                 onClick = onNavigateToPlayHistory,
                             )
@@ -695,8 +697,8 @@ private fun HomeSingleColumnLayout(
                     item(key = "history_empty") {
                         NiEmptyState(
                             icon = Icons.Rounded.History,
-                            text = "暂无播放记录",
-                            hint = "从媒体库选择视频或音乐开始播放",
+                            text = stringResource(R.string.home_no_history),
+                            hint = stringResource(R.string.home_no_history_hint),
                         )
                     }
                 }
@@ -705,7 +707,7 @@ private fun HomeSingleColumnLayout(
             if (quickAccessItems.isNotEmpty()) {
                 item(key = "qa_header") {
                     NiSectionHeader(
-                        title = "快速访问",
+                        title = stringResource(R.string.quick_access_title),
                         count = quickAccessItems.size,
                         onClick = onNavigateToQuickAccess,
                     )
@@ -727,7 +729,7 @@ private fun HomeSingleColumnLayout(
             if (playlists.isNotEmpty()) {
                 item(key = "playlists_header") {
                     NiSectionHeader(
-                        title = "歌单",
+                        title = stringResource(R.string.home_tab_playlists),
                         count = playlists.size,
                         onClick = onOpenPlaylists,
                     )
@@ -905,13 +907,14 @@ private fun HomePlaylistRow(
     }
 }
 
+@Composable
 private fun mediaTypeLabel(type: MediaType): String = when (type) {
-    MediaType.LOCAL_STORAGE -> "本地"
-    MediaType.EXTERNAL_STORAGE -> "设备"
+    MediaType.LOCAL_STORAGE -> stringResource(R.string.storage_type_local)
+    MediaType.EXTERNAL_STORAGE -> stringResource(R.string.storage_type_device)
     MediaType.SMB_SERVER -> "SMB"
     MediaType.WEBDAV_SERVER -> "WebDAV"
-    MediaType.QUICK_ACCESS -> "快捷"
-    else -> "其他"
+    MediaType.QUICK_ACCESS -> stringResource(R.string.storage_type_quick)
+    else -> stringResource(R.string.storage_type_other)
 }
 
 private fun buildThumbnailModel(
@@ -931,6 +934,7 @@ private fun buildThumbnailModel(
     return null
 }
 
+@Composable
 private fun buildHeroThumbnailModel(
     url: String,
     mediaType: MediaType,
@@ -941,7 +945,7 @@ private fun buildHeroThumbnailModel(
     // 英雄卡来自播放历史（已播放），此时仍无缩略图说明生成失败/太短，
     // 标签标为"无缩略图"；未播放过的普通条目不传 label
     val firstChar = fileName.firstOrNull { !it.isWhitespace() }?.toString() ?: "▶"
-    return PlaceholderText(firstChar, label = "无缩略图")
+    return PlaceholderText(firstChar, label = stringResource(R.string.thumbnail_none))
 }
 
 /** 英雄卡轮播自动切换间隔（ms）。 */
@@ -970,7 +974,7 @@ private fun UnreachableBadge(modifier: Modifier = Modifier) {
             .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
         Text(
-            text = "离线",
+            text = stringResource(R.string.home_offline),
             style = MaterialTheme.typography.labelSmall,
             color = Color.White,
             fontWeight = FontWeight.Medium,
@@ -1200,7 +1204,7 @@ private fun HomeQuickAccessGridItem(
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.PlayArrow,
-                                    contentDescription = "播放",
+                                    contentDescription = stringResource(R.string.play),
                                     tint = Color.White,
                                     modifier = Modifier.size(20.dp),
                                 )
@@ -1329,7 +1333,7 @@ private fun HomePlaylistItem(
                 )
             }
             Text(
-                text = "${playlist.itemCount} 个条目",
+                text = stringResource(R.string.home_playlist_count, playlist.itemCount),
                 style = MaterialTheme.typography.labelSmall,
                 color = if (coverUrl != null) Color.White
                 else MaterialTheme.colorScheme.onPrimaryContainer,

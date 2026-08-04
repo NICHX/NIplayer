@@ -1,5 +1,7 @@
 package com.nichx.niplayer.feature.home.settings
 
+import com.nichx.niplayer.feature.home.R
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,7 +65,7 @@ fun SettingsScreen(
     val updateViewModel: UpdateViewModel = hiltViewModel()
 
     Scaffold(
-        topBar = { NiTopBar(title = "设置") },
+        topBar = { NiTopBar(title = stringResource(R.string.home_tab_settings)) },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
@@ -76,7 +79,7 @@ fun SettingsScreen(
             SettingsGroup.entries.forEach { group ->
                 item(key = "group_label_${group.name}") {
                     Text(
-                        text = group.label,
+                        text = stringResource(group.labelRes),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.outline,
                         fontWeight = FontWeight.SemiBold,
@@ -152,7 +155,7 @@ private fun AppInfoCard() {
                         color = MaterialTheme.colorScheme.outline,
                     )
                     Text(
-                        text = " · 编译 $versionCode",
+                        text = stringResource(R.string.settings_build_code, versionCode),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
                     )
@@ -216,14 +219,14 @@ private fun SettingsItemRow(
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = entry.title,
+                text = stringResource(entry.titleRes),
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            entry.subtitle?.let { sub ->
+            entry.subtitleRes?.let { subRes ->
                 Text(
-                    text = sub,
+                    text = stringResource(subRes),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                     maxLines = 1,
@@ -241,101 +244,101 @@ private fun SettingsItemRow(
 }
 
 enum class SettingsGroup(
-    val label: String,
+    @StringRes val labelRes: Int,
     val entries: List<SettingsEntry>,
 ) {
     PLAYBACK(
-        label = "播放",
+        labelRes = R.string.settings_group_playback,
         entries = listOf(SettingsEntry.PLAYER, SettingsEntry.PLAYBACK_STATS, SettingsEntry.LRCAPI, SettingsEntry.SCAN, SettingsEntry.CACHE),
     ),
     STORAGE(
-        label = "存储",
+        labelRes = R.string.settings_group_storage,
         entries = listOf(SettingsEntry.DOWNLOAD, SettingsEntry.BACKUP),
     ),
     APPEARANCE(
-        label = "外观",
+        labelRes = R.string.settings_group_appearance,
         entries = listOf(SettingsEntry.THEME),
     ),
     ABOUT(
-        label = "关于",
+        labelRes = R.string.settings_group_about,
         entries = listOf(SettingsEntry.UPDATE, SettingsEntry.ABOUT),
     ),
 }
 
 enum class SettingsEntry(
     val route: String?,
-    val title: String,
-    val subtitle: String?,
+    @StringRes val titleRes: Int,
+    @StringRes val subtitleRes: Int?,
     val icon: ImageVector,
     val iconBg: Color,
 ) {
     PLAYER(
         route = Routes.User.SETTING_PLAYER,
-        title = "播放器",
-        subtitle = "解码 / 字幕 / 缩略图",
+        titleRes = R.string.settings_entry_player,
+        subtitleRes = R.string.settings_entry_player_sub,
         icon = Icons.Filled.PlayCircleOutline,
         iconBg = Color(0xFF2095F4),
     ),
     PLAYBACK_STATS(
         route = Routes.User.PLAYBACK_STATS,
-        title = "播放统计",
-        subtitle = "观看时长 / 播放次数 / 来源分布",
+        titleRes = R.string.settings_entry_playback_stats,
+        subtitleRes = R.string.settings_entry_playback_stats_sub,
         icon = Icons.Filled.BarChart,
         iconBg = Color(0xFF26A69A),
     ),
     LRCAPI(
         route = Routes.User.LRCAPI,
-        title = "音乐元数据",
-        subtitle = "歌词 / 封面 API 配置",
+        titleRes = R.string.settings_entry_lrcapi,
+        subtitleRes = R.string.settings_entry_lrcapi_sub,
         icon = Icons.Filled.Link,
         iconBg = Color(0xFFE91E63),
     ),
     SCAN(
         route = Routes.User.SCAN_MANAGER,
-        title = "扫描目录",
-        subtitle = "配置扫描路径和屏蔽目录",
+        titleRes = R.string.settings_entry_scan,
+        subtitleRes = R.string.settings_entry_scan_sub,
         icon = Icons.Filled.Search,
         iconBg = Color(0xFF9C27B0),
     ),
     CACHE(
         route = Routes.User.CACHE_MANAGER,
-        title = "缓存管理",
-        subtitle = "播放缓存 / 字幕缓存",
+        titleRes = R.string.settings_entry_cache,
+        subtitleRes = R.string.settings_entry_cache_sub,
         icon = Icons.Filled.Cached,
         iconBg = Color(0xFFFF6D00),
     ),
     DOWNLOAD(
         route = Routes.Stream.DOWNLOAD_MANAGER,
-        title = "下载管理",
-        subtitle = "下载队列 / 已完成 / 管理中",
+        titleRes = R.string.settings_entry_download,
+        subtitleRes = R.string.settings_entry_download_sub,
         icon = Icons.Filled.ArrowDownward,
         iconBg = Color(0xFF43A047),
     ),
     BACKUP(
         route = Routes.User.BACKUP,
-        title = "备份与恢复",
-        subtitle = "导出 / 恢复用户数据",
+        titleRes = R.string.settings_entry_backup,
+        subtitleRes = R.string.settings_entry_backup_sub,
         icon = Icons.Filled.Restore,
         iconBg = Color(0xFF546E7A),
     ),
     THEME(
         route = Routes.User.SWITCH_THEME,
-        title = "主题",
-        subtitle = "浅色 / 暗色 / 跟随系统",
+        titleRes = R.string.settings_entry_theme,
+        subtitleRes = R.string.settings_entry_theme_sub,
         icon = Icons.Filled.Palette,
         iconBg = Color(0xFF00ACC1),
     ),
     UPDATE(
         route = null,
-        title = "检查更新",
-        subtitle = "检测 GitHub 最新版本并在线更新",
+        titleRes = R.string.settings_entry_update,
+        subtitleRes = R.string.settings_entry_update_sub,
         icon = Icons.Filled.SystemUpdate,
         iconBg = Color(0xFF00897B),
     ),
     ABOUT(
         route = Routes.User.ABOUT,
-        title = "关于 NIplayer",
-        subtitle = "版本 / 开源依赖",
+        titleRes = R.string.settings_entry_about,
+        subtitleRes = R.string.settings_entry_about_sub,
         icon = Icons.Filled.Info,
         iconBg = Color(0xFF757575),
     ),

@@ -24,6 +24,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.designsystem.components.NiBottomBar
@@ -66,7 +67,7 @@ fun HomeScreen(
     val tabs = HomeTab.entries.map { tab ->
         NiBottomBarTab(
             route = tab.route,
-            label = tab.label,
+            label = stringResource(tab.labelRes),
             selectedIcon = tab.selectedIcon,
             unselectedIcon = tab.unselectedIcon,
         )

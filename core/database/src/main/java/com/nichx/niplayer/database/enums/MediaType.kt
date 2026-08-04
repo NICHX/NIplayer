@@ -1,5 +1,8 @@
 package com.nichx.niplayer.database.enums
 
+import androidx.annotation.StringRes
+import com.nichx.niplayer.database.R
+
 /**
  * 媒体库类型枚举。
  *
@@ -11,18 +14,19 @@ package com.nichx.niplayer.database.enums
  * - `toAction()`：返回 SheetActionBean，UI 层职责
  *
  * [sortOrder] 用于媒体库页面按类型分组排序的优先级。
+ * [storageNameRes] 为类型展示名称资源 ID（i18n，见 core/database res）。
  */
 enum class MediaType(
     val value: String,
-    val storageName: String,
+    @StringRes val storageNameRes: Int,
     val sortOrder: Int,
 ) {
-    LOCAL_STORAGE("local_storage", "本地视频库", 0),
-    EXTERNAL_STORAGE("external_storage", "设备存储库", 1),
-    SMB_SERVER("smb_server", "SMB服务器", 2),
-    WEBDAV_SERVER("webdav_server", "WebDav服务器", 3),
-    OTHER_STORAGE("other_storage", "外部服务器", 4),
-    QUICK_ACCESS("quick_access", "快速访问", 5);
+    LOCAL_STORAGE("local_storage", R.string.media_type_local, 0),
+    EXTERNAL_STORAGE("external_storage", R.string.media_type_external, 1),
+    SMB_SERVER("smb_server", R.string.media_type_smb, 2),
+    WEBDAV_SERVER("webdav_server", R.string.media_type_webdav, 3),
+    OTHER_STORAGE("other_storage", R.string.media_type_other, 4),
+    QUICK_ACCESS("quick_access", R.string.media_type_quick_access, 5);
 
     companion object {
         fun fromValue(value: String): MediaType {
