@@ -84,9 +84,9 @@ fun NiHeroResumeCard(
     val overlayBg = remember {
         Brush.verticalGradient(
             0f to Color.Transparent,
-            0.35f to Color.Black.copy(alpha = 0.3f),
-            0.7f to Color.Black.copy(alpha = 0.6f),
-            1f to Color.Black.copy(alpha = 0.85f),
+            0.45f to Color.Transparent,
+            0.78f to Color.Black.copy(alpha = 0.25f),
+            1f to Color.Black.copy(alpha = 0.55f),
         )
     }
 

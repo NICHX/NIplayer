@@ -364,8 +364,12 @@ class SmbStorage(
     private suspend fun openMediaDataSourceInternal(file: StorageFile): SmbMediaDataSource? {
         ensureShare()
         val url = buildSmbUrl(file.path)
-        if (file.length <= 0) return null
-        return SmbMediaDataSource(smbContext, url, file.length)
+        // file.length 可能为 0（播放退出时用 createVirtualFile 构造的虚拟文件未传 size），
+        // 此时用 SmbFile 查询真实文件大小，避免 MediaDataSource 无法打开导致缩略图生成失败。
+        val size = if (file.length > 0) file.length
+        else runCatching { SmbFile(url, smbContext).length() }.getOrDefault(-1L)
+        if (size <= 0) return null
+        return SmbMediaDataSource(smbContext, url, size)
     }
 
     override suspend fun fileExists(path: String): Boolean {
