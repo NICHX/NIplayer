@@ -498,8 +498,8 @@ private fun CinematicHeroBanner(
                 .background(
                     Brush.horizontalGradient(
                         listOf(
-                            Color.Black.copy(alpha = 0.5f),
-                            Color.Black.copy(alpha = 0.12f),
+                            Color.Black.copy(alpha = 0.32f),
+                            Color.Black.copy(alpha = 0.06f),
                         ),
                     ),
                 ),

@@ -202,8 +202,8 @@ class PlayerViewModel @Inject constructor(
      *
      * HDR 播放（Dolby Vision / HDR10 / HLG）跳过抓帧：SurfaceView 表面是 10-bit
      * HDR buffer，PixelCopy 抓取在部分设备上返回损坏数据（白屏 + 品红块），
-     * 由 [onCleared] 走 [ThumbnailManager.generateThumbnailAtMs]（getFrameAtTime +
-     * 系统/软件 tone map）生成正确色彩。
+     * 由 [onCleared] 走 [ThumbnailManager.generateThumbnailAtMs]：getFrameAtTime 在
+     * API 34+ 由系统自动 tone map HDR→SDR，生成缩略图颜色正确（用户实测确认）。
      *
      * storageId 为 null（如本地文件）时返回 false，与 [onCleared] 生成条件一致
      * （无存储源不生成缩略图）。
@@ -213,6 +213,9 @@ class PlayerViewModel @Inject constructor(
         if (!ThumbnailSettings.generateThumbnail || !ThumbnailSettings.generateForVideo) return false
         val sid = currentHistory?.storageId ?: return false
         if (!ThumbnailSettings.shouldGenerateOnPlayback(sid)) return false
+        // HDR 拦截：PixelCopy 从 10-bit HDR SurfaceView 抓帧拿到的是未 tone map 的
+        // PQ/BT.2020 原始像素（亮部偏粉/暗部偏绿），HDR 走 getFrameAtTime（API 34+
+        // 系统自动 tone map，颜色正确）
         if (player.mediaInfo.value?.hdrType != null) return false
         return true
     }
@@ -1755,9 +1758,12 @@ class PlayerViewModel @Inject constructor(
         audioPlaybackManager.onTrackChanged = null
 
         // HDR 播放已在 shouldCaptureThumbnailOnExit 中拦截（PixelCopy 对 HDR surface
-        // 抓帧不可靠，走 getFrameAtTime 路径），lastFrameBitmap 为 null 时此处不会执行；
-        // 快照 HDR 标志仅为防御性传递（player.release() 会清空 mediaInfo）。
-        val isHdrPlayback = player.mediaInfo.value?.hdrType != null
+        // 抓帧不可靠），lastFrameBitmap 为 null 时此处不会执行；快照 HDR 标志仅为
+        // 防御性传递（player.release() 会清空 mediaInfo）。
+        // DV / HDR10 / HLG 均走 generateThumbnailAtMs：getFrameAtTime 在 API 34+ 由
+        // 系统自动 tone map HDR→SDR，生成缩略图颜色正确（用户实测确认）。
+        val hdrTypePlayback = player.mediaInfo.value?.hdrType
+        val isHdrPlayback = hdrTypePlayback != null
 
         // 音频走 AudioPlaybackManager 的 ExoPlayer，视频走 NxPlayer；分别读取对应进度
         val position = if (isAudioPlayback) audioPlaybackManager.positionMs.value else player.positionMs.value
@@ -1837,24 +1843,29 @@ class PlayerViewModel @Inject constructor(
                             val file = MediaSourceBuilder.createVirtualFile(filePath, fileName)
 
                             val bitmap = lastFrameBitmap
-                            if (bitmap != null) {
-                                // HDR 修复：Dolby Vision / HDR10 / HLG 的 Surface 捕获是原始
-                                // PQ/HLG 像素，需软件补偿后再保存，否则首页缩略图色彩失真
-                                thumbnailManager.saveThumbnailFromBitmap(
-                                    storageId = storageId,
-                                    file = file,
-                                    bitmap = bitmap,
-                                    isHdr = isHdrPlayback,
-                                )
-                                // BUG-P4 修复：不手动 recycle，置 null 交给 GC 回收。
-                                // 原 bitmap.recycle() 与 UI 层 dispose 存在竞态：
-                                // PlayerScreen 在 onDispose 中通过 PixelCopy 截图并 setLastFrameBitmap，
-                                // 若 onCleared 的 recycle 先于 Compose 完成对 bitmap 的最后一次绘制，
-                                // 会触发 "Cannot draw a recycled Bitmap" IllegalStateException。
-                                // Bitmap 的 native 内存由 GC 最终回收，延迟回收的内存开销可接受。
-                                lastFrameBitmap = null
-                            } else {
-                                thumbnailManager.generateThumbnailAtMs(storage, storageId, file, position)
+                            when {
+                                // DV / HDR10 / HLG：getFrameAtTime 在 API 34+ 由系统自动
+                                // tone map HDR→SDR，生成的缩略图颜色正确（用户实测确认），
+                                // 走 generateThumbnailAtMs 而非 PixelCopy（后者抓 HDR buffer 偏色）
+                                bitmap != null -> {
+                                    // HDR 修复：Dolby Vision / HDR10 / HLG 的 Surface 捕获是原始
+                                    // PQ/HLG 像素，需软件补偿后再保存，否则首页缩略图色彩失真
+                                    thumbnailManager.saveThumbnailFromBitmap(
+                                        storageId = storageId,
+                                        file = file,
+                                        bitmap = bitmap,
+                                        isHdr = isHdrPlayback,
+                                    )
+                                    // BUG-P4 修复：不手动 recycle，置 null 交给 GC 回收。
+                                    // 原 bitmap.recycle() 与 UI 层 dispose 存在竞态：
+                                    // PlayerScreen 在 onDispose 中通过 PixelCopy 截图并 setLastFrameBitmap，
+                                    // 若 onCleared 的 recycle 先于 Compose 完成对 bitmap 的最后一次绘制，
+                                    // 会触发 "Cannot draw a recycled Bitmap" IllegalStateException。
+                                    // Bitmap 的 native 内存由 GC 最终回收，延迟回收的内存开销可接受。
+                                    lastFrameBitmap = null
+                                }
+                                else ->
+                                    thumbnailManager.generateThumbnailAtMs(storage, storageId, file, position)
                             }
                             // BUG-T-m5 修复：上传到服务端 .thumb/ 目录，跨设备复用
                             // uploadThumbnail 内部会检查 saveInSameDir 和 cacheFile.exists()，
