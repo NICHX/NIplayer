@@ -31,6 +31,7 @@ object ThumbnailSettings {
     private const val KEY_SAVE_IN_SAME_DIR = "save_in_same_dir"
     private const val KEY_FRAME_POSITION = "thumbnail_frame_position"
     private const val KEY_CUSTOM_POSITION_SECONDS = "thumbnail_custom_position_seconds"
+    private const val KEY_UPDATE_ON_EXIT = "thumbnail_update_on_exit"
 
     /** 总开关：是否生成缩略图。默认 true。 */
     var generateThumbnail: Boolean
@@ -66,6 +67,17 @@ object ThumbnailSettings {
     var customPositionSeconds: Int
         get() = mmkv.decodeInt(KEY_CUSTOM_POSITION_SECONDS, 10)
         set(value) { mmkv.encode(KEY_CUSTOM_POSITION_SECONDS, value) }
+
+    /**
+     * 退出播放后是否用最后一帧更新列表缩略图。默认 false（保持默认缩略图）。
+     *
+     * 开启后退出播放时把缩略图替换为播放最后一帧的画面。HDR 视频（Dolby
+     * Vision / HDR10 / HLG）的最后一帧需要 MediaMetadataRetriever 远程重新取帧
+     * （系统 tone map 后颜色才正确），退出后缩略图更新会有一段时间延迟。
+     */
+    var updateOnExit: Boolean
+        get() = mmkv.decodeBool(KEY_UPDATE_ON_EXIT, false)
+        set(value) { mmkv.encode(KEY_UPDATE_ON_EXIT, value) }
 
     // ---------- 生成策略 ----------
 

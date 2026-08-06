@@ -86,6 +86,7 @@ fun PlayerSettingsScreen(
     var generateForImage by remember { mutableStateOf(ThumbnailSettings.generateForImage) }
     var generateForAudio by remember { mutableStateOf(ThumbnailSettings.generateForAudio) }
     var saveInSameDir by remember { mutableStateOf(ThumbnailSettings.saveInSameDir) }
+    var updateOnExit by remember { mutableStateOf(ThumbnailSettings.updateOnExit) }
     var framePositionKey by remember { mutableStateOf(ThumbnailSettings.framePositionKey) }
     var customPositionSeconds by remember { mutableStateOf(ThumbnailSettings.customPositionSeconds) }
     var generationMode by remember { mutableStateOf(ThumbnailSettings.generationMode) }
@@ -256,6 +257,16 @@ fun PlayerSettingsScreen(
                         onCheckedChange = {
                             saveInSameDir = it
                             ThumbnailSettings.saveInSameDir = it
+                        },
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    SettingSwitchRow(
+                        label = stringResource(R.string.player_thumbnail_update_on_exit),
+                        description = stringResource(R.string.player_thumbnail_update_on_exit_desc),
+                        checked = updateOnExit,
+                        onCheckedChange = {
+                            updateOnExit = it
+                            ThumbnailSettings.updateOnExit = it
                         },
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))

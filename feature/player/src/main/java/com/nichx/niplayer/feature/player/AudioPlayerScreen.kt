@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,6 +59,7 @@ import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.showNiMessage
+import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -894,13 +894,14 @@ private fun TopBarActions(
     }
 
     // 菜单卡片样式：与 NiPopupMenu 一致的磨砂玻璃风格（20dp 大圆角 + 半透明背景 + 细边框 + 阴影）
+    // 基于应用主题（NiExtraColors.current.isDark）而非系统主题，保证强制浅色/深色时菜单与页面一致
     val menuShape = RoundedCornerShape(20.dp)
-    val menuSurfaceColor = if (isSystemInDarkTheme()) {
+    val menuSurfaceColor = if (NiExtraColors.current.isDark) {
         Color(0xFF2C2C2E).copy(alpha = 0.95f)
     } else {
         Color.White.copy(alpha = 0.94f)
     }
-    val menuBorderColor = if (isSystemInDarkTheme()) {
+    val menuBorderColor = if (NiExtraColors.current.isDark) {
         Color.White.copy(alpha = 0.10f)
     } else {
         Color.Black.copy(alpha = 0.08f)

@@ -96,8 +96,8 @@
     <string name="backup_load_failed">Failed to read backup: %1$s</string>
     <string name="backup_webdav_restore_failed">Failed to restore from server: %1$s</string>
     <string name="backup_restore_failed">Restore failed: %1$s</string>
-    <string name="backup_restore_confirm_body">Restore from this file? Your current settings will be overwritten.</string>
-    <string name="backup_webdav_restore_confirm_body">Restore “%1$s” from the server? Your current settings will be overwritten.</string>
+    <string name="backup_restore_confirm_body">This will restore all app settings from the selected file, including media libraries, quick access, video bookmarks, extended folders, encrypted folders, playlists and tracks, and theme/player/subtitle/equalizer/thumbnail/file browser settings. Default merge mode: backup items overwrite same-key entries while local-only data is kept. Play history is not affected. This action cannot be undone. Continue?</string>
+    <string name="backup_webdav_restore_confirm_body">This will download “%1$s” from the server and restore all app settings, including media libraries, quick access, video bookmarks, extended folders, encrypted folders, playlists and tracks, and theme/player/subtitle/equalizer/thumbnail/file browser settings. Default merge mode: backup items overwrite same-key entries while local-only data is kept. Play history is not affected. This action cannot be undone. Continue?</string>
     <string name="backup_last_sync_success">Last synced: %1$s</string>
     <string name="backup_last_sync_with_message">Last synced: %1$s (%2$s)</string>
     <string name="backup_error_create_dir">Cannot create backup directory: %1$s</string>
@@ -670,6 +670,8 @@
     <string name="player_thumbnail_audio_desc">Extract embedded artwork from audio files</string>
     <string name="player_thumbnail_upload">Save to server</string>
     <string name="player_thumbnail_upload_desc">Write thumbnails back to the .thumb/ directory for remote storages</string>
+    <string name="player_thumbnail_update_on_exit">Update cover on exit</string>
+    <string name="player_thumbnail_update_on_exit_desc">Update the list thumbnail with the last frame after playback ends. HDR videos (Dolby Vision / HDR10 / HLG) require re-extracting the frame, so the update may be delayed</string>
     <string name="player_thumbnail_timing">Generation timing</string>
     <string name="player_thumbnail_frame">Frame position</string>
     <string name="player_storage_thumbnail_title">Storage thumbnails</string>

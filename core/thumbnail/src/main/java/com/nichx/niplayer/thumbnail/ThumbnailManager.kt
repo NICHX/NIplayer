@@ -647,34 +647,64 @@ class ThumbnailManager @Inject constructor(
             "generateThumbnailAtMs 要求视频文件，收到 ${file.name}"
         }
         val cacheFile = File(cacheDir, "${md5("$storageId-${file.path}")}.jpg")
-        cacheFile.delete()
+        // R2 修复：不再先删除旧缓存。改为先写临时文件，取帧成功后才原子覆盖正式缓存；
+        // 失败/超时时清理临时文件并保留旧图，避免远程取帧失败导致浏览时已生成的
+        // 缩略图被删除（UI 退回占位符）。tmp 文件残留由 trimCacheIfNeeded 兜底清理。
+        val tmpFile = File(cacheDir, "${cacheFile.nameWithoutExtension}.tmp.jpg")
 
         // BUG-08 修复：用 withLock 替代 lock + finally { unlock }
         // BUG-08 补充：withLock 内用 return@withLock，trimCacheIfNeeded 在所有路径执行。
         val mutex = getMutex(cacheFile.name)
-        val result = mutex.withLock {
+        val rawResult = mutex.withLock {
             // BUG-T-m9 修复：本地视频跳过 <15s 时长检查，始终生成缩略图
             val skipDurationCheck = storage.library.mediaType == MediaType.LOCAL_STORAGE
 
             val url = storage.createPlayUrl(file)
             if (url != null && (url.startsWith("file") || url.startsWith("content"))) {
-                generateFromUrlAt(url, cacheFile, positionMs, skipDurationCheck)
+                generateFromUrlAt(url, tmpFile, positionMs, skipDurationCheck)
             } else if (url != null && url.startsWith("http", ignoreCase = true)) {
-                val headers = storage.getPlayHeaders()
-                if (headers.isNotEmpty()) {
-                    val r = generateFromUrlAt(url, headers, cacheFile, positionMs, skipDurationCheck)
-                    if (r is ThumbnailResult.Success) return@withLock r
+                // R3 修复：与 generateThumbnail 的 W-M6 门控对称——自签 HTTPS 证书场景
+                // （storage.trustAllCertificates=true）下 URL+Headers 走系统 HTTP 栈必失败，
+                // 直接跳过该路径走 MediaDataSource，避免退出播放时每次先发一次必失败请求
+                if (!storage.trustAllCertificates) {
+                    val headers = storage.getPlayHeaders()
+                    if (headers.isNotEmpty()) {
+                        val r = generateFromUrlAt(url, headers, tmpFile, positionMs, skipDurationCheck)
+                        if (r is ThumbnailResult.Success) return@withLock r
+                    }
                 }
                 val dataSource = storage.openMediaDataSource(file)
                 if (dataSource != null) {
-                    generateFromDataSourceAt(dataSource, cacheFile, positionMs, skipDurationCheck)
+                    generateFromDataSourceAt(dataSource, tmpFile, positionMs, skipDurationCheck)
                 } else {
-                    generateFromUrlAt(url, cacheFile, positionMs, skipDurationCheck)
+                    generateFromUrlAt(url, tmpFile, positionMs, skipDurationCheck)
                 }
             } else {
                 val dataSource = storage.openMediaDataSource(file)
                 if (dataSource == null) return@withLock ThumbnailResult.Failed
-                generateFromDataSourceAt(dataSource, cacheFile, positionMs, skipDurationCheck)
+                generateFromDataSourceAt(dataSource, tmpFile, positionMs, skipDurationCheck)
+            }
+        }
+        // R2 修复：成功 → 临时文件原子覆盖正式缓存（路径更新为正式缓存路径）；
+        // 失败 → 清理临时文件，保留旧图
+        val result = when (rawResult) {
+            is ThumbnailResult.Success -> {
+                if (tmpFile.exists()) {
+                    if (tmpFile.renameTo(cacheFile)) {
+                        ThumbnailResult.Success(cacheFile.absolutePath)
+                    } else {
+                        // rename 失败（同目录极少发生）：清理临时文件，返回失败保留旧图
+                        tmpFile.delete()
+                        ThumbnailResult.Failed
+                    }
+                } else {
+                    // 未写临时文件（取帧成功但文件已存在等边界），直接使用返回结果
+                    rawResult
+                }
+            }
+            else -> {
+                tmpFile.delete()
+                rawResult
             }
         }
         // BUG-T7 修复：生成后检查缓存目录大小，超出阈值时淘汰最旧文件
@@ -1542,10 +1572,18 @@ class ThumbnailManager @Inject constructor(
      * - 全部生成（默认）：
      *   - 视频组：先 [preloadThumbnails] 预加载服务端 `.thumb/` 缓存，
      *     剩余项用 [Semaphore] 并发调用 [generateThumbnail] 取帧，
-     *     生成成功后异步 [uploadThumbnail] 上传到服务端（BUG-T-M2 修复）
+     *     生成成功后同步等待 [uploadThumbnail] 上传到服务端（BUG-T-M2 修复）
      *   - 音频组：先 [preloadAudioCovers] 预加载服务端 `.cover/` 缓存（BUG-T-M2 修复），
      *     剩余项用 [Semaphore] 并发调用 [generateAudioCover] 提取内嵌专辑封面，
-     *     生成成功后异步 [uploadAudioCover] 上传到服务端（BUG-T-M2 修复）
+     *     生成成功后同步等待 [uploadAudioCover] 上传到服务端（BUG-T-M2 修复）
+     *
+     * R6 修复：取帧与上传均以 [coroutineScope] 结构化并发等待完成后再返回，
+     * 消除原 fire-and-forget（`withContext` 不等待其子协程）导致的两个问题：
+     * 1) 调用方 `finally` 提前 [Storage.close] 后，迟到协程的 SMB/WebDAV 取帧失败；
+     * 2) 晚到的 [onLoaded] 写入 batchAccumulator 后 flusher 已取消，本次会话首刷不显示。
+     *
+     * R7 修复：失败项（过短 / 401 / 403 / 临时网络错误 / 无内嵌封面）写入进程内
+     * TTL 冷却表，冷却期内跳过重复生成，避免每次刷新列表都对同一文件重复远程读取。
      *
      * @param storage 存储协议实现（调用方负责按 storageId 分组并创建实例）
      * @param requests 同一存储源的缩略图请求列表
@@ -1566,9 +1604,15 @@ class ThumbnailManager @Inject constructor(
         val browseGenerationAllowed = mode == ThumbnailGenerationMode.ALL
         if (mode == ThumbnailGenerationMode.OFF) return@withContext
 
+        // R7 修复：过滤近期失败项（401/403 永久失败、<15s 过短、临时网络错误等），
+        // 避免每次刷新列表都对同一失败文件重复发起远程读取（重试风暴与网盘封控风险）。
+        // 失败标记为进程内 TTL 内存表，到期后自动恢复重试；清理缓存后手动刷新亦会恢复。
+        val pendingRequests = requests.filter { !hasRecentFailure(storageId, it) }
+        if (pendingRequests.isEmpty()) return@withContext
+
         // ---- 视频缩略图 ----
         if (ThumbnailSettings.generateForVideo) {
-            val videoGroup = requests.filter { !it.isAudio }
+            val videoGroup = pendingRequests.filter { !it.isAudio }
             if (videoGroup.isNotEmpty()) {
                 // Step 1: 预加载服务端 .thumb/ 缩略图
                 val videoFiles = videoGroup.map { req ->
@@ -1594,50 +1638,63 @@ class ThumbnailManager @Inject constructor(
                     val semaphore = Semaphore(concurrency)
                     // BUG-T-M2 修复：收集生成成功的 file 用于上传
                     val successFiles = java.util.Collections.synchronizedList(mutableListOf<StorageFile>())
-                    for (req in remaining) {
-                        launch {
-                            semaphore.withPermit {
-                                try {
-                                    val file = object : AbstractStorageFile(
-                                        path = req.filePath,
-                                        name = req.fileName,
-                                        isDirectory = false,
-                                    ) {}
-                                    when (val result = generateThumbnail(
-                                        storage, storageId, file,
-                                        positionKey = ThumbnailSettings.framePositionKey,
-                                        customSeconds = ThumbnailSettings.customPositionSeconds,
-                                    )) {
-                                        is ThumbnailResult.Success -> {
-                                            onLoaded(req.url, result.path)
-                                            successFiles.add(file)
+                    // R6 修复：coroutineScope 结构化并发——等待本组全部生成完成后再返回。
+                    // 原 launch 直接挂在 withContext 的 block scope 下（withContext 不等待
+                    // 子协程），导致：1) 调用方 finally 提前 storage.close()，迟到协程取帧
+                    // 失败（SMB session / WebDAV 连接已断）；2) 晚到的 onLoaded 写入
+                    // batchAccumulator 后 flusher 已 cancel，本次 UI 会话首刷不显示。
+                    coroutineScope {
+                        for (req in remaining) {
+                            launch {
+                                semaphore.withPermit {
+                                    try {
+                                        val file = object : AbstractStorageFile(
+                                            path = req.filePath,
+                                            name = req.fileName,
+                                            isDirectory = false,
+                                        ) {}
+                                        when (val result = generateThumbnail(
+                                            storage, storageId, file,
+                                            positionKey = ThumbnailSettings.framePositionKey,
+                                            customSeconds = ThumbnailSettings.customPositionSeconds,
+                                        )) {
+                                            is ThumbnailResult.Success -> {
+                                                onLoaded(req.url, result.path)
+                                                successFiles.add(file)
+                                            }
+                                            // R7 修复：失败分类标记，TTL 内跳过重复重试。
+                                            // 过短/401/403 为确定性失败，长 TTL；其余临时失败短 TTL
+                                            is ThumbnailResult.TooShort ->
+                                                markFailure(storageId, req, FAILURE_RETRY_LONG_MS)
+                                            is ThumbnailResult.PermanentFailure ->
+                                                markFailure(storageId, req, FAILURE_RETRY_LONG_MS)
+                                            is ThumbnailResult.Failed ->
+                                                markFailure(storageId, req, FAILURE_RETRY_SHORT_MS)
                                         }
-                                        else -> {}
+                                    } catch (e: Exception) {
+                                        // m-12 修复：原 `catch (_: Exception) {}` 完全静默
+                                        Log.w(TAG, "generateRemoteThumbnails video generate failed: ${e.message}", e)
                                     }
-                                } catch (e: Exception) {
-                                    // m-12 修复：原 `catch (_: Exception) {}` 完全静默
-                                    Log.w(TAG, "generateRemoteThumbnails video generate failed: ${e.message}", e)
                                 }
                             }
                         }
                     }
 
-                    // BUG-T-M2 修复：Step 3 - 异步上传新生成的缩略图到服务端 .thumb/
+                    // BUG-T-M2 修复：Step 3 - 上传新生成的缩略图到服务端 .thumb/
                     // uploadThumbnail 内部已应用 BUG-T-C1 fileExists 检查，不覆盖服务端已有文件
+                    // R6 修复：coroutineScope 等待上传完成，原因同 Step 2（storage 生命周期归调用方）
                     if (ThumbnailSettings.saveInSameDir && successFiles.isNotEmpty()) {
                         val uploadConcurrency = minOf(storage.thumbnailConcurrency, successFiles.size)
                         val uploadSemaphore = Semaphore(uploadConcurrency)
-                        launch {
-                            coroutineScope {
-                                for (file in successFiles) {
-                                    launch {
-                                        uploadSemaphore.withPermit {
-                                            try {
-                                                uploadThumbnail(storage, file)
-                                            } catch (e: Exception) {
-                                                // m-12 修复：原 `catch (_: Exception) {}` 完全静默
-                                                Log.w(TAG, "generateRemoteThumbnails uploadThumbnail failed: ${e.message}", e)
-                                            }
+                        coroutineScope {
+                            for (file in successFiles) {
+                                launch {
+                                    uploadSemaphore.withPermit {
+                                        try {
+                                            uploadThumbnail(storage, file)
+                                        } catch (e: Exception) {
+                                            // m-12 修复：原 `catch (_: Exception) {}` 完全静默
+                                            Log.w(TAG, "generateRemoteThumbnails uploadThumbnail failed: ${e.message}", e)
                                         }
                                     }
                                 }
@@ -1650,7 +1707,7 @@ class ThumbnailManager @Inject constructor(
 
         // ---- 音频封面 ----
         if (ThumbnailSettings.generateForAudio) {
-            val audioGroup = requests.filter { it.isAudio }
+            val audioGroup = pendingRequests.filter { it.isAudio }
             if (audioGroup.isNotEmpty()) {
                 // BUG-T-M2 修复：Step 1 - 预加载服务端 .cover/ 封面缓存
                 val audioFiles = audioGroup.map { req ->
@@ -1677,44 +1734,49 @@ class ThumbnailManager @Inject constructor(
                     val semaphore = Semaphore(concurrency)
                     // BUG-T-M2 修复：收集生成成功的 file 用于上传
                     val successFiles = java.util.Collections.synchronizedList(mutableListOf<StorageFile>())
-                    for (req in remaining) {
-                        launch {
-                            semaphore.withPermit {
-                                try {
-                                    val file = object : AbstractStorageFile(
-                                        path = req.filePath,
-                                        name = req.fileName,
-                                        isDirectory = false,
-                                    ) {}
-                                    val path = generateAudioCover(storage, storageId, file)
-                                    if (path != null) {
-                                        onLoaded(req.url, path)
-                                        successFiles.add(file)
+                    // R6 修复：coroutineScope 结构化并发，等待本组全部完成（原因同视频组）
+                    coroutineScope {
+                        for (req in remaining) {
+                            launch {
+                                semaphore.withPermit {
+                                    try {
+                                        val file = object : AbstractStorageFile(
+                                            path = req.filePath,
+                                            name = req.fileName,
+                                            isDirectory = false,
+                                        ) {}
+                                        val path = generateAudioCover(storage, storageId, file)
+                                        if (path != null) {
+                                            onLoaded(req.url, path)
+                                            successFiles.add(file)
+                                        } else {
+                                            // R7 修复：提取失败标记短 TTL，避免无封面音频每次刷新重复读取
+                                            markFailure(storageId, req, FAILURE_RETRY_SHORT_MS)
+                                        }
+                                    } catch (e: Exception) {
+                                        // m-12 修复：原 `catch (_: Exception) {}` 完全静默
+                                        Log.w(TAG, "generateRemoteThumbnails audio generate failed: ${e.message}", e)
                                     }
-                                } catch (e: Exception) {
-                                    // m-12 修复：原 `catch (_: Exception) {}` 完全静默
-                                    Log.w(TAG, "generateRemoteThumbnails audio generate failed: ${e.message}", e)
                                 }
                             }
                         }
                     }
 
-                    // BUG-T-M2 修复：Step 3 - 异步上传新生成的封面到服务端 .cover/
+                    // BUG-T-M2 修复：Step 3 - 上传新生成的封面到服务端 .cover/
                     // uploadAudioCover 内部已应用 BUG-T-C1 fileExists 检查
+                    // R6 修复：coroutineScope 等待上传完成（原因同视频组）
                     if (ThumbnailSettings.saveInSameDir && successFiles.isNotEmpty()) {
                         val uploadConcurrency = minOf(storage.thumbnailConcurrency, successFiles.size)
                         val uploadSemaphore = Semaphore(uploadConcurrency)
-                        launch {
-                            coroutineScope {
-                                for (file in successFiles) {
-                                    launch {
-                                        uploadSemaphore.withPermit {
-                                            try {
-                                                uploadAudioCover(storage, file)
-                                            } catch (e: Exception) {
-                                                // m-12 修复：原 `catch (_: Exception) {}` 完全静默
-                                                Log.w(TAG, "generateRemoteThumbnails uploadAudioCover failed: ${e.message}", e)
-                                            }
+                        coroutineScope {
+                            for (file in successFiles) {
+                                launch {
+                                    uploadSemaphore.withPermit {
+                                        try {
+                                            uploadAudioCover(storage, file)
+                                        } catch (e: Exception) {
+                                            // m-12 修复：原 `catch (_: Exception) {}` 完全静默
+                                            Log.w(TAG, "generateRemoteThumbnails uploadAudioCover failed: ${e.message}", e)
                                         }
                                     }
                                 }
@@ -2073,6 +2135,33 @@ class ThumbnailManager @Inject constructor(
         const val COLOR_TRANSFER_SMPTE_ST_2084 = 7
         /** ColorTransfer = ARIB STD-B67 (HLG)。 */
         const val COLOR_TRANSFER_HLG = 18
+        /**
+         * R7 修复：批量生成失败项的短重试间隔（临时失败，如网络/IO 抖动）。
+         * 5 分钟内对同一文件跳过重试，避免每次刷新列表都重复发起远程读取。
+         */
+        private const val FAILURE_RETRY_SHORT_MS = 5 * 60 * 1000L
+        /**
+         * R7 修复：批量生成失败项的长重试间隔（确定性失败：<15s 过短、401/403
+         * 永久失败、无内嵌封面等）。1 小时后自动恢复重试，不永久阻断。
+         */
+        private const val FAILURE_RETRY_LONG_MS = 60 * 60 * 1000L
+        /**
+         * R7 修复：批量生成失败项 → 下次可重试的挂起截止时间（进程内 TTL 内存表）。
+         * key 为 "storageId-filePath"，TTL 到期自动移除；清理缓存后手动刷新亦会恢复。
+         */
+        private val failureRetryAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+        private fun failureKey(storageId: Int, req: RemoteThumbnailRequest): String =
+            "$storageId-${req.filePath}"
+
+        /** R7 修复：该请求是否处于失败冷却期（TTL 内跳过重试）。 */
+        private fun hasRecentFailure(storageId: Int, req: RemoteThumbnailRequest): Boolean =
+            failureRetryAt[failureKey(storageId, req)]?.let { it > System.currentTimeMillis() } ?: false
+
+        /** R7 修复：标记请求失败，ttlMs 内 [hasRecentFailure] 返回 true。 */
+        private fun markFailure(storageId: Int, req: RemoteThumbnailRequest, ttlMs: Long) {
+            failureRetryAt[failureKey(storageId, req)] = System.currentTimeMillis() + ttlMs
+        }
     }
 }
 
