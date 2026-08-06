@@ -1,5 +1,6 @@
 package com.nichx.niplayer.common.error
 
+import com.nichx.niplayer.common.R
 import com.nichx.niplayer.common.ui.UiState
 import com.nichx.niplayer.common.ui.map
 import org.junit.Assert.assertEquals
@@ -11,20 +12,21 @@ import java.io.IOException
 class AppErrorTest {
 
     @Test
-    fun `无自定义消息时使用类型默认文案`() {
-        assertEquals("网络异常", AppError.Network().displayMessage)
-        assertEquals("账号密码错误", AppError.Auth().displayMessage)
-        assertEquals("文件不存在", AppError.File().displayMessage)
-        assertEquals("存储源连接失败", AppError.Storage().displayMessage)
-        assertEquals("解码失败", AppError.Decode().displayMessage)
-        assertEquals("数据读写失败", AppError.Database().displayMessage)
-        assertEquals("发生错误", AppError.Unknown().displayMessage)
+    fun `无自定义消息时使用类型默认文案资源`() {
+        assertEquals(R.string.error_type_network, AppError.Network().displayMessageRes)
+        assertEquals(R.string.error_type_auth, AppError.Auth().displayMessageRes)
+        assertEquals(R.string.error_type_file, AppError.File().displayMessageRes)
+        assertEquals(R.string.error_type_storage, AppError.Storage().displayMessageRes)
+        assertEquals(R.string.error_type_decode, AppError.Decode().displayMessageRes)
+        assertEquals(R.string.error_type_database, AppError.Database().displayMessageRes)
+        assertEquals(R.string.error_type_unknown, AppError.Unknown().displayMessageRes)
     }
 
     @Test
-    fun `自定义消息覆盖默认文案`() {
+    fun `自定义消息保留在 message 属性`() {
         val error = AppError.Network(message = "SMB 连接超时")
-        assertEquals("SMB 连接超时", error.displayMessage)
+        assertEquals("SMB 连接超时", error.message)
+        assertEquals(R.string.error_type_network, error.displayMessageRes)
     }
 
     @Test
@@ -112,6 +114,7 @@ class UiStateTest {
     @Test
     fun `Error 可携带具体错误`() {
         val error = UiState.Error(AppError.File(message = "404"))
-        assertEquals("404", (error as UiState.Error).error.displayMessage)
+        assertEquals("404", error.error.message)
+        assertEquals(R.string.error_type_file, error.error.displayMessageRes)
     }
 }
