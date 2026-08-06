@@ -110,6 +110,7 @@ fun NiConfirmDialog(
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = dialogSurfaceColor(),
+            contentColor = dialogOnSurfaceColor(),
             shadowElevation = 12.dp,
             border = BorderStroke(0.5.dp, dialogBorderColor()),
             modifier = Modifier.widthIn(min = 260.dp, max = 320.dp),
@@ -179,6 +180,7 @@ fun NiListItemDialog(
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = dialogSurfaceColor(),
+            contentColor = dialogOnSurfaceColor(),
             shadowElevation = 12.dp,
             border = BorderStroke(0.5.dp, dialogBorderColor()),
             modifier = Modifier.widthIn(min = 200.dp, max = 280.dp),
@@ -285,6 +287,7 @@ fun NiInfoDialog(
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = dialogSurfaceColor(),
+            contentColor = dialogOnSurfaceColor(),
             shadowElevation = 12.dp,
             border = BorderStroke(0.5.dp, dialogBorderColor()),
             modifier = Modifier.widthIn(min = 260.dp, max = 340.dp),

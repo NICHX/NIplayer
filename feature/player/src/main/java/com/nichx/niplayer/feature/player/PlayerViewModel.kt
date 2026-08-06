@@ -42,7 +42,9 @@ import com.nichx.niplayer.player.kernel.PlaylistItem
 import com.nichx.niplayer.player.kernel.SubtitleTrackInfo
 import com.nichx.niplayer.player.kernel.VideoSize
 import com.nichx.niplayer.common.coroutine.AppCoroutineScope
+import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFactory
+import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.subtitle.format.FormatASS
 import com.nichx.niplayer.sync.PlayHistorySyncManager
 import com.nichx.niplayer.thumbnail.ThumbnailManager
@@ -52,6 +54,7 @@ import com.nichx.niplayer.subtitle.renderer.SubtitleEngine
 import com.nichx.niplayer.subtitle.renderer.SubtitleStyleConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -59,6 +62,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -188,9 +192,48 @@ class PlayerViewModel @Inject constructor(
     @Volatile
     private var transitioningToBackground = false
 
+    /**
+     * PixelCopy 完成信号（R5 修复）。
+     *
+     * UI 层 [setLastFrameBitmap] 回调（主线程）与 [onCleared] 的 IO 协程读取
+     * 存在竞态：`capturedBack` 发起 [android.view.PixelCopy.request]（异步）后
+     * 立即导航返回，[onCleared] 执行时回调可能尚未到达。此前读到 null 会误判
+     * 为"未抓帧"而走远程取帧（SMB/WebDAV 需重新建连）。
+     *
+     * [onCleared] 通过 [awaitLastFrameBitmap] 创建此 latch 并短超时等待，
+     * [setLastFrameBitmap] 完成它；等待超时后回退远程取帧（语义不变）。
+     */
+    @Volatile
+    private var lastFrameLatch: CompletableDeferred<Unit>? = null
+
     /** 设置退出播放时的最后一帧 Bitmap，由 UI 层调用。 */
     fun setLastFrameBitmap(bitmap: Bitmap?) {
         lastFrameBitmap = bitmap
+        lastFrameLatch?.let { if (!it.isCompleted) it.complete(Unit) }
+    }
+
+    /**
+     * 等待 UI 层 PixelCopy 抓帧结果（R5 修复）。
+     *
+     * - 已抓帧：直接返回
+     * - 未抓帧：创建 latch 后 double-check（赋值 latch 前可能已完成），
+     *   仍为空则短超时等待 [setLastFrameBitmap] 完成
+     * - 超时：返回 null，调用方回退 [ThumbnailManager.generateThumbnailAtMs]
+     *
+     * @param timeoutMs 等待上限。PixelCopy 回调通常数十毫秒到达，等待仅用于
+     *   覆盖异步竞态窗口，超时回退不改变既有语义。
+     */
+    private suspend fun awaitLastFrameBitmap(timeoutMs: Long): Bitmap? {
+        var bitmap = lastFrameBitmap
+        if (bitmap != null) return bitmap
+        val latch = CompletableDeferred<Unit>()
+        lastFrameLatch = latch
+        bitmap = lastFrameBitmap
+        if (bitmap == null) {
+            withTimeoutOrNull(timeoutMs) { latch.await() }
+            bitmap = lastFrameBitmap
+        }
+        return bitmap
     }
 
     /**
@@ -200,10 +243,14 @@ class PlayerViewModel @Inject constructor(
      * [ThumbnailSettings.shouldGenerateOnPlayback]），供 UI 层在返回导航前决定
      * 是否执行 PixelCopy 抓帧，避免"关闭"策略下无谓的 SurfaceView 截图与 bitmap 分配。
      *
-     * HDR 播放（Dolby Vision / HDR10 / HLG）跳过抓帧：SurfaceView 表面是 10-bit
-     * HDR buffer，PixelCopy 抓取在部分设备上返回损坏数据（白屏 + 品红块），
-     * 由 [onCleared] 走 [ThumbnailManager.generateThumbnailAtMs]：getFrameAtTime 在
-     * API 34+ 由系统自动 tone map HDR→SDR，生成缩略图颜色正确（用户实测确认）。
+     * R1 修复：此方法仅作性能优化，不再承担 HDR 正确性责任——HDR 正确性由
+     * [onCleared] 生成分支显式兜底（`bitmap != null && !isHdrPlayback` 才用
+     * PixelCopy bitmap）。此处拦截 HDR 仅为避免浪费抓帧与整幅 bitmap 分配：
+     * SurfaceView 表面是 10-bit HDR buffer，PixelCopy 抓取在部分设备上返回
+     * 损坏数据（白屏 + 品红块），HDR 由 [onCleared] 走
+     * [ThumbnailManager.generateThumbnailAtMs]（getFrameAtTime 在 API 34+ 由
+     * 系统自动 tone map HDR→SDR，颜色正确）。即使此拦截漏判，onCleared 也会
+     * 正确兜底，不会产生 HDR 错图入库。
      *
      * storageId 为 null（如本地文件）时返回 false，与 [onCleared] 生成条件一致
      * （无存储源不生成缩略图）。
@@ -211,11 +258,12 @@ class PlayerViewModel @Inject constructor(
     fun shouldCaptureThumbnailOnExit(): Boolean {
         if (isAudioPlayback) return false
         if (!ThumbnailSettings.generateThumbnail || !ThumbnailSettings.generateForVideo) return false
+        // 功能开关门控：仅当"退出时更新封面"开启时才需要抓帧，关闭时避免无谓的
+        // SurfaceView 截图与 bitmap 分配（与 onCleared 生成条件保持一致）
+        if (!ThumbnailSettings.updateOnExit) return false
         val sid = currentHistory?.storageId ?: return false
         if (!ThumbnailSettings.shouldGenerateOnPlayback(sid)) return false
-        // HDR 拦截：PixelCopy 从 10-bit HDR SurfaceView 抓帧拿到的是未 tone map 的
-        // PQ/BT.2020 原始像素（亮部偏粉/暗部偏绿），HDR 走 getFrameAtTime（API 34+
-        // 系统自动 tone map，颜色正确）
+        // R1 修复：HDR 拦截仅为性能优化（省一次抓帧与 bitmap 分配），正确性由 onCleared 兜底
         if (player.mediaInfo.value?.hdrType != null) return false
         return true
     }
@@ -1757,10 +1805,10 @@ class PlayerViewModel @Inject constructor(
         audioPlaybackManager.onMessage = null
         audioPlaybackManager.onTrackChanged = null
 
-        // HDR 播放已在 shouldCaptureThumbnailOnExit 中拦截（PixelCopy 对 HDR surface
-        // 抓帧不可靠），lastFrameBitmap 为 null 时此处不会执行；快照 HDR 标志仅为
-        // 防御性传递（player.release() 会清空 mediaInfo）。
-        // DV / HDR10 / HLG 均走 generateThumbnailAtMs：getFrameAtTime 在 API 34+ 由
+        // R1 修复：快照 HDR 标志（player.release() 会清空 mediaInfo）。
+        // HDR 正确性由下方生成分支显式兜底（非 HDR 才用 PixelCopy bitmap，
+        // HDR 一律走 generateThumbnailAtMs），不再依赖 UI 层拦截的隐式约定。
+        // DV / HDR10 / HLG 走 generateThumbnailAtMs：getFrameAtTime 在 API 34+ 由
         // 系统自动 tone map HDR→SDR，生成缩略图颜色正确（用户实测确认）。
         val hdrTypePlayback = player.mediaInfo.value?.hdrType
         val isHdrPlayback = hdrTypePlayback != null
@@ -1825,58 +1873,89 @@ class PlayerViewModel @Inject constructor(
             //    且对远程音频会建立 MediaDataSource 阻塞数秒）
             //    用 withTimeoutOrNull 包裹，超时后自动放弃，不阻塞 IO 线程；
             //    runCatching 隔离其他异常，任何失败都不影响上面已写入的进度
+            //    updateOnExit 门控：仅当设置开启时，退出播放才用最后一帧覆盖缩略图；
+            //    关闭时保持浏览生成的默认缩略图（跳过本段全部逻辑）
             if (!isAudioPlayback && position > 0 &&
-                ThumbnailSettings.generateThumbnail && ThumbnailSettings.generateForVideo
+                ThumbnailSettings.generateThumbnail && ThumbnailSettings.generateForVideo &&
+                ThumbnailSettings.updateOnExit
             ) {
                 // 播放后生成策略检查：非关闭模式均生成（文件已被读取，无额外封控风险）
                 if (ThumbnailSettings.shouldGenerateOnPlayback(storageId)) {
+                    // R5 修复：等待 UI 层 PixelCopy 抓帧结果（短超时）。
+                    // capturedBack 发起 PixelCopy.request 后立即导航返回，onCleared 执行时
+                    // 异步回调可能未到达，此前直接读 lastFrameBitmap 会误判为 null，
+                    // 导致 SMB/WebDAV 视频白白重新建连远程取帧。
+                    val bitmap = awaitLastFrameBitmap(FRAME_WAIT_MS)
+
+                    // R4 修复：上传任务延迟到超时块外执行，不挤占生成超时预算。
+                    // 生成后 storage 暂不关闭，交给上传阶段完成后再关。
+                    var uploadTask: Pair<Storage, StorageFile>? = null
                     withTimeoutOrNull(THUMBNAIL_TIMEOUT_MS) {
                         // BUG-01 修复：原 runCatching 无法释放 storage，改为 try-catch + 内层 try-finally：
                         // 外层 catch 吞异常（保持原"缩略图失败不影响退出"语义），内层 finally 关闭 storage。
                         try {
                             val library = mediaLibraryDao.getById(storageId) ?: return@withTimeoutOrNull
                             val storage = storageFactory.create(library) ?: return@withTimeoutOrNull
+                            // storage 默认在 finally 关闭；生成成功且需要上传时转交给 uploadTask 延迟关闭
+                            var storageTransferred = false
                         try {
                             val filePath = history.storagePath ?: return@withTimeoutOrNull
                             val existing = playHistoryDao.getPlayHistory(history.uniqueKey, storageId)
                             val fileName = existing?.videoName ?: history.url.substringAfterLast('/')
                             val file = MediaSourceBuilder.createVirtualFile(filePath, fileName)
 
-                            val bitmap = lastFrameBitmap
-                            when {
+                            // R1 修复：HDR 正确性显式兜底。
+                            // 此前路径选择只看 bitmap != null，HDR 正确性完全依赖 UI 层
+                            // shouldCaptureThumbnailOnExit 的拦截（让 bitmap 保持 null）来间接保证，
+                            // 一旦 hdrType 判定晚于退出（tracks 未就绪）或绕过 capturedBack 的销毁路径
+                            // （后台被杀、直接 finish），HDR 错图就会入库。
+                            // 现改为显式条件：非 HDR 才用 PixelCopy bitmap，HDR 一律走
+                            // generateThumbnailAtMs（MMR + API 34+ 系统 tone map，唯一正确路径）；
+                            // UI 层拦截降级为性能优化（HDR 不浪费抓帧与 bitmap 分配）。
+                            if (bitmap != null && !isHdrPlayback) {
+                                thumbnailManager.saveThumbnailFromBitmap(
+                                    storageId = storageId,
+                                    file = file,
+                                    bitmap = bitmap,
+                                    isHdr = false,
+                                )
+                                // BUG-P4 修复：不手动 recycle，置 null 交给 GC 回收。
+                                // 原 bitmap.recycle() 与 UI 层 dispose 存在竞态：
+                                // PlayerScreen 在 onDispose 中通过 PixelCopy 截图并 setLastFrameBitmap，
+                                // 若 onCleared 的 recycle 先于 Compose 完成对 bitmap 的最后一次绘制，
+                                // 会触发 "Cannot draw a recycled Bitmap" IllegalStateException。
+                                // Bitmap 的 native 内存由 GC 最终回收，延迟回收的内存开销可接受。
+                                lastFrameBitmap = null
+                            } else {
                                 // DV / HDR10 / HLG：getFrameAtTime 在 API 34+ 由系统自动
-                                // tone map HDR→SDR，生成的缩略图颜色正确（用户实测确认），
-                                // 走 generateThumbnailAtMs 而非 PixelCopy（后者抓 HDR buffer 偏色）
-                                bitmap != null -> {
-                                    // HDR 修复：Dolby Vision / HDR10 / HLG 的 Surface 捕获是原始
-                                    // PQ/HLG 像素，需软件补偿后再保存，否则首页缩略图色彩失真
-                                    thumbnailManager.saveThumbnailFromBitmap(
-                                        storageId = storageId,
-                                        file = file,
-                                        bitmap = bitmap,
-                                        isHdr = isHdrPlayback,
-                                    )
-                                    // BUG-P4 修复：不手动 recycle，置 null 交给 GC 回收。
-                                    // 原 bitmap.recycle() 与 UI 层 dispose 存在竞态：
-                                    // PlayerScreen 在 onDispose 中通过 PixelCopy 截图并 setLastFrameBitmap，
-                                    // 若 onCleared 的 recycle 先于 Compose 完成对 bitmap 的最后一次绘制，
-                                    // 会触发 "Cannot draw a recycled Bitmap" IllegalStateException。
-                                    // Bitmap 的 native 内存由 GC 最终回收，延迟回收的内存开销可接受。
-                                    lastFrameBitmap = null
-                                }
-                                else ->
-                                    thumbnailManager.generateThumbnailAtMs(storage, storageId, file, position)
+                                // tone map HDR→SDR，生成的缩略图颜色正确（用户实测确认）
+                                thumbnailManager.generateThumbnailAtMs(storage, storageId, file, position)
                             }
-                            // BUG-T-m5 修复：上传到服务端 .thumb/ 目录，跨设备复用
-                            // uploadThumbnail 内部会检查 saveInSameDir 和 cacheFile.exists()，
-                            // 并通过 fileExists 避免覆盖服务端已有缩略图；失败不影响退出流程
-                            // （外层 catch 已捕获）
-                            thumbnailManager.uploadThumbnail(storage, file)
+                            // R4 修复：上传移出超时块。uploadThumbnail 内部会检查 saveInSameDir
+                            // 和 cacheFile.exists()，并通过 fileExists 避免覆盖服务端已有缩略图；
+                            // 失败不影响退出流程（下方 catch 已捕获）
+                            uploadTask = storage to file
+                            storageTransferred = true
                         } finally {
-                            storage.close()
+                            if (!storageTransferred) {
+                                storage.close()
+                            }
                         }
                         } catch (_: Exception) {
                         // 缩略图生成失败不影响退出流程
+                        }
+                    }
+
+                    // R4 修复：上传独立执行，不挤占生成超时预算（HDR 远程取帧慢时尤其明显），
+                    // 避免跨设备缩略图复用因超时被截断。失败静默，不影响退出。
+                    uploadTask?.let { (storage, file) ->
+                        try {
+                            withTimeoutOrNull(UPLOAD_TIMEOUT_MS) {
+                                thumbnailManager.uploadThumbnail(storage, file)
+                            }
+                        } catch (_: Exception) {
+                        } finally {
+                            try { storage.close() } catch (_: Exception) {}
                         }
                     }
                 }
@@ -1946,6 +2025,24 @@ private const val PROGRESS_FIRST_SAVE_DELAY_MS = 5_000L
  * - 超过 10s 视为网络异常，放弃生成（下次播放时会重新生成）
  */
 private const val THUMBNAIL_TIMEOUT_MS = 10_000L
+
+/**
+ * R4 修复：退出时缩略图上传（uploadThumbnail）的独立超时上限。
+ *
+ * 上传移出生成超时块后单独执行，避免 HDR 远程取帧（最慢路径）挤占上传预算、
+ * 导致跨设备缩略图复用被截断。10s 与生成超时一致，覆盖 SMB/WebDAV 建目录 +
+ * fileExists + 写文件往返。
+ */
+private const val UPLOAD_TIMEOUT_MS = 10_000L
+
+/**
+ * R5 修复：退出时等待 PixelCopy 抓帧结果的上限。
+ *
+ * capturedBack 发起 PixelCopy.request（异步）后立即导航返回，onCleared 执行时
+ * 回调可能未到达。PixelCopy 回调通常数十毫秒内到达主线程，300ms 足够覆盖竞态
+ * 窗口；超时则回退 generateThumbnailAtMs（远程取帧），语义不变。
+ */
+private const val FRAME_WAIT_MS = 300L
 
 /** 播放器退出后自动同步的延迟（ms），等待退出时的进度保存落库。 */
 private const val SYNC_DELAY_MS = 3_000L

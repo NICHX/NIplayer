@@ -96,8 +96,8 @@
     <string name="backup_load_failed">读取备份失败：%1$s</string>
     <string name="backup_webdav_restore_failed">从服务器恢复失败：%1$s</string>
     <string name="backup_restore_failed">恢复失败：%1$s</string>
-    <string name="backup_restore_confirm_body">确定从该文件恢复？当前配置将被覆盖。</string>
-    <string name="backup_webdav_restore_confirm_body">确定从服务器恢复「%1$s」？当前配置将被覆盖。</string>
+    <string name="backup_restore_confirm_body">将从所选文件恢复存储源、快速访问、视频书签、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图等全部应用设置。默认合并模式：备份覆盖同主键项，本机独有数据保留。播放历史不受影响。此操作不可撤销，是否继续？</string>
+    <string name="backup_webdav_restore_confirm_body">将从服务器下载备份文件「%1$s」并恢复存储源、快速访问、视频书签、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图等全部应用设置。默认合并模式：备份覆盖同主键项，本机独有数据保留。播放历史不受影响。此操作不可撤销，是否继续？</string>
     <string name="backup_last_sync_success">上次同步成功：%1$s</string>
     <string name="backup_last_sync_with_message">上次同步：%1$s（%2$s）</string>
     <string name="backup_error_create_dir">无法创建备份目录：%1$s</string>
@@ -670,6 +670,8 @@
     <string name="player_thumbnail_audio_desc">提取音频内嵌封面图</string>
     <string name="player_thumbnail_upload">保存到服务器</string>
     <string name="player_thumbnail_upload_desc">远端存储时将缩略图回写到 .thumb/ 目录</string>
+    <string name="player_thumbnail_update_on_exit">退出时更新封面</string>
+    <string name="player_thumbnail_update_on_exit_desc">退出播放后用最后一帧更新列表缩略图。HDR 视频（杜比视界 / HDR10 / HLG）需重新取帧，更新会有延迟</string>
     <string name="player_thumbnail_timing">生成时机</string>
     <string name="player_thumbnail_frame">取帧位置</string>
     <string name="player_storage_thumbnail_title">存储源缩略图</string>
