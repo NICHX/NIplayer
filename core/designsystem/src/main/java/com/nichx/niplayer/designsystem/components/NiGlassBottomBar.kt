@@ -75,11 +75,10 @@ data class NiBottomBarTab(
     val unselectedIcon: ImageVector,
 )
 
-/** 玻璃底栏的底部边距（同时用作模糊标志位）。 */
+/** 玻璃底栏的模糊/折射参数。 */
 private object NiGlassBarDefaults {
     const val BlurRadius = 8f
     const val LensRadius = 6f
-    const val ContainerAlpha = 0.36f
 }
 
 /** 提供给各 Tab 项的缩放因子（按压缩放由 DampedDragAnimation.pressProgress 驱动）。 */
@@ -143,8 +142,9 @@ fun NiGlassBottomBar(
     content: @Composable RowScope.() -> Unit,
 ) {
     val isInLightTheme = !NiExtraColors.current.isDark
+    // 底色不透明度由 LocalNiGlassOpacity（根布局按 GlassSettings 下发）统一控制
     val containerColor = if (isBlurEnabled) {
-        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = NiGlassBarDefaults.ContainerAlpha)
+        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = LocalNiGlassOpacity.current)
     } else {
         MaterialTheme.colorScheme.surfaceContainer
     }
@@ -304,7 +304,7 @@ fun NiGlassBottomBar(
                         Modifier
                     },
                 )
-                .height(64.dp)
+                .height(56.dp)
                 .padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
@@ -358,7 +358,7 @@ fun NiGlassBottomBar(
                             Modifier
                         },
                     )
-                    .height(56.dp)
+                    .height(48.dp)
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 content = content,
@@ -439,7 +439,7 @@ fun NiGlassBottomBar(
                             drawRect(Color.Black.copy(alpha = 0.03f * progress))
                         },
                     )
-                    .height(56.dp)
+                    .height(48.dp)
                     .width(with(density) { ((totalWidthPx - 8.dp.toPx()) / tabsCount).toDp() }),
             )
         }

@@ -1,5 +1,7 @@
 package com.nichx.niplayer.designsystem.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,27 +17,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.ExperimentalHazeApi
+import dev.chrisbanes.haze.HazeProgressive
 
 /**
- * 顶部应用栏组件 —— 控件渐变模糊（边缘渐隐）。
+ * 顶部应用栏 —— 渐变模糊（真实渐进模糊 + 半透明 scrim，参考 legado-with-MD3）。
  *
- * 参考 legado-with-MD3 的 FadingEdge 思路：顶栏整体透明，背景绘制一条自上而下
- * 由透明过渡到页面表面色的渐变。当内容滚动到顶栏区域时，越靠近顶栏底部越被
- * 表面色平滑覆盖（而非生硬裁切），产生类似"渐进模糊"的通透层次感。
+ * 当处于 [NiScaffold] 作用域内（[LocalHazeState] 可用）时，顶栏对背后滚动的内容做**真实渐进模糊**：
+ * 顶栏顶部强模糊、向下渐变成清晰（[HazeProgressive.verticalGradient]），再叠加一层半透明 surface tint
+ * 保证文字可读。此时顶栏必须叠在内容之上，内容经 [NiScaffold] 延伸到其背后滚动。
  *
- * 说明：顶栏嵌套在各页面内容内部，无法作为 hazeEffect 的兄弟浮层，因此这里采用
- * 可靠、无绘制层级依赖的光栅渐变遮罩实现。
+ * 脱离 [NiScaffold] 作用域（无 [LocalHazeState]）时退化为原先的光栅渐变遮罩：顶部透明、底部过渡到表面色，
+ * 保持无模糊也可用的稳妥回退。
  *
  * @param title 标题文本
  * @param modifier 修饰符
  * @param subtitle 副标题文本（可为 null）
  * @param navigationIcon 导航图标区域
  * @param actions 右侧操作按钮区域
- * @param topBackground 顶栏背景色（渐变终点），默认取页面表面色
- * @param fadeFromRatio 渐变开始位置（占总高度），[0,1]
+ * @param topBackground 顶栏 scrim 基底色（渐变/scrim 终点），默认取页面表面色
+ * @param fadeFromRatio 渐变开始位置（占总高度，自定义渐变用），[0,1]
  */
+@OptIn(ExperimentalHazeApi::class)
 @Composable
 fun NiTopBar(
     title: String,
@@ -43,10 +49,17 @@ fun NiTopBar(
     subtitle: String? = null,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
-    topBackground: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surface,
+    topBackground: Color = MaterialTheme.colorScheme.surface,
     fadeFromRatio: Float = 0f,
 ) {
-    // 渐显遮罩 Brush：顶部透明 -> 底部表面色。缓存以避免每帧重建
+    val hazeState = LocalHazeState.current
+    // 半透明 scrim：明暗主题下微调不透明度，保证顶栏文字在任何内容上方都清晰可读
+    val scrimColor = remember(topBackground) {
+        topBackground.copy(
+            alpha = if (topBackground.luminance() >= 0.5f) 0.30f else 0.42f,
+        )
+    }
+    // 渐显遮罩 Brush：顶部透明 -> 底部表面色（无 LocalHazeState 的渐变回退）
     val fadeBrush = remember(topBackground, fadeFromRatio) {
         Brush.verticalGradient(
             0f to Color.Transparent,
@@ -55,42 +68,96 @@ fun NiTopBar(
         )
     }
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .height(52.dp)
-            .padding(horizontal = 4.dp)
-            .drawBehind {
-                // 边缘渐隐：整栏绘制透明->表面色的渐变遮罩
-                drawRect(
-                    brush = fadeBrush,
-                    size = size,
-                )
-            },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        navigationIcon()
+    if (hazeState != null) {
+        // ===== 真实渐进模糊路径（NiScaffold 作用域）=====
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                // 先铺一层半透明 scrim 保证可读性
+                .background(scrimColor)
+                // 再对背后内容做自上而下渐强的真实模糊
+                .niHazeEffect(
+                    state = hazeState,
+                    progressive = HazeProgressive.verticalGradient(
+                        startIntensity = 1f,
+                        endIntensity = 0f,
+                    ),
+                ),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .height(52.dp)
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                navigationIcon()
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (subtitle != null) {
+                        Text(
+                            text = "  $subtitle",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                Row { actions() }
+            }
+        }
+    } else {
+        // ===== 光栅渐变回退路径（无 LocalHazeState，保持原视觉）=====
         Row(
-            modifier = Modifier.weight(1f).padding(start = 6.dp),
+            modifier = modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .height(52.dp)
+                .padding(horizontal = 4.dp)
+                .drawBehind {
+                    drawRect(
+                        brush = fadeBrush,
+                        size = size,
+                    )
+                },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (subtitle != null) {
+            navigationIcon()
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    text = "  $subtitle",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (subtitle != null) {
+                    Text(
+                        text = "  $subtitle",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
+            Row { actions() }
         }
-        Row { actions() }
     }
 }

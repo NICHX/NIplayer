@@ -57,9 +57,11 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHostState
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.datastore.PlayerSettings
+import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
+import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import com.nichx.niplayer.designsystem.components.showNiMessage
-import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -893,19 +895,10 @@ private fun TopBarActions(
         onMenuOpenChange(showSpeedMenu || showMoreMenu)
     }
 
-    // 菜单卡片样式：与 NiPopupMenu 一致的磨砂玻璃风格（20dp 大圆角 + 半透明背景 + 细边框 + 阴影）
-    // 基于应用主题（NiExtraColors.current.isDark）而非系统主题，保证强制浅色/深色时菜单与页面一致
+    // 菜单卡片样式：与 NiPopupMenu 统一的磨砂风格（20dp 大圆角 + 不透明磨砂底色 + 细边框 + 阴影）
+    // 菜单位于独立 Popup 窗口，底色必须不透明，否则会把窗口垫层透出来形成多余浅色矩形
     val menuShape = RoundedCornerShape(20.dp)
-    val menuSurfaceColor = if (NiExtraColors.current.isDark) {
-        Color(0xFF2C2C2E).copy(alpha = 0.95f)
-    } else {
-        Color.White.copy(alpha = 0.94f)
-    }
-    val menuBorderColor = if (NiExtraColors.current.isDark) {
-        Color.White.copy(alpha = 0.10f)
-    } else {
-        Color.Black.copy(alpha = 0.08f)
-    }
+    val menuBorderColor = niGlassBorderColor()
     val menuItemPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
 
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -947,9 +940,9 @@ private fun TopBarActions(
                 expanded = showMoreMenu,
                 onDismissRequest = { showMoreMenu = false },
                 shape = menuShape,
-                containerColor = menuSurfaceColor,
+                containerColor = niFrostSurfaceColor(),
                 shadowElevation = 8.dp,
-                border = BorderStroke(0.5.dp, menuBorderColor),
+                border = BorderStroke(NiGlassHairWidth, menuBorderColor),
                 modifier = Modifier.widthIn(min = 210.dp),
             ) {
                 // 倍速：子菜单入口，尾部显示当前档位 + 展开箭头
@@ -1049,9 +1042,9 @@ private fun TopBarActions(
                 expanded = showSpeedMenu,
                 onDismissRequest = { showSpeedMenu = false },
                 shape = menuShape,
-                containerColor = menuSurfaceColor,
+                containerColor = niFrostSurfaceColor(),
                 shadowElevation = 8.dp,
-                border = BorderStroke(0.5.dp, menuBorderColor),
+                border = BorderStroke(NiGlassHairWidth, menuBorderColor),
                 modifier = Modifier.widthIn(min = 170.dp),
             ) {
                 // 菜单标题（本版本无 DropdownMenuHeader，用普通文本行代替）

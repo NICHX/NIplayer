@@ -41,7 +41,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -67,6 +66,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.datastore.PlayHistorySyncConfig
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTextFieldDefaults
 import com.nichx.niplayer.designsystem.components.NiTopBar
@@ -102,7 +102,7 @@ fun BackupScreen(
         if (uri != null) pendingImportUri = uri
     }
 
-    Scaffold(
+    NiScaffold(
         topBar = {
             NiTopBar(
                 title = stringResource(R.string.backup_title),
@@ -117,12 +117,11 @@ fun BackupScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(padding.calculateTopPadding() + 8.dp))
 
             // 卡片① 本机备份与恢复（不依赖服务器，始终可用）
             LocalBackupCard(
@@ -205,6 +204,7 @@ fun BackupScreen(
                     )
                 }
             }
+            Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
     }
 

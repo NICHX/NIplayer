@@ -112,7 +112,11 @@ class StorageFileViewModel @Inject constructor(
 
     /**
      * Initialize the ViewModel with explicit parameters (used by file browser overlay).
-     * When called from a navigation route, SavedStateHandle already provides storageId.
+     *
+     * overlay 采用单一宿主（Home 内挂载），ViewModel 以 `"file_browser_$storageId"` 为 key
+     * 跨组合存续。`[initialized]` 守卫保证同一 storageId 重复进入时不会二次重置，
+     * 因此浏览器关闭后再次打开同一存储源会沿用上次的目录/列表状态；
+     * 如需每次都从根目录开始，需另行重置本 ViewModel。
      */
     fun initialize(storageId: Int, initialPath: String = "") {
         if (initialized) return
@@ -236,9 +240,14 @@ class StorageFileViewModel @Inject constructor(
             initialValue = emptyList(),
         )
 
-    /** 长按文件/目录进入多选模式并选中该项。 */
-    fun enterMultiSelect(file: StorageFile) {
-        _selectedPaths.value = setOf(file.path)
+    /**
+     * 进入多选模式（顶栏「选择」按钮触发），初始不选中任何项。
+     *
+     * 原实现由长按触发并选中当前项；长按已改为打开单文件操作菜单，
+     * 多选改由顶栏「选择」按钮显式进入，故不再需要 [StorageFile] 参数。
+     */
+    fun enterMultiSelect() {
+        _selectedPaths.value = emptySet()
         _isMultiSelect.value = true
     }
 
@@ -1384,16 +1393,21 @@ class StorageFileViewModel @Inject constructor(
         }
     }
 
-    // ---- 快速访问（长按文件） ----
+    // ---- 单文件操作菜单（长按 / ⋮ 触发） ----
 
-    /** 长按文件：查询是否已收藏，emit 菜单事件供 UI 弹出添加/移除选项。 */
-    fun checkQuickAccess(file: StorageFile) {
+    /**
+     * 打开单文件文件操作菜单：查询是否已收藏，emit 菜单事件供 UI 弹出 FileActionsSheet。
+     *
+     * 该菜单承载播放/下载/快速访问/重命名/移动/删除/属性等操作，长按与列表 ⋮ 均指向这里
+     * （长按不再进入多选，多选改由顶栏「选择」按钮显式进入）。
+     */
+    fun openFileActions(file: StorageFile) {
         val library = currentLibrary ?: return
         viewModelScope.launch {
             val favorited = withContext(Dispatchers.IO) {
                 quickAccessDao.get(library.id, file.path) != null
             }
-            _events.tryEmit(StorageFileEvent.ShowQuickAccessMenu(file, favorited))
+            _events.tryEmit(StorageFileEvent.OpenFileActions(file, favorited))
         }
     }
 
@@ -1763,8 +1777,8 @@ sealed class StorageFileEvent {
     /** 播放源构造失败，显示错误提示。 */
     data class ShowError(val message: String) : StorageFileEvent()
 
-    /** 长按文件后，UI 弹出快速访问菜单（添加/移除）。 */
-    data class ShowQuickAccessMenu(
+    /** 长按/⋮ 打开单文件操作菜单，UI 弹出 FileActionsSheet。 */
+    data class OpenFileActions(
         val file: StorageFile,
         val isFavorited: Boolean,
     ) : StorageFileEvent()

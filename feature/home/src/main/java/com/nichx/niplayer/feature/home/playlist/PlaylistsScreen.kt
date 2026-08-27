@@ -40,7 +40,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -70,6 +69,7 @@ import com.nichx.niplayer.designsystem.components.NiAutoSizeText
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiTextField
@@ -102,7 +102,7 @@ fun PlaylistsScreen(
         viewModel.toast.collect { snackbarHostState.showNiMessage(NiMessage.info(it)) }
     }
 
-    Scaffold(
+    NiScaffold(
         topBar = {
             NiTopBar(
                 title = stringResource(R.string.playlists_title),
@@ -133,7 +133,7 @@ fun PlaylistsScreen(
             !dataReady -> PlaylistsSkeleton(padding)
             playlists.isEmpty() -> {
                 Box(
-                    modifier = Modifier.fillMaxSize().padding(padding),
+                    modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
                     NiEmptyState(
@@ -146,7 +146,8 @@ fun PlaylistsScreen(
                 }
             }
             else -> {
-                Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Spacer(Modifier.height(padding.calculateTopPadding()))
                     Text(
                         text = stringResource(R.string.playlists_count, playlists.size),
                         style = MaterialTheme.typography.labelMedium,
@@ -172,6 +173,7 @@ fun PlaylistsScreen(
                             )
                         }
                     }
+                    Spacer(Modifier.height(padding.calculateBottomPadding()))
                 }
             }
         }
@@ -552,8 +554,12 @@ private fun PlaylistGridCard(
 private fun PlaylistsSkeleton(padding: PaddingValues) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 140.dp),
-        modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(16.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 16.dp, end = 16.dp,
+            top = padding.calculateTopPadding() + 16.dp,
+            bottom = padding.calculateBottomPadding() + 16.dp,
+        ),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         userScrollEnabled = false,

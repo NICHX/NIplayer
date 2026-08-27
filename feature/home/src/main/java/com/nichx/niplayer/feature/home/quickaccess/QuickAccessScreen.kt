@@ -40,7 +40,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -70,6 +69,7 @@ import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiSkeletonBox
 import com.nichx.niplayer.designsystem.components.NiSkeletonLine
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
@@ -106,7 +106,7 @@ fun QuickAccessScreen(
         canDragOver = { _, _ -> isEditing },
     )
 
-    Scaffold(
+    NiScaffold(
         topBar = {
             NiTopBar(
                 title = stringResource(R.string.quick_access_title),
@@ -139,8 +139,12 @@ fun QuickAccessScreen(
         if (!dataReady) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 140.dp),
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp, end = 16.dp,
+                    top = padding.calculateTopPadding() + 16.dp,
+                    bottom = padding.calculateBottomPadding() + 16.dp,
+                ),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 userScrollEnabled = false,
@@ -151,7 +155,7 @@ fun QuickAccessScreen(
             }
         } else if (items.isEmpty()) {
             Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 NiEmptyState(
@@ -163,7 +167,6 @@ fun QuickAccessScreen(
         } else {
             val gridModifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .reorderable(gridState)
                 .then(if (isEditing) Modifier.detectReorderAfterLongPress(gridState) else Modifier)
 
@@ -171,7 +174,11 @@ fun QuickAccessScreen(
                 columns = GridCells.Adaptive(minSize = 140.dp),
                 modifier = gridModifier,
                 state = gridState.gridState,
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp, end = 16.dp,
+                    top = padding.calculateTopPadding() + 16.dp,
+                    bottom = padding.calculateBottomPadding() + 16.dp,
+                ),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {

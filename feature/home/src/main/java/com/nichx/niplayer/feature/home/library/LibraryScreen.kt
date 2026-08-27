@@ -52,7 +52,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -90,7 +89,11 @@ import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTextFieldDefaults
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
+import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
+import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
+import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.designsystem.theme.NiSpacings
@@ -141,7 +144,7 @@ fun LibraryScreen(
         derivedStateOf { filterByType(selectedFilter, filteredLibraries) }
     }
 
-    Scaffold(
+    NiScaffold(
         containerColor = Color.Transparent,
         topBar = {
             NiTopBar(
@@ -168,8 +171,8 @@ fun LibraryScreen(
                 )
             },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Column(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                 AnimatedVisibility(
                     visible = isSearchVisible,
                     enter = fadeIn(animationSpec = tween(NiMotion.DURATION_SWITCH)),
@@ -437,8 +440,6 @@ private fun LibrarySourceCard(
     val brandColor = typeInfo.color
     val colorAlpha10 = remember(brandColor) { brandColor.copy(alpha = 0.1f) }
     val outlineAlpha40 = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-    val outlineAlpha30 = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-    val surfaceColor = if (extraColors.isDark) extraColors.surfaceLevel3 else MaterialTheme.colorScheme.surface
 
     Box {
         Row(
@@ -527,8 +528,8 @@ private fun LibrarySourceCard(
                     expanded = true,
                     onDismissRequest = { showMenu = false },
                     shape = menuShape,
-                    containerColor = surfaceColor,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, outlineAlpha30),
+                    containerColor = niFrostSurfaceColor(),
+                    border = androidx.compose.foundation.BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
                 ) {
                     DropdownMenuItem(
                         text = {
