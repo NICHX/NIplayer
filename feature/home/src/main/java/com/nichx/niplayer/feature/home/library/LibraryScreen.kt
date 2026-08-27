@@ -142,6 +142,7 @@ fun LibraryScreen(
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             NiTopBar(
                 title = stringResource(R.string.library_title),

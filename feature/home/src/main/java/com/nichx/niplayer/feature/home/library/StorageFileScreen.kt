@@ -322,6 +322,7 @@ fun FileBrowserOverlay(
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             if (isMultiSelect) {
                 NiTopBar(

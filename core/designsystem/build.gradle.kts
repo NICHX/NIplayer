@@ -40,6 +40,11 @@ dependencies {
     implementation(libs.compose.animation)
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons.extended)
+    // api: LocalHazeState 等暴露 HazeState 类型，需传递给下游模块（feature:home 等）
+    api(libs.haze)
+    // 液态玻璃悬浮底栏：backdrop 提供背景捕获/模糊（HomeScreen 需 layerBackdrop），api 暴露其类型
+    api(libs.backdrop)
+    implementation(libs.capsule)
     implementation(libs.coil.compose)
     implementation(libs.androidx.activity.compose)
 
