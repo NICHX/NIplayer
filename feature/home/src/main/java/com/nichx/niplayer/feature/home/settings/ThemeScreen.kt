@@ -25,7 +25,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -42,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.datastore.ThemeSettings
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiScheme
@@ -55,7 +55,7 @@ fun ThemeScreen(
 ) {
     val themeConfig by ThemeSettings.themeFlow.collectAsStateWithLifecycle()
 
-    Scaffold(
+    NiScaffold(
         topBar = {
             NiTopBar(
                 title = stringResource(R.string.theme_title),
@@ -71,9 +71,10 @@ fun ThemeScreen(
         },
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            Spacer(Modifier.height(padding.calculateTopPadding()))
             Text(
                 text = stringResource(R.string.theme_mode),
                 style = MaterialTheme.typography.labelLarge,
@@ -149,6 +150,7 @@ fun ThemeScreen(
                     color = MaterialTheme.colorScheme.outline,
                 )
             }
+            Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
     }
 }

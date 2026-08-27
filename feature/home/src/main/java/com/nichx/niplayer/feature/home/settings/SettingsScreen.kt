@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircleOutline
@@ -37,7 +38,6 @@ import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.feature.home.update.UpdateDialogHost
@@ -68,7 +69,7 @@ fun SettingsScreen(
 ) {
     val updateViewModel: UpdateViewModel = hiltViewModel()
 
-    Scaffold(
+    NiScaffold(
         topBar = { NiTopBar(title = stringResource(R.string.home_tab_settings)) },
     ) { padding ->
         // 底部导航栏避让：玻璃底栏悬浮在 8dp+系统导航栏高度上方（高度 64dp），预留清除空间
@@ -76,9 +77,11 @@ fun SettingsScreen(
             WindowInsets.navigationBars.getBottom(this).toDp()
         } + 88.dp
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                start = 16.dp, end = 16.dp, top = 16.dp, bottom = bottomBarClearance,
+                start = 16.dp, end = 16.dp,
+                top = padding.calculateTopPadding() + 16.dp,
+                bottom = padding.calculateBottomPadding() + bottomBarClearance,
             ),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -267,7 +270,7 @@ enum class SettingsGroup(
     ),
     APPEARANCE(
         labelRes = R.string.settings_group_appearance,
-        entries = listOf(SettingsEntry.THEME, SettingsEntry.LANGUAGE),
+        entries = listOf(SettingsEntry.THEME, SettingsEntry.LANGUAGE, SettingsEntry.GLASS),
     ),
     ABOUT(
         labelRes = R.string.settings_group_about,
@@ -344,6 +347,13 @@ enum class SettingsEntry(
         subtitleRes = R.string.settings_entry_language_sub,
         icon = Icons.Filled.Language,
         iconBg = Color(0xFF6A1B9A),
+    ),
+    GLASS(
+        route = Routes.User.GLASS,
+        titleRes = R.string.settings_entry_glass,
+        subtitleRes = R.string.settings_entry_glass_sub,
+        icon = Icons.Filled.BlurOn,
+        iconBg = Color(0xFF7E57C2),
     ),
     UPDATE(
         route = null,

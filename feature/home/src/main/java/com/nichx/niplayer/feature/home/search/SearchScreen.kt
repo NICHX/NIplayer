@@ -32,7 +32,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,6 +56,7 @@ import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiEmptyState
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiSectionHeader
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import com.nichx.niplayer.designsystem.components.NiTextField
@@ -113,7 +113,7 @@ fun SearchScreen(
         focusRequester.requestFocus()
     }
 
-    Scaffold(
+    NiScaffold(
         topBar = {
             NiTopBar(
                 title = stringResource(R.string.search_title),
@@ -129,7 +129,8 @@ fun SearchScreen(
         },
         snackbarHost = { NiSnackbarHost(hostState = snackbarHostState) },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Spacer(Modifier.height(padding.calculateTopPadding()))
             NiTextField(
                 value = searchQuery,
                 onValueChange = viewModel::setSearchQuery,
@@ -177,6 +178,7 @@ fun SearchScreen(
                 )
             }
         }
+        Spacer(Modifier.height(padding.calculateBottomPadding()))
     }
 }
 

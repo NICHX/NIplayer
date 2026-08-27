@@ -29,7 +29,6 @@ import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
@@ -52,6 +51,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import java.util.Locale
@@ -81,7 +81,7 @@ fun CacheManagerScreen(
         }
     }
 
-    Scaffold(
+    NiScaffold(
         topBar = {
             NiTopBar(
                 title = stringResource(R.string.cache_manager_title),
@@ -119,8 +119,7 @@ fun CacheManagerScreen(
             uiState.isLoading -> {
                 NiListSkeleton(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
+                        .fillMaxSize(),
                     itemCount = 4,
                 )
             }
@@ -130,16 +129,18 @@ fun CacheManagerScreen(
                     text = stringResource(R.string.cache_manager_empty),
                     hint = stringResource(R.string.cache_manager_empty_hint),
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
+                        .fillMaxSize(),
                 )
             }
             else -> {
                 LazyColumn(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(16.dp),
+                        .fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 16.dp, end = 16.dp,
+                        top = padding.calculateTopPadding() + 16.dp,
+                        bottom = padding.calculateBottomPadding() + 16.dp,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     // ---- 总览 ----

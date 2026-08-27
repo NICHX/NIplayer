@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -28,7 +29,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -59,6 +59,7 @@ import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.designsystem.components.NiDialogItem
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiListItemDialog
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTopBar
@@ -113,7 +114,7 @@ fun PlayerSettingsScreen(
         else -> stringResource(R.string.player_double_tap_seconds, doubleTapStepSeconds)
     }
 
-    Scaffold(
+    NiScaffold(
         topBar = {
             NiTopBar(
                 title = stringResource(R.string.player_settings_title),
@@ -126,9 +127,10 @@ fun PlayerSettingsScreen(
         },
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            Spacer(Modifier.height(padding.calculateTopPadding()))
             SettingsGroupSection(
                 title = stringResource(R.string.player_kernel),
                 icon = Icons.Filled.PlayCircleOutline,
@@ -369,6 +371,7 @@ fun PlayerSettingsScreen(
                     },
                 )
             }
+            Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
     }
 

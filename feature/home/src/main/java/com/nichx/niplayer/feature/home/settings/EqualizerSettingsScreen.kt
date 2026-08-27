@@ -29,7 +29,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -51,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.datastore.AudioSettings
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 
@@ -101,7 +101,7 @@ fun EqualizerSettingsScreen(
     // 滑块 / 预设：实时直通，避免拖动时反复打断音乐
     val applyEqualizerLive: () -> Unit = onApplyLiveToPlayer
 
-    Scaffold(
+    NiScaffold(
         topBar = {
             NiTopBar(
                 title = stringResource(R.string.equalizer_title),
@@ -116,11 +116,11 @@ fun EqualizerSettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Spacer(Modifier.height(padding.calculateTopPadding()))
             // 总开关
             Column(
                 modifier = Modifier
@@ -235,6 +235,7 @@ fun EqualizerSettingsScreen(
                     color = MaterialTheme.colorScheme.outline,
                 )
             }
+            Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
     }
 }

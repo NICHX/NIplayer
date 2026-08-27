@@ -355,6 +355,14 @@
     <string name="settings_entry_theme_sub">Appearance and color scheme</string>
     <string name="settings_entry_language">Language</string>
     <string name="settings_entry_language_sub">App interface language</string>
+    <string name="settings_entry_glass">Glass opacity</string>
+    <string name="settings_entry_glass_sub">Adjust glass transparency</string>
+    <string name="settings_glass_title">Glass</string>
+    <string name="settings_glass_opacity">Opacity</string>
+    <string name="settings_glass_desc">Adjust overlay and panel glass opacity separately.</string>
+    <string name="settings_glass_helper">Higher values make glass more solid for clearer contrast over complex or dark content.</string>
+    <string name="settings_glass_overlay_opacity">Overlay (nav bar etc.)</string>
+    <string name="settings_glass_panel_opacity">Dialogs &amp; menus</string>
     <string name="settings_entry_update">Check for updates</string>
     <string name="settings_entry_update_sub">Check and download new versions</string>
     <string name="settings_entry_about">About</string>
@@ -380,6 +388,9 @@
     <string name="storage_file_deselect_all">Deselect all</string>
     <string name="storage_file_cancel_multi_select">Cancel multi-select</string>
     <string name="storage_file_selected_count">%1$d selected</string>
+    <string name="storage_file_enter_multi_select">Multi-select</string>
+    <string name="storage_file_mixed_add_title">Add to playlist</string>
+    <string name="storage_file_mixed_add_body">Playlists only support audio. Will add %1$d audio files and skip %2$d other files. Continue?</string>
     <string name="storage_file_sort">Sort</string>
     <string name="storage_file_sort_name">Name</string>
     <string name="storage_file_sort_type">Type</string>

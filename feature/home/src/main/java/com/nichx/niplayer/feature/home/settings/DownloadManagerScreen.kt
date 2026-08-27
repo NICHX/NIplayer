@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
@@ -40,7 +41,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import androidx.compose.material3.Text
@@ -66,7 +66,11 @@ import com.nichx.niplayer.database.entity.DownloadState
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiProgressTrack
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
+import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
+import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
+import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,7 +114,7 @@ fun DownloadManagerScreen(
         viewModel.setDownloadDir(treeUri.toString(), dirName)
     }
 
-    Scaffold(
+    NiScaffold(
         topBar = {
             NiTopBar(
                 title = stringResource(R.string.download_manager_title),
@@ -133,6 +137,10 @@ fun DownloadManagerScreen(
                         DropdownMenu(
                             expanded = showOverflowMenu,
                             onDismissRequest = { showOverflowMenu = false },
+                            shape = RoundedCornerShape(16.dp),
+                            containerColor = niFrostSurfaceColor(),
+                            border = BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
+                            shadowElevation = 6.dp,
                         ) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.download_manager_clear_completed)) },
@@ -164,7 +172,7 @@ fun DownloadManagerScreen(
     ) { padding ->
         if (displayItems.isEmpty() && downloadDirInfo.uri.isNotBlank()) {
             Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 NiEmptyState(
@@ -175,10 +183,11 @@ fun DownloadManagerScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
-                    horizontal = 16.dp,
-                    vertical = 8.dp,
+                    start = 16.dp, end = 16.dp,
+                    top = padding.calculateTopPadding() + 8.dp,
+                    bottom = padding.calculateBottomPadding() + 8.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {

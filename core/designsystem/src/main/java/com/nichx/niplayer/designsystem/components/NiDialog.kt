@@ -40,29 +40,11 @@ import com.nichx.niplayer.designsystem.theme.NiExtraColors
 // ──────── 主题感知的磨砂玻璃调色板 ────────
 
 /**
- * 对话框背景色：浅色磨砂白 / 深色磨砂灰。
+ * 对话框面板底色：统一走 [niFrostSurfaceColor]（**不透明**磨砂色）。
  *
- * 基于应用主题（[NiExtraColors.current.isDark]）而非系统主题判断，
- * 保证应用强制浅色/深色时对话框与页面保持一致。
+ * 对话框位于独立窗口，半透明底色会把窗口背景/系统压暗层透出来形成多余矩形，
+ * 因此不再区分玻璃开关的降级色。
  */
-@Composable
-private fun dialogSurfaceColor(): Color {
-    return if (NiExtraColors.current.isDark) {
-        Color(0xFF2C2C2E).copy(alpha = 0.95f)
-    } else {
-        Color.White.copy(alpha = 0.96f)
-    }
-}
-
-/** 对话框边框色 */
-@Composable
-private fun dialogBorderColor(): Color {
-    return if (NiExtraColors.current.isDark) {
-        Color.White.copy(alpha = 0.10f)
-    } else {
-        Color.Black.copy(alpha = 0.08f)
-    }
-}
 
 /** 对话框标题/主文字色 */
 @Composable
@@ -88,7 +70,7 @@ private fun dialogDividerColor(): Color {
  * 通用确认对话框 — 磨砂玻璃卡片风格（主题自适应）。
  *
  * - [Dialog] + [Surface] 自定义实现，替代 plain M3 AlertDialog
- * - 24dp 大圆角 + 半透明背景 + 阴影 + 细边框
+ * - 24dp 大圆角 + 不透明磨砂底色 + 阴影 + 细边框
  * - 浅色/深色模式自适应
  */
 @Composable
@@ -109,10 +91,10 @@ fun NiConfirmDialog(
     ) {
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = dialogSurfaceColor(),
+            color = niFrostSurfaceColor(),
             contentColor = dialogOnSurfaceColor(),
             shadowElevation = 12.dp,
-            border = BorderStroke(0.5.dp, dialogBorderColor()),
+            border = BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
             modifier = Modifier.widthIn(min = 260.dp, max = 320.dp),
         ) {
             Column(modifier = Modifier.padding(vertical = 8.dp)) {
@@ -163,9 +145,9 @@ fun NiConfirmDialog(
  * 列表选择对话框 — 磨砂玻璃卡片风格（主题自适应）。
  *
  * - [Dialog] + [Surface] 自定义实现，绕过 AlertDialog 系统默认装饰
- * - 24dp 大圆角 + 半透明背景 + 阴影 + 细边框
+ * - 24dp 大圆角 + 不透明磨砂底色 + 阴影 + 细边框
  * - 标题 + 分隔线 + 列表项
- * - 列表项 48dp 行高，选中项 primaryContainer 高亮 + Check 图标
+ * - 列表项 44dp 行高，选中项 primaryContainer 高亮 + Check 图标
  */
 @Composable
 fun NiListItemDialog(
@@ -179,10 +161,10 @@ fun NiListItemDialog(
     ) {
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = dialogSurfaceColor(),
+            color = niFrostSurfaceColor(),
             contentColor = dialogOnSurfaceColor(),
             shadowElevation = 12.dp,
-            border = BorderStroke(0.5.dp, dialogBorderColor()),
+            border = BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
             modifier = Modifier.widthIn(min = 200.dp, max = 280.dp),
         ) {
             Column(modifier = Modifier.padding(vertical = 8.dp)) {
@@ -214,7 +196,7 @@ fun NiListItemDialog(
 /**
  * 单个列表项行（公开，供 [NiInfoDialog] 等自定义对话框内容复用）。
  *
- * 样式与 [NiListItemDialog] 内部行完全一致：48dp 行高、选中 primaryContainer 高亮 + Check 图标。
+ * 样式与 [NiListItemDialog] 内部行完全一致：44dp 行高、选中 primaryContainer 高亮 + Check 图标。
  */
 @Composable
 fun NiDialogItemRow(item: NiDialogItem) {
@@ -227,8 +209,8 @@ fun NiDialogItemRow(item: NiDialogItem) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .padding(horizontal = 8.dp)
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .height(44.dp)
             .background(
                 color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
                 else Color.Transparent,
@@ -270,7 +252,7 @@ fun NiDialogItemRow(item: NiDialogItem) {
 /**
  * 信息展示对话框 — 磨砂玻璃卡片风格（主题自适应）。
  *
- * 与 [NiListItemDialog] 视觉统一：24dp 圆角 + 半透明背景 + 阴影 + 边框 + 标题分隔线。
+ * 与 [NiListItemDialog] 视觉统一：24dp 圆角 + 不透明磨砂底色 + 阴影 + 边框 + 标题分隔线。
  * 调用方通过 [content] 注入具体内容，通过 [actions] 注入底部按钮区（可选）。
  */
 @Composable
@@ -286,10 +268,10 @@ fun NiInfoDialog(
     ) {
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = dialogSurfaceColor(),
+            color = niFrostSurfaceColor(),
             contentColor = dialogOnSurfaceColor(),
             shadowElevation = 12.dp,
-            border = BorderStroke(0.5.dp, dialogBorderColor()),
+            border = BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
             modifier = Modifier.widthIn(min = 260.dp, max = 340.dp),
         ) {
             Column(modifier = Modifier.padding(vertical = 8.dp)) {

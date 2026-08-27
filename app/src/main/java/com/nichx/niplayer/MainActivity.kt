@@ -51,12 +51,15 @@ import androidx.navigation.navArgument
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.nichx.niplayer.datastore.LanguageSettings
 import com.nichx.niplayer.datastore.ThemeSettings
+import com.nichx.niplayer.datastore.GlassSettings
+import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
+import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
+import androidx.compose.runtime.CompositionLocalProvider
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.theme.NiTheme
 import com.nichx.niplayer.feature.home.HomeScreen
 import com.nichx.niplayer.feature.home.history.PlayHistoryScreen
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerScreen
-import com.nichx.niplayer.feature.home.library.FileBrowserOverlay
 import com.nichx.niplayer.feature.home.library.StoragePlusScreen
 import com.nichx.niplayer.feature.home.playlist.PlaylistDetailScreen
 import com.nichx.niplayer.feature.home.playlist.PlaylistsScreen
@@ -69,6 +72,7 @@ import com.nichx.niplayer.feature.home.settings.DownloadManagerScreen
 import com.nichx.niplayer.feature.home.settings.EqualizerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.LrcApiSettingsScreen
 import com.nichx.niplayer.feature.home.settings.LanguageScreen
+import com.nichx.niplayer.feature.home.settings.GlassSettingsScreen
 import com.nichx.niplayer.feature.home.settings.PlaybackStatsScreen
 import com.nichx.niplayer.feature.home.settings.PlayerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.ScanManagerScreen
@@ -105,6 +109,10 @@ class MainActivity : ComponentActivity() {
         requestLocalNetworkPermission()
         setContent {
             val themeConfig by ThemeSettings.themeFlow.collectAsStateWithLifecycle()
+            // 液态玻璃不透明度：收集设置改动，经 LocalNiGlassOpacity 下发到全部玻璃浮层
+            val glassOpacity by GlassSettings.opacityFlow.collectAsStateWithLifecycle()
+            // 面板（对话框/菜单）不透明度：与薄浮层分开设置，经 LocalNiGlassPanelOpacity 下发
+            val glassPanelOpacity by GlassSettings.panelOpacityFlow.collectAsStateWithLifecycle()
             val darkTheme = when (themeConfig.mode) {
                 ThemeSettings.Mode.LIGHT -> false
                 ThemeSettings.Mode.DARK -> true
@@ -162,16 +170,23 @@ class MainActivity : ComponentActivity() {
                     insetsController?.isAppearanceLightNavigationBars = !darkTheme
                 }
                 val navController = rememberNavController()
-                val currentBackStackEntry by navController.currentBackStackEntryAsState()
-                // 外部页面（快速访问/搜索）请求打开文件浏览器的待办状态：
-                // 回到 Home 根路由后由 HomeScreen 消费，从而复用其 overlay 文件浏览器并保留底部导航栏
+                // 外部页（搜索/快速访问）请求在媒体库 tab 打开文件浏览的待办状态，
+                // 回到 Home 根路由后由 HomeScreen 消费（切入媒体库子栈）
                 var pendingFileBrowser by remember { mutableStateOf<Pair<Int, String>?>(null) }
+                val currentBackStackEntry by navController.currentBackStackEntryAsState()
                 val isPlayerScreen =
                     currentBackStackEntry?.destination?.route == Routes.Player.AUDIO_PLAYER ||
                             currentBackStackEntry?.destination?.route == Routes.Player.PLAYER ||
                             currentBackStackEntry?.destination?.route == Routes.Player.GUARD
 
-                Box(modifier = Modifier.fillMaxSize()) {
+                // 文件浏览多选态：由 HomeScreen 上抛，多选时隐藏音乐条，避免与多选操作栏堆叠
+                var fileBrowserMultiSelect by remember { mutableStateOf(false) }
+
+                CompositionLocalProvider(
+                    LocalNiGlassOpacity provides glassOpacity,
+                    LocalNiGlassPanelOpacity provides glassPanelOpacity,
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                     NiNavHost(
                         navController = navController,
                     ) {
@@ -181,8 +196,6 @@ class MainActivity : ComponentActivity() {
                             exitTransition = { fadeOut(tween(300)) },
                         ) {
                             HomeScreen(
-                                pendingFileBrowser = pendingFileBrowser,
-                                onPendingFileBrowserConsumed = { pendingFileBrowser = null },
                                 onNavigateToGlobal = { route -> navController.navigate(route) },
                                 onNavigateToSearch = {
                                     navController.navigate(Routes.Local.SEARCH)
@@ -200,9 +213,6 @@ class MainActivity : ComponentActivity() {
                                     navController.navigate(Routes.Playlist.detailRoute(playlistId))
                                 },
                                 onPlayVideo = { navController.navigate(Routes.Player.GUARD) },
-                                onNavigateToImageViewer = {
-                                    navController.navigate(Routes.ImageViewer.VIEWER)
-                                },
                                 onNavigateToStoragePlus = { type, storageId ->
                                     val route = if (type != null) {
                                         Routes.Stream.storagePlusRoute(type)
@@ -211,35 +221,15 @@ class MainActivity : ComponentActivity() {
                                     }
                                     navController.navigate(route)
                                 },
-                            )
-                        }
-                        composable(
-                            route = Routes.Stream.STORAGE_FILE_ROUTE,
-                            arguments = listOf(
-                                navArgument("storageId") {
-                                    type = NavType.IntType
-                                },
-                                navArgument("path") {
-                                    type = NavType.StringType
-                                    defaultValue = ""
-                                    nullable = true
-                                },
-                            ),
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) { backStackEntry ->
-                            val path = backStackEntry.arguments?.getString("path") ?: ""
-                            FileBrowserOverlay(
-                                storageId = backStackEntry.arguments?.getInt("storageId") ?: 0,
-                                initialPath = path,
-                                onBack = { navController.popBackStack() },
-                                onPlayVideo = { navController.navigate(Routes.Player.GUARD) },
                                 onNavigateToImageViewer = {
                                     navController.navigate(Routes.ImageViewer.VIEWER)
                                 },
                                 onNavigateToDownloadManager = {
                                     navController.navigate(Routes.Stream.DOWNLOAD_MANAGER)
                                 },
+                                pendingFileBrowser = pendingFileBrowser,
+                                onPendingFileBrowserConsumed = { pendingFileBrowser = null },
+                                onFileBrowserMultiSelectChanged = { fileBrowserMultiSelect = it },
                             )
                         }
                         composable(
@@ -275,6 +265,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             QuickAccessScreen(
                                 onNavigateToStorageFile = { storageId, path ->
+                                    // 交给 Home 在媒体库 tab 子栈打开文件浏览，返回栈回到快速访问页
                                     pendingFileBrowser = storageId to path
                                     navController.popBackStack(Routes.Home.ROOT, inclusive = false)
                                 },
@@ -316,6 +307,7 @@ class MainActivity : ComponentActivity() {
                                 onBack = { navController.popBackStack() },
                                 onNavigateToPlayVideo = { navController.navigate(Routes.Player.GUARD) },
                                 onNavigateToStorageFile = { storageId, path ->
+                                    // 交给 Home 在媒体库 tab 子栈打开文件浏览，返回栈回到搜索页
                                     pendingFileBrowser = storageId to path
                                     navController.popBackStack(Routes.Home.ROOT, inclusive = false)
                                 },
@@ -374,6 +366,13 @@ class MainActivity : ComponentActivity() {
                             exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
                         ) {
                             LanguageScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = Routes.User.GLASS,
+                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
+                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
+                        ) {
+                            GlassSettingsScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.SETTING_PLAYER,
@@ -466,8 +465,10 @@ class MainActivity : ComponentActivity() {
                         onNavigateToPlayer = {
                             navController.navigate(Routes.Player.AUDIO_PLAYER)
                         },
-                        visible = !isPlayerScreen,
+                        // 播放器页或文件浏览多选态下隐藏音乐条
+                        visible = !isPlayerScreen && !fileBrowserMultiSelect,
                     )
+                }
                 }
             }
         }

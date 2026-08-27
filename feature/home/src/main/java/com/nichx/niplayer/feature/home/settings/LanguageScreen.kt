@@ -24,7 +24,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.datastore.LanguageSettings
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.feature.home.R
@@ -55,7 +55,7 @@ fun LanguageScreen(
     val context = LocalContext.current
     val currentMode by LanguageSettings.languageFlow.collectAsStateWithLifecycle()
 
-    Scaffold(
+    NiScaffold(
         topBar = {
             NiTopBar(
                 title = stringResource(R.string.language_title),
@@ -73,11 +73,11 @@ fun LanguageScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            Spacer(Modifier.height(padding.calculateTopPadding()))
             Text(
                 text = stringResource(R.string.language_mode),
                 style = MaterialTheme.typography.labelLarge,
@@ -128,6 +128,7 @@ fun LanguageScreen(
                     color = MaterialTheme.colorScheme.outline,
                 )
             }
+            Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
     }
 }

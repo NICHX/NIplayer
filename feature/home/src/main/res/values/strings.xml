@@ -355,6 +355,14 @@
     <string name="settings_entry_theme_sub">外观与配色</string>
     <string name="settings_entry_language">语言</string>
     <string name="settings_entry_language_sub">应用界面语言</string>
+    <string name="settings_entry_glass">玻璃不透明度</string>
+    <string name="settings_entry_glass_sub">调节玻璃浮层的通透程度</string>
+    <string name="settings_glass_title">玻璃</string>
+    <string name="settings_glass_opacity">不透明度</string>
+    <string name="settings_glass_desc">导航栏、顶栏等薄浮层与对话框、菜单的底色不透明度分开调节。</string>
+    <string name="settings_glass_helper">数值越高玻璃越实，复杂或深色内容下的文字对比越清晰。</string>
+    <string name="settings_glass_overlay_opacity">导航栏等浮层</string>
+    <string name="settings_glass_panel_opacity">弹窗与菜单</string>
     <string name="settings_entry_update">检查更新</string>
     <string name="settings_entry_update_sub">检查并下载新版本</string>
     <string name="settings_entry_about">关于</string>
@@ -380,6 +388,9 @@
     <string name="storage_file_deselect_all">取消全选</string>
     <string name="storage_file_cancel_multi_select">取消多选</string>
     <string name="storage_file_selected_count">已选 %1$d 项</string>
+    <string name="storage_file_enter_multi_select">进入多选</string>
+    <string name="storage_file_mixed_add_title">添加到歌单</string>
+    <string name="storage_file_mixed_add_body">歌单仅支持音频，将添加 %1$d 个音频、跳过 %2$d 个其他文件，继续？</string>
     <string name="storage_file_sort">排序</string>
     <string name="storage_file_sort_name">名称</string>
     <string name="storage_file_sort_type">类型</string>

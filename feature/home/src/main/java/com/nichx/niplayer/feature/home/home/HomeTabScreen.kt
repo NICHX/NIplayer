@@ -72,7 +72,6 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -101,6 +100,7 @@ import com.nichx.niplayer.designsystem.components.NiHomeLoadingState
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessUiItem
 import com.nichx.niplayer.designsystem.components.NiSectionHeader
 import com.nichx.niplayer.designsystem.components.NiThumbCard
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.components.PlaceholderText
 import java.util.Locale
@@ -174,7 +174,7 @@ fun HomeTabScreen(
     // 影院横幅最大高度：横屏(高度紧凑)下压低，避免占满整屏高度
     val bannerMaxHeight = if (windowSizeClass.height == NiWindowHeightSizeClass.Compact) 220.dp else 280.dp
 
-    Scaffold(
+    NiScaffold(
         topBar = {
             // 大屏下顶部栏也限制最大宽度并居中，与正文对齐
             Box(
@@ -223,12 +223,13 @@ fun HomeTabScreen(
                 )
             },
     ) { padding ->
+        // 内容满铺全屏并延伸到顶栏背后，滚动内容可被顶栏真实模糊；
+        // 顶栏高度由列表顶部 inset 让位，避免首项顶到状态栏
+        val homeTopInset = padding.calculateTopPadding()
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = { viewModel.refresh() },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
+            modifier = Modifier.fillMaxSize(),
         ) {
             if (!dataReady) {
                 NiHomeLoadingState()
@@ -245,6 +246,7 @@ fun HomeTabScreen(
                     storageReachability = storageReachability,
                     contentMaxWidth = contentMaxWidth,
                     bannerMaxHeight = bannerMaxHeight,
+                    topInset = homeTopInset,
                     onNavigateToPlayHistory = onNavigateToPlayHistory,
                     onNavigateToQuickAccess = onNavigateToQuickAccess,
                     onOpenPlaylists = onOpenPlaylists,
@@ -267,6 +269,7 @@ fun HomeTabScreen(
                     qaColumns = qaColumns,
                     contentMaxWidth = contentMaxWidth,
                     heroMaxWidth = heroMaxWidth,
+                    topInset = homeTopInset,
                     onNavigateToPlayHistory = onNavigateToPlayHistory,
                     onNavigateToQuickAccess = onNavigateToQuickAccess,
                     onOpenPlaylists = onOpenPlaylists,
@@ -298,6 +301,7 @@ private fun HomeMagazineLayout(
     storageReachability: Map<Int, Boolean>,
     contentMaxWidth: Dp,
     bannerMaxHeight: Dp,
+    topInset: Dp,
     onNavigateToPlayHistory: () -> Unit,
     onNavigateToQuickAccess: () -> Unit,
     onOpenPlaylists: () -> Unit,
@@ -318,7 +322,7 @@ private fun HomeMagazineLayout(
                 .widthIn(max = contentMaxWidth)
                 .fillMaxWidth()
                 .align(Alignment.TopCenter),
-            contentPadding = PaddingValues(top = 8.dp, bottom = bottomBarClearance),
+            contentPadding = PaddingValues(top = topInset + 8.dp, bottom = bottomBarClearance),
             verticalArrangement = Arrangement.spacedBy(listGap),
         ) {
             if (recentPlays.isEmpty() && quickAccessItems.isEmpty() && playlists.isEmpty()) {
@@ -606,6 +610,7 @@ private fun HomeSingleColumnLayout(
     qaColumns: Int,
     contentMaxWidth: Dp,
     heroMaxWidth: Dp,
+    topInset: Dp,
     onNavigateToPlayHistory: () -> Unit,
     onNavigateToQuickAccess: () -> Unit,
     onOpenPlaylists: () -> Unit,
@@ -628,7 +633,7 @@ private fun HomeSingleColumnLayout(
             contentPadding = PaddingValues(
                 start = screenOuter,
                 end = screenOuter,
-                top = 8.dp,
+                top = topInset + 8.dp,
                 bottom = bottomBarClearance,
             ),
             verticalArrangement = Arrangement.spacedBy(NiSpacings.responsiveListGap),

@@ -1,31 +1,19 @@
 package com.nichx.niplayer.feature.home
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,22 +24,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.designsystem.components.LocalHazeState
-import com.nichx.niplayer.designsystem.components.NiBottomBarTab
-import com.nichx.niplayer.designsystem.components.NiGlassBarItem
-import com.nichx.niplayer.designsystem.components.NiGlassBottomBar
 import com.nichx.niplayer.designsystem.components.niHazeSource
 import com.nichx.niplayer.designsystem.components.rememberNiHazeState
 import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
 import com.nichx.niplayer.designsystem.theme.NiWindowWidthSizeClass
 import com.nichx.niplayer.feature.home.home.HomeTabScreen
-import com.nichx.niplayer.feature.home.library.FileBrowserOverlay
-import com.nichx.niplayer.feature.home.library.LibraryScreen
+import com.nichx.niplayer.feature.home.library.LibraryTabNavHost
 import com.nichx.niplayer.feature.home.settings.SettingsScreen
 import com.nichx.niplayer.navigation.Routes
 import kotlinx.coroutines.launch
@@ -67,26 +52,54 @@ fun HomeScreen(
     onOpenPlaylists: () -> Unit = {},
     onOpenPlaylist: (Int) -> Unit = {},
     onPlayVideo: () -> Unit = {},
-    onNavigateToImageViewer: () -> Unit = {},
     onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit = { _, _ -> },
+    onNavigateToImageViewer: () -> Unit = {},
+    onNavigateToDownloadManager: () -> Unit = {},
+    // 外部页（搜索/快速访问）请求打开文件浏览：切到媒体库 tab 并在此子栈打开
     pendingFileBrowser: Pair<Int, String>? = null,
     onPendingFileBrowserConsumed: () -> Unit = {},
+    // 文件浏览多选态（已结合"当前在媒体库 tab"）回传 MainActivity：供其隐藏音乐条
+    onFileBrowserMultiSelectChanged: (Boolean) -> Unit = {},
 ) {
     var currentTab by rememberSaveable { mutableStateOf(TabKey.HOME) }
-    var fbStorageId by rememberSaveable { mutableIntStateOf(0) }
-    var fbPath by rememberSaveable { mutableStateOf("") }
     val tabKeys = arrayOf(TabKey.HOME, TabKey.LIBRARY, TabKey.SETTINGS)
     val coroutineScope = rememberCoroutineScope()
 
-    // 三个 Tab 用原生 HorizontalPager 承载（参考 legado-with-MD3）：
-    // - 页面自带 swipe 切换，系统保证可靠，不再依赖自研拖拽；
-    // - beyondViewportPageCount 让三个页常驻，切换不重建（避免首点卡顿）。
+    // 三个 Tab 用原生 HorizontalPager 承载：页面自带 swipe 切换，切走常驻保留后台状态
     val pagerState: PagerState = rememberPagerState(
         initialPage = tabKeys.indexOf(currentTab).coerceAtLeast(0),
         pageCount = { tabKeys.size },
     )
 
-    // pager -> currentTab：页面滑动后同步选中态（供底栏高亮/文件浏览浮层使用）
+    // 媒体库 tab 的内部子返回栈（列表 → 文件浏览），随媒体库 pager 页常驻
+    val libraryNavController: NavHostController = rememberNavController()
+
+    // 打开文件浏览：在媒体库子栈 push，并切到媒体库 tab（已在媒体库则无副作用）
+    val openFileBrowser: (Int, String) -> Unit = { storageId, path ->
+        libraryNavController.navigate(Routes.Stream.storageFileRoute(storageId, path))
+        coroutineScope.launch { pagerState.animateScrollToPage(TabKey.LIBRARY.ordinal) }
+    }
+
+    // 文件浏览页跳设置：切到设置 tab（媒体库子栈留在后台，切回恢复文件浏览）
+    val goToSettingsTab: () -> Unit = {
+        coroutineScope.launch { pagerState.animateScrollToPage(TabKey.SETTINGS.ordinal) }
+    }
+
+    // 文件浏览多选态：进入多选时隐藏共享底栏，并仅在"当前在媒体库 tab"时上抛给 MainActivity 隐藏音乐条
+    var fileBrowserMultiSelect by remember { mutableStateOf(false) }
+    val inFileBrowserMultiSelect = fileBrowserMultiSelect && pagerState.currentPage == TabKey.LIBRARY.ordinal
+    LaunchedEffect(inFileBrowserMultiSelect) {
+        onFileBrowserMultiSelectChanged(inFileBrowserMultiSelect)
+    }
+
+    // 外部页请求打开文件浏览：消费后落地到媒体库 tab 的文件浏览
+    LaunchedEffect(pendingFileBrowser) {
+        val pending = pendingFileBrowser ?: return@LaunchedEffect
+        openFileBrowser(pending.first, pending.second)
+        onPendingFileBrowserConsumed()
+    }
+
+    // pager -> currentTab：页面滑动后同步选中态（供底栏高亮使用）
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
             currentTab = tabKeys[page.coerceIn(0, tabKeys.size - 1)]
@@ -100,51 +113,16 @@ fun HomeScreen(
         NiWindowWidthSizeClass.Expanded -> 960.dp
     }
 
-    val tabs = HomeTab.entries.map { tab ->
-        NiBottomBarTab(
-            route = tab.route,
-            label = stringResource(tab.labelRes),
-            selectedIcon = tab.selectedIcon,
-            unselectedIcon = tab.unselectedIcon,
-        )
-    }
-
-    val currentRoute = when (currentTab) {
-        TabKey.HOME -> HomeTab.HOME.route
-        TabKey.LIBRARY -> HomeTab.LIBRARY.route
-        TabKey.SETTINGS -> HomeTab.SETTINGS.route
-    }
-
-    val onTabSelected: (NiBottomBarTab) -> Unit = { tab ->
-        val index = tabs.indexOf(tab)
-        if (index >= 0 && index != pagerState.currentPage) {
+    // 共享底栏在同一宿主内就地切换 tab（落地到 pager 对应页）
+    val onTabSelected: (Int) -> Unit = { index ->
+        if (index in tabKeys.indices && index != pagerState.currentPage) {
             coroutineScope.launch { pagerState.animateScrollToPage(index) }
         }
     }
 
-    val openFileBrowser: (Int, String) -> Unit = { storageId, path ->
-        fbStorageId = storageId
-        fbPath = path
-        coroutineScope.launch { pagerState.animateScrollToPage(TabKey.LIBRARY.ordinal) }
-    }
-
-    val closeFileBrowser: () -> Unit = {
-        fbStorageId = 0
-        fbPath = ""
-    }
-
-    // 外部页面（快速访问/搜索）请求打开文件浏览器：
-    // 回到根路由后由这里消费，复用 overlay 文件浏览器并保留底部导航栏
-    LaunchedEffect(pendingFileBrowser) {
-        val pending = pendingFileBrowser ?: return@LaunchedEffect
-        openFileBrowser(pending.first, pending.second)
-        onPendingFileBrowserConsumed()
-    }
-
     // 创建共享 Haze 状态：内容层（niHazeSource）与浮层共享，实现真实背景模糊
     val hazeState = rememberNiHazeState()
-    // 玻璃底栏背景画布：先铺一层 surface 作为统一底色（保证所有页面底栏观感一致，
-    // 避免空白页面只透出底层导致透明度偏高），再捕获页面内容（drawContent）供模糊。
+    // 玻璃底栏背景画布：先铺一层 surface 作为统一底色，再捕获页面内容（drawContent）供模糊
     val floatingBarSurface = MaterialTheme.colorScheme.surface
     val floatingBarBackdrop = rememberLayerBackdrop {
         drawRect(floatingBarSurface)
@@ -158,89 +136,52 @@ fun HomeScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             // 内容层：标记为 haze 模糊源 + 玻璃底栏的 backdrop 背景源
             HomeTabContent(
-            pagerState = pagerState,
-            currentTab = currentTab,
-            fbStorageId = fbStorageId,
-            fbPath = fbPath,
-            onCloseFileBrowser = closeFileBrowser,
-            onOpenFileBrowser = openFileBrowser,
-            onNavigateToGlobal = onNavigateToGlobal,
-            onNavigateToSearch = onNavigateToSearch,
-            onNavigateToPlayHistory = onNavigateToPlayHistory,
-            onNavigateToQuickAccess = onNavigateToQuickAccess,
-            onOpenPlaylists = onOpenPlaylists,
-            onOpenPlaylist = onOpenPlaylist,
-            onPlayVideo = onPlayVideo,
-            onNavigateToImageViewer = onNavigateToImageViewer,
-            onNavigateToStoragePlus = onNavigateToStoragePlus,
-            modifier = Modifier
-                .niHazeSource(hazeState)
-                .layerBackdrop(floatingBarBackdrop),
-        )
+                pagerState = pagerState,
+                onOpenFileBrowser = openFileBrowser,
+                libraryNavController = libraryNavController,
+                onNavigateToGlobal = onNavigateToGlobal,
+                onNavigateToSearch = onNavigateToSearch,
+                onNavigateToPlayHistory = onNavigateToPlayHistory,
+                onNavigateToQuickAccess = onNavigateToQuickAccess,
+                onOpenPlaylists = onOpenPlaylists,
+                onOpenPlaylist = onOpenPlaylist,
+                onPlayVideo = onPlayVideo,
+                onNavigateToStoragePlus = onNavigateToStoragePlus,
+                onNavigateToImageViewer = onNavigateToImageViewer,
+                onNavigateToDownloadManager = onNavigateToDownloadManager,
+                onNavigateToSettingsTab = goToSettingsTab,
+                pendingFileBrowser = pendingFileBrowser,
+                onPendingFileBrowserConsumed = onPendingFileBrowserConsumed,
+                onFileBrowserMultiSelectChanged = { fileBrowserMultiSelect = it },
+                modifier = Modifier
+                    .niHazeSource(hazeState)
+                    .layerBackdrop(floatingBarBackdrop),
+            )
 
-        // 悬浮液态玻璃底栏（完全复刻 legado-with-MD3 FloatingBottomBar）
-        NiGlassBottomBar(
-            selectedIndex = { pagerState.targetPage },
-            onSelected = { index ->
-                tabs.getOrNull(index)?.let(onTabSelected)
-            },
-            onReselected = { index ->
-                // 再次点按媒体库按钮：关闭文件浏览页，回到存储源列表
-                if (tabKeys[index.coerceIn(0, 2)] == TabKey.LIBRARY && fbStorageId > 0) {
-                    closeFileBrowser()
-                }
-            },
-            backdrop = floatingBarBackdrop,
-            tabsCount = tabs.size,
-            isBlurEnabled = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .widthIn(max = bottomBarMaxWidth)
-                .padding(start = 16.dp, end = 16.dp, bottom = 8.dp + bottomNavInset),
-        ) {
-            tabs.forEachIndexed { index, tab ->
-                val selected = currentRoute == tab.route
-                val contentColor = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.outline
-                }
-                NiGlassBarItem(
-                    onClick = { onTabSelected(tab) },
-                ) {
-                    Icon(
-                        imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                        contentDescription = tab.label,
-                        tint = contentColor,
-                        modifier = Modifier.size(22.dp),
-                    )
-                    Text(
-                        text = tab.label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = contentColor,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                        maxLines = 1,
-                    )
-                }
+            // 共享玻璃底栏：文件浏览多选态下隐藏（操作栏贴底，避免堆叠）
+            if (!inFileBrowserMultiSelect) {
+                HomeBottomNavBar(
+                    selectedIndex = { pagerState.targetPage },
+                    onSelect = onTabSelected,
+                    backdrop = floatingBarBackdrop,
+                    maxWidth = bottomBarMaxWidth,
+                    bottomInset = 8.dp + bottomNavInset,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
             }
-        }
         }
     }
 }
 
 /**
- * Tab 内容块：各页面切换动画 + 文件浏览器 overlay。
- * 大屏布局（侧边导航）与紧凑布局（底部导航）共用，避免内容层重复。
+ * Tab 内容块：各页面切换动画。
+ * 文件浏览收敛为媒体库 tab 的内部子返回栈（见 [LibraryTabNavHost]）。
  */
 @Composable
 private fun HomeTabContent(
     pagerState: PagerState,
-    currentTab: TabKey,
-    fbStorageId: Int,
-    fbPath: String,
-    onCloseFileBrowser: () -> Unit,
     onOpenFileBrowser: (Int, String) -> Unit,
+    libraryNavController: NavHostController,
     onNavigateToGlobal: (String) -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToPlayHistory: () -> Unit,
@@ -248,16 +189,17 @@ private fun HomeTabContent(
     onOpenPlaylists: () -> Unit,
     onOpenPlaylist: (Int) -> Unit,
     onPlayVideo: () -> Unit,
-    onNavigateToImageViewer: () -> Unit,
     onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit,
+    onNavigateToImageViewer: () -> Unit,
+    onNavigateToDownloadManager: () -> Unit,
+    onNavigateToSettingsTab: () -> Unit,
+    pendingFileBrowser: Pair<Int, String>?,
+    onPendingFileBrowserConsumed: () -> Unit,
+    onFileBrowserMultiSelectChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // 用同一个 Box 承载 hazeSource + layerBackdrop，让 Tab 内容与文件浏览 overlay
-    // 都成为玻璃底栏的模糊来源。若 overlay(AnimatedVisibility) 不在 backdrop 捕获范围内，
-    // 底栏在文件浏览页会“无内容可糊”→ 表现为完全没有模糊效果。
     Box(modifier = modifier.fillMaxSize()) {
-        // 原生 HorizontalPager（参考 legado-with-MD3）：Tab 页自带 swipe 切换，
-        // beyondViewportPageCount 让三个页常驻、切换只平移不重建。
+        // 原生 HorizontalPager：Tab 页自带 swipe 切换，beyondViewportPageCount 让三页常驻
         HorizontalPager(
             state = pagerState,
             beyondViewportPageCount = 2,
@@ -275,19 +217,21 @@ private fun HomeTabContent(
                         onOpenPlaylist = onOpenPlaylist,
                         onNavigateToStorageFile = onOpenFileBrowser,
                         onPlayVideo = onPlayVideo,
-                        onNavigateToSettings = { onNavigateToGlobal(Routes.User.SWITCH_THEME) },
+                        onNavigateToSettings = onNavigateToSettingsTab,
                     )
                 }
-                1 -> if (fbStorageId <= 0) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        LibraryScreen(
-                            onNavigateToStorageFile = onOpenFileBrowser,
-                            onNavigateToStoragePlus = onNavigateToStoragePlus,
-                        )
-                    }
-                } else {
-                    // 文件浏览浮层（FileBrowserOverlay）覆盖其上，此处保持透明
-                    Box(modifier = Modifier.fillMaxSize())
+                1 -> Box(modifier = Modifier.fillMaxSize()) {
+                    LibraryTabNavHost(
+                        navController = libraryNavController,
+                        onNavigateToStoragePlus = onNavigateToStoragePlus,
+                        onPlayVideo = onPlayVideo,
+                        onNavigateToImageViewer = onNavigateToImageViewer,
+                        onNavigateToDownloadManager = onNavigateToDownloadManager,
+                        onNavigateToSettings = onNavigateToSettingsTab,
+                        pendingFileBrowser = pendingFileBrowser,
+                        onPendingFileBrowserConsumed = onPendingFileBrowserConsumed,
+                        onFileBrowserMultiSelectChanged = onFileBrowserMultiSelectChanged,
+                    )
                 }
                 else -> Box(modifier = Modifier.fillMaxSize()) {
                     SettingsScreen(
@@ -296,28 +240,5 @@ private fun HomeTabContent(
                 }
             }
         }
-
-        AnimatedVisibility(
-            visible = currentTab == TabKey.LIBRARY && fbStorageId > 0,
-            enter = fadeIn(animationSpec = tween(220)),
-            exit = fadeOut(animationSpec = tween(220)),
-            modifier = Modifier.consumeWindowInsets(WindowInsets.navigationBars),
-        ) {
-            if (fbStorageId > 0) {
-                FileBrowserOverlay(
-                    storageId = fbStorageId,
-                    initialPath = fbPath,
-                    onBack = onCloseFileBrowser,
-                    onPlayVideo = onPlayVideo,
-                    onNavigateToImageViewer = onNavigateToImageViewer,
-                    onNavigateToDownloadManager = { onNavigateToGlobal(Routes.Stream.DOWNLOAD_MANAGER) },
-                )
-            }
-        }
     }
 }
-
-private data class FileBrowserState(
-    val storageId: Int,
-    val initialPath: String = "",
-)

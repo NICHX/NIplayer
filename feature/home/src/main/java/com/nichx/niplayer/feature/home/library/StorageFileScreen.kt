@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,13 +28,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -83,6 +83,7 @@ import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Storage
@@ -105,7 +106,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHostState
 import com.nichx.niplayer.common.error.NiMessage
@@ -118,9 +118,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -135,12 +137,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
@@ -159,7 +163,14 @@ import com.nichx.niplayer.designsystem.components.NiExtendedFAB
 import com.nichx.niplayer.designsystem.components.NiFAB
 import com.nichx.niplayer.designsystem.components.NiFabVariant
 import com.nichx.niplayer.designsystem.components.NiProgressTrack
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
+import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
+import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
+import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
+import com.nichx.niplayer.designsystem.components.niGlassBorderColor
+import com.nichx.niplayer.designsystem.components.glassOnSurface
+import com.nichx.niplayer.designsystem.components.glassOnSurfaceMuted
 import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
 import com.nichx.niplayer.designsystem.iconstyle.NiStyleIcon
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
@@ -168,25 +179,32 @@ import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.MediaFileTypes.isImageFile
 import com.nichx.niplayer.database.dao.PlaylistWithCount
 import com.nichx.niplayer.storage.StorageFile
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.Shadow
 
 // 主 FAB 底部偏移，与媒体库页"新增媒体库"按钮位置保持一致
 // （该值已包含对应用底部导航栏 NiBottomBar 的避让）
 private val FabBottomOffset = 104.dp
 
-// 多选底部操作栏避让：NiBottomBar 高度 60dp + 8dp 间距。
-// 系统导航栏高度因 HomeTabContent.consumeWindowInsets 被消费、navigationBarsPadding 无效，
-// 需在 FileBrowserOverlay 中直接读 LocalWindowInsets 后叠加到此偏移上。
-private val MultiSelectBarBottomOffset = 68.dp
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FileBrowserOverlay(
+fun FileBrowserScreen(
     storageId: Int,
     initialPath: String = "",
     onBack: () -> Unit,
     onPlayVideo: () -> Unit,
     onNavigateToImageViewer: () -> Unit = {},
     onNavigateToDownloadManager: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
+    // 多选态上抛给宿主：进入多选时由 Home 隐藏底部导航栏、MainActivity 隐藏音乐条
+    onFileBrowserMultiSelectChanged: (Boolean) -> Unit = {},
 ) {
     val viewModel: StorageFileViewModel = hiltViewModel(key = "file_browser_$storageId")
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -208,6 +226,8 @@ fun FileBrowserOverlay(
     var showPlaylistPicker by remember { mutableStateOf(false) }
     var showNewPlaylistDialog by remember { mutableStateOf(false) }
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+    // 混选（音频+视频同时选中）点击"添加到歌单"时的确认提示
+    var showMixedAddConfirm by remember { mutableStateOf(false) }
     // 文件夹访问加密对话框状态
     var showEncryptDialog by remember { mutableStateOf<StorageFile?>(null) }
     var showDecryptDialog by remember { mutableStateOf<StorageFile?>(null) }
@@ -227,27 +247,36 @@ fun FileBrowserOverlay(
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
 
-    // 底部系统导航栏高度：HomeTabContent.consumeWindowInsets 已消费 insets，
-    // navigationBarsPadding 在此处无效，须直接读 WindowInsets.getBottom 用于多选操作栏避让。
-    val bottomNavInset = with(LocalDensity.current) {
-        WindowInsets.navigationBars.getBottom(this).toDp()
+    // 目录路径 -> 离开时的滚动位置(index, offset)
+    // 切换文件夹时记录旧目录位置，返回/进入时恢复原滚动位置，而不是把目录重新顶到最顶
+    val pathScrollCache = remember { mutableStateMapOf<String, Pair<Int, Int>>() }
+
+    // 记录当前目录的精确滚动位置（在导航动作前调用）
+    fun captureCurrentScroll() {
+        pathScrollCache[uiState.currentPath] = if (isGridView) {
+            gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+        } else {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }
+    }
+
+    // 目录加载完成后：恢复该目录上次离开时的滚动位置
+    LaunchedEffect(uiState.currentPath, uiState.isLoading) {
+        if (!uiState.isLoading) {
+            pathScrollCache[uiState.currentPath]?.let { (index, offset) ->
+                if (isGridView) {
+                    gridState.scrollToItem(index, offset)
+                } else {
+                    listState.scrollToItem(index, offset)
+                }
+            }
+        }
     }
 
     val showScrollToTop by remember {
         derivedStateOf {
             if (isGridView) gridState.firstVisibleItemIndex > 2
             else listState.firstVisibleItemIndex > 2
-        }
-    }
-
-    LaunchedEffect(uiState.scrollTargetIndex) {
-        if (uiState.scrollTargetIndex >= 0) {
-            if (isGridView) {
-                gridState.scrollToItem(uiState.scrollTargetIndex)
-            } else {
-                listState.scrollToItem(uiState.scrollTargetIndex)
-            }
-            viewModel.clearScrollTarget()
         }
     }
 
@@ -271,6 +300,19 @@ fun FileBrowserOverlay(
             viewModel.setDownloadDirAndDownload(files.first(), treeUri.toString(), dirName)
         } else {
             viewModel.setDownloadDirAndDownloadFiles(files, treeUri.toString(), dirName)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is StorageFileEvent.NavigateToPlayer -> onPlayVideo()
+                is StorageFileEvent.NavigateToImageViewer -> onNavigateToImageViewer()
+                is StorageFileEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
+                is StorageFileEvent.ShowToast -> snackbarHostState.showNiMessage(NiMessage.info(event.message))
+                is StorageFileEvent.OpenFileActions ->
+                    fileMenu = event.file to event.isFavorited
+            }
         }
     }
 
@@ -300,10 +342,19 @@ fun FileBrowserOverlay(
         }
     }
 
+    // 多选态上抛：进入/退出多选时通知宿主隐藏/恢复底栏与音乐条
+    LaunchedEffect(isMultiSelect) {
+        onFileBrowserMultiSelectChanged(isMultiSelect)
+    }
+    // 离开本页（pop 出子栈）时复位宿主侧多选态，避免残留隐藏状态
+    DisposableEffect(Unit) {
+        onDispose { onFileBrowserMultiSelectChanged(false) }
+    }
+
     BackHandler(enabled = true) {
         when {
             isMultiSelect -> viewModel.exitMultiSelect()
-            uiState.canGoUp -> viewModel.goUp()
+            uiState.canGoUp -> { captureCurrentScroll(); viewModel.goUp() }
             else -> onBack()
         }
     }
@@ -315,14 +366,15 @@ fun FileBrowserOverlay(
                 is StorageFileEvent.NavigateToImageViewer -> onNavigateToImageViewer()
                 is StorageFileEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
                 is StorageFileEvent.ShowToast -> snackbarHostState.showNiMessage(NiMessage.info(event.message))
-                is StorageFileEvent.ShowQuickAccessMenu ->
+                is StorageFileEvent.OpenFileActions ->
                     fileMenu = event.file to event.isFavorited
             }
         }
     }
 
-    Scaffold(
-        containerColor = Color.Transparent,
+    NiScaffold(
+        // 独立全屏目的地，用不透明底色承载页面内容
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             if (isMultiSelect) {
                 NiTopBar(
@@ -344,7 +396,7 @@ fun FileBrowserOverlay(
                 title = uiState.storageName.ifEmpty { stringResource(R.string.storage_file_browser_title) },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (uiState.canGoUp) viewModel.goUp() else onBack()
+                        if (uiState.canGoUp) { captureCurrentScroll(); viewModel.goUp() } else onBack()
                     }) {
                         NiStyleIcon(
                             icon = Icons.AutoMirrored.Rounded.ArrowBack,
@@ -358,6 +410,16 @@ fun FileBrowserOverlay(
                     }
                 },
                 actions = {
+                    // 显式多选入口（长按已改为打开单文件菜单，多选由此按钮进入）
+                    IconButton(onClick = viewModel::enterMultiSelect) {
+                        NiStyleIcon(
+                            icon = Icons.Rounded.SelectAll,
+                            style = NiAppIconStyle,
+                            containerSize = 40.dp,
+                            iconSize = 22.dp,
+                            contentDescription = stringResource(R.string.storage_file_enter_multi_select),
+                        )
+                    }
                     Box {
                         IconButton(onClick = { showSortMenu = true }) {
                             NiStyleIcon(
@@ -372,7 +434,8 @@ fun FileBrowserOverlay(
                             expanded = showSortMenu,
                             onDismissRequest = { showSortMenu = false },
                             shape = RoundedCornerShape(16.dp),
-                            containerColor = NiExtraColors.current.surfaceLevel3,
+                            containerColor = niFrostSurfaceColor(),
+                            border = BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
                             tonalElevation = 1.dp,
                             shadowElevation = 6.dp,
                         ) {
@@ -472,6 +535,16 @@ fun FileBrowserOverlay(
                             }
                         }
                     }
+                    // 独立全屏页面不常驻 Home 底部导航，提供快捷入口跳转到设置页
+                    IconButton(onClick = onNavigateToSettings) {
+                        NiStyleIcon(
+                            icon = Icons.Rounded.Settings,
+                            style = NiAppIconStyle,
+                            containerSize = 40.dp,
+                            iconSize = 22.dp,
+                            contentDescription = stringResource(R.string.settings),
+                        )
+                    }
                 },
             )
             }
@@ -483,21 +556,20 @@ fun FileBrowserOverlay(
             )
         },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                if (uiState.currentPath.isNotEmpty()) {
-                    BreadcrumbBar(
-                        path = uiState.currentPath,
-                        canGoUp = uiState.canGoUp,
-                        onGoUp = { viewModel.goUp() },
-                        onJumpToDepth = { depth -> viewModel.jumpToDepth(depth) },
-                    )
-                }
-
-                if (thumbnailProgress >= 0) {
-                    ThumbnailProgressBar(progress = thumbnailProgress)
-                }
-
+        // 内容满铺全屏并延伸到顶栏之下，可滚入顶栏模糊区。
+        // 顶栏高度用 topInset 让位；浮动面包屑叠加其上，列表从面包屑下方开始滚动、仍能滚到顶栏下被模糊。
+        val topInset = padding.calculateTopPadding()
+        var breadcrumbHeight by remember { mutableStateOf(0.dp) }
+        val density = LocalDensity.current
+        // 多选操作栏的液态玻璃背景：捕获页面内容层（列表等），供 drawBackdrop 做真实模糊 + 高光
+        val contentBackdropSurface = MaterialTheme.colorScheme.background
+        val multiSelectBarBackdrop = rememberLayerBackdrop {
+            drawRect(contentBackdropSurface)
+            drawContent()
+        }
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 内容层：仅列表/状态，满铺全屏延伸到顶栏下可被模糊；标记为玻璃模糊的背景源
+            Column(modifier = Modifier.fillMaxSize().layerBackdrop(multiSelectBarBackdrop)) {
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
                     onRefresh = { viewModel.refresh() },
@@ -519,13 +591,13 @@ fun FileBrowserOverlay(
                                     encryptedPaths = encryptedPaths,
                                     isMultiSelect = isMultiSelect,
                                     selectedPaths = selectedPaths,
-                                    onOpenDirectory = viewModel::openDirectory,
+                                    onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
                                     onPlayFile = viewModel::playFile,
                                     onOpenImageFile = viewModel::openImageFile,
-                                    onShowQuickAccess = viewModel::checkQuickAccess,
-                                    onEnterMultiSelect = viewModel::enterMultiSelect,
+                                    onShowFileActions = viewModel::openFileActions,
                                     onToggleSelection = viewModel::toggleSelection,
                                     gridState = gridState,
+                                    contentTopInset = topInset + breadcrumbHeight,
                                 )
                             } else {
                                 FileList(
@@ -535,17 +607,49 @@ fun FileBrowserOverlay(
                                     encryptedPaths = encryptedPaths,
                                     isMultiSelect = isMultiSelect,
                                     selectedPaths = selectedPaths,
-                                    onOpenDirectory = viewModel::openDirectory,
+                                    onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
                                     onPlayFile = viewModel::playFile,
                                     onOpenImageFile = viewModel::openImageFile,
-                                    onShowQuickAccess = viewModel::checkQuickAccess,
-                                    onEnterMultiSelect = viewModel::enterMultiSelect,
+                                    onShowFileActions = viewModel::openFileActions,
                                     onToggleSelection = viewModel::toggleSelection,
                                     listState = listState,
+                                    contentTopInset = topInset + breadcrumbHeight,
                                 )
                             }
                         }
                     }
+                }
+            }
+
+            // 缩略图生成进度条：浮动在面包屑下方，不占布局流（否则会与列表 contentTopInset 叠加造成下方大片空白）
+            if (thumbnailProgress >= 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(top = topInset + breadcrumbHeight),
+                ) {
+                    ThumbnailProgressBar(progress = thumbnailProgress)
+                }
+            }
+
+            // 浮动面包屑：固定于顶栏下方、悬浮在内容之上；不占布局流，不挡内容滚到顶栏下被模糊
+            if (uiState.currentPath.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = topInset)
+                        .onSizeChanged {
+                            breadcrumbHeight = with(density) { it.height.toDp() }
+                        },
+                ) {
+                    BreadcrumbBar(
+                        path = uiState.currentPath,
+                        canGoUp = uiState.canGoUp,
+                        onGoUp = { captureCurrentScroll(); viewModel.goUp() },
+                        onJumpToDepth = { depth -> captureCurrentScroll(); viewModel.jumpToDepth(depth) },
+                    )
                 }
             }
 
@@ -622,17 +726,23 @@ fun FileBrowserOverlay(
                 }
             }
 
-            // 多选模式底部操作栏：全选 / 添加到歌单(仅选中含音频时) / 下载 / 删除
+            // 多选模式底部操作栏：固定四操作位（全选/添加到歌单/下载/删除），条件不满足时置灰而非显隐
             if (isMultiSelect) {
                 val selectedFiles = uiState.files.filter { it.path in selectedPaths && !it.isDirectory }
-                val selectedHasAudio = selectedFiles.any { MediaFileTypes.isAudioFile(it.name) }
+                val audioCount = selectedFiles.count { MediaFileTypes.isAudioFile(it.name) }
+                val nonAudioCount = selectedFiles.size - audioCount
                 MultiSelectActionBar(
+                    backdrop = multiSelectBarBackdrop,
                     selectedCount = selectedPaths.size,
                     allSelected = selectedPaths.size >= uiState.files.count { !it.isDirectory } && uiState.files.any { !it.isDirectory },
-                    hasAudio = selectedHasAudio,
-                    hasDownloadable = selectedFiles.isNotEmpty(),
+                    // 歌单仅支持音频：选中无音频（纯视频/图片/普通文件）时"添加到歌单"置灰
+                    addToPlaylistEnabled = audioCount > 0,
+                    downloadEnabled = selectedFiles.isNotEmpty(),
                     onSelectAll = viewModel::selectAllFiles,
-                    onAddToPlaylist = { showPlaylistPicker = true },
+                    onAddToPlaylist = {
+                        // 音频+视频混选：先弹确认明确"将加音频 N、跳视频 M"，纯音频则直接选歌单
+                        if (nonAudioCount > 0) showMixedAddConfirm = true else showPlaylistPicker = true
+                    },
                     onDownload = {
                         if (DownloadSettings.isDownloadDirSet) {
                             viewModel.downloadFiles(
@@ -646,10 +756,13 @@ fun FileBrowserOverlay(
                         }
                     },
                     onDelete = { showBatchDeleteConfirm = true },
+                    onClose = viewModel::exitMultiSelect,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = 16.dp)
-                        .padding(bottom = bottomNavInset + MultiSelectBarBottomOffset),
+                        .padding(bottom = 12.dp)
+                        // 多选态宿主已隐藏底栏/音乐条，底部避让系统手势区后再上抬固定间距
+                        .navigationBarsPadding(),
                 )
             }
         }
@@ -675,6 +788,22 @@ fun FileBrowserOverlay(
                 viewModel.deleteSelected()
             },
             onDismiss = { showBatchDeleteConfirm = false },
+        )
+    }
+
+    if (showMixedAddConfirm) {
+        val mixedSelected = uiState.files.filter { it.path in selectedPaths && !it.isDirectory }
+        val mixedAudio = mixedSelected.count { MediaFileTypes.isAudioFile(it.name) }
+        val mixedSkipped = mixedSelected.size - mixedAudio
+        NiConfirmDialog(
+            title = stringResource(R.string.storage_file_mixed_add_title),
+            text = stringResource(R.string.storage_file_mixed_add_body, mixedAudio, mixedSkipped),
+            confirmText = stringResource(R.string.confirm),
+            onConfirm = {
+                showMixedAddConfirm = false
+                showPlaylistPicker = true
+            },
+            onDismiss = { showMixedAddConfirm = false },
         )
     }
 
@@ -1079,14 +1208,19 @@ private fun FileList(
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
-    onShowQuickAccess: (StorageFile) -> Unit,
-    onEnterMultiSelect: (StorageFile) -> Unit,
+    onShowFileActions: (StorageFile) -> Unit,
     onToggleSelection: (StorageFile) -> Unit,
     listState: LazyListState = rememberLazyListState(),
+    contentTopInset: Dp = 0.dp,
 ) {
     LazyColumn(
         state = listState,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = FabBottomOffset + 80.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = contentTopInset,
+            bottom = FabBottomOffset,
+        ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(
@@ -1103,8 +1237,7 @@ private fun FileList(
                 onOpenDirectory = onOpenDirectory,
                 onPlayFile = onPlayFile,
                 onOpenImageFile = onOpenImageFile,
-                onShowQuickAccess = { onShowQuickAccess(file) },
-                onEnterMultiSelect = { onEnterMultiSelect(file) },
+                onShowFileActions = { onShowFileActions(file) },
                 onToggleSelection = { onToggleSelection(file) },
             )
         }
@@ -1123,8 +1256,7 @@ private fun FileRow(
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
-    onShowQuickAccess: () -> Unit,
-    onEnterMultiSelect: () -> Unit,
+    onShowFileActions: () -> Unit,
     onToggleSelection: () -> Unit,
 ) {
     val isVideo = MediaFileTypes.isVideoFile(file.name)
@@ -1189,7 +1321,8 @@ private fun FileRow(
                     }
                 },
                 onLongClick = {
-                    if (!isMultiSelect) onEnterMultiSelect()
+                    // 长按 = 打开单文件操作菜单；多选模式下长按不弹菜单（避免与多选冲突）
+                    if (!isMultiSelect) onShowFileActions()
                 },
             )
             .padding(12.dp),
@@ -1362,7 +1495,7 @@ private fun FileRow(
         Spacer(Modifier.width(8.dp))
         if (!isMultiSelect) {
             IconButton(
-                onClick = onShowQuickAccess,
+                onClick = onShowFileActions,
                 modifier = Modifier.size(32.dp),
             ) {
                 NiStyleIcon(
@@ -1388,15 +1521,20 @@ private fun FileGrid(
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
-    onShowQuickAccess: (StorageFile) -> Unit,
-    onEnterMultiSelect: (StorageFile) -> Unit,
+    onShowFileActions: (StorageFile) -> Unit,
     onToggleSelection: (StorageFile) -> Unit,
     gridState: LazyGridState = rememberLazyGridState(),
+    contentTopInset: Dp = 0.dp,
 ) {
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Adaptive(minSize = 160.dp),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = FabBottomOffset + 80.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = contentTopInset,
+            bottom = FabBottomOffset,
+        ),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -1414,8 +1552,7 @@ private fun FileGrid(
                 onOpenDirectory = onOpenDirectory,
                 onPlayFile = onPlayFile,
                 onOpenImageFile = onOpenImageFile,
-                onShowQuickAccess = { onShowQuickAccess(file) },
-                onEnterMultiSelect = { onEnterMultiSelect(file) },
+                onShowFileActions = { onShowFileActions(file) },
                 onToggleSelection = { onToggleSelection(file) },
             )
         }
@@ -1434,8 +1571,7 @@ private fun GridFileCard(
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
-    onShowQuickAccess: () -> Unit,
-    onEnterMultiSelect: () -> Unit,
+    onShowFileActions: () -> Unit,
     onToggleSelection: () -> Unit,
 ) {
     val isVideo = MediaFileTypes.isVideoFile(file.name)
@@ -1494,7 +1630,8 @@ private fun GridFileCard(
                         }
                     },
                     onLongClick = {
-                        if (!isMultiSelect) onEnterMultiSelect()
+                        // 长按 = 打开单文件操作菜单；多选模式下长按不弹菜单（避免与多选冲突）
+                        if (!isMultiSelect) onShowFileActions()
                     },
                 ),
         ) {
@@ -1747,7 +1884,8 @@ private fun FileActionsSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
+        // 与对话框统一为磨砂玻璃面板（面板不透明度随设置），保持软件一致风格
+        containerColor = niFrostSurfaceColor(),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         tonalElevation = 2.dp,
     ) {
@@ -2283,69 +2421,110 @@ fun ResetFolderPasswordDialog(
     }
 }
 
-/** 多选模式底部操作栏：全选 / 添加到歌单 / 下载 / 删除。 */
+/** 多选模式底部操作栏：液态玻璃胶囊。固定四操作位（全选/添加到歌单/下载/删除）+ 顶部"已选N项/关闭"行。 */
 @Composable
 private fun MultiSelectActionBar(
+    backdrop: Backdrop,
     selectedCount: Int,
     allSelected: Boolean,
-    hasAudio: Boolean,
-    hasDownloadable: Boolean,
+    addToPlaylistEnabled: Boolean,
+    downloadEnabled: Boolean,
     onSelectAll: () -> Unit,
     onAddToPlaylist: () -> Unit,
     onDownload: () -> Unit,
     onDelete: () -> Unit,
+    onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 4.dp,
-        shadowElevation = 8.dp,
+    val isInLightTheme = !NiExtraColors.current.isDark
+    // 与悬浮底栏一致的液态玻璃容器：vibrancy + blur + lens + 高光边 + 柔和阴影，
+    // 背景由 [backdrop] 捕获页面内容，实现真实背景模糊；不透明度由 LocalNiGlassOpacity 统一控制
+    val containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = LocalNiGlassOpacity.current)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { RoundedCornerShape(28.dp) },
+                effects = {
+                    vibrancy()
+                    blur(8f.dp.toPx())
+                    lens(6f.dp.toPx(), 6f.dp.toPx())
+                },
+                highlight = { Highlight.Default.copy(alpha = 1f) },
+                shadow = {
+                    Shadow.Default.copy(color = Color.Black.copy(if (isInLightTheme) 0.1f else 0.2f))
+                },
+                onDrawSurface = { drawRect(containerColor) },
+            ),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ActionBarItem(
-                icon = if (allSelected) Icons.Rounded.Close else Icons.Rounded.SelectAll,
-                label = stringResource(
-                    if (allSelected) R.string.storage_file_deselect_all
-                    else R.string.storage_file_select_all,
-                ),
-                enabled = selectedCount > 0,
-                onClick = onSelectAll,
-                modifier = Modifier.weight(1f),
-            )
-            if (hasAudio) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // 顶部行：已选数量 + 关闭按钮（选中态指示下沉到操作栏，并提供一键退出）
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 8.dp, top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.storage_file_selected_count, selectedCount),
+                    style = MaterialTheme.typography.labelMedium,
+                    // 玻璃底上用高对比前景色，避免灰色次文字对比不足
+                    color = glassOnSurfaceMuted(),
+                )
+                IconButton(onClick = onClose) {
+                    NiStyleIcon(
+                        icon = Icons.Rounded.Close,
+                        style = NiAppIconStyle,
+                        containerSize = 32.dp,
+                        iconSize = 18.dp,
+                        contentDescription = stringResource(R.string.storage_file_cancel_multi_select),
+                    )
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
+            // 固定四操作位：不按选中内容显隐，仅置灰，保证布局稳定不抖动
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ActionBarItem(
+                    icon = if (allSelected) Icons.Rounded.Close else Icons.Rounded.SelectAll,
+                    label = stringResource(
+                        if (allSelected) R.string.storage_file_deselect_all
+                        else R.string.storage_file_select_all,
+                    ),
+                    enabled = selectedCount > 0,
+                    onClick = onSelectAll,
+                    modifier = Modifier.weight(1f),
+                )
                 ActionBarItem(
                     icon = Icons.Rounded.PlaylistAdd,
                     label = stringResource(R.string.storage_file_add_to_playlist),
-                    enabled = selectedCount > 0,
+                    enabled = addToPlaylistEnabled,
                     onClick = onAddToPlaylist,
                     modifier = Modifier.weight(1f),
                 )
-            }
-            if (hasDownloadable) {
                 ActionBarItem(
                     icon = Icons.Rounded.Download,
                     label = stringResource(R.string.storage_file_action_download),
-                    enabled = selectedCount > 0,
+                    enabled = downloadEnabled,
                     onClick = onDownload,
                     modifier = Modifier.weight(1f),
                 )
+                ActionBarItem(
+                    icon = Icons.Rounded.Delete,
+                    label = stringResource(R.string.delete),
+                    enabled = selectedCount > 0,
+                    onClick = onDelete,
+                    isDanger = true,
+                    modifier = Modifier.weight(1f),
+                )
             }
-            ActionBarItem(
-                icon = Icons.Rounded.Delete,
-                label = stringResource(R.string.delete),
-                enabled = selectedCount > 0,
-                onClick = onDelete,
-                isDanger = true,
-                modifier = Modifier.weight(1f),
-            )
         }
     }
 }
@@ -2360,9 +2539,9 @@ private fun ActionBarItem(
     modifier: Modifier = Modifier,
 ) {
     val color = when {
-        !enabled -> MaterialTheme.colorScheme.outline
+        !enabled -> glassOnSurfaceMuted().copy(alpha = 0.5f)
         isDanger -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.onSurface
+        else -> glassOnSurface()
     }
     Column(
         modifier = modifier
