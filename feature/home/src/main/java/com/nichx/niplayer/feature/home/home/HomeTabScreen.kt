@@ -14,12 +14,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -304,6 +307,10 @@ private fun HomeMagazineLayout(
 ) {
     val screenOuter = NiSpacings.responsiveScreenOuter
     val listGap = NiSpacings.responsiveListGap
+    // 底部导航栏避让：玻璃底栏悬浮在 8dp+系统导航栏高度上方（高度 64dp），预留清除空间
+    val bottomBarClearance = with(LocalDensity.current) {
+        WindowInsets.navigationBars.getBottom(this).toDp()
+    } + 88.dp
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -311,7 +318,7 @@ private fun HomeMagazineLayout(
                 .widthIn(max = contentMaxWidth)
                 .fillMaxWidth()
                 .align(Alignment.TopCenter),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = bottomBarClearance),
             verticalArrangement = Arrangement.spacedBy(listGap),
         ) {
             if (recentPlays.isEmpty() && quickAccessItems.isEmpty() && playlists.isEmpty()) {
@@ -607,6 +614,10 @@ private fun HomeSingleColumnLayout(
     onOpenQuickAccess: (QuickAccessUiItem) -> Unit,
 ) {
     val screenOuter = NiSpacings.responsiveScreenOuter
+    // 底部导航栏避让：与 HomeMagazineLayout 保持一致，清除玻璃底栏
+    val bottomBarClearance = with(LocalDensity.current) {
+        WindowInsets.navigationBars.getBottom(this).toDp()
+    } + 88.dp
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -618,7 +629,7 @@ private fun HomeSingleColumnLayout(
                 start = screenOuter,
                 end = screenOuter,
                 top = 8.dp,
-                bottom = 80.dp,
+                bottom = bottomBarClearance,
             ),
             verticalArrangement = Arrangement.spacedBy(NiSpacings.responsiveListGap),
         ) {

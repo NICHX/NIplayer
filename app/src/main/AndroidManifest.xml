@@ -15,6 +15,9 @@
     <!-- Android 13+ 通知权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Android 17+ 本地网络访问权限（SMB/FTP/WebDAV 等局域网设备） -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+
     <!-- 在线更新：安装未知来源 APK 所需的声明（实际授予由用户在系统设置中操作） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 

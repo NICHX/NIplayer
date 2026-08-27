@@ -17,3 +17,4 @@ keystore.properties
 !gradle/wrapper/gradle-wrapper.jar
 /docs
 gradle/gradle-daemon-jvm.properties
+/legado-with-MD3

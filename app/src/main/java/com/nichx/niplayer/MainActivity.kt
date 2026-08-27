@@ -102,6 +102,7 @@ class MainActivity : ComponentActivity() {
             window?.isNavigationBarContrastEnforced = false
         }
         requestMediaPermissions()
+        requestLocalNetworkPermission()
         setContent {
             val themeConfig by ThemeSettings.themeFlow.collectAsStateWithLifecycle()
             val darkTheme = when (themeConfig.mode) {
@@ -483,8 +484,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun requestLocalNetworkPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
+            // Android 17 (API 37+): 需要主动申请本地网络访问权限
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_LOCAL_NETWORK)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK),
+                    REQUEST_LOCAL_NETWORK_CODE
+                )
+            }
+        }
+    }
+
     private companion object {
         const val REQUEST_MEDIA_CODE = 1001
+        const val REQUEST_LOCAL_NETWORK_CODE = 1002
     }
 }
 
