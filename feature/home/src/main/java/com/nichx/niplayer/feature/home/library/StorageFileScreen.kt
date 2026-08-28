@@ -1,6 +1,7 @@
 package com.nichx.niplayer.feature.home.library
 
 import com.nichx.niplayer.feature.home.R
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -201,6 +202,7 @@ private val FabBottomOffset = 104.dp
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
+@SuppressLint("LocalContextGetResourceValueCall")
 fun FileBrowserScreen(
     storageId: Int,
     initialPath: String = "",
@@ -2560,6 +2562,7 @@ fun FolderUnlockDialog(
 
 /** 修改文件夹访问密码对话框：验证当前密码 + 输入新密码两次。 */
 @Composable
+@SuppressLint("LocalContextGetResourceValueCall")
 fun ResetFolderPasswordDialog(
     folder: StorageFile,
     onDismiss: () -> Unit,

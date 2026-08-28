@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.player
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.Intent
@@ -185,6 +186,7 @@ private val AbLoopColorB = Color(0xFFFF5252)
 private val ThumbRadius = 8.dp
 
 @Composable
+@SuppressLint("LocalContextGetResourceValueCall")
 @OptIn(UnstableApi::class)
 fun PlayerScreen(
     onBack: () -> Unit = {},

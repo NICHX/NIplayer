@@ -1,6 +1,7 @@
 package com.nichx.niplayer.feature.home.settings
 
 import com.nichx.niplayer.feature.home.R
+import android.annotation.SuppressLint
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -73,6 +74,7 @@ import com.nichx.niplayer.designsystem.theme.NiExtraColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@SuppressLint("LocalContextGetResourceValueCall")
 fun DownloadManagerScreen(
     onBack: () -> Unit = {},
     onPlayVideo: () -> Unit = {},
@@ -150,6 +152,7 @@ fun DownloadManagerScreen(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@SuppressLint("LocalContextGetResourceValueCall")
 internal fun DownloadManagerTab(
     viewModel: DownloadManagerViewModel,
     onPlayVideo: () -> Unit,

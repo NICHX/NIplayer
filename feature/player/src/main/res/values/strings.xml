@@ -30,8 +30,8 @@
     <string name="player_play_failed_401">播放失败：账号密码错误或凭据过期（401）</string>
     <string name="player_play_failed_403">播放失败：无访问权限（403）</string>
     <string name="player_play_failed_404">播放失败：文件不存在，可能已被移动或删除（404）</string>
-    <string name="player_play_failed_server">播放失败：服务器错误（%1$s）</string>
-    <string name="player_play_failed_http">播放失败：HTTP %1$s</string>
+    <string name="player_play_failed_server">播放失败：服务器错误（%1$d）</string>
+    <string name="player_play_failed_http">播放失败：HTTP %1$d</string>
     <string name="player_play_failed_file_not_found">播放失败：文件不存在，可能已被移动或删除</string>
     <string name="player_play_failed_network">播放失败：网络错误（%1$s）</string>
     <string name="player_play_failed_generic">播放失败：%1$s</string>
@@ -41,7 +41,7 @@
     <string name="player_unlock_screen_first">请先解锁屏幕</string>
     <string name="player_screenshot_failed_not_ready">截图失败：播放器未就绪</string>
     <string name="player_screenshot_failed_size">截图失败：画面尺寸无效</string>
-    <string name="player_screenshot_failed_pixelcopy">截图失败：PixelCopy 错误 %1$s</string>
+    <string name="player_screenshot_failed_pixelcopy">截图失败：PixelCopy 错误 %1$d</string>
     <string name="player_screenshot_failed_generic">截图失败：%1$s</string>
     <string name="player_screenshot_saved">截图已保存：%1$s</string>
     <string name="player_seek_forward_seconds">快进%1$d秒</string>
