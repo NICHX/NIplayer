@@ -212,15 +212,23 @@ interface Storage {
      * [onProgress] 会在非挂起回调（可能 IO/网络线程），需线程安全且低开销。
      * 默认返回 false 表示不支持（Local / FTP 走此回退）。
      *
+     * 实现必须**协作式响应协程取消**（在写入循环中检查 [kotlinx.coroutines.ensureActive]），
+     * 以便上传任务可被暂停/取消：取消时抛 [kotlinx.coroutines.CancellationException]，
+     * 由调用方（[com.nichx.niplayer.storage.download.UploadManager]）落库为 PAUSED/CANCELLED。
+     *
      * @param remotePath 远程目标路径（相对存储库根，含文件名）
      * @param inputStream 本地文件输入流
      * @param totalBytes 文件总字节数（未知时传 -1）
-     * @param onProgress 累计已写字节回调
+     * @param offset 已上传字节数（断点续传起点）。> 0 时底层应跳过本地前 offset 字节、
+     *   在远程对应位置继续写入；协议不支持续传时可忽略该值并从头重传。
+     *   [onProgress] 上报的字节数为**绝对位置**（含 offset）。
+     * @param onProgress 累计已写字节回调（绝对位置）
      */
     suspend fun uploadFile(
         remotePath: String,
         inputStream: InputStream,
         totalBytes: Long,
+        offset: Long = 0,
         onProgress: (Long) -> Unit,
     ): Boolean = uploadFile(remotePath, inputStream)
 

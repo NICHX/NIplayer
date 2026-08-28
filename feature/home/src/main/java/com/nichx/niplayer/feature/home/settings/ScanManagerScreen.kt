@@ -29,7 +29,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
-import androidx.compose.material3.Switch
+import com.nichx.niplayer.designsystem.components.NiGlassSwitch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
@@ -348,7 +348,7 @@ private fun FilterFolderTab(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(
+                    NiGlassSwitch(
                         checked = folder.isFilter,
                         onCheckedChange = { onToggle(folder) },
                     )

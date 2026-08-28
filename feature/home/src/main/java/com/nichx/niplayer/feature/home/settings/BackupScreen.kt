@@ -41,8 +41,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -65,6 +64,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.datastore.PlayHistorySyncConfig
+import com.nichx.niplayer.designsystem.components.NiGlassSwitch
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTextField
@@ -491,14 +491,11 @@ private fun PlayHistorySyncCard(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )
-            Switch(
+            NiGlassSwitch(
                 checked = config.enabled,
                 onCheckedChange = onEnabledChange,
                 enabled = enabled,
-                colors = SwitchDefaults.colors(
-                    checkedTrackColor = extraColors.storageWebdavColor,
-                    uncheckedTrackColor = extraColors.outlineSoft,
-                ),
+                checkedTint = extraColors.storageWebdavColor,
             )
         }
         Text(
@@ -516,14 +513,11 @@ private fun PlayHistorySyncCard(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
-                Switch(
+                NiGlassSwitch(
                     checked = config.autoSync,
                     onCheckedChange = onAutoSyncChange,
                     enabled = enabled && serverSelected,
-                    colors = SwitchDefaults.colors(
-                        checkedTrackColor = extraColors.storageWebdavColor,
-                        uncheckedTrackColor = extraColors.outlineSoft,
-                    ),
+                    checkedTint = extraColors.storageWebdavColor,
                 )
             }
 

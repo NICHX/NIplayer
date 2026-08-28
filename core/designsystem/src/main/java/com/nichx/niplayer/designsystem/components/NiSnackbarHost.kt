@@ -249,7 +249,7 @@ private fun NiMessageSnackbar(data: SnackbarData) {
         modifier = Modifier
             .widthIn(max = 480.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(niFrostSurfaceColor(), RoundedCornerShape(16.dp))
+            .background(niGlassPanelSurfaceColor(), RoundedCornerShape(16.dp))
             .border(NiGlassHairWidth, niGlassBorderColor(), RoundedCornerShape(16.dp)),
     ) {
         // 左侧严重级别色条，延续"玻璃面板 + 局部强调"的语言

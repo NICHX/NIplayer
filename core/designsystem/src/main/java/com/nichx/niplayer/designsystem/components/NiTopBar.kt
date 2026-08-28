@@ -53,10 +53,13 @@ fun NiTopBar(
     fadeFromRatio: Float = 0f,
 ) {
     val hazeState = LocalHazeState.current
-    // 半透明 scrim：明暗主题下微调不透明度，保证顶栏文字在任何内容上方都清晰可读
-    val scrimColor = remember(topBackground) {
+    // 与底栏（NiGlassBottomBar）统一的「薄浮层不透明度」，设置内可同步调节
+    val glassOpacity = LocalNiGlassOpacity.current
+    // 半透明 scrim：保证顶栏文字在任何内容上方都清晰可读。
+    // 透明度由薄浮层不透明度驱动，明暗主题仅微调基底比例（亮色 0.18 / 暗色 0.25）。
+    val scrimColor = remember(topBackground, glassOpacity) {
         topBackground.copy(
-            alpha = if (topBackground.luminance() >= 0.5f) 0.30f else 0.42f,
+            alpha = (if (topBackground.luminance() >= 0.5f) 0.18f else 0.25f) * glassOpacity,
         )
     }
     // 渐显遮罩 Brush：顶部透明 -> 底部表面色（无 LocalHazeState 的渐变回退）

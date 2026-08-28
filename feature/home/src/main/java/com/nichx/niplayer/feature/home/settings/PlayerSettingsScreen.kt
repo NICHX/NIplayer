@@ -29,12 +29,12 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -58,6 +58,7 @@ import com.nichx.niplayer.datastore.ThumbnailFramePosition
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.designsystem.components.NiDialogItem
+import com.nichx.niplayer.designsystem.components.NiGlassSwitch
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiListItemDialog
@@ -682,12 +683,22 @@ private fun SettingInfoRow(label: String, value: String) {
 
 @Composable
 private fun SettingSwitchRow(label: String, description: String? = null, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            // 带按钮的设置项：整行点击仅委托开关，移除涟漪（反馈由 Switch 承担）
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { onCheckedChange(!checked) }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = label, style = MaterialTheme.typography.bodyLarge)
             description?.let { Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline, modifier = Modifier.padding(top = 2.dp)) }
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        NiGlassSwitch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

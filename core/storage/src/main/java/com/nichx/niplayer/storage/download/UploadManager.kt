@@ -36,8 +36,10 @@ import kotlinx.coroutines.withContext
  * 核心职责：
  * - **App 级作用域**：任务在 [scope]（SupervisorJob + IO）调度，**切出上传触发页面后仍继续执行**，
  *   重新进入页面通过 [UploadTaskDao.getAllFlow] 恢复进度；
- * - **进度上报**：底层 [Storage.uploadFile] 经 [CountingInputStream] 实时回调，写盘节流更新
- *   [taskProgress]（UI 用）与 DB（500ms 节流）；
+ * - **进度上报**：底层 [Storage.uploadFile] 实时回调，写盘节流更新 [taskProgress]（UI 用）
+ *   与 DB（500ms 节流）；[taskSpeeds] 提供实时速度（bytes/sec，1s 采样窗口）；
+ * - **暂停/恢复**：暂停取消协程并置 PAUSED（保留 uploadedBytes）；恢复置 WAITING 后由调度循环
+ *   接管，已上传部分通过 `offset` 走协议级断点续传（SMB 支持，WebDAV 从头重传）；
  * - **取消语义**：用户取消 → CANCELLED；
  * - **完成事件**：通过 [completions] 发出，供 UI 层转成全局 Snackbar 通知（"已上传 XX"）。
  */
@@ -55,7 +57,11 @@ class UploadManager @Inject constructor(
     private val _taskProgress = MutableStateFlow<Map<Long, Long>>(emptyMap())
     val taskProgress: StateFlow<Map<Long, Long>> = _taskProgress.asStateFlow()
 
-    /** 活跃上传任务数（WAITING + TRANSFERRING），用于文件浏览页角标 / 多选上传提示。 */
+    /** 实时上传速度（taskId → bytes/sec，1s 采样窗口），用于 UI 速度显示。 */
+    private val _taskSpeeds = MutableStateFlow<Map<Long, Long>>(emptyMap())
+    val taskSpeeds: StateFlow<Map<Long, Long>> = _taskSpeeds.asStateFlow()
+
+    /** 活跃上传任务数（WAITING + DOWNLOADING），用于文件浏览页角标 / 多选上传提示。 */
     val activeUploadCount: StateFlow<Int> = uploadTaskDao
         .countByStatesFlow(listOf(DownloadState.WAITING, DownloadState.DOWNLOADING))
         .stateIn(scope, SharingStarted.Eagerly, 0)
@@ -74,6 +80,12 @@ class UploadManager @Inject constructor(
 
     /** 用户主动取消的任务集合（用于 CancellationException 分支）。 */
     private val cancellingTasks = ConcurrentHashMap<Long, Boolean>()
+
+    /** 用户主动暂停的任务集合（用于 CancellationException 分支 → PAUSED）。 */
+    private val pausingTasks = ConcurrentHashMap<Long, Boolean>()
+
+    /** 每任务速度估计器。 */
+    private val speedTrackers = ConcurrentHashMap<Long, SpeedTracker>()
 
     init {
         startDispatchLoop()
@@ -136,16 +148,43 @@ class UploadManager @Inject constructor(
 
     /** 取消任务（用户主动）。 */
     fun cancel(taskId: Long) {
-        cancellingTasks[taskId] = true
-        activeJobs[taskId]?.cancel()
-        scope.launch {
-            uploadTaskDao.updateState(taskId, DownloadState.CANCELLED, null)
+        val job = activeJobs[taskId]
+        if (job == null || !job.isActive) {
+            // WAITING / PAUSED 等无活跃协程：直接置 CANCELLED
+            scope.launch { uploadTaskDao.updateState(taskId, DownloadState.CANCELLED, null) }
+        } else {
+            cancellingTasks[taskId] = true
+            job.cancel()
         }
     }
 
-    /** 删除任务记录。 */
+    /** 暂停任务：中断传输并置 PAUSED（保留 uploadedBytes，恢复时断点续传）。 */
+    fun pause(taskId: Long) {
+        val job = activeJobs[taskId]
+        if (job == null || !job.isActive) {
+            scope.launch { uploadTaskDao.updateState(taskId, DownloadState.PAUSED, null) }
+        } else {
+            pausingTasks[taskId] = true
+            job.cancel()
+        }
+    }
+
+    /** 恢复任务：仅 PAUSED 态可恢复，置 WAITING 后由调度循环自动接管。 */
+    fun resume(taskId: Long) {
+        scope.launch {
+            val task = uploadTaskDao.getById(taskId) ?: return@launch
+            if (task.state != DownloadState.PAUSED) return@launch
+            uploadTaskDao.updateState(taskId, DownloadState.WAITING, null)
+        }
+    }
+
+    /** 删除任务记录（同时中断活跃传输）。 */
     suspend fun delete(taskId: Long) {
-        activeJobs[taskId]?.cancel()
+        activeJobs[taskId]?.let { job ->
+            cancellingTasks[taskId] = true
+            job.cancel()
+        }
+        speedTrackers.remove(taskId)
         uploadTaskDao.deleteById(taskId)
     }
 
@@ -161,7 +200,13 @@ class UploadManager @Inject constructor(
 
     private suspend fun processTask(task: UploadTaskEntity) {
         val storageId = task.storageId
+        var lastProgressEmit = 0L
         var lastDbWrite = 0L
+        // 防竞态：调度读取 WAITING 列表与 launch 之间用户可能已取消/暂停，重读状态校验
+        val current = uploadTaskDao.getById(task.id) ?: return
+        if (current.state != DownloadState.WAITING) return
+        val effectiveTask = current
+        speedTrackers[task.id] = SpeedTracker()
         try {
             val library = mediaLibraryDao.getById(storageId)
                 ?: throw IllegalStateException("存储源不存在: $storageId")
@@ -169,61 +214,116 @@ class UploadManager @Inject constructor(
                 ?: throw IllegalStateException("存储源不支持上传: $storageId")
 
             uploadTaskDao.updateState(task.id, DownloadState.DOWNLOADING, null)
-            _taskProgress.update { it + (task.id to (task.uploadedBytes.takeIf { b -> b > 0 } ?: 0L)) }
+            // 断点续传：仅当已上传部分在 (0, totalBytes) 内才从该偏移继续，否则从头传
+            val resumeOffset = if (effectiveTask.uploadedBytes in 1 until effectiveTask.totalBytes) effectiveTask.uploadedBytes else 0L
+            if (resumeOffset > 0) {
+                uploadTaskDao.updateProgress(task.id, resumeOffset, DownloadState.DOWNLOADING)
+            }
+            _taskProgress.update { it + (task.id to resumeOffset) }
 
+            // 注意：不能再用 runCatching 包裹传输，否则会吞掉 CancellationException，
+            // 导致暂停/取消无法终止阻塞 IO（旧实现取消后仍会上传到完成）。
             val ok = withContext(Dispatchers.IO) {
-                runCatching {
-                    val input = context.contentResolver.openInputStream(Uri.parse(task.sourceUri))
-                    if (input == null) {
-                        false
-                    } else {
-                        storage.uploadFile(
-                            remotePath = task.remotePath,
-                            inputStream = input,
-                            totalBytes = task.totalBytes,
-                            onProgress = { bytes ->
-                                _taskProgress.update { it + (task.id to bytes) }
-                                val now = System.currentTimeMillis()
-                                if (now - lastDbWrite >= DB_THROTTLE_MS) {
-                                    lastDbWrite = now
-                                    scope.launch {
-                                        uploadTaskDao.updateProgress(task.id, bytes, DownloadState.DOWNLOADING)
-                                    }
-                                }
-                            },
-                        )
-                    }
-                }.getOrDefault(false)
+                val input = context.contentResolver.openInputStream(Uri.parse(effectiveTask.sourceUri))
+                    ?: return@withContext false
+                storage.uploadFile(
+                    remotePath = effectiveTask.remotePath,
+                    inputStream = input,
+                    totalBytes = effectiveTask.totalBytes,
+                    offset = resumeOffset,
+                    onProgress = { bytes ->
+                        val now = System.currentTimeMillis()
+                        if (now - lastProgressEmit >= PROGRESS_EMIT_INTERVAL_MS) {
+                            _taskProgress.update { it + (task.id to bytes) }
+                            lastProgressEmit = now
+                        }
+                        speedTrackers[task.id]?.let { tracker ->
+                            val speed = tracker.update(bytes, now)
+                            if (speed > 0) {
+                                _taskSpeeds.update { it + (task.id to speed) }
+                            }
+                        }
+                        if (now - lastDbWrite >= DB_THROTTLE_MS) {
+                            lastDbWrite = now
+                            scope.launch {
+                                uploadTaskDao.updateProgress(task.id, bytes, DownloadState.DOWNLOADING)
+                            }
+                        }
+                    },
+                )
             }
 
             if (ok) {
-                uploadTaskDao.updateProgress(task.id, task.totalBytes.coerceAtLeast(0L), DownloadState.COMPLETED)
+                uploadTaskDao.updateProgress(task.id, effectiveTask.totalBytes.coerceAtLeast(0L), DownloadState.COMPLETED)
                 _taskProgress.update { it - task.id }
+                _taskSpeeds.update { it - task.id }
+                speedTrackers.remove(task.id)
                 _completions.tryEmit(task.copy(state = DownloadState.COMPLETED))
             } else {
                 uploadTaskDao.updateState(task.id, DownloadState.FAILED, "upload failed")
                 _taskProgress.update { it - task.id }
+                _taskSpeeds.update { it - task.id }
+                speedTrackers.remove(task.id)
                 _completions.tryEmit(task.copy(state = DownloadState.FAILED))
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
-            if (cancellingTasks.remove(task.id) == true) {
-                uploadTaskDao.updateState(task.id, DownloadState.CANCELLED, null)
-                _taskProgress.update { it - task.id }
-            } else {
-                uploadTaskDao.updateState(task.id, DownloadState.FAILED, "cancelled/unexpected")
-                _taskProgress.update { it - task.id }
+            when {
+                cancellingTasks.remove(task.id) == true -> {
+                    uploadTaskDao.updateState(task.id, DownloadState.CANCELLED, null)
+                }
+                pausingTasks.remove(task.id) == true -> {
+                    // 保留 uploadedBytes（DB 节流写盘），供恢复时断点续传
+                    uploadTaskDao.updateState(task.id, DownloadState.PAUSED, null)
+                }
+                else -> {
+                    uploadTaskDao.updateState(task.id, DownloadState.FAILED, "cancelled/unexpected")
+                }
             }
+            _taskProgress.update { it - task.id }
+            _taskSpeeds.update { it - task.id }
+            speedTrackers.remove(task.id)
         } catch (e: Exception) {
             uploadTaskDao.updateState(task.id, DownloadState.FAILED, e.message)
             _taskProgress.update { it - task.id }
+            _taskSpeeds.update { it - task.id }
+            speedTrackers.remove(task.id)
             _completions.tryEmit(task.copy(state = DownloadState.FAILED))
         } finally {
             cancellingTasks.remove(task.id)
+            pausingTasks.remove(task.id)
         }
     }
 
     private companion object {
         const val MAX_CONCURRENT = 3
         const val DB_THROTTLE_MS = 500L
+        const val PROGRESS_EMIT_INTERVAL_MS = 200L
+    }
+}
+
+/** 每任务速度估计器：每 [SAMPLE_MS] 计算一次瞬时速度（bytes/sec）。 */
+private class SpeedTracker {
+    private var lastBytes = 0L
+    private var lastTime = 0L
+    private var speed = 0L
+
+    fun update(bytes: Long, now: Long): Long {
+        if (lastTime == 0L) {
+            lastBytes = bytes
+            lastTime = now
+            return speed
+        }
+        val dt = now - lastTime
+        if (dt >= SAMPLE_MS) {
+            val delta = bytes - lastBytes
+            speed = if (delta >= 0) delta * 1000 / dt else 0L
+            lastBytes = bytes
+            lastTime = now
+        }
+        return speed
+    }
+
+    private companion object {
+        const val SAMPLE_MS = 1000L
     }
 }

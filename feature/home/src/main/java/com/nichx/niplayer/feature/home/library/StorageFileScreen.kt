@@ -24,6 +24,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -100,8 +102,6 @@ import com.nichx.niplayer.designsystem.components.NiGlassOverlayKind
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayRequest
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiListItemDialog
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -529,37 +529,31 @@ fun FileBrowserScreen(
                         )
                     }
                     if (activeDownloadCount > 0) {
-                        IconButton(onClick = onNavigateToDownloadManager) {
-                            BadgedBox(
-                                badge = {
-                                    Badge { Text("$activeDownloadCount") }
-                                },
-                            ) {
+                        Box {
+                            IconButton(onClick = onNavigateToDownloadManager) {
                                 NiStyleIcon(
-                                        icon = Icons.Rounded.Download,
-                                        style = NiAppIconStyle,
-                                        containerSize = 40.dp,
-                                        iconSize = 22.dp,
-                                        contentDescription = stringResource(R.string.storage_file_download_tasks),
-                                    )
+                                    icon = Icons.Rounded.Download,
+                                    style = NiAppIconStyle,
+                                    containerSize = 40.dp,
+                                    iconSize = 22.dp,
+                                    contentDescription = stringResource(R.string.storage_file_download_tasks),
+                                )
                             }
+                            TransferCountBadge(count = activeDownloadCount)
                         }
                     }
                     if (activeUploadCount > 0) {
-                        IconButton(onClick = onNavigateToDownloadManager) {
-                            BadgedBox(
-                                badge = {
-                                    Badge { Text("$activeUploadCount") }
-                                },
-                            ) {
+                        Box {
+                            IconButton(onClick = onNavigateToDownloadManager) {
                                 NiStyleIcon(
-                                        icon = Icons.Rounded.Upload,
-                                        style = NiAppIconStyle,
-                                        containerSize = 40.dp,
-                                        iconSize = 22.dp,
-                                        contentDescription = stringResource(R.string.storage_file_upload_tasks),
-                                    )
+                                    icon = Icons.Rounded.Upload,
+                                    style = NiAppIconStyle,
+                                    containerSize = 40.dp,
+                                    iconSize = 22.dp,
+                                    contentDescription = stringResource(R.string.storage_file_upload_tasks),
+                                )
                             }
+                            TransferCountBadge(count = activeUploadCount)
                         }
                     }
                     // 独立全屏页面不常驻 Home 底部导航，提供快捷入口跳转到设置页
@@ -1311,15 +1305,28 @@ private fun UploadPendingStrip(uploads: List<ActiveUpload>, onCancel: (Long) -> 
                         )
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = if (u.fraction >= 0f) {
-                            stringResource(R.string.storage_file_upload_progress, (u.fraction * 100).toInt())
-                        } else {
-                            stringResource(R.string.storage_file_upload_waiting)
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = if (u.fraction >= 0f) {
+                                stringResource(R.string.storage_file_upload_progress, (u.fraction * 100).toInt())
+                            } else {
+                                stringResource(R.string.storage_file_upload_waiting)
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (u.speedBytesPerSec > 0) {
+                            Text(
+                                text = formatUploadSpeed(u.speedBytesPerSec),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
                 }
                 IconButton(
                     onClick = { onCancel(u.taskId) },
@@ -2123,6 +2130,29 @@ private fun formatFileSize(bytes: Long): String {
     return if (unitIndex == 0) "${bytes} B" else String.format("%.1f %s", size, units[unitIndex])
 }
 
+/**
+ * 传输管理入口图标右上角的数量角标。
+ *
+ * 作为 [IconButton] 的**外层**叠加层（而非其内部子项），避免被 M3 IconButton 的
+ * 圆形 Surface 裁剪；用自定义圆角胶囊完整显示数量。
+ */
+@Composable
+private fun BoxScope.TransferCountBadge(count: Int) {
+    Text(
+        text = count.toString(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onError,
+        fontSize = 9.sp,
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 1.dp, y = 1.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.error)
+            .padding(horizontal = 4.dp, vertical = 1.dp),
+    )
+}
+
 @Composable
 private fun FileInfoDialog(file: StorageFile, onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -2781,4 +2811,10 @@ private fun CreatePlaylistNameDialog(
             placeholder = stringResource(R.string.storage_file_playlist_name_placeholder),
         )
     }
+}
+
+private fun formatUploadSpeed(bytesPerSec: Long): String = when {
+    bytesPerSec >= 1000 * 1000 -> String.format("%.1f MB/s", bytesPerSec / (1000.0 * 1000.0))
+    bytesPerSec >= 1000 -> "${bytesPerSec / 1000} KB/s"
+    else -> "$bytesPerSec B/s"
 }
