@@ -73,13 +73,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.nichx.niplayer.common.error.NiMessage
-import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
-import com.nichx.niplayer.designsystem.components.NiSnackbarHost
-import com.nichx.niplayer.designsystem.components.showNiMessage
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -130,14 +127,14 @@ fun HomeTabScreen(
     val qaThumbnailUrls by viewModel.qaThumbnailUrls.collectAsStateWithLifecycle()
     val storageReachability by viewModel.storageReachability.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val messageController = LocalAppMessageController.current
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 is HomeTabEvent.NavigateToPlayer -> onPlayVideo()
                 is HomeTabEvent.NavigateToStorageFile -> onNavigateToStorageFile(event.libraryId, event.relativePath)
-                is HomeTabEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
+                is HomeTabEvent.ShowError -> messageController.post(NiMessage.error(event.message))
             }
         }
     }
@@ -216,12 +213,6 @@ fun HomeTabScreen(
                 )
             }
         },
-        snackbarHost = {
-                NiSnackbarHost(
-                    hostState = snackbarHostState,
-                    bottomObstruction = NiSnackbarDefaults.MINI_PLAYER_OBSTRUCTION,
-                )
-            },
     ) { padding ->
         // 内容满铺全屏并延伸到顶栏背后，滚动内容可被顶栏真实模糊；
         // 顶栏高度由列表顶部 inset 让位，避免首项顶到状态栏

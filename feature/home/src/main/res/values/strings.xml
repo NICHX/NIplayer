@@ -339,8 +339,8 @@
     <string name="settings_group_about">关于</string>
     <string name="settings_entry_scan">扫描管理</string>
     <string name="settings_entry_scan_sub">扩展目录与屏蔽规则</string>
-    <string name="settings_entry_download">下载管理</string>
-    <string name="settings_entry_download_sub">管理下载任务</string>
+    <string name="settings_entry_download">传输管理</string>
+    <string name="settings_entry_download_sub">管理下载与上传任务</string>
     <string name="settings_entry_cache">缓存管理</string>
     <string name="settings_entry_cache_sub">清理各类缓存</string>
     <string name="settings_entry_lrcapi">歌词 API</string>
@@ -381,6 +381,7 @@
     <string name="storage_file_more">更多</string>
     <string name="storage_file_collapse_menu">收起菜单</string>
     <string name="storage_file_download_tasks">下载任务</string>
+    <string name="storage_file_upload_tasks">上传任务</string>
     <string name="storage_file_select">选择</string>
     <string name="storage_file_selected">已选</string>
     <string name="storage_file_select_all">全选</string>
@@ -491,6 +492,9 @@
     <string name="storage_file_folder_created">已创建文件夹「%1$s」</string>
     <string name="storage_file_uploading">正在上传「%1$s」</string>
     <string name="storage_file_uploaded">已上传「%1$s」</string>
+    <string name="storage_file_upload_progress">已上传 %1$d%%</string>
+    <string name="storage_file_upload_waiting">上传中…（等待全部上传）</string>
+    <string name="storage_file_upload_cancel">取消上传</string>
     <string name="storage_file_added_to_download">已加入下载列表</string>
     <string name="storage_file_batch_download_added">已添加 %1$d 个下载任务</string>
     <string name="storage_file_qa_added">已添加到快速访问</string>
@@ -784,6 +788,25 @@
     <string name="download_manager_delete_confirm">将删除任务记录及已下载文件「%1$s」，确定吗？</string>
     <string name="download_state_waiting">等待中</string>
     <string name="download_state_unknown">未知</string>
+
+    <!-- 传输管理中心（TransferScreen，下载/上传双 tab） -->
+    <string name="transfer_manager_title">传输管理</string>
+    <string name="transfer_tab_download">下载</string>
+    <string name="transfer_tab_upload">上传</string>
+    <string name="transfer_clear_completed">清空已完成</string>
+    <string name="transfer_clear_failed">清空失败/已取消</string>
+    <string name="transfer_upload_empty">暂无上传任务</string>
+    <string name="transfer_upload_empty_hint">在本地文件浏览页选择文件即可上传</string>
+    <string name="transfer_upload_to">上传至：%1$s</string>
+    <string name="transfer_upload_cancel">取消</string>
+    <string name="transfer_upload_delete">删除</string>
+    <string name="transfer_upload_waiting_unknown">总大小未知，等待进度…</string>
+    <string name="transfer_upload_state_waiting">等待中</string>
+    <string name="transfer_upload_state_uploading">上传中</string>
+    <string name="transfer_upload_state_completed">已完成</string>
+    <string name="transfer_upload_state_failed">失败</string>
+    <string name="transfer_upload_state_cancelled">已取消</string>
+    <string name="transfer_upload_state_unknown">未知</string>
 
     <!-- 缓存管理页面（CacheManagerScreen） -->
     <string name="cache_manager_title">缓存管理</string>

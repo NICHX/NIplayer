@@ -205,6 +205,26 @@ interface Storage {
     suspend fun uploadFile(remotePath: String, inputStream: InputStream): Boolean = false
 
     /**
+     * 带进度回调的上传。
+     *
+     * 基于 [uploadFile] 扩展：底层读取 [inputStream] 时，[onProgress] 上报**累计已写字节数**。
+     * [totalBytes] 用于计算百分比；为负或 0 时表示未知总长，仅按字节累计（无百分比）。
+     * [onProgress] 会在非挂起回调（可能 IO/网络线程），需线程安全且低开销。
+     * 默认返回 false 表示不支持（Local / FTP 走此回退）。
+     *
+     * @param remotePath 远程目标路径（相对存储库根，含文件名）
+     * @param inputStream 本地文件输入流
+     * @param totalBytes 文件总字节数（未知时传 -1）
+     * @param onProgress 累计已写字节回调
+     */
+    suspend fun uploadFile(
+        remotePath: String,
+        inputStream: InputStream,
+        totalBytes: Long,
+        onProgress: (Long) -> Unit,
+    ): Boolean = uploadFile(remotePath, inputStream)
+
+    /**
      * 缩略图生成的建议并发数。
      *
      * - SMB / WebDAV：底层线程安全（smbj DiskShare / OkHttpClient），返回 6

@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,8 +16,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -74,20 +77,20 @@ object NiSnackbarDefaults {
  * [NiMessage] 到 Material3 [SnackbarVisuals] 的映射。
  *
  * - ERROR → [SnackbarDuration.Indefinite]：常驻直至用户手动关闭；
- * - INFO / WARNING → [SnackbarDuration.Short]：约 4 秒后自动消失。
+ * - INFO / WARNING → [SnackbarDuration.Short]（约 4 秒）。全局宿主 [AppMessageHost] 会改走
+ *   按严重级别自定义时长（INFO≈2.2s / WARNING≈3.5s）而非依赖此默认值。
  */
-private class NiMessageVisuals(
+internal class NiMessageVisuals(
     val niMessage: NiMessage,
     override val actionLabel: String? = null,
+    override val duration: SnackbarDuration =
+        if (niMessage.severity == NiMessageSeverity.ERROR) SnackbarDuration.Indefinite
+        else SnackbarDuration.Short,
 ) : SnackbarVisuals {
 
     override val message: String = niMessage.message
 
     override val withDismissAction: Boolean = false
-
-    override val duration: SnackbarDuration =
-        if (niMessage.severity == NiMessageSeverity.ERROR) SnackbarDuration.Indefinite
-        else SnackbarDuration.Short
 }
 
 /**
@@ -216,23 +219,19 @@ private fun NiMessageSnackbar(data: SnackbarData) {
     var copied by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
 
-    val (containerColor, contentColor, icon) = when (severity) {
-        NiMessageSeverity.ERROR -> Triple(
-            MaterialTheme.colorScheme.errorContainer,
-            MaterialTheme.colorScheme.onErrorContainer,
-            Icons.Filled.Error,
-        )
-        NiMessageSeverity.WARNING -> Triple(
-            MaterialTheme.colorScheme.tertiaryContainer,
-            MaterialTheme.colorScheme.onTertiaryContainer,
-            Icons.Filled.Warning,
-        )
-        NiMessageSeverity.INFO -> Triple(
-            MaterialTheme.colorScheme.inverseSurface,
-            MaterialTheme.colorScheme.inverseOnSurface,
-            Icons.Filled.Info,
-        )
+    // 玻璃浮层配色：沿用全局玻璃规范（磨砂底 + 发丝描边 + 高对比前景），严重级别用局部强调色区分
+    val accentColor = when (severity) {
+        NiMessageSeverity.ERROR -> MaterialTheme.colorScheme.error
+        NiMessageSeverity.WARNING -> MaterialTheme.colorScheme.tertiary
+        NiMessageSeverity.INFO -> MaterialTheme.colorScheme.primary
     }
+    val icon = when (severity) {
+        NiMessageSeverity.ERROR -> Icons.Filled.Error
+        NiMessageSeverity.WARNING -> Icons.Filled.Warning
+        NiMessageSeverity.INFO -> Icons.Filled.Info
+    }
+    val contentColor = glassOnSurface()
+    val mutedColor = glassOnSurfaceMuted()
 
     val copyContent = buildString {
         append(messageText)
@@ -246,27 +245,36 @@ private fun NiMessageSnackbar(data: SnackbarData) {
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .widthIn(max = 480.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(containerColor, RoundedCornerShape(16.dp)),
+            .background(niFrostSurfaceColor(), RoundedCornerShape(16.dp))
+            .border(NiGlassHairWidth, niGlassBorderColor(), RoundedCornerShape(16.dp)),
     ) {
+        // 左侧严重级别色条，延续"玻璃面板 + 局部强调"的语言
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 10.dp)
+                .width(3.dp)
+                .height(26.dp)
+                .clip(RoundedCornerShape(1.5.dp))
+                .background(accentColor),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                .padding(start = 22.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            icon?.let {
-                Icon(
-                    imageVector = it,
-                    contentDescription = null,
-                    tint = contentColor,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(20.dp),
+            )
             Text(
                 text = messageText,
                 style = MaterialTheme.typography.bodyMedium,
@@ -274,6 +282,7 @@ private fun NiMessageSnackbar(data: SnackbarData) {
                 maxLines = if (details.isNullOrBlank()) 2 else 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
+                    .weight(1f, fill = false)
                     .clickable(
                         onClick = {
                             clipboard.setText(AnnotatedString(copyContent))
@@ -290,13 +299,13 @@ private fun NiMessageSnackbar(data: SnackbarData) {
                     Icon(
                         imageVector = Icons.Filled.Check,
                         contentDescription = null,
-                        tint = contentColor,
+                        tint = accentColor,
                         modifier = Modifier.size(14.dp),
                     )
                     Text(
                         text = stringResource(R.string.copied),
                         style = MaterialTheme.typography.labelSmall,
-                        color = contentColor,
+                        color = accentColor,
                     )
                 }
             }
@@ -308,7 +317,7 @@ private fun NiMessageSnackbar(data: SnackbarData) {
                     Text(
                         text = actionLabel,
                         style = MaterialTheme.typography.labelLarge,
-                        color = contentColor,
+                        color = accentColor,
                     )
                 }
             }
@@ -321,7 +330,7 @@ private fun NiMessageSnackbar(data: SnackbarData) {
                         text = if (detailsExpanded) stringResource(R.string.collapse)
                         else stringResource(R.string.details),
                         style = MaterialTheme.typography.labelMedium,
-                        color = contentColor,
+                        color = mutedColor,
                     )
                 }
             }
@@ -332,7 +341,7 @@ private fun NiMessageSnackbar(data: SnackbarData) {
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = stringResource(R.string.action_close),
-                    tint = contentColor,
+                    tint = mutedColor,
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -345,10 +354,10 @@ private fun NiMessageSnackbar(data: SnackbarData) {
             Text(
                 text = details.orEmpty(),
                 style = MaterialTheme.typography.bodySmall,
-                color = contentColor.copy(alpha = 0.85f),
+                color = mutedColor.copy(alpha = 0.9f),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    .padding(start = 22.dp, end = 16.dp, bottom = 12.dp),
             )
         }
     }

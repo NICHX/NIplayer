@@ -13,6 +13,7 @@ import com.nichx.niplayer.database.dao.PlaylistItemDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.dao.SyncConflictDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
+import com.nichx.niplayer.database.dao.UploadTaskDao
 import com.nichx.niplayer.database.dao.VideoBookmarkDao
 import com.nichx.niplayer.database.dao.VideoDao
 import dagger.Module
@@ -65,6 +66,9 @@ object DatabaseModule {
 
     @Provides
     fun provideDownloadTaskDao(db: NiplayerDatabase): DownloadTaskDao = db.getDownloadTaskDao()
+
+    @Provides
+    fun provideUploadTaskDao(db: NiplayerDatabase): UploadTaskDao = db.getUploadTaskDao()
 
     @Provides
     fun provideQuickAccessDao(db: NiplayerDatabase): QuickAccessDao = db.getQuickAccessDao()

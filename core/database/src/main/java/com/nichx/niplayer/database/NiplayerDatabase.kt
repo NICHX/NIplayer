@@ -18,6 +18,7 @@ import com.nichx.niplayer.database.dao.PlaylistItemDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.dao.SyncConflictDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
+import com.nichx.niplayer.database.dao.UploadTaskDao
 import com.nichx.niplayer.database.dao.VideoBookmarkDao
 import com.nichx.niplayer.database.dao.VideoDao
 import com.nichx.niplayer.database.entity.DownloadTaskEntity
@@ -30,6 +31,7 @@ import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.database.entity.QuickAccessEntity
 import com.nichx.niplayer.database.entity.SyncConflictEntity
 import com.nichx.niplayer.database.entity.SyncDeleteLogEntity
+import com.nichx.niplayer.database.entity.UploadTaskEntity
 import com.nichx.niplayer.database.entity.VideoBookmarkEntity
 import com.nichx.niplayer.database.entity.VideoEntity
 
@@ -70,9 +72,10 @@ import com.nichx.niplayer.database.entity.VideoEntity
         EncryptedFolderEntity::class,
         PlaylistEntity::class,
         PlaylistItemEntity::class,
-        SyncConflictEntity::class
+        SyncConflictEntity::class,
+        UploadTaskEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = true
 )
 @TypeConverters(
@@ -91,6 +94,8 @@ abstract class NiplayerDatabase : RoomDatabase() {
     abstract fun getExtendFolderDao(): ExtendFolderDao
 
     abstract fun getDownloadTaskDao(): DownloadTaskDao
+
+    abstract fun getUploadTaskDao(): UploadTaskDao
 
     abstract fun getQuickAccessDao(): QuickAccessDao
 

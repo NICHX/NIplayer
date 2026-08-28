@@ -33,7 +33,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -42,7 +41,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.annotation.StringRes
 import androidx.compose.ui.Alignment
@@ -68,14 +66,12 @@ import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiSectionHeader
 import com.nichx.niplayer.designsystem.components.NiSkeletonBox
 import com.nichx.niplayer.designsystem.components.NiSkeletonLine
-import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.NiThumbCard
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
-import com.nichx.niplayer.designsystem.components.showNiMessage
 import com.nichx.niplayer.sync.SyncUiState
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -112,8 +108,7 @@ fun PlayHistoryScreen(
     }
 
     val hasHistory = allHistory.isNotEmpty()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    val messageController = LocalAppMessageController.current
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val syncConfig by viewModel.syncConfig.collectAsStateWithLifecycle()
     val conflicts by viewModel.conflicts.collectAsStateWithLifecycle()
@@ -131,9 +126,9 @@ fun PlayHistoryScreen(
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is PlayHistoryEvent.Toast -> snackbarHostState.showNiMessage(NiMessage.info(event.message))
+                is PlayHistoryEvent.Toast -> messageController.post(NiMessage.info(event.message))
                 is PlayHistoryEvent.NavigateToPlayer -> onNavigateToPlayVideo()
-                is PlayHistoryEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
+                is PlayHistoryEvent.ShowError -> messageController.post(NiMessage.error(event.message))
                 else -> {}
             }
         }
@@ -153,9 +148,7 @@ fun PlayHistoryScreen(
                             IconButton(
                                 onClick = {
                                     if (showError) {
-                                        scope.launch {
-                                            snackbarHostState.showNiMessage(NiMessage.error(done?.message ?: context.getString(R.string.play_history_sync_failed)))
-                                        }
+                                        messageController.post(NiMessage.error(done?.message ?: context.getString(R.string.play_history_sync_failed)))
                                     } else {
                                         viewModel.syncNow()
                                     }
@@ -202,7 +195,6 @@ fun PlayHistoryScreen(
                 },
             )
         },
-        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (!dataReady) {

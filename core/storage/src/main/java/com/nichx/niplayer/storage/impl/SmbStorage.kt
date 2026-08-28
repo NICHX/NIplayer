@@ -482,17 +482,41 @@ class SmbStorage(
      *
      * 使用 8KB 缓冲区循环读取 [inputStream] 并写入远程文件，避免一次性加载到内存。
      */
-    override suspend fun uploadFile(remotePath: String, inputStream: InputStream): Boolean {
+    override suspend fun uploadFile(remotePath: String, inputStream: InputStream): Boolean =
+        uploadFileInternal(remotePath, inputStream, totalBytes = -1L, onProgress = {})
+
+    override suspend fun uploadFile(
+        remotePath: String,
+        inputStream: InputStream,
+        totalBytes: Long,
+        onProgress: (Long) -> Unit,
+    ): Boolean = uploadFileInternal(remotePath, inputStream, totalBytes, onProgress)
+
+    /**
+     * SMB 流式上传的核心实现：[SmbFile.getOutputStream] 返回的输出流流式写入。
+     *
+     * 使用 8KB 缓冲区循环读取 [inputStream] 并写入远程文件，避免一次性加载到内存；
+     * 通过 [CountingInputStream] 累计已写字节并经 [onProgress] 上报（用于进度条）。
+     */
+    private suspend fun uploadFileInternal(
+        remotePath: String,
+        inputStream: InputStream,
+        totalBytes: Long,
+        onProgress: (Long) -> Unit,
+    ): Boolean {
         return try {
             ensureShare()
             val url = buildSmbUrl(remotePath)
             val smbFile = SmbFile(url, smbContext)
             smbFile.getOutputStream().use { output ->
-                val buffer = ByteArray(8192)
-                while (true) {
-                    val read = inputStream.read(buffer)
-                    if (read <= 0) break
-                    output.write(buffer, 0, read)
+                val counting = com.nichx.niplayer.storage.util.CountingInputStream(inputStream, onProgress)
+                counting.use {
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val read = counting.read(buffer)
+                        if (read <= 0) break
+                        output.write(buffer, 0, read)
+                    }
                 }
                 output.flush()
             }

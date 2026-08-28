@@ -32,7 +32,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,10 +57,9 @@ import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiSectionHeader
-import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiThumbCard
-import com.nichx.niplayer.designsystem.components.showNiMessage
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
 import com.nichx.niplayer.designsystem.iconstyle.NiIconStyleSpec
@@ -92,7 +90,7 @@ fun SearchScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val messageController = LocalAppMessageController.current
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
@@ -102,7 +100,7 @@ fun SearchScreen(
                 is SearchEvent.NavigateToStorageFile ->
                     onNavigateToStorageFile(event.libraryId, event.relativePath)
 
-                is SearchEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
+                is SearchEvent.ShowError -> messageController.post(NiMessage.error(event.message))
             }
         }
     }
@@ -127,7 +125,6 @@ fun SearchScreen(
                 },
             )
         },
-        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize()) {
             Spacer(Modifier.height(padding.calculateTopPadding()))

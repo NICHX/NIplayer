@@ -33,10 +33,8 @@ import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiListSkeleton
-import com.nichx.niplayer.designsystem.components.NiSnackbarHost
-import com.nichx.niplayer.designsystem.components.showNiMessage
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import androidx.compose.material3.Text
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,13 +68,13 @@ fun CacheManagerScreen(
     viewModel: CacheManagerViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val messageController = LocalAppMessageController.current
     var pendingClear by remember { mutableStateOf<CacheItem?>(null) }
     var showClearAll by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.toastMessage) {
         uiState.toastMessage?.let {
-            snackbarHostState.showNiMessage(NiMessage.info(it))
+            messageController.post(NiMessage.info(it))
             viewModel.consumeToast()
         }
     }
@@ -112,7 +110,6 @@ fun CacheManagerScreen(
                 },
             )
         },
-        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState) },
     ) { padding ->
         // O-26：加载态用骨架屏，空态用 NiEmptyState，替代原纯 Text "暂无缓存"
         when {

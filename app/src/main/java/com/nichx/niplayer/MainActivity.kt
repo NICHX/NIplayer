@@ -49,11 +49,20 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.nichx.niplayer.common.message.AppMessageController
 import com.nichx.niplayer.datastore.LanguageSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.datastore.GlassSettings
+import com.nichx.niplayer.designsystem.components.AppMessageHost
+import com.nichx.niplayer.designsystem.components.LocalNiBackdrop
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
+import com.nichx.niplayer.designsystem.components.NiGlassOverlayHost
+import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.CompositionLocalProvider
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.theme.NiTheme
@@ -68,7 +77,7 @@ import com.nichx.niplayer.feature.home.search.SearchScreen
 import com.nichx.niplayer.feature.home.settings.AboutScreen
 import com.nichx.niplayer.feature.home.settings.BackupScreen
 import com.nichx.niplayer.feature.home.settings.CacheManagerScreen
-import com.nichx.niplayer.feature.home.settings.DownloadManagerScreen
+import com.nichx.niplayer.feature.home.settings.TransferScreen
 import com.nichx.niplayer.feature.home.settings.EqualizerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.LrcApiSettingsScreen
 import com.nichx.niplayer.feature.home.settings.LanguageScreen
@@ -93,6 +102,8 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var audioPlaybackManager: AudioPlaybackManager
+
+    @Inject lateinit var appMessageController: AppMessageController
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LanguageSettings.wrap(newBase))
@@ -185,8 +196,17 @@ class MainActivity : ComponentActivity() {
                 CompositionLocalProvider(
                     LocalNiGlassOpacity provides glassOpacity,
                     LocalNiGlassPanelOpacity provides glassPanelOpacity,
+                    LocalAppMessageController provides appMessageController,
                 ) {
+                    // 液态玻璃 backdrop 源：捕获全部页面内容，供同窗口玻璃面板（NiGlassBottomSheet）真模糊
+                    val windowBackground = MaterialTheme.colorScheme.background
+                    val glassBackdrop = rememberLayerBackdrop {
+                        drawRect(windowBackground)
+                        drawContent()
+                    }
+                    CompositionLocalProvider(LocalNiBackdrop provides glassBackdrop) {
                     Box(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.fillMaxSize().layerBackdrop(glassBackdrop)) {
                     NiNavHost(
                         navController = navController,
                     ) {
@@ -443,7 +463,7 @@ class MainActivity : ComponentActivity() {
                             enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
                             exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
                         ) {
-                            DownloadManagerScreen(
+                            TransferScreen(
                                 onBack = { navController.popBackStack() },
                                 onPlayVideo = { navController.navigate(Routes.Player.GUARD) },
                                 onNavigateToImageViewer = {
@@ -468,7 +488,20 @@ class MainActivity : ComponentActivity() {
                         // 播放器页或文件浏览多选态下隐藏音乐条
                         visible = !isPlayerScreen && !fileBrowserMultiSelect,
                     )
-                }
+
+                    // 全局统一 Snackbar 宿主：跨导航存活，消息从 AppMessageController 全局总线收集，
+                    // 播放器全屏页音乐条隐藏时取消底部抬升，避免通知上浮。
+                    AppMessageHost(
+                        controller = appMessageController,
+                        bottomObstruction =
+                            if (isPlayerScreen) 0.dp
+                            else NiSnackbarDefaults.MINI_PLAYER_OBSTRUCTION,
+                    )
+                    }
+                    // 玻璃浮层宿主：渲染 NiGlassOverlay 栈（位于 backdrop 捕获层之外，避免循环采样）
+                    NiGlassOverlayHost()
+                    }
+                    }
                 }
             }
         }

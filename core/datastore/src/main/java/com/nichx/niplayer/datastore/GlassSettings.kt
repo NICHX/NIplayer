@@ -34,11 +34,11 @@ object GlassSettings {
     /** 薄浮层可调上限。 */
     const val MAX_OPACITY = 0.85f
 
-    /** 面板默认不透明度（对话框/菜单，偏实以保证可读）。 */
-    const val DEFAULT_PANEL_OPACITY = 0.82f
+    /** 面板默认不透明度（对话框/菜单/下拉，偏透以保证玻璃通透感，可读性由模糊+边框兜底）。 */
+    const val DEFAULT_PANEL_OPACITY = 0.60f
 
-    /** 面板可调下限。 */
-    const val MIN_PANEL_OPACITY = 0.50f
+    /** 面板可调下限（支持较极限的通透玻璃）。 */
+    const val MIN_PANEL_OPACITY = 0.30f
 
     /** 面板可调上限。 */
     const val MAX_PANEL_OPACITY = 0.95f
