@@ -86,9 +86,12 @@ private enum class HistoryFilter(@StringRes val labelRes: Int) {
 @Composable
 fun PlayHistoryScreen(
     onNavigateToPlayVideo: () -> Unit = {},
+    initialFilterOrdinal: Int = 0,
     viewModel: PlayHistoryViewModel = hiltViewModel(),
 ) {
-    var activeFilter by remember { mutableStateOf(HistoryFilter.ALL) }
+    var activeFilter by remember {
+        mutableStateOf(HistoryFilter.entries.getOrElse(initialFilterOrdinal) { HistoryFilter.ALL })
+    }
     var selectedItem by remember { mutableStateOf<PlayHistoryEntity?>(null) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     val allHistory by viewModel.histories.collectAsStateWithLifecycle()

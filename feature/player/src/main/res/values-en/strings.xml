@@ -142,21 +142,6 @@
     <string name="player_ab_loop_b_set_osd">Point B: %1$s</string>
     <string name="player_ab_loop_cleared_osd">A-B loop cleared</string>
 
-    <!-- Save to playlist -->
-    <string name="player_save_to_playlist">Add to playlist</string>
-    <string name="player_save_add">Add</string>
-    <string name="player_save_current_playing">Now playing: %1$s</string>
-    <string name="player_save_no_playing">No song is currently playing</string>
-    <string name="player_save_new_playlist">New playlist</string>
-    <string name="player_save_new_playlist_hint">Create a new playlist for the current song</string>
-    <string name="player_save_playlist_name">Playlist name</string>
-    <string name="player_save_playlist_name_placeholder">e.g. My Favorites</string>
-    <string name="player_save_to_existing">Save to existing playlist</string>
-    <string name="player_save_item_count">%1$d items</string>
-    <string name="player_save_already_exists">The current song already exists in "%1$s"</string>
-    <string name="player_save_success">Added the current song to "%1$s"</string>
-    <string name="player_default_playlist_name">Playlist</string>
-
     <!-- Media notification -->
     <string name="player_notification_playing">Playing</string>
     <string name="player_notification_channel">Music playback</string>

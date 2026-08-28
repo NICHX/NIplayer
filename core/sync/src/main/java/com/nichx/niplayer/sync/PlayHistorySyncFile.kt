@@ -2,6 +2,7 @@ package com.nichx.niplayer.sync
 
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.database.syncKey
 import com.squareup.moshi.JsonClass
 import java.util.Date
 
@@ -17,13 +18,6 @@ import java.util.Date
  * [version] 用于协议演进；[lastSyncedAt] 记录本设备最后一次成功上传时间，
  * 作为废弃设备判定的心跳（活动设备至少每 24h 强制上传一次保持心跳）。
  */
-
-/** 记录业务键分隔符：存储源 id 与 unique_key（unique_key 可能含普通分隔符，用 SOH 控制符绝对分隔）。 */
-internal const val RECORD_KEY_SEPARATOR = "\u0001"
-
-/** 构造记录业务键：`storageId + uniqueKey`。 */
-fun recordKey(storageId: Int, uniqueKey: String): String =
-    "$storageId$RECORD_KEY_SEPARATOR$uniqueKey"
 
 /** 云端每设备同步文件。 */
 @JsonClass(generateAdapter = true)
@@ -44,7 +38,13 @@ data class PlayHistorySyncFile(
 /** 单条播放历史记录（不含 DB 自增 id 与跨设备无意义的 subtitle/audio/torrent 字段）。 */
 @JsonClass(generateAdapter = true)
 data class SyncRecord(
+    /** 设备无关的同步键：`归一化存储地址 + 存储内相对路径`（见 [syncKey]），用于跨设备匹配。 */
     val key: String,
+    /**
+     * 生成 [key] 时使用的存储地址（原始，为适配不同写法可由用户保证一致）。
+     * 供拉取端据其匹配本机是否有相同地址的存储库，从而把远端记录落成本地可续播的历史行。
+     */
+    val baseUrl: String?,
     val uniqueKey: String,
     val storageId: Int,
     val videoName: String,
@@ -65,11 +65,18 @@ data class SyncDelete(
     val deletedAt: Long,
 )
 
-/** 由本地实体构造云端记录；storageId 缺失（异常数据）时返回 null。 */
-fun PlayHistoryEntity.toSyncRecord(): SyncRecord? {
+/**
+ * 由本地实体构造云端记录；storageId / storagePath / baseUrl 任一缺失（异常或本地数据）时返回 null。
+ *
+ * @param baseUrl 该记录所属存储库的地址，用于生成设备无关的 [syncKey]。
+ */
+fun PlayHistoryEntity.toSyncRecord(baseUrl: String?): SyncRecord? {
     val sid = storageId ?: return null
+    val path = storagePath ?: return null
+    val base = baseUrl ?: return null
     return SyncRecord(
-        key = recordKey(sid, uniqueKey),
+        key = syncKey(base, path),
+        baseUrl = baseUrl,
         uniqueKey = uniqueKey,
         storageId = sid,
         videoName = videoName,

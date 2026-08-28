@@ -79,7 +79,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.PlaylistAdd
+
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
@@ -181,7 +181,6 @@ import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.MediaFileTypes.isImageFile
-import com.nichx.niplayer.database.dao.PlaylistWithCount
 import com.nichx.niplayer.storage.StorageFile
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -223,7 +222,6 @@ fun FileBrowserScreen(
     val encryptedPaths by viewModel.encryptedPaths.collectAsStateWithLifecycle()
     val isMultiSelect by viewModel.isMultiSelect.collectAsStateWithLifecycle()
     val selectedPaths by viewModel.selectedPaths.collectAsStateWithLifecycle()
-    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val messageController = LocalAppMessageController.current
     var fileMenu by remember { mutableStateOf<Pair<StorageFile, Boolean>?>(null) }
     var isGridView by remember { mutableStateOf(FileBrowserSettings.isGridView) }
@@ -231,11 +229,7 @@ fun FileBrowserScreen(
     // 排序下拉菜单锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
     var sortMenuAnchor by remember { mutableStateOf(Offset.Zero) }
     var showFileInfo by remember { mutableStateOf<StorageFile?>(null) }
-    var showPlaylistPicker by remember { mutableStateOf(false) }
-    var showNewPlaylistDialog by remember { mutableStateOf(false) }
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
-    // 混选（音频+视频同时选中）点击"添加到歌单"时的确认提示
-    var showMixedAddConfirm by remember { mutableStateOf(false) }
     // 文件夹访问加密对话框状态
     var showEncryptDialog by remember { mutableStateOf<StorageFile?>(null) }
     var showDecryptDialog by remember { mutableStateOf<StorageFile?>(null) }
@@ -743,23 +737,15 @@ fun FileBrowserScreen(
                 }
             }
 
-            // 多选模式底部操作栏：固定四操作位（全选/添加到歌单/下载/删除），条件不满足时置灰而非显隐
+            // 多选模式底部操作栏：固定三操作位（全选/下载/删除），条件不满足时置灰而非显隐
             if (isMultiSelect) {
                 val selectedFiles = uiState.files.filter { it.path in selectedPaths && !it.isDirectory }
-                val audioCount = selectedFiles.count { MediaFileTypes.isAudioFile(it.name) }
-                val nonAudioCount = selectedFiles.size - audioCount
                 MultiSelectActionBar(
                     backdrop = multiSelectBarBackdrop,
                     selectedCount = selectedPaths.size,
                     allSelected = selectedPaths.size >= uiState.files.count { !it.isDirectory } && uiState.files.any { !it.isDirectory },
-                    // 歌单仅支持音频：选中无音频（纯视频/图片/普通文件）时"添加到歌单"置灰
-                    addToPlaylistEnabled = audioCount > 0,
                     downloadEnabled = selectedFiles.isNotEmpty(),
                     onSelectAll = viewModel::selectAllFiles,
-                    onAddToPlaylist = {
-                        // 音频+视频混选：先弹确认明确"将加音频 N、跳视频 M"，纯音频则直接选歌单
-                        if (nonAudioCount > 0) showMixedAddConfirm = true else showPlaylistPicker = true
-                    },
                     onDownload = {
                         if (DownloadSettings.isDownloadDirSet) {
                             viewModel.downloadFiles(
@@ -805,47 +791,6 @@ fun FileBrowserScreen(
                 viewModel.deleteSelected()
             },
             onDismiss = { showBatchDeleteConfirm = false },
-        )
-    }
-
-    if (showMixedAddConfirm) {
-        val mixedSelected = uiState.files.filter { it.path in selectedPaths && !it.isDirectory }
-        val mixedAudio = mixedSelected.count { MediaFileTypes.isAudioFile(it.name) }
-        val mixedSkipped = mixedSelected.size - mixedAudio
-        NiConfirmDialog(
-            title = stringResource(R.string.storage_file_mixed_add_title),
-            text = stringResource(R.string.storage_file_mixed_add_body, mixedAudio, mixedSkipped),
-            confirmText = stringResource(R.string.confirm),
-            onConfirm = {
-                showMixedAddConfirm = false
-                showPlaylistPicker = true
-            },
-            onDismiss = { showMixedAddConfirm = false },
-        )
-    }
-
-    if (showPlaylistPicker) {
-        PlaylistPickerSheet(
-            playlists = playlists,
-            onPick = { playlistId ->
-                showPlaylistPicker = false
-                viewModel.addSelectedToPlaylist(playlistId)
-            },
-            onCreateNew = {
-                showPlaylistPicker = false
-                showNewPlaylistDialog = true
-            },
-            onDismiss = { showPlaylistPicker = false },
-        )
-    }
-
-    if (showNewPlaylistDialog) {
-        CreatePlaylistNameDialog(
-            onConfirm = { name ->
-                showNewPlaylistDialog = false
-                viewModel.createPlaylistAndAdd(name)
-            },
-            onDismiss = { showNewPlaylistDialog = false },
         )
     }
 
@@ -2548,16 +2493,14 @@ fun ResetFolderPasswordDialog(
     }
 }
 
-/** 多选模式底部操作栏：液态玻璃胶囊。固定四操作位（全选/添加到歌单/下载/删除）+ 顶部"已选N项/关闭"行。 */
+/** 多选模式底部操作栏：液态玻璃胶囊。固定三操作位（全选/下载/删除）+ 顶部"已选N项/关闭"行。 */
 @Composable
 private fun MultiSelectActionBar(
     backdrop: Backdrop,
     selectedCount: Int,
     allSelected: Boolean,
-    addToPlaylistEnabled: Boolean,
     downloadEnabled: Boolean,
     onSelectAll: () -> Unit,
-    onAddToPlaylist: () -> Unit,
     onDownload: () -> Unit,
     onDelete: () -> Unit,
     onClose: () -> Unit,
@@ -2611,7 +2554,7 @@ private fun MultiSelectActionBar(
                 }
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
-            // 固定四操作位：不按选中内容显隐，仅置灰，保证布局稳定不抖动
+            // 固定三操作位：不按选中内容显隐，仅置灰，保证布局稳定不抖动
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2627,13 +2570,6 @@ private fun MultiSelectActionBar(
                     ),
                     enabled = selectedCount > 0,
                     onClick = onSelectAll,
-                    modifier = Modifier.weight(1f),
-                )
-                ActionBarItem(
-                    icon = Icons.Rounded.PlaylistAdd,
-                    label = stringResource(R.string.storage_file_add_to_playlist),
-                    enabled = addToPlaylistEnabled,
-                    onClick = onAddToPlaylist,
                     modifier = Modifier.weight(1f),
                 )
                 ActionBarItem(
@@ -2689,126 +2625,6 @@ private fun ActionBarItem(
             color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-/** 选歌单弹窗（多选添加入口②）：列出全部歌单 + 新建歌单。 */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PlaylistPickerSheet(
-    playlists: List<PlaylistWithCount>,
-    onPick: (Int) -> Unit,
-    onCreateNew: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        tonalElevation = 2.dp,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 24.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.storage_file_add_to_playlist),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            )
-            if (playlists.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.storage_file_playlist_picker_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.heightIn(max = 320.dp),
-                ) {
-                    items(playlists, key = { it.playlist.id }) { playlist ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onPick(playlist.playlist.id) }
-                                .padding(horizontal = 20.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.QueueMusic,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp),
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                text = playlist.playlist.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = stringResource(R.string.storage_file_playlist_item_count, playlist.itemCount),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline,
-                            )
-                        }
-                    }
-                }
-            }
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onCreateNew)
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = stringResource(R.string.storage_file_new_playlist),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-        }
-    }
-}
-
-/** 新建歌单名称输入对话框（多选添加入口内）。 */
-@Composable
-private fun CreatePlaylistNameDialog(
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var name by remember { mutableStateOf("") }
-    NiInfoDialog(
-        title = stringResource(R.string.storage_file_new_playlist),
-        onDismiss = onDismiss,
-        actions = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-            TextButton(
-                onClick = { onConfirm(name) },
-                enabled = name.isNotBlank(),
-            ) { Text(stringResource(R.string.create)) }
-        },
-    ) {
-        NiTextField(
-            value = name,
-            onValueChange = { name = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = stringResource(R.string.storage_file_playlist_name),
-            placeholder = stringResource(R.string.storage_file_playlist_name_placeholder),
         )
     }
 }

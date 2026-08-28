@@ -39,6 +39,8 @@ import com.nichx.niplayer.feature.home.home.HomeTabScreen
 import com.nichx.niplayer.feature.home.library.LibraryTabNavHost
 import com.nichx.niplayer.feature.home.settings.SettingsScreen
 import com.nichx.niplayer.navigation.Routes
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import kotlinx.coroutines.launch
 
 private enum class TabKey { HOME, LIBRARY, SETTINGS }
@@ -47,10 +49,8 @@ private enum class TabKey { HOME, LIBRARY, SETTINGS }
 fun HomeScreen(
     onNavigateToGlobal: (String) -> Unit = {},
     onNavigateToSearch: () -> Unit = {},
-    onNavigateToPlayHistory: () -> Unit = {},
+    onNavigateToPlayHistory: (Int) -> Unit = {},
     onNavigateToQuickAccess: () -> Unit = {},
-    onOpenPlaylists: () -> Unit = {},
-    onOpenPlaylist: (Int) -> Unit = {},
     onPlayVideo: () -> Unit = {},
     onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit = { _, _ -> },
     onNavigateToImageViewer: () -> Unit = {},
@@ -71,18 +71,27 @@ fun HomeScreen(
         pageCount = { tabKeys.size },
     )
 
+    // 底部 tab 切换动画：降低刚度以放慢切换，让过渡更有存在感
+    // （冷启动玻璃 shader 编译完成后不至于显得切换过快）
+    val tabSwitchSpec = remember {
+        spring<Float>(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        )
+    }
+
     // 媒体库 tab 的内部子返回栈（列表 → 文件浏览），随媒体库 pager 页常驻
     val libraryNavController: NavHostController = rememberNavController()
 
     // 打开文件浏览：在媒体库子栈 push，并切到媒体库 tab（已在媒体库则无副作用）
     val openFileBrowser: (Int, String) -> Unit = { storageId, path ->
         libraryNavController.navigate(Routes.Stream.storageFileRoute(storageId, path))
-        coroutineScope.launch { pagerState.animateScrollToPage(TabKey.LIBRARY.ordinal) }
+        coroutineScope.launch { pagerState.animateScrollToPage(TabKey.LIBRARY.ordinal, animationSpec = tabSwitchSpec) }
     }
 
     // 文件浏览页跳设置：切到设置 tab（媒体库子栈留在后台，切回恢复文件浏览）
     val goToSettingsTab: () -> Unit = {
-        coroutineScope.launch { pagerState.animateScrollToPage(TabKey.SETTINGS.ordinal) }
+        coroutineScope.launch { pagerState.animateScrollToPage(TabKey.SETTINGS.ordinal, animationSpec = tabSwitchSpec) }
     }
 
     // 文件浏览多选态：进入多选时隐藏共享底栏，并仅在"当前在媒体库 tab"时上抛给 MainActivity 隐藏音乐条
@@ -116,7 +125,7 @@ fun HomeScreen(
     // 共享底栏在同一宿主内就地切换 tab（落地到 pager 对应页）
     val onTabSelected: (Int) -> Unit = { index ->
         if (index in tabKeys.indices && index != pagerState.currentPage) {
-            coroutineScope.launch { pagerState.animateScrollToPage(index) }
+            coroutineScope.launch { pagerState.animateScrollToPage(index, animationSpec = tabSwitchSpec) }
         }
     }
 
@@ -143,8 +152,6 @@ fun HomeScreen(
                 onNavigateToSearch = onNavigateToSearch,
                 onNavigateToPlayHistory = onNavigateToPlayHistory,
                 onNavigateToQuickAccess = onNavigateToQuickAccess,
-                onOpenPlaylists = onOpenPlaylists,
-                onOpenPlaylist = onOpenPlaylist,
                 onPlayVideo = onPlayVideo,
                 onNavigateToStoragePlus = onNavigateToStoragePlus,
                 onNavigateToImageViewer = onNavigateToImageViewer,
@@ -184,10 +191,8 @@ private fun HomeTabContent(
     libraryNavController: NavHostController,
     onNavigateToGlobal: (String) -> Unit,
     onNavigateToSearch: () -> Unit,
-    onNavigateToPlayHistory: () -> Unit,
+    onNavigateToPlayHistory: (Int) -> Unit,
     onNavigateToQuickAccess: () -> Unit,
-    onOpenPlaylists: () -> Unit,
-    onOpenPlaylist: (Int) -> Unit,
     onPlayVideo: () -> Unit,
     onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit,
     onNavigateToImageViewer: () -> Unit,
@@ -213,8 +218,6 @@ private fun HomeTabContent(
                         onNavigateToSearch = onNavigateToSearch,
                         onNavigateToPlayHistory = onNavigateToPlayHistory,
                         onNavigateToQuickAccess = onNavigateToQuickAccess,
-                        onOpenPlaylists = onOpenPlaylists,
-                        onOpenPlaylist = onOpenPlaylist,
                         onNavigateToStorageFile = onOpenFileBrowser,
                         onPlayVideo = onPlayVideo,
                         onNavigateToSettings = onNavigateToSettingsTab,

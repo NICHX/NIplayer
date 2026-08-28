@@ -9,6 +9,7 @@ import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.entity.QuickAccessEntity
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.MediaFileTypes.isImageFile
+import com.nichx.niplayer.feature.home.PlayStartResult
 import com.nichx.niplayer.feature.home.PlayStarter
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.RemoteThumbnailRequest
@@ -213,10 +214,10 @@ class QuickAccessViewModel @Inject constructor(
                 _events.tryEmit(QuickAccessEvent.NavigateToStorageFile(entity.libraryId, entity.storagePath))
             } else {
                 when (val result = playStarter.startFromQuickAccess(entity)) {
-                    is PlayStarter.StartResult.Success ->
+                    is PlayStartResult.Success ->
                         _events.tryEmit(QuickAccessEvent.NavigateToPlayer)
 
-                    is PlayStarter.StartResult.Error ->
+                    is PlayStartResult.Error ->
                         _events.tryEmit(QuickAccessEvent.ShowError(result.message))
                 }
             }

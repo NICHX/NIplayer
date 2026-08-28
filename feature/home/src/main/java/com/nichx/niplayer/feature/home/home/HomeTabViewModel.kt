@@ -6,17 +6,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
-import com.nichx.niplayer.database.dao.PlaylistDao
-import com.nichx.niplayer.database.dao.PlaylistItemDao
-import com.nichx.niplayer.database.dao.PlaylistWithCount
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.dao.VideoDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
-import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.database.enums.MediaType
-import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.MediaFileTypes.isImageFile
+import com.nichx.niplayer.feature.home.PlayStartResult
 import com.nichx.niplayer.feature.home.PlayStarter
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessUiItem
 import com.nichx.niplayer.storage.StorageFactory
@@ -35,6 +31,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -48,8 +46,8 @@ import javax.inject.Inject
  * 首页 Tab 的 ViewModel。
  *
  * 聚合两类数据：
- * - **最近播放**：[PlayHistoryDao.getRecentFlow] 订阅最近 [RECENT_LIMIT] 条播放记录
- * - **快速访问**：[QuickAccessDao.getRecentFlow] 订阅最近 [RECENT_LIMIT] 条书签，
+ * - **最近播放**：[PlayHistoryDao.getRecentFlow] 订阅最近 [RECENT_WINDOW] 条播放记录
+ * - **快速访问**：[QuickAccessDao.getRecentFlow] 订阅最近 [QUICK_ACCESS_LIMIT] 条书签，
  *   [combine] 关联 [MediaLibraryDao.getAll] 获取存储源显示名与有效性
  *
  * 续播（P1）：[resumePlay] 委托 [PlayStarter.startFromHistory] 构造 PlaybackRequest 并写入
@@ -64,8 +62,6 @@ class HomeTabViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     playHistoryDao: PlayHistoryDao,
     quickAccessDao: QuickAccessDao,
-    private val playlistDao: PlaylistDao,
-    private val playlistItemDao: PlaylistItemDao,
     private val mediaLibraryDao: MediaLibraryDao,
     private val playStarter: PlayStarter,
     private val storageFactory: StorageFactory,
@@ -73,93 +69,83 @@ class HomeTabViewModel @Inject constructor(
     private val videoDao: VideoDao,
 ) : ViewModel() {
 
-    private val recentFlow = playHistoryDao.getRecentFlow(RECENT_LIMIT)
-    private val quickFlow = quickAccessDao.getRecentFlow(RECENT_LIMIT)
+    private val recentFlow = playHistoryDao.getRecentFlow(RECENT_WINDOW)
+    private val quickFlow = quickAccessDao.getRecentFlow(QUICK_ACCESS_LIMIT)
     private val shieldedPathsFlow = videoDao.getAllFolder()
+    /** 全部播放历史（用于统计各类型总数，展示在分区标题；展示行仍由 [recentFlow] 截断）。 */
+    private val allHistoryFlow = playHistoryDao.getAllFlow()
 
-    /** 最近播放列表（已过滤屏蔽目录），WhileSubscribed(5000) 避免配置变更时重启 Flow。 */
-    val recentPlays: StateFlow<List<PlayHistoryEntity>> = combine(
-        recentFlow, shieldedPathsFlow,
-    ) { histories, folders ->
-        val shieldedPaths = folders.filter { it.isFilter }.map { it.folderPath }.toSet()
-        if (shieldedPaths.isEmpty()) histories
+    /**
+     * 首页统一展示态：一次 combine 产出「已加载 + 最近播放 + 快速访问 + 各类型总数」。
+     *
+     * 让 dataReady 与列表从同一帧 emit，避免「dataReady 用原始流、列表用派生态」导致的首帧闪空；
+     * 各派生子流由 [distinctUntilChanged] 去重，避免无关源变化触发多余的下游刷新。
+     */
+    private val homeUi: StateFlow<HomeUiState> = combine(
+        recentFlow, quickFlow, mediaLibraryDao.getAll(), shieldedPathsFlow, allHistoryFlow,
+    ) { histories, quickList, libraries, folders, allHistory ->
+        val shielded = folders.filter { it.isFilter }.map { it.folderPath }.toSet()
+        val recent = if (shielded.isEmpty()) histories
         else histories.filter { h ->
-            h.storagePath == null || shieldedPaths.none { prefix ->
-                h.storagePath!!.startsWith(prefix)
-            }
+            h.storagePath == null || shielded.none { prefix -> h.storagePath!!.startsWith(prefix) }
         }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList(),
-    )
-
-    /** 首页快速访问列表，关联存储源显示名与有效性，仅展示最近 [RECENT_LIMIT] 条。 */
-    val quickAccessItems: StateFlow<List<QuickAccessUiItem>> =
-        combine(
-            quickFlow,
-            mediaLibraryDao.getAll(),
-        ) { quickList, libraries ->
-            val libMap = libraries.associateBy { it.id }
-            quickList.map { entity ->
+        val libMap = libraries.associateBy { it.id }
+        HomeUiState(
+            loaded = true,
+            recent = recent,
+            videoCount = allHistory.count { !MediaFileTypes.isAudioFile(it.videoName) },
+            audioCount = allHistory.count { MediaFileTypes.isAudioFile(it.videoName) },
+            quick = quickList.map { entity ->
                 val lib = libMap[entity.libraryId]
                 QuickAccessUiItem(
                     entity = entity,
                     libraryName = lib?.displayName,
                     libraryValid = lib != null,
                 )
-            }
-        }.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList(),
+            },
         )
-
-    /** 首页歌单列表（含条目数），按最近更新倒序。 */
-    val playlists: StateFlow<List<PlaylistWithCount>> = playlistDao.getAllWithCountFlow()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList(),
-        )
-
-    /** 歌单封面：playlistId → 首个条目的音频封面本地路径。 */
-    private val _playlistCoverUrls = MutableStateFlow<Map<Int, String>>(emptyMap())
-    val playlistCoverUrls: StateFlow<Map<Int, String>> = _playlistCoverUrls.asStateFlow()
-
-    /** 最近播放 - 视频（已过滤屏蔽目录）。 */
-    val recentVideoPlays: StateFlow<List<PlayHistoryEntity>> = combine(
-        recentPlays, shieldedPathsFlow,
-    ) { plays, _ ->
-        plays.filter { !MediaFileTypes.isAudioFile(it.videoName) }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList(),
+        initialValue = HomeUiState(),
     )
 
-    /** 最近播放 - 音频（已过滤屏蔽目录）。 */
-    val recentAudioPlays: StateFlow<List<PlayHistoryEntity>> = combine(
-        recentPlays, shieldedPathsFlow,
-    ) { plays, _ ->
-        plays.filter { MediaFileTypes.isAudioFile(it.videoName) }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList(),
-    )
+    /** 视频历史总数（展示于分区标题，作"有界预览 + 查看全部"的提示）。 */
+    val videoHistoryCount: StateFlow<Int> = homeUi
+        .map { it.videoCount }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    /** 标记数据是否已就绪（避免首次加载时展示空状态）。 */
-    val dataReady: StateFlow<Boolean> = combine(
-        recentFlow,
-        quickFlow,
-        shieldedPathsFlow,
-    ) { _, _, _ -> true }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = false,
-        )
+    /** 音频历史总数（展示于分区标题）。 */
+    val audioHistoryCount: StateFlow<Int> = homeUi
+        .map { it.audioCount }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    /** 标记数据是否已就绪（随 [homeUi] 同步下发，避免首次加载展示空状态）。 */
+    val dataReady: StateFlow<Boolean> = homeUi
+        .map { it.loaded }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    /** 最近播放列表（已过滤屏蔽目录），WhileSubscribed(5000) 避免配置变更时重启 Flow。 */
+    val recentPlays: StateFlow<List<PlayHistoryEntity>> = homeUi
+        .map { it.recent }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** 最近播放 - 视频（已过滤屏蔽目录），行内有界预览 [ROW_PREVIEW_LIMIT] 条。 */
+    val recentVideoPlays: StateFlow<List<PlayHistoryEntity>> = homeUi
+        .map { it.recent.filter { h -> !MediaFileTypes.isAudioFile(h.videoName) }.take(ROW_PREVIEW_LIMIT) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** 最近播放 - 音频（已过滤屏蔽目录），行内有界预览 [ROW_PREVIEW_LIMIT] 条。 */
+    val recentAudioPlays: StateFlow<List<PlayHistoryEntity>> = homeUi
+        .map { it.recent.filter { h -> MediaFileTypes.isAudioFile(h.videoName) }.take(ROW_PREVIEW_LIMIT) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** 首页快速访问列表，关联存储源显示名与有效性，仅展示最近 [QUICK_ACCESS_LIMIT] 条。 */
+    val quickAccessItems: StateFlow<List<QuickAccessUiItem>> = homeUi
+        .map { it.quick }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
      * 存储源可达性：storageId → 是否可达。
@@ -275,41 +261,6 @@ class HomeTabViewModel @Inject constructor(
                 }
             }
         }
-
-        // 歌单变化时刷新封面：缓存命中立即可用，未命中异步生成
-        viewModelScope.launch {
-            playlists.collect { lists ->
-                if (lists.isEmpty()) {
-                    _playlistCoverUrls.value = emptyMap()
-                    return@collect
-                }
-                val firstItems = withContext(Dispatchers.IO) {
-                    playlistItemDao.getFirstItemPerPlaylist()
-                }
-                val covers = withContext(Dispatchers.IO) {
-                    firstItems.mapNotNull { item ->
-                        resolvePlaylistCover(item)?.let { item.playlistId to it }
-                    }.toMap()
-                }
-                _playlistCoverUrls.value = covers
-            }
-        }
-    }
-
-    /** 解析歌单封面：先查缓存，未命中则生成。 */
-    private suspend fun resolvePlaylistCover(item: PlaylistItemEntity): String? {
-        thumbnailManager.getCachedAudioCoverPath(item.libraryId, item.filePath)?.let { return it }
-        val library = mediaLibraryDao.getById(item.libraryId) ?: return null
-        val storage = storageFactory.create(library) ?: return null
-        val file = object : AbstractStorageFile(
-            path = item.filePath,
-            name = item.fileName,
-            isDirectory = false,
-            length = item.fileSize,
-        ) {}
-        return runCatching {
-            thumbnailManager.generateAudioCover(storage, item.libraryId, file)
-        }.getOrNull()
     }
 
     /**
@@ -510,10 +461,10 @@ class HomeTabViewModel @Inject constructor(
     fun resumePlay(history: PlayHistoryEntity) {
         viewModelScope.launch {
             when (val result = playStarter.startFromHistory(history)) {
-                is PlayStarter.StartResult.Success ->
+                is PlayStartResult.Success ->
                     _events.tryEmit(HomeTabEvent.NavigateToPlayer)
 
-                is PlayStarter.StartResult.Error ->
+                is PlayStartResult.Error ->
                     _events.tryEmit(HomeTabEvent.ShowError(result.message))
             }
         }
@@ -531,10 +482,10 @@ class HomeTabViewModel @Inject constructor(
                 _events.tryEmit(HomeTabEvent.NavigateToStorageFile(entity.libraryId, entity.storagePath))
             } else {
                 when (val result = playStarter.startFromQuickAccess(entity)) {
-                    is PlayStarter.StartResult.Success ->
+                    is PlayStartResult.Success ->
                         _events.tryEmit(HomeTabEvent.NavigateToPlayer)
 
-                    is PlayStarter.StartResult.Error ->
+                    is PlayStartResult.Error ->
                         _events.tryEmit(HomeTabEvent.ShowError(result.message))
                 }
             }
@@ -566,12 +517,25 @@ class HomeTabViewModel @Inject constructor(
     private var connectionsValidated = false
 
     private companion object {
-        /** 首页展示最近播放 / 快速访问条数。 */
-        const val RECENT_LIMIT = 10
+        /** 首页拉取最近播放的窗口大小（混合视频+单曲，取大窗口再按类型拆，避免某类型被挤空）。 */
+        const val RECENT_WINDOW = 30
+        /** 首页快速访问条数。 */
+        const val QUICK_ACCESS_LIMIT = 10
+        /** 首页各类历史行的展示上限（有界预览，控制横滑长度）。 */
+        const val ROW_PREVIEW_LIMIT = 8
         /** 批量提交缩略图结果的间隔（ms）。降低 StateFlow emit 次数，减少 Compose 重组。 */
         const val FLUSH_INTERVAL_MS = 250L
     }
 }
+
+/** 首页展示态：同帧携带加载标记与列表，供派生子流使用。 */
+private data class HomeUiState(
+    val loaded: Boolean = false,
+    val recent: List<PlayHistoryEntity> = emptyList(),
+    val videoCount: Int = 0,
+    val audioCount: Int = 0,
+    val quick: List<QuickAccessUiItem> = emptyList(),
+)
 
 /** 首页一次性事件，由 [HomeTabScreen] collect。 */
 sealed class HomeTabEvent {

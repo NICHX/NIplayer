@@ -2,8 +2,8 @@ package com.nichx.niplayer.database.security
 
 import android.util.Base64
 import com.nichx.niplayer.database.dao.EncryptedFolderDao
-import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.entity.EncryptedFolderEntity
+import com.nichx.niplayer.database.sync.PlayHistorySyncDeleter
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,7 +27,7 @@ import kotlinx.coroutines.withContext
 @Singleton
 class EncryptedFolderManager @Inject constructor(
     private val dao: EncryptedFolderDao,
-    private val playHistoryDao: PlayHistoryDao,
+    private val syncDeleter: PlayHistorySyncDeleter,
     private val hasher: FolderPasswordHasher,
 ) {
 
@@ -140,8 +140,9 @@ class EncryptedFolderManager @Inject constructor(
             dao.insert(entity)
         }
 
-        // 加密生效：清理该文件夹前缀下已有的播放历史（隐私保护，与"不记历史"语义一致）
-        playHistoryDao.deleteByStoragePathPrefixAndStorageId(storageId, path)
+        // 加密生效：清理该文件夹前缀下已有的播放历史（隐私保护，与"不记历史"语义一致），
+        // 并记录同步 tombstone 使删除传播到其他设备
+        syncDeleter.deleteByStoragePathPrefixAndStorageId(storageId, path)
     }
 
     /**

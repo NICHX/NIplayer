@@ -6,14 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
-import com.nichx.niplayer.database.dao.PlaylistDao
-import com.nichx.niplayer.database.dao.PlaylistItemDao
-import com.nichx.niplayer.database.dao.PlaylistWithCount
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.entity.DownloadState
-import com.nichx.niplayer.database.entity.PlaylistEntity
-import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.database.entity.QuickAccessEntity
 import com.nichx.niplayer.database.entity.resumeStartPositionMs
 import com.nichx.niplayer.database.enums.MediaType
@@ -108,8 +103,6 @@ class StorageFileViewModel @Inject constructor(
     private val downloadManager: DownloadManager,
     private val uploadManager: UploadManager,
     private val encryptedFolderManager: EncryptedFolderManager,
-    private val playlistDao: PlaylistDao,
-    private val playlistItemDao: PlaylistItemDao,
 ) : ViewModel() {
 
     private var storageId: Int = savedStateHandle.get<Int>("storageId") ?: 0
@@ -281,14 +274,6 @@ class StorageFileViewModel @Inject constructor(
     private val _selectedPaths = MutableStateFlow<Set<String>>(emptySet())
     val selectedPaths: StateFlow<Set<String>> = _selectedPaths.asStateFlow()
 
-    /** 全量歌单及条目数（选歌单弹窗用）。 */
-    val playlists: StateFlow<List<PlaylistWithCount>> = playlistDao.getAllWithCountFlow()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList(),
-        )
-
     /**
      * 进入多选模式（顶栏「选择」按钮触发），初始不选中任何项。
      *
@@ -318,96 +303,6 @@ class StorageFileViewModel @Inject constructor(
             .filter { !it.isDirectory }
             .map { it.path }
             .toSet()
-    }
-
-    /**
-     * 将选中文件批量加入歌单（入口②）。
-     *
-     * 歌单仅支持音频：非音频文件自动跳过；已存在（playlist_id, file_path）的自动去重。
-     */
-    fun addSelectedToPlaylist(playlistId: Int) {
-        val library = currentLibrary ?: return
-        val selected = _uiState.value.files.filter {
-            it.path in _selectedPaths.value && !it.isDirectory && MediaFileTypes.isAudioFile(it.name)
-        }
-        if (selected.isEmpty()) {
-            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_audio_only)))
-            return
-        }
-        val entities = selected.map {
-            PlaylistItemEntity(
-                playlistId = playlistId,
-                libraryId = library.id,
-                filePath = it.path,
-                fileName = it.name,
-                mediaTypeValue = library.mediaType.value,
-                fileSize = it.length,
-            )
-        }
-        viewModelScope.launch {
-            val inserted = withContext(Dispatchers.IO) {
-                runCatching {
-                    val count = playlistItemDao.addItems(playlistId, entities)
-                    playlistDao.touch(playlistId, System.currentTimeMillis())
-                    count
-                }.getOrDefault(0)
-            }
-            exitMultiSelect()
-            val skipped = selected.size - inserted
-            val message = when {
-                inserted > 0 && skipped > 0 ->
-                    context.getString(R.string.storage_file_added_skipped, inserted, skipped)
-                inserted > 0 ->
-                    context.getString(R.string.storage_file_added_to_playlist, inserted)
-                else ->
-                    context.getString(R.string.storage_file_all_in_playlist)
-            }
-            _events.tryEmit(StorageFileEvent.ShowToast(message))
-        }
-    }
-
-    /**
-     * 新建歌单并把选中音频文件加入其中（选歌单弹窗「新建歌单」路径）。
-     */
-    fun createPlaylistAndAdd(name: String) {
-        val library = currentLibrary ?: return
-        val trimmed = name.trim()
-        if (trimmed.isEmpty()) return
-        val selected = _uiState.value.files.filter {
-            it.path in _selectedPaths.value && !it.isDirectory && MediaFileTypes.isAudioFile(it.name)
-        }
-        if (selected.isEmpty()) {
-            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_audio_only)))
-            return
-        }
-        viewModelScope.launch {
-            val added = withContext(Dispatchers.IO) {
-                runCatching {
-                    val playlistId = playlistDao.insert(PlaylistEntity(name = trimmed)).toInt()
-                    val entities = selected.map {
-                        PlaylistItemEntity(
-                            playlistId = playlistId,
-                            libraryId = library.id,
-                            filePath = it.path,
-                            fileName = it.name,
-                            mediaTypeValue = library.mediaType.value,
-                            fileSize = it.length,
-                        )
-                    }
-                    playlistItemDao.addItems(playlistId, entities)
-                }.getOrDefault(0)
-            }
-            exitMultiSelect()
-            _events.tryEmit(
-                StorageFileEvent.ShowToast(
-                    if (added > 0) {
-                        context.getString(R.string.storage_file_created_and_added, trimmed, added)
-                    } else {
-                        context.getString(R.string.storage_file_created, trimmed)
-                    },
-                ),
-            )
-        }
     }
 
     /** 批量删除选中文件/目录。 */

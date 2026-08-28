@@ -4,10 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.DownloadTaskDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
-import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.security.EncryptedFolderManager
+import com.nichx.niplayer.database.sync.PlayHistorySyncDeleter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +33,7 @@ import javax.inject.Inject
 class LibraryViewModel @Inject constructor(
     private val mediaLibraryDao: MediaLibraryDao,
     private val quickAccessDao: QuickAccessDao,
-    private val playHistoryDao: PlayHistoryDao,
+    private val syncDeleter: PlayHistorySyncDeleter,
     private val downloadTaskDao: DownloadTaskDao,
     private val encryptedFolderManager: EncryptedFolderManager,
 ) : ViewModel() {
@@ -116,7 +116,7 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 quickAccessDao.deleteByLibrary(libraryId)
-                playHistoryDao.deleteByStorageId(libraryId)
+                syncDeleter.deleteByStorageId(libraryId)
                 downloadTaskDao.deleteByStorageId(libraryId)
             }
         }

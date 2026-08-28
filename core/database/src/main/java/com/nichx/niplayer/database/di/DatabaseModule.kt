@@ -8,8 +8,6 @@ import com.nichx.niplayer.database.dao.EncryptedFolderDao
 import com.nichx.niplayer.database.dao.ExtendFolderDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
-import com.nichx.niplayer.database.dao.PlaylistDao
-import com.nichx.niplayer.database.dao.PlaylistItemDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.dao.SyncConflictDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
@@ -26,8 +24,7 @@ import javax.inject.Singleton
 /**
  * :core:database 的 Hilt Module。
  *
- * 提供 [NiplayerDatabase] 单例与 10 个 Dao。
- * 当前版本 v11（v10→v11 新增 playlist / playlist_item 表）。
+ * 提供 [NiplayerDatabase] 单例与各 Dao。
  * [fallbackToDestructiveMigration] 作为其他未预期 schema 变更的兜底。
  */
 @Module
@@ -43,11 +40,8 @@ object DatabaseModule {
                 NiplayerDatabase.MIGRATION_7_8,
                 NiplayerDatabase.MIGRATION_8_9,
                 NiplayerDatabase.MIGRATION_9_10,
-                NiplayerDatabase.MIGRATION_10_11,
-                NiplayerDatabase.MIGRATION_11_12,
                 NiplayerDatabase.MIGRATION_12_13,
                 NiplayerDatabase.MIGRATION_13_14,
-                NiplayerDatabase.MIGRATION_14_15,
             )
             .fallbackToDestructiveMigration(true)
             .build()
@@ -84,10 +78,4 @@ object DatabaseModule {
 
     @Provides
     fun provideEncryptedFolderDao(db: NiplayerDatabase): EncryptedFolderDao = db.getEncryptedFolderDao()
-
-    @Provides
-    fun providePlaylistDao(db: NiplayerDatabase): PlaylistDao = db.getPlaylistDao()
-
-    @Provides
-    fun providePlaylistItemDao(db: NiplayerDatabase): PlaylistItemDao = db.getPlaylistItemDao()
 }

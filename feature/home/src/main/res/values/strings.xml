@@ -6,7 +6,6 @@
     <string name="play_error_restore_failed">无法恢复播放</string>
     <string name="play_error_folder_bookmark">不支持打开文件夹书签</string>
     <string name="play_error_open_failed">无法打开播放源</string>
-    <string name="play_error_playlist_empty">歌单为空</string>
     <string name="play_error_invalid_position">播放位置无效</string>
 
     <!-- 播放历史筛选（HistoryFilter.labelRes） -->
@@ -157,6 +156,8 @@
 
     <!-- 媒体库（LibraryScreen / LibraryViewModel） -->
     <string name="library_title">媒体库</string>
+    <string name="library_tab_storage">存储源</string>
+    <string name="library_tab_playlists">歌单</string>
     <string name="library_add_storage">添加存储</string>
     <string name="library_search">搜索</string>
     <string name="library_close_search">关闭搜索</string>
@@ -220,75 +221,6 @@
     <string name="playback_stats_minutes">%1$d 分钟</string>
     <string name="playback_stats_seconds">%1$d 秒</string>
     <string name="playback_stats_zero_minutes">不足 1 分钟</string>
-
-    <!-- 歌单（PlaylistsScreen / PlaylistsViewModel） -->
-    <string name="playlists_title">我的歌单</string>
-    <string name="playlists_empty">暂无歌单</string>
-    <string name="playlists_empty_hint">在播放页可将连播内容保存为歌单</string>
-    <string name="playlists_count">共 %1$d 个歌单</string>
-    <string name="playlists_create_title">新建歌单</string>
-    <string name="playlists_name_label">歌单名称</string>
-    <string name="playlists_name_placeholder">例如：我的最爱</string>
-    <string name="playlists_delete">删除歌单</string>
-    <string name="playlists_delete_confirm">确定删除歌单「%1$s」？%2$d 个条目将一并移除。</string>
-    <string name="playlists_rename">重命名</string>
-    <string name="playlists_rename_title">重命名歌单</string>
-    <string name="playlists_duplicate">复制歌单</string>
-    <string name="playlists_merge_to">合并到其他歌单</string>
-    <string name="playlists_merge_title">将「%1$s」合并到</string>
-    <string name="playlists_no_other_playlist">没有其他歌单可选</string>
-    <string name="playlists_pin">置顶</string>
-    <string name="playlists_unpin">取消置顶</string>
-    <string name="playlists_pinned_badge">置顶</string>
-    <string name="playlists_item_count">%1$d 个条目</string>
-    <string name="playlist_created">已创建歌单「%1$s」</string>
-    <string name="playlist_deleted">已删除歌单「%1$s」</string>
-    <string name="playlist_renamed">已重命名为「%1$s」</string>
-    <string name="playlist_duplicate_name">%1$s 副本</string>
-    <string name="playlist_duplicated">已创建副本「%1$s」</string>
-    <string name="playlist_pinned">已置顶「%1$s」</string>
-    <string name="playlist_unpinned">已取消置顶「%1$s」</string>
-    <string name="playlist_merged_from_to">已从「%1$s」合并 %2$d 个条目到「%3$s」</string>
-    <string name="playlist_merge_all_duplicate">「%1$s」的条目已全部存在于「%2$s」</string>
-
-    <!-- 歌单详情（PlaylistDetailScreen / PlaylistDetailViewModel） -->
-    <string name="playlist_detail_edit_mode">编辑模式</string>
-    <string name="playlist_detail_exit_edit">退出编辑模式</string>
-    <string name="playlist_detail_title_fallback">歌单详情</string>
-    <string name="playlist_detail_manage">歌单管理</string>
-    <string name="playlist_detail_empty">歌单为空</string>
-    <string name="playlist_detail_empty_hint">在文件浏览页多选音频文件，或从播放页保存连播内容到歌单</string>
-    <string name="playlist_detail_no_match">没有匹配的条目</string>
-    <string name="playlist_detail_no_match_hint">换个关键词试试</string>
-    <string name="playlist_detail_no_audio">歌单中暂无音频</string>
-    <string name="playlist_detail_remove">移出歌单</string>
-    <string name="playlist_detail_remove_confirm">确定将「%1$s」移出歌单？</string>
-    <string name="playlist_detail_remove_confirm_text">移出</string>
-    <string name="playlist_detail_merge_title">将「%1$s」合并到</string>
-    <string name="playlist_detail_move_title">移动选中条目到</string>
-    <string name="playlist_detail_copy_title">复制选中条目到</string>
-    <string name="playlist_detail_remove_selected_title">移除选中条目</string>
-    <string name="playlist_detail_remove_selected_confirm">确定从歌单移除选中的 %1$d 个条目？</string>
-    <string name="playlist_detail_remove_selected_confirm_text">移除</string>
-    <string name="playlist_detail_delete_title">删除歌单</string>
-    <string name="playlist_detail_delete_confirm">确定删除歌单「%1$s」？%2$d 个条目将一并移除。</string>
-    <string name="playlist_detail_play_all">播放全部（%1$d）</string>
-    <string name="playlist_detail_reorder_hint">拖动右侧手柄可调整播放顺序</string>
-    <string name="playlist_detail_select_all">全选</string>
-    <string name="playlist_detail_cancel_select_all">取消全选</string>
-    <string name="playlist_detail_selected_count">已选 %1$d 项</string>
-    <string name="playlist_detail_move_to_playlist">移到歌单</string>
-    <string name="playlist_detail_copy_to_playlist">复制到歌单</string>
-    <string name="playlist_detail_exit_search">退出搜索</string>
-    <string name="playlist_detail_search_placeholder">搜索歌单内的文件</string>
-    <string name="playlist_detail_pinned">已置顶</string>
-    <string name="playlist_detail_unpinned">已取消置顶</string>
-    <string name="playlist_detail_merged_into">已合并 %1$d 个条目到「%2$s」</string>
-    <string name="playlist_detail_all_exist_in">「%1$s」的全部条目已存在于「%2$s」</string>
-    <string name="playlist_detail_copied_into">已复制 %1$d 个条目到「%2$s」</string>
-    <string name="playlist_detail_selected_all_exist">选中条目的全部已存在于「%1$s」</string>
-    <string name="playlist_detail_moved_into">已移动 %1$d 个条目到「%2$s」</string>
-    <string name="playlist_detail_moved_all_exist">选中条目的全部已存在于「%1$s」</string>
 
     <!-- 扫描管理（ScanManagerScreen / ScanManagerViewModel） -->
     <string name="scan_manager_title">扫描目录管理</string>
@@ -652,6 +584,7 @@
     <string name="home_empty_title">暂无内容</string>
     <string name="home_empty_hint">从媒体库添加存储源开始使用</string>
     <string name="home_recent_audio">最近播放音乐</string>
+    <string name="home_recent_video">最近播放视频</string>
     <string name="home_continue_play">继续播放</string>
     <string name="home_no_history">暂无播放记录</string>
     <string name="home_no_history_hint">从媒体库选择视频或音乐开始播放</string>

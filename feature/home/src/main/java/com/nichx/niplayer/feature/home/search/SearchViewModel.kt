@@ -10,6 +10,7 @@ import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.feature.home.PlayStartResult
 import com.nichx.niplayer.feature.home.PlayStarter
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessUiItem
 import com.nichx.niplayer.thumbnail.ThumbnailManager
@@ -140,10 +141,10 @@ class SearchViewModel @Inject constructor(
     fun resumePlay(history: PlayHistoryEntity) {
         viewModelScope.launch {
             when (val result = playStarter.startFromHistory(history)) {
-                is PlayStarter.StartResult.Success ->
+                is PlayStartResult.Success ->
                     _events.tryEmit(SearchEvent.NavigateToPlayer)
 
-                is PlayStarter.StartResult.Error ->
+                is PlayStartResult.Error ->
                     _events.tryEmit(SearchEvent.ShowError(result.message))
             }
         }
@@ -161,10 +162,10 @@ class SearchViewModel @Inject constructor(
                 _events.tryEmit(SearchEvent.NavigateToStorageFile(entity.libraryId, entity.storagePath))
             } else {
                 when (val result = playStarter.startFromQuickAccess(entity)) {
-                    is PlayStarter.StartResult.Success ->
+                    is PlayStartResult.Success ->
                         _events.tryEmit(SearchEvent.NavigateToPlayer)
 
-                    is PlayStarter.StartResult.Error ->
+                    is PlayStartResult.Error ->
                         _events.tryEmit(SearchEvent.ShowError(result.message))
                 }
             }

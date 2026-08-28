@@ -38,7 +38,7 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.PlaylistAdd
+
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
@@ -154,7 +154,6 @@ fun AudioPlayerScreen(
 
     var showLyrics by remember { mutableStateOf(false) }
     var showPlaylist by remember { mutableStateOf(false) }
-    var showSavePlaylistDialog by remember { mutableStateOf(false) }
 
     // 倍速：音频独立 4 档（0.5/1/1.5/2），偏好走 PlayerSettings.audioSpeedIndex，
     // 与视频 8 档互不影响
@@ -225,7 +224,6 @@ fun AudioPlayerScreen(
                 onBack = onBack,
                 onDownload = { viewModel.downloadCurrentFile() },
                 onEqualizer = onEqualizer,
-                onAddToPlaylist = { showSavePlaylistDialog = true },
                 speedOptions = speedValues,
                 currentSpeedIndex = speedIndex,
                 onSpeedSelect = { speedIndex = it },
@@ -259,7 +257,6 @@ fun AudioPlayerScreen(
                 onBack = onBack,
                 onDownload = { viewModel.downloadCurrentFile() },
                 onEqualizer = onEqualizer,
-                onAddToPlaylist = { showSavePlaylistDialog = true },
                 speedOptions = speedValues,
                 currentSpeedIndex = speedIndex,
                 onSpeedSelect = { speedIndex = it },
@@ -275,22 +272,7 @@ fun AudioPlayerScreen(
             onPlayAtIndex = { index -> viewModel.playAtIndex(index) },
         )
 
-        if (showSavePlaylistDialog) {
-            // 添加到歌单：只针对当前正在播放的歌曲，而非整个播放列表
-            val currentItem = playlist.getOrNull(currentIndex)
-            if (currentItem != null) {
-                SaveToPlaylistDialog(
-                    items = listOf(currentItem),
-                    onDismiss = { showSavePlaylistDialog = false },
-                    onSaved = { message ->
-                        messageController.post(NiMessage.info(message))
-                    },
-                )
-            } else {
-                showSavePlaylistDialog = false
-            }
         }
-    }
 }
 
 @Composable
@@ -373,7 +355,6 @@ private fun PortraitLayout(
     onBack: () -> Unit,
     onDownload: () -> Unit,
     onEqualizer: () -> Unit = {},
-    onAddToPlaylist: () -> Unit = {},
     speedOptions: List<Float> = listOf(1f),
     currentSpeedIndex: Int = 0,
     onSpeedSelect: (Int) -> Unit = {},
@@ -390,7 +371,6 @@ private fun PortraitLayout(
             onBack = onBack,
             onDownload = onDownload,
             onEqualizer = onEqualizer,
-            onAddToPlaylist = onAddToPlaylist,
             speedOptions = speedOptions,
             currentSpeedIndex = currentSpeedIndex,
             onSpeedSelect = onSpeedSelect,
@@ -561,7 +541,6 @@ private fun LandscapeLayout(
     onBack: () -> Unit,
     onDownload: () -> Unit,
     onEqualizer: () -> Unit = {},
-    onAddToPlaylist: () -> Unit = {},
     speedOptions: List<Float> = listOf(1f),
     currentSpeedIndex: Int = 0,
     onSpeedSelect: (Int) -> Unit = {},
@@ -597,7 +576,7 @@ private fun LandscapeLayout(
     }
 
     // 横屏不使用独立顶栏：整屏为左右分栏 Row。
-    // 左侧唱片占满全部高度；右侧顶部一行 = 返回 + 歌名 + 操作按钮（添加歌单/更多），
+    // 左侧唱片占满全部高度；右侧顶部一行 = 返回 + 歌名 + 操作按钮（更多），
     // 下方为歌词（占满剩余空间）与一行式播放控件。最底部常驻细进度条。
     Column(
         modifier = Modifier
@@ -650,7 +629,7 @@ private fun LandscapeLayout(
                 .fillMaxHeight()
                 .weight(1f),
         ) {
-            // 顶部行：返回 | 歌名 | 添加到歌单 | 更多（沉浸模式下自动隐藏）
+            // 顶部行：返回 | 歌名 | 更多（沉浸模式下自动隐藏）
             AnimatedVisibility(visible = controlsVisible) {
                 Column {
                     Row(
@@ -684,7 +663,6 @@ private fun LandscapeLayout(
                         TopBarActions(
                             onDownload = onDownload,
                             onEqualizer = onEqualizer,
-                            onAddToPlaylist = onAddToPlaylist,
                             speedOptions = speedOptions,
                             currentSpeedIndex = currentSpeedIndex,
                             onSpeedSelect = onSpeedSelect,
@@ -866,14 +844,13 @@ private fun ControlColumn(
 }
 
 /**
- * 顶栏操作按钮组：添加到歌单 + 更多（更多内含倍速二级菜单 / 均衡器 / 下载）。
+ * 顶栏操作按钮组：更多（内含倍速二级菜单 / 均衡器 / 下载）。
  * 竖屏 TopBar 与横屏顶部行共用，保证按钮与菜单样式一致。
  */
 @Composable
 private fun TopBarActions(
     onDownload: () -> Unit,
     onEqualizer: () -> Unit,
-    onAddToPlaylist: () -> Unit,
     speedOptions: List<Float>,
     currentSpeedIndex: Int,
     onSpeedSelect: (Int) -> Unit,
@@ -900,23 +877,6 @@ private fun TopBarActions(
     val menuItemPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        // 添加到歌单：常用操作，独立按钮直出
-        IconButton(onClick = onAddToPlaylist) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(onSurface.copy(alpha = 0.08f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.PlaylistAdd,
-                    contentDescription = stringResource(R.string.player_save_to_playlist),
-                    tint = onSurface.copy(alpha = 0.8f),
-                )
-            }
-        }
-
         // 更多：倍速（二级菜单）/ 均衡器 / 下载 收进溢出菜单，保持顶栏简洁
         Box(
             modifier = Modifier.onGloballyPositioned { coords ->
@@ -1094,7 +1054,6 @@ private fun TopBar(
     onBack: () -> Unit,
     onDownload: () -> Unit = {},
     onEqualizer: () -> Unit = {},
-    onAddToPlaylist: () -> Unit = {},
     speedOptions: List<Float> = listOf(1f),
     currentSpeedIndex: Int = 0,
     onSpeedSelect: (Int) -> Unit = {},
@@ -1139,7 +1098,6 @@ private fun TopBar(
         TopBarActions(
             onDownload = onDownload,
             onEqualizer = onEqualizer,
-            onAddToPlaylist = onAddToPlaylist,
             speedOptions = speedOptions,
             currentSpeedIndex = currentSpeedIndex,
             onSpeedSelect = onSpeedSelect,

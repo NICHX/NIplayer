@@ -6,9 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.bean.FolderBean
 import com.nichx.niplayer.database.dao.ExtendFolderDao
-import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.VideoDao
 import com.nichx.niplayer.database.entity.ExtendFolderEntity
+import com.nichx.niplayer.database.sync.PlayHistorySyncDeleter
 import com.nichx.niplayer.storage.scanner.VideoScanner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -45,7 +45,7 @@ class ScanManagerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val extendFolderDao: ExtendFolderDao,
     private val videoDao: VideoDao,
-    private val playHistoryDao: PlayHistoryDao,
+    private val syncDeleter: PlayHistorySyncDeleter,
     private val scanner: VideoScanner,
 ) : ViewModel() {
 
@@ -122,7 +122,7 @@ class ScanManagerViewModel @Inject constructor(
             val newFilter = !folder.isFilter
             videoDao.updateFolderFilter(newFilter, folder.folderPath)
             if (newFilter) {
-                playHistoryDao.deleteByStoragePathPrefix(folder.folderPath)
+                syncDeleter.deleteByStoragePathPrefix(folder.folderPath)
             }
         }
     }

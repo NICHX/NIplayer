@@ -36,7 +36,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
@@ -52,6 +54,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.common.message.AppMessageController
+import kotlinx.coroutines.delay
 import com.nichx.niplayer.datastore.LanguageSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.datastore.GlassSettings
@@ -70,8 +73,6 @@ import com.nichx.niplayer.feature.home.HomeScreen
 import com.nichx.niplayer.feature.home.history.PlayHistoryScreen
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerScreen
 import com.nichx.niplayer.feature.home.library.StoragePlusScreen
-import com.nichx.niplayer.feature.home.playlist.PlaylistDetailScreen
-import com.nichx.niplayer.feature.home.playlist.PlaylistsScreen
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessScreen
 import com.nichx.niplayer.feature.home.search.SearchScreen
 import com.nichx.niplayer.feature.home.settings.AboutScreen
@@ -188,7 +189,10 @@ class MainActivity : ComponentActivity() {
                 val isPlayerScreen =
                     currentBackStackEntry?.destination?.route == Routes.Player.AUDIO_PLAYER ||
                             currentBackStackEntry?.destination?.route == Routes.Player.PLAYER ||
-                            currentBackStackEntry?.destination?.route == Routes.Player.GUARD
+                            currentBackStackEntry?.destination?.route == Routes.Player.GUARD ||
+                            // 均衡器是播放器的子页：从全屏播放器进入时不显示 musicbar，
+                            // 否则用户会误点 musicbar 再次进播放器，导致返回栈错乱
+                            currentBackStackEntry?.destination?.route == Routes.User.EQUALIZER
 
                 // 文件浏览多选态：由 HomeScreen 上抛，多选时隐藏音乐条，避免与多选操作栏堆叠
                 var fileBrowserMultiSelect by remember { mutableStateOf(false) }
@@ -205,8 +209,22 @@ class MainActivity : ComponentActivity() {
                         drawContent()
                     }
                     CompositionLocalProvider(LocalNiBackdrop provides glassBackdrop) {
+                    // 冷启动预热：首帧稳定后触发一次主内容重绘，提前完成 glass backdrop 捕获与
+                    // 渲染管道 / shader 编译，减少用户头几次切换 tab 时的掉帧
+                    var prewarmStep by remember { mutableStateOf(0) }
+                    LaunchedEffect(Unit) {
+                        withFrameNanos { }  // 等首帧
+                        delay(220)          // 等启动初始化稳定
+                        prewarmStep = 1     // 触发一次主内容 / glass backdrop 重绘
+                    }
                     Box(modifier = Modifier.fillMaxSize()) {
-                    Box(modifier = Modifier.fillMaxSize().layerBackdrop(glassBackdrop)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            // 订阅 prewarmStep 以触发一次性重绘（冷启动预热 glass backdrop）
+                            .drawBehind { if (prewarmStep != 0) {} }
+                            .layerBackdrop(glassBackdrop),
+                    ) {
                     NiNavHost(
                         navController = navController,
                     ) {
@@ -220,17 +238,11 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToSearch = {
                                     navController.navigate(Routes.Local.SEARCH)
                                 },
-                                onNavigateToPlayHistory = {
-                                    navController.navigate(Routes.Local.PLAY_HISTORY)
+                                onNavigateToPlayHistory = { filter ->
+                                    navController.navigate(Routes.Local.playHistoryRoute(filter))
                                 },
                                 onNavigateToQuickAccess = {
                                     navController.navigate(Routes.Local.QUICK_ACCESS)
-                                },
-                                onOpenPlaylists = {
-                                    navController.navigate(Routes.Playlist.LIST)
-                                },
-                                onOpenPlaylist = { playlistId ->
-                                    navController.navigate(Routes.Playlist.detailRoute(playlistId))
                                 },
                                 onPlayVideo = { navController.navigate(Routes.Player.GUARD) },
                                 onNavigateToStoragePlus = { type, storageId ->
@@ -270,11 +282,18 @@ class MainActivity : ComponentActivity() {
                             StoragePlusScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
-                            route = Routes.Local.PLAY_HISTORY,
+                            route = Routes.Local.PLAY_HISTORY_ROUTE,
+                            arguments = listOf(
+                                navArgument("filter") {
+                                    type = NavType.IntType
+                                    defaultValue = 0
+                                },
+                            ),
                             enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
                             exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                        ) { backStackEntry ->
                             PlayHistoryScreen(
+                                initialFilterOrdinal = backStackEntry.arguments?.getInt("filter") ?: 0,
                                 onNavigateToPlayVideo = { navController.navigate(Routes.Player.GUARD) },
                             )
                         }
@@ -289,33 +308,6 @@ class MainActivity : ComponentActivity() {
                                     pendingFileBrowser = storageId to path
                                     navController.popBackStack(Routes.Home.ROOT, inclusive = false)
                                 },
-                            )
-                        }
-                        composable(
-                            route = Routes.Playlist.LIST,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
-                            PlaylistsScreen(
-                                onBack = { navController.popBackStack() },
-                                onOpenPlaylist = { playlistId ->
-                                    navController.navigate(Routes.Playlist.detailRoute(playlistId))
-                                },
-                            )
-                        }
-                        composable(
-                            route = Routes.Playlist.DETAIL_ROUTE,
-                            arguments = listOf(
-                                navArgument("playlistId") {
-                                    type = NavType.IntType
-                                },
-                            ),
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
-                            PlaylistDetailScreen(
-                                onBack = { navController.popBackStack() },
-                                onPlayVideo = { navController.navigate(Routes.Player.GUARD) },
                             )
                         }
                         composable(
