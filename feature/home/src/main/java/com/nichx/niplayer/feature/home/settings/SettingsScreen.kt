@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -167,6 +168,7 @@ private fun AppInfoCard() {
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline,
                     )
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = stringResource(R.string.settings_build_code, versionCode),
                         style = MaterialTheme.typography.bodySmall,
@@ -262,7 +264,7 @@ enum class SettingsGroup(
 ) {
     PLAYBACK(
         labelRes = R.string.settings_group_playback,
-        entries = listOf(SettingsEntry.PLAYER, SettingsEntry.PLAYBACK_STATS, SettingsEntry.LRCAPI, SettingsEntry.SCAN, SettingsEntry.CACHE),
+        entries = listOf(SettingsEntry.PLAYER, SettingsEntry.MEDIA_LIBRARY, SettingsEntry.PLAYBACK_STATS, SettingsEntry.LRCAPI, SettingsEntry.SCAN, SettingsEntry.CACHE),
     ),
     STORAGE(
         labelRes = R.string.settings_group_storage,
@@ -291,6 +293,13 @@ enum class SettingsEntry(
         subtitleRes = R.string.settings_entry_player_sub,
         icon = Icons.Filled.PlayCircleOutline,
         iconBg = Color(0xFF2095F4),
+    ),
+    MEDIA_LIBRARY(
+        route = Routes.User.MEDIA_LIBRARY,
+        titleRes = R.string.settings_entry_media_library,
+        subtitleRes = R.string.settings_entry_media_library_sub,
+        icon = Icons.Filled.PhotoLibrary,
+        iconBg = Color(0xFF00ACC1),
     ),
     PLAYBACK_STATS(
         route = Routes.User.PLAYBACK_STATS,

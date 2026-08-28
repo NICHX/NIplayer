@@ -11,10 +11,11 @@ import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
 @HiltViewModel
-class PlayerSettingsViewModel @Inject constructor(
+class MediaLibrarySettingsViewModel @Inject constructor(
     mediaLibraryDao: MediaLibraryDao,
 ) : ViewModel() {
 
+    /** 全部存储源，供“存储源缩略图策略”分组展示各存储库独立生成模式。 */
     val libraries: StateFlow<List<MediaLibraryEntity>> = mediaLibraryDao.getAll()
         .stateIn(
             scope = viewModelScope,

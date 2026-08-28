@@ -4,5 +4,7 @@
     <string name="crash_dialog_title">NIplayer 上次异常退出</string>
     <string name="crash_dialog_ignore">忽略</string>
     <string name="crash_log_copied">已复制崩溃日志</string>
-    <string name="crash_dialog_copy_and_close">复制并关闭</string>
+    <string name="crash_log_saved">已保存崩溃日志</string>
+    <string name="crash_dialog_copy">复制</string>
+    <string name="crash_dialog_save_as_txt">保存为txt</string>
 </resources>

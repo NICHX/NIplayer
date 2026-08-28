@@ -81,17 +81,6 @@ class PlayHistorySyncManager @Inject constructor(
         Moshi.Builder().build().adapter(PlayHistorySyncFile::class.java)
     }
 
-    /** 当前是否正在同步。 */
-    val isSyncing: Boolean
-        get() = _state.value is SyncUiState.Syncing
-
-    /** 清除完成态，让 UI 指示器回到待机（用于结果短暂展示后消退）。 */
-    fun dismissResult() {
-        if (_state.value is SyncUiState.Done) {
-            _state.value = SyncUiState.Idle
-        }
-    }
-
     /**
      * 执行一次完整同步（push → pull → 吸收）。
      *

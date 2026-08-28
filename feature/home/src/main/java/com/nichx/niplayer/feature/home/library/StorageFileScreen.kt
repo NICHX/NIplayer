@@ -85,14 +85,17 @@ import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.SelectAll
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.Upload
-import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.automirrored.rounded.ViewList
+import androidx.compose.material.icons.rounded.FilterAlt
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.SortByAlpha
+import androidx.compose.material.icons.rounded.SwapVerticalCircle
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import com.nichx.niplayer.designsystem.components.NiDialogItem
@@ -196,7 +199,7 @@ import com.kyant.backdrop.shadow.Shadow
 // （该值已包含对应用底部导航栏 NiBottomBar 的避让）
 private val FabBottomOffset = 104.dp
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FileBrowserScreen(
     storageId: Int,
@@ -205,7 +208,6 @@ fun FileBrowserScreen(
     onPlayVideo: () -> Unit,
     onNavigateToImageViewer: () -> Unit = {},
     onNavigateToDownloadManager: () -> Unit = {},
-    onNavigateToSettings: () -> Unit = {},
     // 多选态上抛给宿主：进入多选时由 Home 隐藏底部导航栏、MainActivity 隐藏音乐条
     onFileBrowserMultiSelectChanged: (Boolean) -> Unit = {},
 ) {
@@ -226,8 +228,10 @@ fun FileBrowserScreen(
     var fileMenu by remember { mutableStateOf<Pair<StorageFile, Boolean>?>(null) }
     var isGridView by remember { mutableStateOf(FileBrowserSettings.isGridView) }
     var showSortMenu by remember { mutableStateOf(false) }
-    // 排序下拉菜单锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
+    var showFilterMenu by remember { mutableStateOf(false) }
+    // 排序/过滤下拉菜单锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
     var sortMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var filterMenuAnchor by remember { mutableStateOf(Offset.Zero) }
     var showFileInfo by remember { mutableStateOf<StorageFile?>(null) }
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
     // 文件夹访问加密对话框状态
@@ -397,9 +401,20 @@ fun FileBrowserScreen(
             NiTopBar(
                 title = uiState.storageName.ifEmpty { stringResource(R.string.storage_file_browser_title) },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (uiState.canGoUp) { captureCurrentScroll(); viewModel.goUp() } else onBack()
-                    }) {
+                    // 点击逐级返回；长按直接回到存储根目录（深层目录快速返回）
+                    Box(
+                        modifier = Modifier
+                            .combinedClickable(
+                                onClick = {
+                                    if (uiState.canGoUp) { captureCurrentScroll(); viewModel.goUp() } else onBack()
+                                },
+                                onLongClick = {
+                                    if (uiState.canGoUp) viewModel.goToRoot()
+                                },
+                            )
+                            .padding(4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         NiStyleIcon(
                             icon = Icons.AutoMirrored.Rounded.ArrowBack,
                             style = NiAppIconStyle,
@@ -431,7 +446,7 @@ fun FileBrowserScreen(
                     ) {
                         IconButton(onClick = { showSortMenu = true }) {
                             NiStyleIcon(
-                                icon = Icons.AutoMirrored.Rounded.Sort,
+                                icon = Icons.Rounded.SwapVert,
                                 style = NiAppIconStyle,
                                 containerSize = 40.dp,
                                 iconSize = 22.dp,
@@ -448,61 +463,119 @@ fun FileBrowserScreen(
                                 icon = Icons.Rounded.SortByAlpha,
                                 value = FileBrowserSettings.SortBy.NAME,
                                 current = sortConfig.sortBy,
-                            ) {
-                                viewModel.setSortBy(FileBrowserSettings.SortBy.NAME)
-                                showSortMenu = false
-                            }
+                                ascending = sortConfig.ascending,
+                                onSelect = {
+                                    viewModel.setSortBy(FileBrowserSettings.SortBy.NAME)
+                                },
+                                onToggleDirection = {
+                                    viewModel.setSortAscending(!sortConfig.ascending)
+                                },
+                            )
                             SortByMenuItem(
                                 label = stringResource(R.string.storage_file_sort_modified),
                                 icon = Icons.Rounded.Schedule,
                                 value = FileBrowserSettings.SortBy.MODIFIED,
                                 current = sortConfig.sortBy,
-                            ) {
-                                viewModel.setSortBy(FileBrowserSettings.SortBy.MODIFIED)
-                                showSortMenu = false
-                            }
+                                ascending = sortConfig.ascending,
+                                onSelect = {
+                                    viewModel.setSortBy(FileBrowserSettings.SortBy.MODIFIED)
+                                },
+                                onToggleDirection = {
+                                    viewModel.setSortAscending(!sortConfig.ascending)
+                                },
+                            )
                             SortByMenuItem(
                                 label = stringResource(R.string.storage_file_sort_size),
                                 icon = Icons.Rounded.Storage,
                                 value = FileBrowserSettings.SortBy.SIZE,
                                 current = sortConfig.sortBy,
-                            ) {
-                                viewModel.setSortBy(FileBrowserSettings.SortBy.SIZE)
-                                showSortMenu = false
-                            }
+                                ascending = sortConfig.ascending,
+                                onSelect = {
+                                    viewModel.setSortBy(FileBrowserSettings.SortBy.SIZE)
+                                },
+                                onToggleDirection = {
+                                    viewModel.setSortAscending(!sortConfig.ascending)
+                                },
+                            )
                             SortByMenuItem(
                                 label = stringResource(R.string.storage_file_sort_type),
                                 icon = Icons.Rounded.Category,
                                 value = FileBrowserSettings.SortBy.TYPE,
                                 current = sortConfig.sortBy,
-                            ) {
-                                viewModel.setSortBy(FileBrowserSettings.SortBy.TYPE)
-                                showSortMenu = false
-                            }
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = stringResource(
-                                            if (sortConfig.ascending) R.string.storage_file_sort_to_descending
-                                            else R.string.storage_file_sort_to_ascending,
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
+                                ascending = sortConfig.ascending,
+                                onSelect = {
+                                    viewModel.setSortBy(FileBrowserSettings.SortBy.TYPE)
                                 },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = if (sortConfig.ascending) Icons.Rounded.ArrowUpward
-                                        else Icons.Rounded.ArrowDownward,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                },
-                                onClick = {
+                                onToggleDirection = {
                                     viewModel.setSortAscending(!sortConfig.ascending)
-                                    showSortMenu = false
                                 },
                             )
+                            HorizontalDivider()
+                            SortToggleRow(
+                                label = stringResource(R.string.storage_file_menu_media_only),
+                                checked = sortConfig.showOnlyMediaFiles,
+                                onCheckedChange = viewModel::toggleShowOnlyMediaFiles,
+                            )
+                            SortToggleRow(
+                                label = stringResource(R.string.storage_file_menu_show_hidden),
+                                checked = sortConfig.showHiddenFiles,
+                                onCheckedChange = viewModel::toggleShowHiddenFiles,
+                            )
+                        }
+                    }
+                    // 文件类型过滤：全部/视频/音频/图片
+                    Box(
+                        modifier = Modifier.onGloballyPositioned { coords ->
+                            val topLeft = coords.localToRoot(Offset.Zero)
+                            filterMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                        },
+                    ) {
+                        IconButton(onClick = { showFilterMenu = true }) {
+                            NiStyleIcon(
+                                icon = Icons.Rounded.FilterAlt,
+                                style = NiAppIconStyle,
+                                containerSize = 40.dp,
+                                iconSize = 22.dp,
+                                contentDescription = stringResource(R.string.storage_file_filter_title),
+                            )
+                        }
+                        NiGlassDropdownMenu(
+                            expanded = showFilterMenu,
+                            onDismissRequest = { showFilterMenu = false },
+                            anchor = IntOffset(filterMenuAnchor.x.toInt(), filterMenuAnchor.y.toInt()),
+                        ) {
+                            FilterMenuItem(
+                                label = stringResource(R.string.storage_file_filter_all),
+                                value = FileBrowserSettings.MediaFilter.ALL,
+                                current = sortConfig.mediaFilter,
+                            ) {
+                                viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.ALL)
+                                showFilterMenu = false
+                            }
+                            FilterMenuItem(
+                                label = stringResource(R.string.storage_file_filter_video),
+                                value = FileBrowserSettings.MediaFilter.VIDEO,
+                                current = sortConfig.mediaFilter,
+                            ) {
+                                viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.VIDEO)
+                                showFilterMenu = false
+                            }
+                            FilterMenuItem(
+                                label = stringResource(R.string.storage_file_filter_audio),
+                                value = FileBrowserSettings.MediaFilter.AUDIO,
+                                current = sortConfig.mediaFilter,
+                            ) {
+                                viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.AUDIO)
+                                showFilterMenu = false
+                            }
+                            FilterMenuItem(
+                                label = stringResource(R.string.storage_file_filter_image),
+                                value = FileBrowserSettings.MediaFilter.IMAGE,
+                                current = sortConfig.mediaFilter,
+                            ) {
+                                viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.IMAGE)
+                                showFilterMenu = false
+                            }
                         }
                     }
                     IconButton(onClick = {
@@ -550,14 +623,14 @@ fun FileBrowserScreen(
                             TransferCountBadge(count = activeUploadCount)
                         }
                     }
-                    // 独立全屏页面不常驻 Home 底部导航，提供快捷入口跳转到设置页
-                    IconButton(onClick = onNavigateToSettings) {
+                    // 常驻传输管理入口：独立全屏页不常驻 Home 底部导航，提供快捷入口查看下载/上传任务
+                    IconButton(onClick = onNavigateToDownloadManager) {
                         NiStyleIcon(
-                            icon = Icons.Rounded.Settings,
+                            icon = Icons.Rounded.SwapVerticalCircle,
                             style = NiAppIconStyle,
                             containerSize = 40.dp,
                             iconSize = 22.dp,
-                            contentDescription = stringResource(R.string.settings),
+                            contentDescription = stringResource(R.string.transfer_manager_title),
                         )
                     }
                 },
@@ -657,8 +730,7 @@ fun FileBrowserScreen(
                 ) {
                     BreadcrumbBar(
                         path = uiState.currentPath,
-                        canGoUp = uiState.canGoUp,
-                        onGoUp = { captureCurrentScroll(); viewModel.goUp() },
+                        onGoToRoot = { viewModel.goToRoot() },
                         onJumpToDepth = { depth -> captureCurrentScroll(); viewModel.jumpToDepth(depth) },
                     )
                 }
@@ -977,13 +1049,17 @@ private fun SortByMenuItem(
     icon: ImageVector,
     value: FileBrowserSettings.SortBy,
     current: FileBrowserSettings.SortBy,
-    onClick: () -> Unit,
+    ascending: Boolean,
+    onSelect: () -> Unit,
+    onToggleDirection: () -> Unit,
 ) {
     val selected = current == value
     DropdownMenuItem(
+        modifier = Modifier.height(38.dp),
         text = {
             Text(
                 text = label,
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (selected) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurface,
@@ -995,6 +1071,68 @@ private fun SortByMenuItem(
                 contentDescription = null,
                 tint = if (selected) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        // 当前排序项显示方向箭头（点击切换升降序），非当前项无箭头（点击仅选中）
+        trailingIcon = {
+            if (selected) {
+                Icon(
+                    imageVector = if (ascending) Icons.Rounded.ArrowUpward
+                    else Icons.Rounded.ArrowDownward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        onClick = { if (selected) onToggleDirection() else onSelect() },
+    )
+}
+
+/** 菜单内的轻量勾选行：点击整行或复选框均可切换，不关闭菜单。 */
+@Composable
+private fun SortToggleRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { onCheckedChange() }
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        Checkbox(checked = checked, onCheckedChange = { onCheckedChange() })
+    }
+}
+
+/** 菜单内的文件类型过滤选项：点击选中并关闭菜单（单选）。 */
+@Composable
+private fun FilterMenuItem(
+    label: String,
+    value: FileBrowserSettings.MediaFilter,
+    current: FileBrowserSettings.MediaFilter,
+    onClick: () -> Unit,
+) {
+    val selected = current == value
+    DropdownMenuItem(
+        modifier = Modifier.height(38.dp),
+        text = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface,
             )
         },
         trailingIcon = {
@@ -1044,9 +1182,8 @@ private fun ThumbnailProgressBar(progress: Int) {
 @Composable
 private fun BreadcrumbBar(
     path: String,
-    canGoUp: Boolean,
-    onGoUp: () -> Unit,
     onJumpToDepth: (Int) -> Unit,
+    onGoToRoot: () -> Unit,
 ) {
     val segments = path.split("/").filter { it.isNotEmpty() }
     Row(
@@ -1055,6 +1192,28 @@ private fun BreadcrumbBar(
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 根目录入口：点击直接回到存储根，深层目录无需逐级返回
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .clickable(onClick = onGoToRoot)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Home,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Text(
+            text = "▸",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
         segments.forEachIndexed { index, segment ->
             val isLast = index == segments.lastIndex
             val bgColor = if (isLast)

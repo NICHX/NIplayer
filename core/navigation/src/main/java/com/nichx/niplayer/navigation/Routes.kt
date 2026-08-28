@@ -52,6 +52,7 @@ object Routes {
     /** 旧 RouteTable.User namespace。 */
     object User {
         const val SETTING_PLAYER = "user/setting_player"
+        const val MEDIA_LIBRARY = "user/media_library"
         const val LRCAPI = "user/lrc_api"
         const val SCAN_MANAGER = "user/scan_manager"
         const val CACHE_MANAGER = "user/cache_manager"

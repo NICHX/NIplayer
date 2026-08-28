@@ -105,6 +105,9 @@ fun NiTopBar(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleLarge,
+                        // 显式用 onSurface：容器为 Transparent 时 contentColorFor(Transparent)
+                        // 会得出错误的明暗前景色，导致深色模式下标题不可见
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -147,6 +150,9 @@ fun NiTopBar(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
+                    // 显式用 onSurface：容器为 Transparent 时 contentColorFor(Transparent)
+                    // 会得出错误的明暗前景色，导致深色模式下标题不可见
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

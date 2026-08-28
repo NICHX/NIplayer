@@ -39,8 +39,9 @@ import com.nichx.niplayer.feature.home.home.HomeTabScreen
 import com.nichx.niplayer.feature.home.library.LibraryTabNavHost
 import com.nichx.niplayer.feature.home.settings.SettingsScreen
 import com.nichx.niplayer.navigation.Routes
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.launch
 
 private enum class TabKey { HOME, LIBRARY, SETTINGS }
@@ -71,27 +72,14 @@ fun HomeScreen(
         pageCount = { tabKeys.size },
     )
 
-    // 底部 tab 切换动画：降低刚度以放慢切换，让过渡更有存在感
-    // （冷启动玻璃 shader 编译完成后不至于显得切换过快）
-    val tabSwitchSpec = remember {
-        spring<Float>(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        )
-    }
-
     // 媒体库 tab 的内部子返回栈（列表 → 文件浏览），随媒体库 pager 页常驻
     val libraryNavController: NavHostController = rememberNavController()
 
-    // 打开文件浏览：在媒体库子栈 push，并切到媒体库 tab（已在媒体库则无副作用）
+    // 打开文件浏览：在媒体库子栈 push，并切到媒体库 tab（已在媒体库则无副作用）。
+    // 用 scrollToPage 瞬时切换，避免 pager 平移动画期间每帧重绘（中间页 + 底栏 backdrop）导致的掉帧
     val openFileBrowser: (Int, String) -> Unit = { storageId, path ->
         libraryNavController.navigate(Routes.Stream.storageFileRoute(storageId, path))
-        coroutineScope.launch { pagerState.animateScrollToPage(TabKey.LIBRARY.ordinal, animationSpec = tabSwitchSpec) }
-    }
-
-    // 文件浏览页跳设置：切到设置 tab（媒体库子栈留在后台，切回恢复文件浏览）
-    val goToSettingsTab: () -> Unit = {
-        coroutineScope.launch { pagerState.animateScrollToPage(TabKey.SETTINGS.ordinal, animationSpec = tabSwitchSpec) }
+        coroutineScope.launch { pagerState.scrollToPage(TabKey.LIBRARY.ordinal) }
     }
 
     // 文件浏览多选态：进入多选时隐藏共享底栏，并仅在"当前在媒体库 tab"时上抛给 MainActivity 隐藏音乐条
@@ -122,10 +110,10 @@ fun HomeScreen(
         NiWindowWidthSizeClass.Expanded -> 960.dp
     }
 
-    // 共享底栏在同一宿主内就地切换 tab（落地到 pager 对应页）
+    // 共享底栏在同一宿主内就地切换 tab（落地到 pager 对应页，瞬时切换无动画）
     val onTabSelected: (Int) -> Unit = { index ->
         if (index in tabKeys.indices && index != pagerState.currentPage) {
-            coroutineScope.launch { pagerState.animateScrollToPage(index, animationSpec = tabSwitchSpec) }
+            coroutineScope.launch { pagerState.scrollToPage(index) }
         }
     }
 
@@ -156,7 +144,6 @@ fun HomeScreen(
                 onNavigateToStoragePlus = onNavigateToStoragePlus,
                 onNavigateToImageViewer = onNavigateToImageViewer,
                 onNavigateToDownloadManager = onNavigateToDownloadManager,
-                onNavigateToSettingsTab = goToSettingsTab,
                 pendingFileBrowser = pendingFileBrowser,
                 onPendingFileBrowserConsumed = onPendingFileBrowserConsumed,
                 onFileBrowserMultiSelectChanged = { fileBrowserMultiSelect = it },
@@ -197,7 +184,6 @@ private fun HomeTabContent(
     onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit,
     onNavigateToImageViewer: () -> Unit,
     onNavigateToDownloadManager: () -> Unit,
-    onNavigateToSettingsTab: () -> Unit,
     pendingFileBrowser: Pair<Int, String>?,
     onPendingFileBrowserConsumed: () -> Unit,
     onFileBrowserMultiSelectChanged: (Boolean) -> Unit,
@@ -213,35 +199,67 @@ private fun HomeTabContent(
                 .consumeWindowInsets(WindowInsets.navigationBars),
         ) { page ->
             when (page) {
-                0 -> Box(modifier = Modifier.fillMaxSize()) {
+                0 -> PageEntryEffect(isCurrent = pagerState.currentPage == 0) {
                     HomeTabScreen(
                         onNavigateToSearch = onNavigateToSearch,
                         onNavigateToPlayHistory = onNavigateToPlayHistory,
                         onNavigateToQuickAccess = onNavigateToQuickAccess,
                         onNavigateToStorageFile = onOpenFileBrowser,
                         onPlayVideo = onPlayVideo,
-                        onNavigateToSettings = onNavigateToSettingsTab,
+                        onNavigateToTheme = { onNavigateToGlobal(Routes.User.SWITCH_THEME) },
                     )
                 }
-                1 -> Box(modifier = Modifier.fillMaxSize()) {
+                1 -> PageEntryEffect(isCurrent = pagerState.currentPage == 1) {
                     LibraryTabNavHost(
                         navController = libraryNavController,
                         onNavigateToStoragePlus = onNavigateToStoragePlus,
                         onPlayVideo = onPlayVideo,
                         onNavigateToImageViewer = onNavigateToImageViewer,
                         onNavigateToDownloadManager = onNavigateToDownloadManager,
-                        onNavigateToSettings = onNavigateToSettingsTab,
                         pendingFileBrowser = pendingFileBrowser,
                         onPendingFileBrowserConsumed = onPendingFileBrowserConsumed,
                         onFileBrowserMultiSelectChanged = onFileBrowserMultiSelectChanged,
                     )
                 }
-                else -> Box(modifier = Modifier.fillMaxSize()) {
+                else -> PageEntryEffect(isCurrent = pagerState.currentPage == 2) {
                     SettingsScreen(
                         onNavigateToGlobal = onNavigateToGlobal,
                     )
                 }
             }
         }
+    }
+}
+
+/**
+ * 切 tab 轻量入场动画：内容已由 scrollToPage 瞬时就位，仅对新显示页做 scale+alpha 入场
+ * （graphicsLayer 合成级，不触发 measure/layout），替代 pager 平移的连续重绘开销。
+ * 首次组合（冷启动首页）跳过，避免与加载骨架叠加。
+ */
+@Composable
+private fun PageEntryEffect(
+    isCurrent: Boolean,
+    content: @Composable () -> Unit,
+) {
+    val progress = remember { Animatable(1f) }
+    var firstRun by remember { mutableStateOf(true) }
+    LaunchedEffect(isCurrent) {
+        if (isCurrent && !firstRun) {
+            progress.snapTo(0f)
+            progress.animateTo(1f, tween(durationMillis = 200))
+        }
+        firstRun = false
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                val p = progress.value
+                scaleX = 0.98f + 0.02f * p
+                scaleY = 0.98f + 0.02f * p
+                alpha = 0.6f + 0.4f * p
+            },
+    ) {
+        content()
     }
 }

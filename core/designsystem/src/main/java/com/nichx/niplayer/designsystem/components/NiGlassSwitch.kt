@@ -1,5 +1,6 @@
 package com.nichx.niplayer.designsystem.components
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
@@ -7,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -20,14 +20,13 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.lerp
@@ -58,7 +57,8 @@ import kotlinx.coroutines.flow.collectLatest
  *   高光与内阴影随按压进度增强、白色表层变透，释放回弹——与参考 demo 的 toggle 一致；
  * - 只引用局部轨道 backdrop、**不引用页面级捕获层**（[NiGlassSwitch] 常驻内容层内，
  *   引用页面 backdrop 会陷入捕获循环导致 SIGSEGV 崩溃）；
- * - 支持点击切换与水平拖拽，滑块位移/底色以弹簧阻尼动画过渡。
+ * - **仅识别点击**（无拖拽手势）：点击即切换，按压/回弹动画由 [DampedDragAnimation]
+ *   press/release 驱动；滑块位移/底色以弹簧阻尼动画过渡。
  *
  * @param checked 是否开启
  * @param onCheckedChange 切换回调
@@ -80,14 +80,13 @@ fun NiGlassSwitch(
         if (isLightTheme) Color(0xFF787878).copy(alpha = 0.2f)
         else Color(0xFF787880).copy(alpha = 0.36f)
     val density = LocalDensity.current
-    val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
-    // 滑块水平拖动行程：轨道 64 - 滑块 40 - 两侧内边距 4
+    // 滑块位移行程：轨道 64 - 滑块 40 - 两侧内边距 4
     val dragWidth = with(density) { 20f.dp.toPx() }
     val animationScope = rememberCoroutineScope()
-    var didDrag by remember { mutableStateOf(false) }
     var fraction by remember { mutableFloatStateOf(if (checked) 1f else 0f) }
 
-    // 弹簧阻尼交互：拖动跟随 + 按压缩放（pressedScale = 1.5）
+    // 弹簧阻尼动画：fraction 由 checked 状态驱动，press/release 提供按压缩放反馈；
+    // 不再挂载拖拽手势（inspectDragGestures），交互仅识别点击（见下方 detectTapGestures）。
     val dampedDragAnimation = remember(animationScope) {
         DampedDragAnimation(
             animationScope = animationScope,
@@ -98,31 +97,8 @@ fun NiGlassSwitch(
             pressedScale = 1.5f,
             canDrag = { enabled },
             onDragStarted = {},
-            onDragStopped = {
-                if (enabled) {
-                    if (didDrag) {
-                        // 拖拽结束：按最新手指位置就近吸附到 0/1 并回调。
-                        // 直接读 fraction（已由拖动位移同步更新），
-                        // 避免依赖滞后的动画 targetValue 造成吸附侧判断错位。
-                        fraction = if (fraction >= 0.5f) 1f else 0f
-                        onCheckedChange(fraction == 1f)
-                        didDrag = false
-                    } else {
-                        // 点击切换
-                        fraction = if (checked) 0f else 1f
-                        onCheckedChange(fraction == 1f)
-                    }
-                } else {
-                    didDrag = false
-                }
-            },
-            onDrag = { _, dragAmount ->
-                if (!didDrag) didDrag = dragAmount.x != 0f
-                val delta = dragAmount.x / dragWidth
-                fraction =
-                    if (isLtr) (fraction + delta).fastCoerceIn(0f, 1f)
-                    else (fraction - delta).fastCoerceIn(0f, 1f)
-            },
+            onDragStopped = {},
+            onDrag = { _, _ -> },
         )
     }
     LaunchedEffect(dampedDragAnimation) {
@@ -150,6 +126,13 @@ fun NiGlassSwitch(
                 role = Role.Switch
                 // 暴露开关检中状态，供 TalkBack 播报“已开启 / 已关闭”
                 toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
+            }
+            // 仅识别点击：滑块上不挂载任何拖拽手势节点，点击滑块本体/轨道均命中此处，
+            // 点击即触发切换（按压/回弹动画由 checked 变化后的 animateToValue 驱动）。
+            .pointerInput(enabled, checked) {
+                detectTapGestures {
+                    if (enabled) onCheckedChange(!checked)
+                }
             },
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -163,14 +146,13 @@ fun NiGlassSwitch(
                 }
                 .size(width = 64.dp, height = 28.dp),
         )
-        // ─── 滑块：液态玻璃 + 按压缩放反馈 ───
+        // ─── 滑块：液态玻璃 + 按压缩放反馈（无拖拽手势，点击由外层 Box 统一处理）───
         Box(
             Modifier
                 .graphicsLayer {
                     val padding = 2f.dp.toPx()
                     translationX = lerp(padding, padding + dragWidth, dampedDragAnimation.value)
                 }
-                .then(dampedDragAnimation.modifier)
                 .drawBackdrop(
                     backdrop = trackBackdrop,
                     shape = { ContinuousCapsule },

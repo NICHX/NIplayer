@@ -6,12 +6,15 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.drawable.ColorDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowCompat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -24,6 +27,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
@@ -40,12 +44,18 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -83,6 +93,7 @@ import com.nichx.niplayer.feature.home.settings.EqualizerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.LrcApiSettingsScreen
 import com.nichx.niplayer.feature.home.settings.LanguageScreen
 import com.nichx.niplayer.feature.home.settings.GlassSettingsScreen
+import com.nichx.niplayer.feature.home.settings.MediaLibrarySettingsScreen
 import com.nichx.niplayer.feature.home.settings.PlaybackStatsScreen
 import com.nichx.niplayer.feature.home.settings.PlayerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.ScanManagerScreen
@@ -142,7 +153,26 @@ class MainActivity : ComponentActivity() {
                     val crashDialogTitle = stringResource(R.string.crash_dialog_title)
                     val crashDialogIgnore = stringResource(R.string.crash_dialog_ignore)
                     val crashLogCopied = stringResource(R.string.crash_log_copied)
-                    val crashDialogCopyClose = stringResource(R.string.crash_dialog_copy_and_close)
+                    val crashLogSaved = stringResource(R.string.crash_log_saved)
+                    val crashDialogCopy = stringResource(R.string.crash_dialog_copy)
+                    val crashDialogSaveAsTxt = stringResource(R.string.crash_dialog_save_as_txt)
+                    // 日志查看区最大高度：窗口的 50%，日志过长时在弹窗内滚动，避免弹窗撑满全屏
+                    val maxLogHeight = with(LocalDensity.current) {
+                        (LocalWindowInfo.current.containerSize.height * 0.5f).toDp()
+                    }
+                    // SAF 保存崩溃日志为 txt 文件
+                    val saveCrashLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.CreateDocument("text/plain")
+                    ) { uri: Uri? ->
+                        if (uri != null) {
+                            val saved = runCatching {
+                                contentResolver.openOutputStream(uri)?.use {
+                                    it.write(log.toByteArray(Charsets.UTF_8))
+                                } != null
+                            }.getOrDefault(false)
+                            if (saved) Toast.makeText(this, crashLogSaved, Toast.LENGTH_SHORT).show()
+                        }
+                    }
                     NiInfoDialog(
                         title = crashDialogTitle,
                         onDismiss = { crashLog = null },
@@ -153,14 +183,22 @@ class MainActivity : ComponentActivity() {
                                     as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText("crash_log", log))
                                 Toast.makeText(this, crashLogCopied, Toast.LENGTH_SHORT).show()
-                                crashLog = null
-                            }) { Text(crashDialogCopyClose) }
+                            }) { Text(crashDialogCopy) }
+                            TextButton(onClick = {
+                                val name = "niplayer_crash_${
+                                    SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ROOT).format(Date())
+                                }.txt"
+                                saveCrashLauncher.launch(name)
+                            }) { Text(crashDialogSaveAsTxt) }
                         },
                     ) {
                         Text(
                             text = log,
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .heightIn(max = maxLogHeight)
+                                .verticalScroll(rememberScrollState()),
                         )
                     }
                 }
@@ -392,6 +430,13 @@ class MainActivity : ComponentActivity() {
                             exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
                         ) {
                             PlayerSettingsScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = Routes.User.MEDIA_LIBRARY,
+                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
+                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
+                        ) {
+                            MediaLibrarySettingsScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.EQUALIZER,
