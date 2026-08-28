@@ -29,7 +29,7 @@ import com.nichx.niplayer.designsystem.R
 @Composable
 fun NiSectionHeader(
     title: String,
-    count: Int,
+    count: Int? = null,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     viewAllText: String = "",
@@ -47,18 +47,20 @@ fun NiSectionHeader(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = count.toString(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-        )
+        if (count != null) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+            )
+        }
         Spacer(Modifier.weight(1f))
-        if (count > 0 && onClick != null) {
+        if (onClick != null) {
             Text(
                 text = resolvedViewAll,
                 style = MaterialTheme.typography.labelMedium,

@@ -21,7 +21,6 @@ import javax.inject.Singleton
  *   "payload": {
  *     "mediaLibraries": [...],
  *     "quickAccesses": [...],
- *     "playlists": { "playlists": [...], "items": [...] },
  *     "appSettings": { ... },
  *     ...
  *   }

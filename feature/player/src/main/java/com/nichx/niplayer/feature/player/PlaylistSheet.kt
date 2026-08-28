@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -55,6 +56,12 @@ fun PlaylistSheet(
     onDismiss: () -> Unit,
     onPlayAtIndex: (Int) -> Unit,
 ) {
+    // 生命周期兜底：本组件销毁（如页面被导航替换）时清理残留浮层，
+    // 避免同 window overlay 槽位被前一页面的面板占用（与其他投递方一致）。
+    DisposableEffect(Unit) {
+        onDispose { NiGlassOverlay.dismiss("player_playlist_sheet") }
+    }
+
     LaunchedEffect(show, playlist, currentIndex, playMode) {
         if (show && playlist.isNotEmpty()) {
             NiGlassOverlay.show(

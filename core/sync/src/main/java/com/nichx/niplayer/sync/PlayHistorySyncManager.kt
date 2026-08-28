@@ -9,6 +9,9 @@ import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.entity.SyncConflictEntity
 import com.nichx.niplayer.database.entity.SyncDeleteLogEntity
+import com.nichx.niplayer.database.isSyncableBase
+import com.nichx.niplayer.database.normalizeBaseUrl
+import com.nichx.niplayer.database.syncKey
 import com.nichx.niplayer.datastore.PlayHistorySyncSettings
 import com.nichx.niplayer.datastore.WebDavSettings
 import com.nichx.niplayer.storage.AbstractStorageFile
@@ -159,10 +162,37 @@ class PlayHistorySyncManager @Inject constructor(
             verifyConnection(storage)
             val now = System.currentTimeMillis()
             var conflictCount = 0
-            // 本地当前全量记录（key -> entity）
+
+            // BUG-B：同步身份必须是设备无关的。旧实现用 storageId+uniqueKey(含本地 library.id)
+            // 作 key，两端指向同一存储/文件时算出的 key 不同，导致同步永远合并不上。
+            // 现改为 syncKey = 归一化存储地址 + 存储内相对路径，两端用相同地址配置即可对齐。
+            val libraries = mediaLibraryDao.getAllSuspend()
+            val baseUrlByStorageId = HashMap<Int, String>()
+            val syncableStorageIds = HashSet<Int>()
+            // 归一化地址 -> 本机 storageId（供把远端记录匹配回本地可续播的存储）
+            val storageIdByNormalizedBaseUrl = HashMap<String, Int>()
+            for (lib in libraries) {
+                if (lib.mediaType.isSyncableBase()) {
+                    val norm = normalizeBaseUrl(lib.url)
+                    syncableStorageIds += lib.id
+                    baseUrlByStorageId[lib.id] = norm
+                    if (!storageIdByNormalizedBaseUrl.containsKey(norm)) {
+                        storageIdByNormalizedBaseUrl[norm] = lib.id
+                    }
+                }
+            }
+
+            // 本地当前全量可同步记录（syncKey -> entity）；本地存储（LOCAL/EXTERNAL/QUICK_ACCESS）
+            // 不参与同步；storageId/storagePath 缺失或存储已删除的记录亦跳过。
             val localEntities = playHistoryDao.getAll()
-                .filter { it.storageId != null }
-                .associateBy { recordKey(it.storageId!!, it.uniqueKey) }
+                .mapNotNull { entity ->
+                    val sid = entity.storageId ?: return@mapNotNull null
+                    if (sid !in syncableStorageIds) return@mapNotNull null
+                    val path = entity.storagePath ?: return@mapNotNull null
+                    val base = baseUrlByStorageId[sid] ?: return@mapNotNull null
+                    syncKey(base, path) to entity
+                }
+                .toMap()
                 .toMutableMap()
 
             // 本设备文件（不存在则视为空）
@@ -224,8 +254,12 @@ class PlayHistorySyncManager @Inject constructor(
                 // a. 应用远端 tombstone：删除本地 updatedAt <= 校正后 deletedAt 的记录
                 for (del in remote.deletes) {
                     val effDeletedAt = (del.deletedAt - remoteSkew).coerceAtLeast(0L)
-                    localEntities.remove(del.key)?.let { entity ->
+                    // BUG 2：仅在记录确实被删除时才移出 compressed 快照。若本地记录比 tombstone
+                    // 新（LWW 下应保留），不能从 localEntities 移除，否则记录会从本设备写回的文件
+                    // （mergedRecords）中消失，造成下一轮前云端缺失该记录、合并结果延迟收敛。
+                    localEntities[del.key]?.let { entity ->
                         if (entity.updatedAt <= effDeletedAt) {
+                            localEntities.remove(del.key)
                             playHistoryDao.delete(entity.id)
                             // 标记已同步，避免删除回传（本设备文件 deletes 中已含该 tombstone）
                             syncDeleteLogDao.insert(
@@ -257,9 +291,21 @@ class PlayHistorySyncManager @Inject constructor(
                             // 被 tombstone 命中则不复活
                             val tomb = localTombstones[record.key]
                             if (tomb == null || effUpdatedAt > tomb.deletedAt) {
-                                val entity = record.toEntity()
-                                playHistoryDao.insert(entity)
-                                localEntities[record.key] = entity
+                                // BUG-B：本机无此记录。仅当存在"归一化地址"与本机存储匹配时才落盘为
+                                // 本地可续播的历史（用本机 storageId 构造 uniqueKey）；本机没有对应存储
+                                // 的远端记录跳过，不制造无主且无法续播的悬空行。
+                                val localBase = record.baseUrl?.let { normalizeBaseUrl(it) }
+                                val matchedStorageId = localBase?.let { storageIdByNormalizedBaseUrl[it] }
+                                val remotePath = record.storagePath
+                                if (matchedStorageId != null && remotePath != null) {
+                                    val entity = record.toEntity().apply {
+                                        storageId = matchedStorageId
+                                        uniqueKey = "$matchedStorageId:$remotePath"
+                                    }
+                                    // IGNORE 防唯一键并发冲突；insert 保留远端 updatedAt（供后续 LWW）
+                                    playHistoryDao.insert(entity)
+                                    localEntities[record.key] = entity
+                                }
                             }
                         }
                         else -> {
@@ -303,7 +349,7 @@ class PlayHistorySyncManager @Inject constructor(
 
             // 4) 写回本设备文件：当前本地全量记录 + 保留的 tombstone
             val mergedRecords = localEntities.values
-                .mapNotNull { it.toSyncRecord() }
+                .mapNotNull { it.toSyncRecord(baseUrlByStorageId[it.storageId]) }
                 .sortedBy { it.key }
             val maxLocalUpdatedAt = mergedRecords.maxOfOrNull { it.updatedAt } ?: 0
             val maxTombstoneDeletedAt = keptDeletes.maxOfOrNull { it.deletedAt } ?: 0
@@ -341,15 +387,23 @@ class PlayHistorySyncManager @Inject constructor(
             }
 
             // 6) 推进游标并清理已同步的删除日志
+            // BUG 4 修复：远端设备时钟偏快时，其记录 updatedAt 可能晚于本机 now，若直接照单全收
+            // 推高游标，会让 sync() 的防抖判断 `now - lastSyncedAt < MIN` 恒成立、且
+            // getChangesSinceTimestamp(lastSyncedAt) 恒查不到本机新编辑，自动同步被永久误拦。
+            // 把游标钳制在 now 内：此类"未来"记录会一直被视为待推送（防抖失效），但内容比对
+            // （contentChanged）会在 doSync 内兜底保证最终上传，仅为多触发而非丢数据。
             PlayHistorySyncSettings.lastSyncedAt = maxOf(
                 PlayHistorySyncSettings.lastSyncedAt,
-                newFile.updatedAt,
+                minOf(newFile.updatedAt, now),
             )
             val syncedIds = unsyncedDeletes.map { it.id }
             if (syncedIds.isNotEmpty()) {
                 syncDeleteLogDao.markAsSynced(syncedIds)
-                syncDeleteLogDao.deleteSynced()
             }
+            // BUG 5 修复：无条件清理已同步日志。deleteSynced() 只删 synced=1 的行，幂等：
+            // 除回收本次开始时 unsyncedDeletes 标记的行外，也能回收 pull 阶段由远端 tombstone
+            // 删除记录时写入的 synced=true 行（此前仅在本处有空列表时才跳过清理，导致其累积）。
+            syncDeleteLogDao.deleteSynced()
             conflictCount
         }
     }
@@ -463,7 +517,11 @@ class PlayHistorySyncManager @Inject constructor(
     private fun conflictsWith(local: PlayHistoryEntity, remote: SyncRecord): Boolean =
         local.videoPosition != remote.videoPosition ||
             local.videoDuration != remote.videoDuration ||
-            local.playTime.time != remote.playTime
+            local.playTime.time != remote.playTime ||
+            // BUG 3 修复：applyRemote 也会覆盖 httpHeader / storagePath，若不在冲突检测范围内，
+            // 败者一方的请求头 / 路径会在 LWW 下被静默丢弃且不提示用户。
+            local.httpHeader != remote.httpHeader ||
+            local.storagePath != remote.storagePath
 
     companion object {
         private const val TAG = "PlayHistorySync"
@@ -488,7 +546,7 @@ class PlayHistorySyncManager @Inject constructor(
         private const val CONFLICT_WINDOW_MS = 10 * 1000L
 
         /** 云端文件协议版本。 */
-        private const val PROTOCOL_VERSION = 1
+        private const val PROTOCOL_VERSION = 2
 
         private const val TABLE_PLAY_HISTORY = "play_history"
     }

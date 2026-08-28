@@ -48,6 +48,8 @@ class DampedDragAnimation(
 
     private val mutatorMutex = MutatorMutex()
     private val velocityTracker = VelocityTracker()
+    // 标记当前是否已按下：仅在 canDrag 命中时才按压，释放时间步判定，避免禁用态空转动画
+    private var isPressed = false
 
     val value: Float get() = valueAnimation.value
     val targetValue: Float get() = valueAnimation.targetValue
@@ -61,15 +63,24 @@ class DampedDragAnimation(
         inspectDragGestures(
             onDragStart = { down ->
                 onDragStarted(down.position)
-                press()
+                if (canDrag(down.position)) {
+                    isPressed = true
+                    press()
+                }
             },
             onDragEnd = {
                 onDragStopped()
-                release()
+                if (isPressed) {
+                    release()
+                    isPressed = false
+                }
             },
             onDragCancel = {
                 onDragStopped()
-                release()
+                if (isPressed) {
+                    release()
+                    isPressed = false
+                }
             },
         ) { change, dragAmount ->
             val position = change.position
@@ -134,14 +145,17 @@ class DampedDragAnimation(
     }
 
     private fun updateVelocity() {
-        velocityTracker.addPosition(
-            System.currentTimeMillis(),
-            Offset(value, 0f),
-        )
-        val targetVelocity =
+        // 用单调时钟（nanoTime）而非墙钟毫秒，避免掉帧/补帧时同毫秒多次采样，
+        // 再配合 clamp 兜底，防止 calculateVelocity 产生异常速度放大 scale 形变
+        velocityTracker.addPosition(System.nanoTime() / 1_000_000, Offset(value, 0f))
+        val rawVelocity =
             velocityTracker.calculateVelocity().x / (valueRange.endInclusive - valueRange.start)
-        animationScope.launch {
-            velocityAnimation.animateTo(targetVelocity, velocityAnimationSpec)
+        val targetVelocity = rawVelocity.coerceIn(-3f, 3f)
+        // 仅在目标明显变化时重启弹簧动画，避免拖动时每一帧取消并重建动画（协程风暴）
+        if (abs(targetVelocity - velocityAnimation.targetValue) > 0.0001f) {
+            animationScope.launch {
+                velocityAnimation.animateTo(targetVelocity, velocityAnimationSpec)
+            }
         }
     }
 }

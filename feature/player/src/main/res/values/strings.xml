@@ -142,21 +142,6 @@
     <string name="player_ab_loop_b_set_osd">终点 B：%1$s</string>
     <string name="player_ab_loop_cleared_osd">A-B 循环已清除</string>
 
-    <!-- 保存到歌单 -->
-    <string name="player_save_to_playlist">添加到歌单</string>
-    <string name="player_save_add">添加</string>
-    <string name="player_save_current_playing">当前播放：%1$s</string>
-    <string name="player_save_no_playing">没有正在播放的歌曲</string>
-    <string name="player_save_new_playlist">新建歌单</string>
-    <string name="player_save_new_playlist_hint">为当前歌曲创建新歌单</string>
-    <string name="player_save_playlist_name">歌单名称</string>
-    <string name="player_save_playlist_name_placeholder">例如：我的最爱</string>
-    <string name="player_save_to_existing">保存到已有歌单</string>
-    <string name="player_save_item_count">%1$d 个条目</string>
-    <string name="player_save_already_exists">当前歌曲已存在于歌单「%1$s」</string>
-    <string name="player_save_success">已添加当前歌曲到歌单「%1$s」</string>
-    <string name="player_default_playlist_name">歌单</string>
-
     <!-- 媒体通知 -->
     <string name="player_notification_playing">正在播放</string>
     <string name="player_notification_channel">音乐播放</string>

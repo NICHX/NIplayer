@@ -25,6 +25,8 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceIn
@@ -99,8 +101,10 @@ fun NiGlassSwitch(
             onDragStopped = {
                 if (enabled) {
                     if (didDrag) {
-                        // 拖拽结束：就近吸附到 0/1 并回调
-                        fraction = if (targetValue >= 0.5f) 1f else 0f
+                        // 拖拽结束：按最新手指位置就近吸附到 0/1 并回调。
+                        // 直接读 fraction（已由拖动位移同步更新），
+                        // 避免依赖滞后的动画 targetValue 造成吸附侧判断错位。
+                        fraction = if (fraction >= 0.5f) 1f else 0f
                         onCheckedChange(fraction == 1f)
                         didDrag = false
                     } else {
@@ -142,7 +146,11 @@ fun NiGlassSwitch(
     Box(
         modifier = modifier
             .alpha(if (enabled) 1f else 0.5f)
-            .semantics { role = Role.Switch },
+            .semantics {
+                role = Role.Switch
+                // 暴露开关检中状态，供 TalkBack 播报“已开启 / 已关闭”
+                toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
+            },
         contentAlignment = Alignment.CenterStart,
     ) {
         // ─── 轨道：局部捕获源 + 底色 ───

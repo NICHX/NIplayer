@@ -18,14 +18,12 @@ import androidx.media3.common.VideoSize as M3VideoSize
 import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.CacheDataSource
-import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -57,7 +55,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import java.io.File
 import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicBoolean
 import java.security.cert.X509Certificate
@@ -86,6 +83,7 @@ import javax.net.ssl.X509TrustManager
 class NxMedia3Player @Inject constructor(
     @ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient,
+    private val mediaCache: SimpleCache,
 ) : NxPlayer, Player.Listener {
 
     // region 数据源与渲染：headers 通过 OkHttpDataSource 注入
@@ -101,7 +99,8 @@ class NxMedia3Player @Inject constructor(
      *
      * 引入 [SimpleCache] + [CacheDataSource] 包装 [okHttpDataSourceFactory]：
      * - 已下载的 HTTP chunks 持久化到本地磁盘，前向/后向 seek 命中缓存时无需 HTTP 请求
-     * - [LeastRecentlyUsedCacheEvictor] LRU 淘汰策略保证缓存大小不超过 [CACHE_MAX_BYTES]
+     * - [LeastRecentlyUsedCacheEvictor] LRU 淘汰策略保证缓存大小不超过上限（由 :player:kernel
+     *   PlayerModule 提供，500MB）
      * - [CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR]：缓存读写失败时回退到直接 HTTP，
      *   避免磁盘满 / cacheDir 只读等异常影响播放
      *
@@ -110,18 +109,10 @@ class NxMedia3Player @Inject constructor(
      *
      * 缓存目录位于 `cacheDir/exo_media_cache/`，系统低存储时可自动清理。缓存键默认为 URL
      * 本身（不含 credentials），同一 URL 在 strict / trust-all 路径间共享缓存。
+     *
+     * [mediaCache] 为 Hilt 注入的进程级单例：media3 对同一目录是进程独占的，多播放器实例
+     * 若各自 new SimpleCache 会撞同目录锁（IllegalStateException）。共享单例可避免该崩溃。
      */
-    private val mediaCache: SimpleCache by lazy {
-        val cacheDir = File(context.cacheDir, "exo_media_cache")
-        // 使用 StandaloneDatabaseProvider 提供 SQLite 索引持久化，避免重启后全盘扫描。
-        SimpleCache(
-            cacheDir,
-            LeastRecentlyUsedCacheEvictor(CACHE_MAX_BYTES),
-            StandaloneDatabaseProvider(context),
-        )
-    }
-
-    /** strict 路径的缓存 DataSource.Factory，包装 [okHttpDataSourceFactory]。 */
     private val cacheDataSourceFactory: CacheDataSource.Factory by lazy {
         CacheDataSource.Factory()
             .setCache(mediaCache)
@@ -657,9 +648,6 @@ class NxMedia3Player @Inject constructor(
         // 但保持重置完整性，防止未来改为单例时出现状态漂移。
         _videoScaleMode.value = NxVideoScaleMode.Fit
         blackBarCropEnabled = false
-        // W-M7 修复：释放 cache 占用的锁文件句柄，允许下次 NxMedia3Player 实例复用同一目录。
-        // runCatching 兜底：cache 可能因 lazy 未初始化（从未播放 HTTP 源）而无需 release。
-        runCatching { mediaCache.release() }
     }
 
     // endregion
@@ -953,15 +941,6 @@ class NxMedia3Player @Inject constructor(
          */
         private const val MIN_PLAYBACK_SPEED = 0.1f
         private const val MAX_PLAYBACK_SPEED = 8.0f
-
-        /**
-         * W-M7 修复：HTTP 播放缓存上限（500MB）。
-         *
-         * - 4K HDR (~10MB/s)：约 50 秒数据，覆盖典型拖动场景
-         * - 1080p (~1.5MB/s)：约 5 分钟数据，整个片段可能命中
-         * - LRU 淘汰保证不超限；cacheDir 在系统低存储时也会被自动清理
-         */
-        private const val CACHE_MAX_BYTES = 500L * 1024 * 1024
 
         /** W-C3 修复：信任所有证书的 X509TrustManager，用于自签证书 WebDAV 播放。 */
         private val TRUST_ALL_MANAGER = object : X509TrustManager {

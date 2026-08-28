@@ -12,13 +12,15 @@ import com.nichx.niplayer.database.dao.VideoDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.entity.SyncConflictEntity
 import com.nichx.niplayer.database.entity.SyncDeleteLogEntity
+import com.nichx.niplayer.database.isSyncableBase
+import com.nichx.niplayer.database.syncKey
 import com.nichx.niplayer.datastore.PlayHistorySyncConfig
 import com.nichx.niplayer.datastore.PlayHistorySyncSettings
 import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.feature.home.PlayStartResult
 import com.nichx.niplayer.feature.home.PlayStarter
 import com.nichx.niplayer.sync.PlayHistorySyncManager
 import com.nichx.niplayer.sync.SyncUiState
-import com.nichx.niplayer.sync.recordKey
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.RemoteThumbnailRequest
 import com.nichx.niplayer.thumbnail.ThumbnailManager
@@ -264,10 +266,10 @@ class PlayHistoryViewModel @Inject constructor(
     fun resumePlay(history: PlayHistoryEntity) {
         viewModelScope.launch {
             when (val result = playStarter.startFromHistory(history)) {
-                is PlayStarter.StartResult.Success ->
+                is PlayStartResult.Success ->
                     _events.tryEmit(PlayHistoryEvent.NavigateToPlayer)
 
-                is PlayStarter.StartResult.Error ->
+                is PlayStartResult.Error ->
                     _events.tryEmit(PlayHistoryEvent.ShowError(result.message))
             }
         }
@@ -286,31 +288,33 @@ class PlayHistoryViewModel @Inject constructor(
     fun clearAll() {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            playHistoryDao.getAll().forEach { entity ->
-                entity.storageId?.let { sid ->
-                    syncDeleteLogDao.insert(
-                        SyncDeleteLogEntity(
-                            tableName = TABLE_PLAY_HISTORY,
-                            recordKey = recordKey(sid, entity.uniqueKey),
-                            deletedAt = now,
-                        ),
-                    )
-                }
-            }
+            playHistoryDao.getAll().forEach { entity -> recordDeleteTombstone(entity, now) }
             playHistoryDao.deleteAll()
         }
     }
 
-    private suspend fun recordDeleteTombstone(entity: PlayHistoryEntity) {
-        entity.storageId?.let { sid ->
-            syncDeleteLogDao.insert(
-                SyncDeleteLogEntity(
-                    tableName = TABLE_PLAY_HISTORY,
-                    recordKey = recordKey(sid, entity.uniqueKey),
-                    deletedAt = System.currentTimeMillis(),
-                ),
-            )
-        }
+    /**
+     * 为删除写云同步 tombstone。
+     *
+     * BUG-B：record_key 必须是设备无关的 syncKey（归一化存储地址 + 存储内相对路径），而非
+     * 本地 storageId+uniqueKey，否则其他设备无法匹配到同一条记录。仅全身可同步的存储
+     *（SMB / WebDAV / Other）参与；用 REPLACE 刷新时间，避免"删除→重扫→再删"时旧 tombstone 过旧。
+     */
+    private suspend fun recordDeleteTombstone(
+        entity: PlayHistoryEntity,
+        deletedAt: Long = System.currentTimeMillis(),
+    ) {
+        val sid = entity.storageId ?: return
+        val path = entity.storagePath ?: return
+        val library = mediaLibraryDao.getById(sid) ?: return
+        if (!library.mediaType.isSyncableBase()) return
+        syncDeleteLogDao.insertOrReplace(
+            SyncDeleteLogEntity(
+                tableName = TABLE_PLAY_HISTORY,
+                recordKey = syncKey(library.url, path),
+                deletedAt = deletedAt,
+            ),
+        )
     }
 
     /** 云同步状态（驱动 TopBar 同步按钮指示器）。 */

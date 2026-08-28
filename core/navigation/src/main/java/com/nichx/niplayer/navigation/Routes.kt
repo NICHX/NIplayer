@@ -38,8 +38,15 @@ object Routes {
     /** 旧 RouteTable.Local namespace。 */
     object Local {
         const val QUICK_ACCESS = "local/quick_access"
-        const val PLAY_HISTORY = "local/play_history"
+        /** 播放历史页路由模板，支持可选 ?filter=（0全部/1视频/2音频）。 */
+        const val PLAY_HISTORY_ROUTE = "local/play_history?filter={filter}"
         const val SEARCH = "local/search"
+
+        /** 构建播放历史页路由，filter 为空或 0 表示全部。 */
+        fun playHistoryRoute(filter: Int? = null): String {
+            val f = (filter ?: 0).coerceIn(0, 2)
+            return "local/play_history?filter=$f"
+        }
     }
 
     /** 旧 RouteTable.User namespace。 */
@@ -117,18 +124,5 @@ object Routes {
     /** 旧 RouteTable.ImageViewer namespace。 */
     object ImageViewer {
         const val VIEWER = "image_viewer/viewer"
-    }
-
-    /** 播放列表系统（扩展功能方案二）。 */
-    object Playlist {
-        const val LIST = "playlist/list"
-
-        const val DETAIL = "playlist/detail"
-
-        /** 带参路由模板，注册到 NavHost：`playlist/detail/{playlistId}`。 */
-        const val DETAIL_ROUTE = "$DETAIL/{playlistId}"
-
-        /** 构造歌单详情导航路由：`playlist/detail/3`。 */
-        fun detailRoute(playlistId: Int): String = "$DETAIL/$playlistId"
     }
 }

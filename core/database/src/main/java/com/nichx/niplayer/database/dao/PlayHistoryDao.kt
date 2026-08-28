@@ -202,6 +202,30 @@ interface PlayHistoryDao {
     @Query("DELETE FROM play_history WHERE storage_id = :storageId AND storage_path LIKE REPLACE(REPLACE(REPLACE(:prefix, '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_') || '%' ESCAPE '\\'")
     suspend fun deleteByStoragePathPrefixAndStorageId(storageId: Int, prefix: String)
 
+    // ==================== 云同步删除 tombstone：匹配查询 ====================
+    //
+    // 播放历史云同步通过 sync_delete_log 传播删除，tombstone 的 record_key 须是设备无关的
+    // syncKey（归一化存储地址 + 存储内相对路径），而这串 key 需在 Kotlin 层用 baseUrl 计算，
+    // 无法在 SQL 中完成。因此删除前先按条件查匹配记录，交给 PlayHistorySyncDeleter 写 tombstone。
+    // 这几个查询与上方同名 DELETE 使用完全一致的 LIKE 转义，保证"查询到的记录"与"删除的记录"一致。
+
+    /** 某存储源全部播放历史（用于删除前记录 tombstone）。 */
+    @Query("SELECT * FROM play_history WHERE storage_id = (:storageId)")
+    suspend fun getByStorageId(storageId: Int): List<PlayHistoryEntity>
+
+    /** 目录前缀匹配的播放历史（与 [deleteByStoragePathPrefix] 一致的 LIKE 转义）。 */
+    @Query(
+        "SELECT * FROM play_history WHERE storage_path LIKE REPLACE(REPLACE(REPLACE(:prefix, '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_') || '%' ESCAPE '\\'"
+    )
+    suspend fun getByStoragePathPrefix(prefix: String): List<PlayHistoryEntity>
+
+    /** 指定存储源下目录前缀匹配的播放历史。 */
+    @Query(
+        "SELECT * FROM play_history WHERE storage_id = :storageId AND " +
+            "storage_path LIKE REPLACE(REPLACE(REPLACE(:prefix, '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_') || '%' ESCAPE '\\'"
+    )
+    suspend fun getByStoragePathPrefixAndStorageId(storageId: Int, prefix: String): List<PlayHistoryEntity>
+
     @Query("DELETE FROM play_history WHERE storage_id = (:storageId)")
     suspend fun deleteByStorageId(storageId: Int)
 

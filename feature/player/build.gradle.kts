@@ -55,7 +55,6 @@ dependencies {
     implementation(project(":core:thumbnail"))
     // 播放历史云同步：播放器退出后自动同步
     implementation(project(":core:sync"))
-
     // Media3：media3-ui(SubtitleView) + media3-common(Cue/MimeTypes)，外挂字幕渲染所需
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)

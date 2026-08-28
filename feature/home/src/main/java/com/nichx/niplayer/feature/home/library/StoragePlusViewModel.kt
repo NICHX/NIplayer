@@ -8,7 +8,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.DownloadTaskDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
-import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
@@ -54,7 +53,7 @@ class StoragePlusViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val mediaLibraryDao: MediaLibraryDao,
     private val quickAccessDao: QuickAccessDao,
-    private val playHistoryDao: PlayHistoryDao,
+    private val syncDeleter: com.nichx.niplayer.database.sync.PlayHistorySyncDeleter,
     private val downloadTaskDao: DownloadTaskDao,
     private val storageFactory: StorageFactory,
 ) : ViewModel() {
@@ -212,7 +211,7 @@ class StoragePlusViewModel @Inject constructor(
                 withContext(Dispatchers.IO) {
                     // 级联删除关联数据
                     quickAccessDao.deleteByLibrary(storageId)
-                    playHistoryDao.deleteByStorageId(storageId)
+                    syncDeleter.deleteByStorageId(storageId)
                     downloadTaskDao.deleteByStorageId(storageId)
                     // 最后删除存储源本身
                     mediaLibraryDao.deleteById(storageId)
