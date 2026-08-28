@@ -62,9 +62,9 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -105,7 +105,7 @@ fun HomeTabScreen(
     onNavigateToQuickAccess: () -> Unit,
     onNavigateToStorageFile: (Int, String) -> Unit,
     onPlayVideo: () -> Unit,
-    onNavigateToSettings: () -> Unit = {},
+    onNavigateToTheme: () -> Unit = {},
     viewModel: HomeTabViewModel = hiltViewModel(),
 ) {
     val recentPlays by viewModel.recentPlays.collectAsStateWithLifecycle()
@@ -192,13 +192,13 @@ fun HomeTabScreen(
                                 contentDescription = stringResource(R.string.play_history_title),
                             )
                         }
-                        IconButton(onClick = onNavigateToSettings) {
+                        IconButton(onClick = onNavigateToTheme) {
                             NiStyleIcon(
-                                icon = Icons.Rounded.Settings,
+                                icon = Icons.Rounded.Palette,
                                 style = NiAppIconStyle,
                                 containerSize = 40.dp,
                                 iconSize = 22.dp,
-                                contentDescription = stringResource(R.string.settings),
+                                contentDescription = stringResource(R.string.theme_title),
                             )
                         }
                     },

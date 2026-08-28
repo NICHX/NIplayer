@@ -5,6 +5,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -179,6 +181,7 @@ fun NiHeroResumeCard(
  * 当 [horizontal] = true 时切换为横向列表布局（88×50dp 缩略图 + 标题 + 副信息 + 媒体标签），
  * 用于 [PlayHistoryScreen] 等全宽列表场景。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NiThumbCard(
     title: String,
@@ -189,6 +192,7 @@ fun NiThumbCard(
     // BUG-3 修复：允许调用方按媒体类型选择裁剪策略（音频 Fit / 视频 Crop）
     contentScale: ContentScale = ContentScale.Crop,
     onClick: () -> Unit = {},
+    onLongClick: (() -> Unit)? = null,
     horizontal: Boolean = false,
     subtitleText: String? = null,
     mediaLabel: String? = null,
@@ -227,10 +231,10 @@ fun NiThumbCard(
                 .shadow(elevation = 1.dp, shape = RoundedCornerShape(16.dp), clip = false)
                 .clip(RoundedCornerShape(16.dp))
                 .background(NiExtraColors.current.surfaceLevel2)
-                .clickable(
+                .clickableOrLongClickable(
                     interactionSource = interactionSource,
-                    indication = null,
                     onClick = onClick,
+                    onLongClick = onLongClick,
                 )
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -550,5 +554,32 @@ fun NiAutoSizeText(
                 fontSize = if (shrunk < minFontSize) minFontSize else shrunk
             }
         },
+    )
+}
+
+/**
+ * 支持单击 + 长按的统一可点击 modifier。
+ *
+ * - [onLongClick] 为 null 时退化为普通 [clickable]（保持原位 indication = null 行为）；
+ * - 非 null 时使用 [combinedClickable] 区分单击与长按：长按弹操作菜单、单击续播，
+ *   两者共享同一 [MutableInteractionSource] 按压反馈（scale/alpha 动画不失效）。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private fun Modifier.clickableOrLongClickable(
+    interactionSource: MutableInteractionSource,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+): Modifier = if (onLongClick != null) {
+    this.combinedClickable(
+        interactionSource = interactionSource,
+        indication = null,
+        onClick = onClick,
+        onLongClick = onLongClick,
+    )
+} else {
+    this.clickable(
+        interactionSource = interactionSource,
+        indication = null,
+        onClick = onClick,
     )
 }

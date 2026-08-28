@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * - [sortAscending]：升降序，默认升序
  * - [showOnlyMediaFiles]：仅显示媒体文件（视频/音频/图片）
  * - [showHiddenFiles]：显示隐藏文件（以 . 开头的文件/文件夹）
+ * - [mediaFilter]：文件类型过滤（全部/视频/音频/图片），默认全部
  *
  * 目录始终排在文件之前，不受 [sortAscending] 影响。
  *
@@ -28,6 +29,7 @@ object FileBrowserSettings {
     private const val KEY_SORT_ASCENDING = "file_sort_ascending"
     private const val KEY_SHOW_ONLY_MEDIA = "show_only_media_files"
     private const val KEY_SHOW_HIDDEN_FILES = "show_hidden_files"
+    private const val KEY_MEDIA_FILTER = "file_media_filter"
     private const val KEY_IS_GRID_VIEW = "file_browser_is_grid_view"
 
     /** 排序字段枚举。 */
@@ -39,6 +41,18 @@ object FileBrowserSettings {
 
         companion object {
             fun fromValue(v: Int): SortBy = entries.find { it.value == v } ?: NAME
+        }
+    }
+
+    /** 文件类型过滤枚举。 */
+    enum class MediaFilter(val value: Int) {
+        ALL(0),
+        VIDEO(1),
+        AUDIO(2),
+        IMAGE(3);
+
+        companion object {
+            fun fromValue(v: Int): MediaFilter = entries.find { it.value == v } ?: ALL
         }
     }
 
@@ -90,13 +104,22 @@ object FileBrowserSettings {
         _sortFlow.value = _sortFlow.value.copy(ascending = ascending)
     }
 
+    /** 文件类型过滤。 */
+    var mediaFilter: MediaFilter
+        get() = MediaFilter.fromValue(mmkv.decodeInt(KEY_MEDIA_FILTER, MediaFilter.ALL.value))
+        set(value) {
+            mmkv.encode(KEY_MEDIA_FILTER, value.value)
+            _sortFlow.value = _sortFlow.value.copy(mediaFilter = value)
+        }
+
     private fun loadSortConfig(): SortConfig {
         val sortBy = SortBy.fromValue(mmkv.decodeInt(KEY_SORT_BY, SortBy.NAME.value))
         val ascending = mmkv.decodeBool(KEY_SORT_ASCENDING, true)
         val showOnlyMediaFiles = mmkv.decodeBool(KEY_SHOW_ONLY_MEDIA, false)
         val showHiddenFiles = mmkv.decodeBool(KEY_SHOW_HIDDEN_FILES, false)
+        val mediaFilter = MediaFilter.fromValue(mmkv.decodeInt(KEY_MEDIA_FILTER, MediaFilter.ALL.value))
         val isGridView = mmkv.decodeBool(KEY_IS_GRID_VIEW, false)
-        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, isGridView)
+        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, mediaFilter, isGridView)
     }
 }
 
@@ -108,6 +131,8 @@ data class SortConfig(
     val showOnlyMediaFiles: Boolean = false,
     /** 显示隐藏文件（以 . 开头的文件/文件夹），默认为 false。 */
     val showHiddenFiles: Boolean = false,
+    /** 文件类型过滤，默认为全部。 */
+    val mediaFilter: FileBrowserSettings.MediaFilter = FileBrowserSettings.MediaFilter.ALL,
     /** 文件浏览视图模式：true=网格，false=列表，默认列表。 */
     val isGridView: Boolean = false,
 )

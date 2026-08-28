@@ -554,6 +554,12 @@ class StorageFileViewModel @Inject constructor(
         }
     }
 
+    /** 快速回到根目录（存储根），供长按返回按钮 / 面包屑根入口调用。 */
+    fun goToRoot() {
+        if (directoryStack.size <= 1) return
+        viewModelScope.launch { resetToRoot() }
+    }
+
     /**
      * 目录加载互斥锁。
      *
@@ -1631,9 +1637,18 @@ class StorageFileViewModel @Inject constructor(
         }
     }
 
+    /** 设置文件类型过滤，持久化并立即刷新当前目录列表。 */
+    fun setMediaFilter(filter: FileBrowserSettings.MediaFilter) {
+        FileBrowserSettings.mediaFilter = filter
+        _uiState.update {
+            it.copy(files = applyFilterAndSort(it.rawFiles))
+        }
+    }
+
     /**
      * 过滤 + 排序：先按 [FileBrowserSettings.showHiddenFiles] 过滤隐藏文件，
-     * 再按 [FileBrowserSettings.showOnlyMediaFiles] 过滤非媒体文件，最后按 [FileBrowserSettings] 排序。
+     * 再按 [FileBrowserSettings.showOnlyMediaFiles] 过滤非媒体文件，
+     * 再按 [FileBrowserSettings.mediaFilter] 过滤媒体类型，最后按 [FileBrowserSettings] 排序。
      *
      * 排序规则：目录始终在前；同类型内按 [SortConfig.sortBy] 排序，
      * [SortConfig.ascending] 控制升降序。名称排序不区分大小写。
@@ -1649,6 +1664,15 @@ class StorageFileViewModel @Inject constructor(
             hiddenFiltered.filter { it.isDirectory || isMediaFile(it) }
         } else {
             hiddenFiltered
+        }
+        val typeFiltered = when (config.mediaFilter) {
+            FileBrowserSettings.MediaFilter.ALL -> mediaFiltered
+            FileBrowserSettings.MediaFilter.VIDEO ->
+                mediaFiltered.filter { it.isDirectory || MediaFileTypes.isVideoFile(it.name) }
+            FileBrowserSettings.MediaFilter.AUDIO ->
+                mediaFiltered.filter { it.isDirectory || MediaFileTypes.isAudioFile(it.name) }
+            FileBrowserSettings.MediaFilter.IMAGE ->
+                mediaFiltered.filter { it.isDirectory || MediaFileTypes.isImageFile(it.name) }
         }
 
         val comparator = when (config.sortBy) {
@@ -1667,7 +1691,7 @@ class StorageFileViewModel @Inject constructor(
             aDir.compareTo(bDir)
         }
         val effective = if (config.ascending) comparator else comparator.reversed()
-        return mediaFiltered.sortedWith(dirFirst.then(effective))
+        return typeFiltered.sortedWith(dirFirst.then(effective))
     }
 
     /**

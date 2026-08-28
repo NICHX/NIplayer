@@ -26,7 +26,6 @@ fun LibraryTabNavHost(
     onPlayVideo: () -> Unit,
     onNavigateToImageViewer: () -> Unit,
     onNavigateToDownloadManager: () -> Unit,
-    onNavigateToSettings: () -> Unit,
     // 文件浏览多选态透传到 Home/MainActivity，进入多选时隐藏底栏与音乐条
     onFileBrowserMultiSelectChanged: (Boolean) -> Unit = {},
     pendingFileBrowser: Pair<Int, String>? = null,
@@ -71,7 +70,6 @@ fun LibraryTabNavHost(
                 onPlayVideo = onPlayVideo,
                 onNavigateToImageViewer = onNavigateToImageViewer,
                 onNavigateToDownloadManager = onNavigateToDownloadManager,
-                onNavigateToSettings = onNavigateToSettings,
                 onFileBrowserMultiSelectChanged = onFileBrowserMultiSelectChanged,
             )
         }

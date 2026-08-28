@@ -5,5 +5,7 @@
     <string name="crash_dialog_title">NIplayer crashed unexpectedly last time</string>
     <string name="crash_dialog_ignore">Ignore</string>
     <string name="crash_log_copied">Crash log copied</string>
-    <string name="crash_dialog_copy_and_close">Copy and close</string>
+    <string name="crash_log_saved">Crash log saved</string>
+    <string name="crash_dialog_copy">Copy</string>
+    <string name="crash_dialog_save_as_txt">Save as txt</string>
 </resources>

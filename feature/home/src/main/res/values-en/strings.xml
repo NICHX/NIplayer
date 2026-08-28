@@ -189,6 +189,7 @@
     <string name="play_history_clear_history">Clear history</string>
     <string name="play_history_sync_failed">Sync failed</string>
     <string name="play_history_sync_success">Sync succeeded</string>
+    <string name="play_history_sync_error_detail">An error occurred during sync. Check your network or storage settings then retry.</string>
     <string name="play_history_cloud_sync">Cloud sync</string>
     <string name="play_history_conflicts_title">Sync conflicts</string>
     <string name="play_history_conflicts_desc">An item was modified on both this device and the cloud</string>
@@ -278,7 +279,9 @@
     <string name="settings_entry_lrcapi">Lyrics API</string>
     <string name="settings_entry_lrcapi_sub">Configure online lyrics API</string>
     <string name="settings_entry_player">Player</string>
-    <string name="settings_entry_player_sub">Playback and thumbnail settings</string>
+    <string name="settings_entry_player_sub">Kernel, subtitles &amp; gestures</string>
+    <string name="settings_entry_media_library">Media library</string>
+    <string name="settings_entry_media_library_sub">Thumbnail &amp; file browsing settings</string>
     <string name="settings_entry_playback_stats">Playback stats</string>
     <string name="settings_entry_playback_stats_sub">View playback data</string>
     <string name="settings_entry_backup">Backup &amp; restore</string>
@@ -331,8 +334,13 @@
     <string name="storage_file_sort_type">Type</string>
     <string name="storage_file_sort_size">Size</string>
     <string name="storage_file_sort_modified">Modified</string>
-    <string name="storage_file_sort_to_ascending">Ascending</string>
-    <string name="storage_file_sort_to_descending">Descending</string>
+    <string name="storage_file_menu_media_only">Media only</string>
+    <string name="storage_file_menu_show_hidden">Show hidden</string>
+    <string name="storage_file_filter_title">Type filter</string>
+    <string name="storage_file_filter_all">All</string>
+    <string name="storage_file_filter_video">Video</string>
+    <string name="storage_file_filter_audio">Audio</string>
+    <string name="storage_file_filter_image">Image</string>
     <string name="storage_file_view_grid">Grid view</string>
     <string name="storage_file_view_list">List view</string>
     <string name="storage_file_file">File</string>
@@ -591,6 +599,8 @@
 
     <!-- Player settings (PlayerSettingsScreen) -->
     <string name="player_settings_title">Player settings</string>
+    <!-- 媒体库设置（MediaLibrarySettingsScreen） -->
+    <string name="media_library_settings_title">Media library settings</string>
     <string name="player_kernel">Player kernel</string>
     <string name="player_current_kernel">Current kernel</string>
     <string name="player_pitch_preserve">Keep pitch when speeding up</string>
@@ -602,7 +612,7 @@
     <string name="player_subtitle_priority_default">Default (sort by file name)</string>
     <string name="player_subtitle_style">Subtitle style</string>
     <string name="player_subtitle_style_value">Adjust in the player\'s subtitle menu</string>
-    <string name="player_progress_title">Progress</string>
+    <string name="player_progress_title">Gestures &amp; seek</string>
     <string name="player_long_press_speed">Long-press speed trigger</string>
     <string name="player_slide_seek_sensitivity">Slide seek sensitivity</string>
     <string name="player_double_tap_skip">Double-tap skip</string>

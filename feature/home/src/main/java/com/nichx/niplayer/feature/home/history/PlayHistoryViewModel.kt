@@ -330,11 +330,6 @@ class PlayHistoryViewModel @Inject constructor(
         }
     }
 
-    /** 清除同步结果指示（短暂展示后消退）。 */
-    fun dismissSyncResult() {
-        syncManager.dismissResult()
-    }
-
     /** 未解决的同步冲突列表（供播放历史页冲突提示）。 */
     val conflicts: StateFlow<List<SyncConflictEntity>> = syncConflictDao.getUnresolvedFlow()
         .stateIn(
