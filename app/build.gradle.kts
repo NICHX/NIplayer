@@ -166,6 +166,9 @@ dependencies {
     // KV
     implementation(libs.mmkv)
 
+    // Baseline Profile：安装后由 profileinstaller / 系统（Android 15+）AOT 编译启动热路径
+    implementation(libs.androidx.profileinstaller)
+
     // Image
     implementation(libs.coil.compose)
     implementation(libs.coil.video)

@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -94,6 +95,8 @@ fun NiHeroResumeCard(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(16f / 9f)
+            // 语义合并：封面/标题/进度等子节点合并为单一节点，降低语义树节点数
+            .semantics(mergeDescendants = true) {}
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -214,6 +217,8 @@ fun NiThumbCard(
         Row(
             modifier = modifier
                 .fillMaxWidth()
+                // 语义合并：缩略图/标题/标签/进度合并为单一节点，降低语义树节点数
+                .semantics(mergeDescendants = true) {}
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -318,6 +323,8 @@ fun NiThumbCard(
                     if (fillWidth) Modifier.fillMaxWidth()
                     else Modifier.width(if (cardWidth != Dp.Unspecified) cardWidth else verticalCardWidth),
                 )
+                // 语义合并：缩略图/标题/标签/进度合并为单一节点，降低语义树节点数
+                .semantics(mergeDescendants = true) {}
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -450,6 +457,8 @@ fun NiQuickAccessGridItem(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            // 语义合并：图标/名称/来源合并为单一节点，降低语义树节点数
+            .semantics(mergeDescendants = true) {}
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .shadow(elevation = 1.dp, shape = RoundedCornerShape(12.dp), clip = false)
             .clip(RoundedCornerShape(12.dp))
