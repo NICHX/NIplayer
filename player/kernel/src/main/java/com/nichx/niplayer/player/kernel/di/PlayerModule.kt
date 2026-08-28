@@ -1,5 +1,6 @@
 package com.nichx.niplayer.player.kernel.di
 
+import android.annotation.SuppressLint
 import android.content.Context
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
@@ -47,6 +48,7 @@ abstract class PlayerModule {
          */
         @Provides
         @Singleton
+        @SuppressLint("UnsafeOptInUsageError")
         fun provideMediaCache(@ApplicationContext context: Context): SimpleCache {
             val cacheDir = File(context.cacheDir, EXO_MEDIA_CACHE_DIR)
             // 与 NxMedia3Player 旧的 CACHE_MAX_BYTES 保持一致（500MB LRU），复用既有缓存数据。

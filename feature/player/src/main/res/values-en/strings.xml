@@ -30,8 +30,8 @@
     <string name="player_play_failed_401">Playback failed: incorrect credentials or expired token (401)</string>
     <string name="player_play_failed_403">Playback failed: no access permission (403)</string>
     <string name="player_play_failed_404">Playback failed: file not found, it may have been moved or deleted (404)</string>
-    <string name="player_play_failed_server">Playback failed: server error (%1$s)</string>
-    <string name="player_play_failed_http">Playback failed: HTTP %1$s</string>
+    <string name="player_play_failed_server">Playback failed: server error (%1$d)</string>
+    <string name="player_play_failed_http">Playback failed: HTTP %1$d</string>
     <string name="player_play_failed_file_not_found">Playback failed: file not found, it may have been moved or deleted</string>
     <string name="player_play_failed_network">Playback failed: network error (%1$s)</string>
     <string name="player_play_failed_generic">Playback failed: %1$s</string>
@@ -41,7 +41,7 @@
     <string name="player_unlock_screen_first">Please unlock the screen first</string>
     <string name="player_screenshot_failed_not_ready">Screenshot failed: player not ready</string>
     <string name="player_screenshot_failed_size">Screenshot failed: invalid frame size</string>
-    <string name="player_screenshot_failed_pixelcopy">Screenshot failed: PixelCopy error %1$s</string>
+    <string name="player_screenshot_failed_pixelcopy">Screenshot failed: PixelCopy error %1$d</string>
     <string name="player_screenshot_failed_generic">Screenshot failed: %1$s</string>
     <string name="player_screenshot_saved">Screenshot saved: %1$s</string>
     <string name="player_seek_forward_seconds">Forward %1$ds</string>

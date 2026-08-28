@@ -434,6 +434,9 @@
     <string name="storage_file_folder_created">Created folder “%1$s”</string>
     <string name="storage_file_uploading">Uploading “%1$s”</string>
     <string name="storage_file_uploaded">Uploaded “%1$s”</string>
+    <string name="storage_file_upload_progress">Uploaded %1$d%%</string>
+    <string name="storage_file_upload_waiting">Uploading… (waiting for all uploads)</string>
+    <string name="storage_file_upload_cancel">Cancel upload</string>
     <string name="storage_file_added_to_download">Added to download list</string>
     <string name="storage_file_batch_download_added">Added %1$d download tasks</string>
     <string name="storage_file_qa_added">Added to quick access</string>

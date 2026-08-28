@@ -1,6 +1,7 @@
 package com.nichx.niplayer.feature.home.library
 
 import com.nichx.niplayer.feature.home.R
+import android.annotation.SuppressLint
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -124,6 +125,7 @@ private fun filterByType(filter: LibraryFilter, libraries: List<MediaLibraryEnti
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@SuppressLint("LocalContextGetResourceValueCall")
 fun LibraryScreen(
     onNavigateToStorageFile: (Int, String) -> Unit,
     onNavigateToStoragePlus: (type: String?, storageId: Int) -> Unit,
