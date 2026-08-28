@@ -6,10 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,12 +17,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,98 +34,128 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.nichx.niplayer.designsystem.components.NiGlassOverlay
+import com.nichx.niplayer.designsystem.components.NiGlassOverlayKind
+import com.nichx.niplayer.designsystem.components.NiGlassOverlayRequest
 import com.nichx.niplayer.player.kernel.PlaylistItem
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 播放列表面板。
+ *
+ * 内容**投递**到全局玻璃浮层槽位 [NiGlassOverlay]（由 App 根部 [com.nichx.niplayer.designsystem.components.NiGlassOverlayHost]
+ * 渲染）。这样面板渲染在 backdrop 捕获层**之外**，用 [com.kyant.backdrop.drawBackdrop] 采样主内容
+ * 做同窗口真模糊时不会把自己画进采样源，避免「捕获→绘制→再捕获」的循环崩溃（SIGSEGV）。
+ */
 @Composable
 fun PlaylistSheet(
+    show: Boolean,
     playlist: List<PlaylistItem>,
     currentIndex: Int,
     playMode: Int,
     onDismiss: () -> Unit,
     onPlayAtIndex: (Int) -> Unit,
 ) {
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val surface = MaterialTheme.colorScheme.surface
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    LaunchedEffect(show, playlist, currentIndex, playMode) {
+        if (show && playlist.isNotEmpty()) {
+            NiGlassOverlay.show(
+                NiGlassOverlayRequest(
+                    id = "player_playlist_sheet",
+                    kind = NiGlassOverlayKind.BottomSheet,
+                    onDismiss = onDismiss,
+                ) {
+                    PlaylistSheetContent(
+                        playlist = playlist,
+                        currentIndex = currentIndex,
+                        playMode = playMode,
+                        onPlayAtIndex = onPlayAtIndex,
+                    )
+                },
+            )
+        } else {
+            NiGlassOverlay.dismiss("player_playlist_sheet")
+        }
+    }
+}
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = surface,
+@Composable
+private fun PlaylistSheetContent(
+    playlist: List<PlaylistItem>,
+    currentIndex: Int,
+    playMode: Int,
+    onPlayAtIndex: (Int) -> Unit,
+) {
+    val onSurface = MaterialTheme.colorScheme.onSurface
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp),
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(bottom = 16.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
+            Text(
+                text = if (playlist.isNotEmpty()) {
+                    stringResource(R.string.player_playlist_with_count, playlist.size)
+                } else {
+                    stringResource(R.string.player_playlist)
+                },
+                style = MaterialTheme.typography.titleMedium,
+                color = onSurface,
+                fontWeight = FontWeight.Bold,
+            )
+
+            val modeLabel = when (playMode % 3) {
+                0 -> stringResource(R.string.player_play_mode_order)
+                1 -> stringResource(R.string.player_play_mode_shuffle)
+                else -> stringResource(R.string.player_play_mode_single)
+            }
+            Text(
+                text = modeLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = onSurface.copy(alpha = 0.6f),
+            )
+        }
+
+        if (playlist.isEmpty()) {
+            Text(
+                text = stringResource(R.string.player_playlist_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = onSurface.copy(alpha = 0.4f),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = if (playlist.isNotEmpty()) {
-                        stringResource(R.string.player_playlist_with_count, playlist.size)
-                    } else {
-                        stringResource(R.string.player_playlist)
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                    color = onSurface,
-                    fontWeight = FontWeight.Bold,
-                )
+                    .padding(vertical = 48.dp),
+            )
+        } else {
+            val listState = rememberLazyListState()
 
-                val modeLabel = when (playMode % 3) {
-                    0 -> stringResource(R.string.player_play_mode_order)
-                    1 -> stringResource(R.string.player_play_mode_shuffle)
-                    else -> stringResource(R.string.player_play_mode_single)
+            LaunchedEffect(currentIndex) {
+                if (currentIndex in playlist.indices) {
+                    listState.scrollToItem(currentIndex)
                 }
-                Text(
-                    text = modeLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = onSurface.copy(alpha = 0.6f),
-                )
             }
 
-            if (playlist.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.player_playlist_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = onSurface.copy(alpha = 0.4f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 48.dp),
-                )
-            } else {
-                val listState = rememberLazyListState()
-
-                LaunchedEffect(currentIndex) {
-                    if (currentIndex in playlist.indices) {
-                        listState.scrollToItem(currentIndex)
-                    }
-                }
-
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(360.dp),
-                ) {
-                    itemsIndexed(
-                        items = playlist,
-                        key = { index, item -> item.filePath },
-                    ) { index, item ->
-                        val isCurrent = index == currentIndex
-                        PlaylistItemRow(
-                            title = item.fileName,
-                            index = index + 1,
-                            isCurrent = isCurrent,
-                            onClick = { onPlayAtIndex(index) },
-                        )
-                    }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(360.dp),
+            ) {
+                itemsIndexed(
+                    items = playlist,
+                    key = { index, item -> item.filePath },
+                ) { index, item ->
+                    val isCurrent = index == currentIndex
+                    PlaylistItemRow(
+                        title = item.fileName,
+                        index = index + 1,
+                        isCurrent = isCurrent,
+                        onClick = { onPlayAtIndex(index) },
+                    )
                 }
             }
         }

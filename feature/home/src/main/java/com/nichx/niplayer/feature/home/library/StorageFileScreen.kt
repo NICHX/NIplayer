@@ -94,6 +94,10 @@ import androidx.compose.material.icons.rounded.SortByAlpha
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import com.nichx.niplayer.designsystem.components.NiDialogItem
+import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
+import com.nichx.niplayer.designsystem.components.NiGlassOverlay
+import com.nichx.niplayer.designsystem.components.NiGlassOverlayKind
+import com.nichx.niplayer.designsystem.components.NiGlassOverlayRequest
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiListItemDialog
 import androidx.compose.material3.Badge
@@ -107,12 +111,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SnackbarHostState
 import com.nichx.niplayer.common.error.NiMessage
-import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
-import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.NiTextField
-import com.nichx.niplayer.designsystem.components.showNiMessage
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -132,12 +133,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -214,14 +218,18 @@ fun FileBrowserScreen(
     val tooShortPaths by viewModel.tooShortPaths.collectAsStateWithLifecycle()
     val thumbnailProgress by viewModel.thumbnailProgress.collectAsStateWithLifecycle()
     val activeDownloadCount by viewModel.activeDownloadCount.collectAsStateWithLifecycle()
+    val activeUploadCount by viewModel.activeUploadCount.collectAsStateWithLifecycle()
+    val uploads by viewModel.uploads.collectAsStateWithLifecycle()
     val encryptedPaths by viewModel.encryptedPaths.collectAsStateWithLifecycle()
     val isMultiSelect by viewModel.isMultiSelect.collectAsStateWithLifecycle()
     val selectedPaths by viewModel.selectedPaths.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val messageController = LocalAppMessageController.current
     var fileMenu by remember { mutableStateOf<Pair<StorageFile, Boolean>?>(null) }
     var isGridView by remember { mutableStateOf(FileBrowserSettings.isGridView) }
     var showSortMenu by remember { mutableStateOf(false) }
+    // 排序下拉菜单锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
+    var sortMenuAnchor by remember { mutableStateOf(Offset.Zero) }
     var showFileInfo by remember { mutableStateOf<StorageFile?>(null) }
     var showPlaylistPicker by remember { mutableStateOf(false) }
     var showNewPlaylistDialog by remember { mutableStateOf(false) }
@@ -308,8 +316,8 @@ fun FileBrowserScreen(
             when (event) {
                 is StorageFileEvent.NavigateToPlayer -> onPlayVideo()
                 is StorageFileEvent.NavigateToImageViewer -> onNavigateToImageViewer()
-                is StorageFileEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
-                is StorageFileEvent.ShowToast -> snackbarHostState.showNiMessage(NiMessage.info(event.message))
+                is StorageFileEvent.ShowError -> messageController.post(NiMessage.error(event.message))
+                is StorageFileEvent.ShowToast -> messageController.post(NiMessage.info(event.message))
                 is StorageFileEvent.OpenFileActions ->
                     fileMenu = event.file to event.isFavorited
             }
@@ -364,8 +372,8 @@ fun FileBrowserScreen(
             when (event) {
                 is StorageFileEvent.NavigateToPlayer -> onPlayVideo()
                 is StorageFileEvent.NavigateToImageViewer -> onNavigateToImageViewer()
-                is StorageFileEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
-                is StorageFileEvent.ShowToast -> snackbarHostState.showNiMessage(NiMessage.info(event.message))
+                is StorageFileEvent.ShowError -> messageController.post(NiMessage.error(event.message))
+                is StorageFileEvent.ShowToast -> messageController.post(NiMessage.info(event.message))
                 is StorageFileEvent.OpenFileActions ->
                     fileMenu = event.file to event.isFavorited
             }
@@ -420,7 +428,13 @@ fun FileBrowserScreen(
                             contentDescription = stringResource(R.string.storage_file_enter_multi_select),
                         )
                     }
-                    Box {
+                    Box(
+                        modifier = Modifier.onGloballyPositioned { coords ->
+                            // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
+                            val topLeft = coords.localToRoot(Offset.Zero)
+                            sortMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                        },
+                    ) {
                         IconButton(onClick = { showSortMenu = true }) {
                             NiStyleIcon(
                                 icon = Icons.AutoMirrored.Rounded.Sort,
@@ -430,14 +444,10 @@ fun FileBrowserScreen(
                                 contentDescription = stringResource(R.string.storage_file_sort),
                             )
                         }
-                        DropdownMenu(
+                        NiGlassDropdownMenu(
                             expanded = showSortMenu,
                             onDismissRequest = { showSortMenu = false },
-                            shape = RoundedCornerShape(16.dp),
-                            containerColor = niFrostSurfaceColor(),
-                            border = BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
-                            tonalElevation = 1.dp,
-                            shadowElevation = 6.dp,
+                            anchor = IntOffset(sortMenuAnchor.x.toInt(), sortMenuAnchor.y.toInt()),
                         ) {
                             SortByMenuItem(
                                 label = stringResource(R.string.storage_file_sort_name),
@@ -535,6 +545,23 @@ fun FileBrowserScreen(
                             }
                         }
                     }
+                    if (activeUploadCount > 0) {
+                        IconButton(onClick = onNavigateToDownloadManager) {
+                            BadgedBox(
+                                badge = {
+                                    Badge { Text("$activeUploadCount") }
+                                },
+                            ) {
+                                NiStyleIcon(
+                                        icon = Icons.Rounded.Upload,
+                                        style = NiAppIconStyle,
+                                        containerSize = 40.dp,
+                                        iconSize = 22.dp,
+                                        contentDescription = stringResource(R.string.storage_file_upload_tasks),
+                                    )
+                            }
+                        }
+                    }
                     // 独立全屏页面不常驻 Home 底部导航，提供快捷入口跳转到设置页
                     IconButton(onClick = onNavigateToSettings) {
                         NiStyleIcon(
@@ -549,13 +576,7 @@ fun FileBrowserScreen(
             )
             }
         },
-        snackbarHost = {
-            NiSnackbarHost(
-                hostState = snackbarHostState,
-                bottomObstruction = NiSnackbarDefaults.MINI_PLAYER_OBSTRUCTION,
-            )
-        },
-    ) { padding ->
+        ) { padding ->
         // 内容满铺全屏并延伸到顶栏之下，可滚入顶栏模糊区。
         // 顶栏高度用 topInset 让位；浮动面包屑叠加其上，列表从面包屑下方开始滚动、仍能滚到顶栏下被模糊。
         val topInset = padding.calculateTopPadding()
@@ -607,6 +628,8 @@ fun FileBrowserScreen(
                                     encryptedPaths = encryptedPaths,
                                     isMultiSelect = isMultiSelect,
                                     selectedPaths = selectedPaths,
+                                    uploads = uploads,
+                                    onCancelUpload = viewModel::cancelUpload,
                                     onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
                                     onPlayFile = viewModel::playFile,
                                     onOpenImageFile = viewModel::openImageFile,
@@ -1205,6 +1228,8 @@ private fun FileList(
     encryptedPaths: Set<String>,
     isMultiSelect: Boolean,
     selectedPaths: Set<String>,
+    uploads: List<ActiveUpload>,
+    onCancelUpload: (Long) -> Unit,
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
@@ -1223,6 +1248,11 @@ private fun FileList(
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        if (uploads.isNotEmpty()) {
+            item(key = "upload-strip") {
+                UploadPendingStrip(uploads = uploads, onCancel = onCancelUpload)
+            }
+        }
         items(
             items = files,
             key = { it.path },
@@ -1240,6 +1270,68 @@ private fun FileList(
                 onShowFileActions = { onShowFileActions(file) },
                 onToggleSelection = { onToggleSelection(file) },
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun UploadPendingStrip(uploads: List<ActiveUpload>, onCancel: (Long) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        uploads.forEach { u ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = u.fileName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    if (u.fraction >= 0f) {
+                        LinearProgressIndicator(
+                            progress = { u.fraction },
+                            modifier = Modifier.fillMaxWidth().height(4.dp),
+                        )
+                    } else {
+                        // 总大小未知 → 不确定进度
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().height(4.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = if (u.fraction >= 0f) {
+                            stringResource(R.string.storage_file_upload_progress, (u.fraction * 100).toInt())
+                        } else {
+                            stringResource(R.string.storage_file_upload_waiting)
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(
+                    onClick = { onCancel(u.taskId) },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.storage_file_upload_cancel),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -1878,18 +1970,18 @@ private fun FileActionsSheet(
     onDecrypt: () -> Unit = {},
     onResetPassword: () -> Unit = {},
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val overlayId = remember(file.path) { "file_actions_${file.path}" }
     val isPlayable = !file.isDirectory && (MediaFileTypes.isVideoFile(file.name) || MediaFileTypes.isAudioFile(file.name))
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        // 与对话框统一为磨砂玻璃面板（面板不透明度随设置），保持软件一致风格
-        containerColor = niFrostSurfaceColor(),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        tonalElevation = 2.dp,
-    ) {
-        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+    // 投递到全局玻璃浮层槽位（NiGlassBottomSheet，backdrop 真模糊，透明度随面板设置）
+    LaunchedEffect(file, isFavorited, canDownload, showFileManagement, isEncrypted, isRemoteStorage) {
+        NiGlassOverlay.show(
+            NiGlassOverlayRequest(
+                id = overlayId,
+                kind = NiGlassOverlayKind.BottomSheet,
+                onDismiss = onDismiss,
+            ) {
+                Column(modifier = Modifier.padding(bottom = 32.dp)) {
             Text(
                 text = file.name,
                 style = MaterialTheme.typography.titleLarge,
@@ -1965,7 +2057,12 @@ private fun FileActionsSheet(
                 text = stringResource(R.string.storage_file_action_properties),
                 onClick = onShowInfo,
             )
+            }
         }
+    )
+    }
+    DisposableEffect(overlayId) {
+        onDispose { NiGlassOverlay.dismiss(overlayId) }
     }
 }
 

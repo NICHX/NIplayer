@@ -70,7 +70,7 @@ fun NiPopupMenu(
     ) {
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = niFrostSurfaceColor(),
+            color = niGlassPanelSurfaceColor(),
             shadowElevation = 8.dp,
             border = BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
             modifier = modifier,

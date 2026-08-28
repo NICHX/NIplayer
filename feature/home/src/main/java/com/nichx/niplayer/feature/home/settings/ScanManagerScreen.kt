@@ -27,10 +27,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHostState
 import com.nichx.niplayer.common.error.NiMessage
-import com.nichx.niplayer.designsystem.components.NiSnackbarHost
-import com.nichx.niplayer.designsystem.components.showNiMessage
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.PrimaryTabRow
@@ -80,7 +78,7 @@ fun ScanManagerScreen(
     val viewModel: ScanManagerViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val toastMessage by viewModel.toastMessage.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val messageController = LocalAppMessageController.current
 
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -90,7 +88,7 @@ fun ScanManagerScreen(
     // Toast 消息 → Snackbar
     LaunchedEffect(toastMessage) {
         toastMessage?.let { msg ->
-            snackbarHostState.showNiMessage(NiMessage.info(msg))
+            messageController.post(NiMessage.info(msg))
             viewModel.consumeToast()
         }
     }
@@ -117,7 +115,6 @@ fun ScanManagerScreen(
                 },
             )
         },
-        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState) },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize()) {
         Column(

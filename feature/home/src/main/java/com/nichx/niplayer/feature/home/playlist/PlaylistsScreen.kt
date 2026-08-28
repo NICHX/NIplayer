@@ -40,7 +40,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -71,10 +70,9 @@ import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
-import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTopBar
-import com.nichx.niplayer.designsystem.components.showNiMessage
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 
 /**
@@ -91,7 +89,7 @@ fun PlaylistsScreen(
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val dataReady by viewModel.dataReady.collectAsStateWithLifecycle()
     val coverUrls by viewModel.coverUrls.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val messageController = LocalAppMessageController.current
     var showCreateDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<PlaylistWithCount?>(null) }
     var manageTarget by remember { mutableStateOf<PlaylistWithCount?>(null) }
@@ -99,7 +97,7 @@ fun PlaylistsScreen(
     var mergeSource by remember { mutableStateOf<PlaylistWithCount?>(null) }
 
     LaunchedEffect(Unit) {
-        viewModel.toast.collect { snackbarHostState.showNiMessage(NiMessage.info(it)) }
+        viewModel.toast.collect { messageController.post(NiMessage.info(it)) }
     }
 
     NiScaffold(
@@ -127,7 +125,6 @@ fun PlaylistsScreen(
                 },
             )
         },
-        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState) },
     ) { padding ->
         when {
             !dataReady -> PlaylistsSkeleton(padding)

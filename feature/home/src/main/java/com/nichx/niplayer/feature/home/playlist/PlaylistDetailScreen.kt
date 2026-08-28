@@ -38,7 +38,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,12 +66,10 @@ import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiEmptyState
-import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
-import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
-import com.nichx.niplayer.designsystem.components.showNiMessage
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import org.burnoutcrew.reorderable.ReorderableItem
@@ -99,7 +96,7 @@ fun PlaylistDetailScreen(
     val items by viewModel.items.collectAsStateWithLifecycle()
     val coverUrls by viewModel.coverUrls.collectAsStateWithLifecycle()
     val allPlaylists by viewModel.allPlaylists.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val messageController = LocalAppMessageController.current
 
     var orderedItems by remember { mutableStateOf(items) }
     LaunchedEffect(items) { orderedItems = items }
@@ -145,8 +142,8 @@ fun PlaylistDetailScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is PlaylistDetailEvent.NavigateToPlayer -> onPlayVideo()
-                is PlaylistDetailEvent.ShowError -> snackbarHostState.showNiMessage(NiMessage.error(event.message))
-                is PlaylistDetailEvent.ShowMessage -> snackbarHostState.showNiMessage(NiMessage.info(event.message))
+                is PlaylistDetailEvent.ShowError -> messageController.post(NiMessage.error(event.message))
+                is PlaylistDetailEvent.ShowMessage -> messageController.post(NiMessage.info(event.message))
                 PlaylistDetailEvent.PlaylistDeleted -> onBack()
             }
         }
@@ -232,12 +229,6 @@ fun PlaylistDetailScreen(
                     onRemove = { showRemoveSelected = true },
                 )
             }
-        },
-        snackbarHost = {
-            NiSnackbarHost(
-                hostState = snackbarHostState,
-                bottomObstruction = NiSnackbarDefaults.MINI_PLAYER_OBSTRUCTION,
-            )
         },
     ) { padding ->
         when {

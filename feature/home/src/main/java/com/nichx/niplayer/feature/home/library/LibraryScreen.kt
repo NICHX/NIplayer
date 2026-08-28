@@ -136,6 +136,7 @@ fun LibraryScreen(
     var deleteTarget by remember { mutableStateOf<MediaLibraryEntity?>(null) }
     var selectedFilter by remember { mutableStateOf(LibraryFilter.ALL) }
     var isSearchVisible by remember { mutableStateOf(false) }
+    // 删除存储源使用"软删除 + 撤销"动作型 snackbar，需直连 SnackbarHostState（撤销型属全局总线的合理例外）。
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current

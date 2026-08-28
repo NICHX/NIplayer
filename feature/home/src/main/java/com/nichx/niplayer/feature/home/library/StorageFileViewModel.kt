@@ -11,6 +11,7 @@ import com.nichx.niplayer.database.dao.PlaylistItemDao
 import com.nichx.niplayer.database.dao.PlaylistWithCount
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
+import com.nichx.niplayer.database.entity.DownloadState
 import com.nichx.niplayer.database.entity.PlaylistEntity
 import com.nichx.niplayer.database.entity.PlaylistItemEntity
 import com.nichx.niplayer.database.entity.QuickAccessEntity
@@ -38,6 +39,7 @@ import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.storage.download.DownloadManager
+import com.nichx.niplayer.storage.download.UploadManager
 import com.nichx.niplayer.storage.impl.WebDavHttpException
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import com.nichx.niplayer.thumbnail.ThumbnailResult
@@ -55,6 +57,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -102,6 +106,7 @@ class StorageFileViewModel @Inject constructor(
     private val playlistHolder: PlaylistHolder,
     private val thumbnailManager: ThumbnailManager,
     private val downloadManager: DownloadManager,
+    private val uploadManager: UploadManager,
     private val encryptedFolderManager: EncryptedFolderManager,
     private val playlistDao: PlaylistDao,
     private val playlistItemDao: PlaylistItemDao,
@@ -124,6 +129,27 @@ class StorageFileViewModel @Inject constructor(
         this.storageId = storageId
         _initialPath = initialPath
         loadRoot()
+        // 收集本存储源上传完成事件：刷新目录 + 全局通知（含用户在别处等大文件完成后再回来）
+        viewModelScope.launch {
+            uploadManager.completions
+                .filter { it.storageId == storageId }
+                .collect { t ->
+                    when (t.state) {
+                        DownloadState.COMPLETED -> {
+                            refreshCurrentDirectory()
+                            _events.tryEmit(
+                                StorageFileEvent.ShowToast(
+                                    context.getString(R.string.storage_file_uploaded, t.fileName),
+                                ),
+                            )
+                        }
+                        DownloadState.FAILED -> _events.tryEmit(
+                            StorageFileEvent.ShowError(context.getString(R.string.storage_file_upload_failed)),
+                        )
+                        else -> {}
+                    }
+                }
+        }
         // 收集本存储源的加密文件夹配置（锁定角标）
         viewModelScope.launch {
             encryptedFolderManager.getEncryptedFlow(storageId).collect { list ->
@@ -170,6 +196,25 @@ class StorageFileViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(StorageFileUiState(isLoading = true))
     val uiState: StateFlow<StorageFileUiState> = _uiState.asStateFlow()
 
+    /** 当前存储源的上传任务（含进度），供文件列表上方"上传中"条展示（跨页面退出仍存在）。 */
+    val uploads: StateFlow<List<ActiveUpload>> = combine(
+        uploadManager.tasks,
+        uploadManager.taskProgress,
+    ) { tasks, progress ->
+        tasks.filter { it.storageId == storageId }.mapNotNull { t ->
+            when (t.state) {
+                DownloadState.WAITING, DownloadState.DOWNLOADING -> {
+                    val uploaded = progress[t.id] ?: t.uploadedBytes
+                    val fraction = if (t.totalBytes > 0) {
+                        (uploaded.toFloat() / t.totalBytes).coerceIn(0f, 1f)
+                    } else -1f
+                    ActiveUpload(t.id, t.fileName, fraction)
+                }
+                else -> null
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     /** 视频文件路径 → 可播放 URI（用于 Coil 加载缩略图）。目录切换时清空。 */
     private val _thumbnailUrls = MutableStateFlow<Map<String, String>>(emptyMap())
     val thumbnailUrls: StateFlow<Map<String, String>> = _thumbnailUrls.asStateFlow()
@@ -184,6 +229,9 @@ class StorageFileViewModel @Inject constructor(
 
     /** 活跃下载任务数（WAITING + DOWNLOADING），> 0 时顶栏显示下载按钮角标。 */
     val activeDownloadCount: StateFlow<Int> = downloadManager.activeDownloadCount
+
+    /** 活跃上传任务数（WAITING + DOWNLOADING），> 0 时顶栏显示上传按钮角标。 */
+    val activeUploadCount: StateFlow<Int> = uploadManager.activeUploadCount
 
     /** 排序配置，从 [FileBrowserSettings] 持久化读取，UI 可 collect 展示当前排序态。 */
     val sortConfig: StateFlow<SortConfig> = FileBrowserSettings.sortFlow
@@ -1539,27 +1587,42 @@ class StorageFileViewModel @Inject constructor(
      * @param fileName 原始文件名（用于远程目标路径）
      */
     fun uploadFile(uri: android.net.Uri, fileName: String) {
-        val s = storage ?: return
+        val library = currentLibrary ?: return
         val currentDir = directoryStack.lastOrNull() ?: return
         val remotePath = if (currentDir.path.isEmpty()) fileName
         else "${currentDir.path}/$fileName"
+        val totalBytes = queryUriSize(uri)
+        // 交给 UploadManager 后台任务执行：App 级作用域，切出页面不中断；进度由上传条展示。
         viewModelScope.launch {
-            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_uploading, fileName)))
-            val ok = withContext(Dispatchers.IO) {
-                runCatching {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        s.uploadFile(remotePath, input)
-                    } ?: false
-                }.getOrDefault(false)
-            }
-            if (ok) {
-                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_uploaded, fileName)))
-                refreshCurrentDirectory()
-            } else {
-                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_upload_failed)))
-            }
+            uploadManager.enqueue(
+                storageId = library.id,
+                storageName = uiState.value.storageName,
+                fileName = fileName,
+                remotePath = remotePath,
+                sourceUri = uri.toString(),
+                totalBytes = totalBytes,
+            )
         }
     }
+
+    /** 通过 SAF 查询本地文件大小（未知则 -1）。 */
+    private fun queryUriSize(uri: android.net.Uri): Long {
+        return runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(android.provider.OpenableColumns.SIZE),
+                null, null, null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                    if (idx >= 0) cursor.getLong(idx) else -1L
+                } else -1L
+            } ?: -1L
+        }.getOrDefault(-1L)
+    }
+
+    /** 取消上传任务。 */
+    fun cancelUpload(taskId: Long) = uploadManager.cancel(taskId)
 
     /**
      * 删除文件或目录（目录需为空或可递归删除）。
@@ -1749,6 +1812,13 @@ class StorageFileViewModel @Inject constructor(
 }
 
 /** 文件浏览页 UI 状态。 */
+/** 一个进行中的上传任务（用于进度条展示）。fraction <0 表示未知总长（不确定进度）。 */
+data class ActiveUpload(
+    val taskId: Long,
+    val fileName: String,
+    val fraction: Float,
+)
+
 data class StorageFileUiState(
     val storageName: String = "",
     /** 原始文件列表（未过滤未排序），用于排序/过滤变更时重新计算 [files]。 */

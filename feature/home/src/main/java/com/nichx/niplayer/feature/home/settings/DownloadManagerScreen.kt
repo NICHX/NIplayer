@@ -41,8 +41,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHostState
-import com.nichx.niplayer.designsystem.components.NiSnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -81,38 +79,7 @@ fun DownloadManagerScreen(
     onNavigateToImageViewer: () -> Unit = {},
     viewModel: DownloadManagerViewModel = hiltViewModel(),
 ) {
-    val displayItems by viewModel.displayItems.collectAsStateWithLifecycle()
-    val downloadDirInfo by viewModel.downloadDirInfo.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
     var showOverflowMenu by remember { mutableStateOf(false) }
-    var pendingAction by remember { mutableStateOf<PendingAction?>(null) }
-
-    LaunchedEffect(Unit) {
-        viewModel.navigationEvent.collect { event ->
-            when (event) {
-                DownloadNavigationEvent.NavigateToPlayer -> onPlayVideo()
-                DownloadNavigationEvent.NavigateToImageViewer -> onNavigateToImageViewer()
-            }
-        }
-    }
-
-    val context = LocalContext.current
-    var pendingSetDownloadDir by remember { mutableStateOf(false) }
-    val downloadDirLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree(),
-    ) { treeUri ->
-        pendingSetDownloadDir = false
-        if (treeUri == null) return@rememberLauncherForActivityResult
-        try {
-            context.contentResolver.takePersistableUriPermission(
-                treeUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-            )
-        } catch (_: SecurityException) { }
-        val dirName = DocumentFile.fromTreeUri(context, treeUri)?.name
-            ?: context.getString(R.string.download_manager_dir_fallback)
-        viewModel.setDownloadDir(treeUri.toString(), dirName)
-    }
 
     NiScaffold(
         topBar = {
@@ -168,76 +135,125 @@ fun DownloadManagerScreen(
                 },
             )
         },
-        snackbarHost = { NiSnackbarHost(hostState = snackbarHostState) },
     ) { padding ->
-        if (displayItems.isEmpty() && downloadDirInfo.uri.isNotBlank()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                NiEmptyState(
-                    icon = Icons.Filled.ArrowDownward,
-                    text = stringResource(R.string.download_manager_empty),
-                    hint = stringResource(R.string.download_manager_empty_hint),
+        DownloadManagerTab(
+            viewModel = viewModel,
+            onPlayVideo = onPlayVideo,
+            onNavigateToImageViewer = onNavigateToImageViewer,
+            topPadding = padding.calculateTopPadding(),
+        )
+    }
+}
+
+/**
+ * 下载任务列表内容（无独立 Scaffold/顶栏），供独立下载管理页与统一的「传输管理」中心页复用。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DownloadManagerTab(
+    viewModel: DownloadManagerViewModel,
+    onPlayVideo: () -> Unit,
+    onNavigateToImageViewer: () -> Unit,
+    topPadding: androidx.compose.ui.unit.Dp = 0.dp,
+) {
+    val displayItems by viewModel.displayItems.collectAsStateWithLifecycle()
+    val downloadDirInfo by viewModel.downloadDirInfo.collectAsStateWithLifecycle()
+    var pendingAction by remember { mutableStateOf<PendingAction?>(null) }
+
+    LaunchedEffect(Unit) {
+        viewModel.navigationEvent.collect { event ->
+            when (event) {
+                DownloadNavigationEvent.NavigateToPlayer -> onPlayVideo()
+                DownloadNavigationEvent.NavigateToImageViewer -> onNavigateToImageViewer()
+            }
+        }
+    }
+
+    val context = LocalContext.current
+    var pendingSetDownloadDir by remember { mutableStateOf(false) }
+    val downloadDirLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { treeUri ->
+        pendingSetDownloadDir = false
+        if (treeUri == null) return@rememberLauncherForActivityResult
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                treeUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        } catch (_: SecurityException) { }
+        val dirName = DocumentFile.fromTreeUri(context, treeUri)?.name
+            ?: context.getString(R.string.download_manager_dir_fallback)
+        viewModel.setDownloadDir(treeUri.toString(), dirName)
+    }
+
+    if (displayItems.isEmpty() && downloadDirInfo.uri.isNotBlank()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            NiEmptyState(
+                icon = Icons.Filled.ArrowDownward,
+                text = stringResource(R.string.download_manager_empty),
+                hint = stringResource(R.string.download_manager_empty_hint),
+            )
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 16.dp, end = 16.dp,
+                top = topPadding + 8.dp,
+                bottom = 8.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            // 下载目录设置卡片
+            item(key = "download_dir_section") {
+                DownloadDirCard(
+                    dirInfo = downloadDirInfo,
+                    onSetDownloadDir = {
+                        pendingSetDownloadDir = true
+                        downloadDirLauncher.launch(null)
+                    },
+                    onClearDownloadDir = { viewModel.clearDownloadDir() },
                 )
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = 16.dp, end = 16.dp,
-                    top = padding.calculateTopPadding() + 8.dp,
-                    bottom = padding.calculateBottomPadding() + 8.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                // 下载目录设置卡片
-                item(key = "download_dir_section") {
-                    DownloadDirCard(
-                        dirInfo = downloadDirInfo,
-                        onSetDownloadDir = {
-                            pendingSetDownloadDir = true
-                            downloadDirLauncher.launch(null)
-                        },
-                        onClearDownloadDir = { viewModel.clearDownloadDir() },
-                    )
-                }
 
-                items(
-                    items = displayItems,
-                    key = { item ->
-                        when (item) {
-                            is DownloadGroupedItem.Section -> "section_${item.title}"
-                            is DownloadGroupedItem.Task -> "task_${item.display.task.id}"
-                        }
-                    },
-                ) { item ->
+            items(
+                items = displayItems,
+                key = { item ->
                     when (item) {
-                        is DownloadGroupedItem.Section -> SectionHeader(
-                            title = item.title,
-                            count = item.count,
-                        )
-                        is DownloadGroupedItem.Task -> DownloadTaskCard(
-                            display = item.display,
-                            onPause = { viewModel.pauseTask(item.display.task.id) },
-                            onResume = { viewModel.resumeTask(item.display.task.id) },
-                            onCancel = {
-                                pendingAction = PendingAction.Cancel(
-                                    item.display.task.id,
-                                    item.display.task.fileName,
-                                )
-                            },
-                            onRetry = { viewModel.retryTask(item.display.task.id) },
-                            onDelete = {
-                                pendingAction = PendingAction.Delete(
-                                    item.display.task.id,
-                                    item.display.task.fileName,
-                                )
-                            },
-                            onClearRecord = { viewModel.clearRecord(item.display.task.id) },
-                            onOpen = { viewModel.openDownloadFile(item.display.task) },
-                        )
+                        is DownloadGroupedItem.Section -> "section_${item.title}"
+                        is DownloadGroupedItem.Task -> "task_${item.display.task.id}"
                     }
+                },
+            ) { item ->
+                when (item) {
+                    is DownloadGroupedItem.Section -> SectionHeader(
+                        title = item.title,
+                        count = item.count,
+                    )
+                    is DownloadGroupedItem.Task -> DownloadTaskCard(
+                        display = item.display,
+                        onPause = { viewModel.pauseTask(item.display.task.id) },
+                        onResume = { viewModel.resumeTask(item.display.task.id) },
+                        onCancel = {
+                            pendingAction = PendingAction.Cancel(
+                                item.display.task.id,
+                                item.display.task.fileName,
+                            )
+                        },
+                        onRetry = { viewModel.retryTask(item.display.task.id) },
+                        onDelete = {
+                            pendingAction = PendingAction.Delete(
+                                item.display.task.id,
+                                item.display.task.fileName,
+                            )
+                        },
+                        onClearRecord = { viewModel.clearRecord(item.display.task.id) },
+                        onOpen = { viewModel.openDownloadFile(item.display.task) },
+                    )
                 }
             }
         }

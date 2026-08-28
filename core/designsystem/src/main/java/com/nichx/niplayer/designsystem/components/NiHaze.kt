@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.kyant.backdrop.Backdrop
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import dev.chrisbanes.haze.ExperimentalHazeApi
 import dev.chrisbanes.haze.HazeProgressive
@@ -25,6 +26,15 @@ import dev.chrisbanes.haze.hazeSource
  * 在根布局初始化并向下提供；不处于作用域时返回 null（禁用玻璃效果）。
  */
 val LocalHazeState = staticCompositionLocalOf<HazeState?> { null }
+
+/**
+ * 当前的液态玻璃 **backdrop 源**（由 App 根内容层 [layerBackdrop] 标记后向下提供）。
+ *
+ * 弹窗/面板在**同一窗口**内用 [drawBackdrop] 采样它做真模糊——同窗口的 backdrop
+ * 定位可靠（与悬浮底栏同机制），避免跨独立 Dialog 窗口采样时的坐标错位。
+ * 不处于作用域时返回 null（弹窗回退不透明面板材质）。
+ */
+val LocalNiBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /** 是否启用液态玻璃效果（默认开启）。 */
 val LocalNiGlassEnabled = staticCompositionLocalOf { true }
@@ -155,4 +165,20 @@ fun niFrostSurfaceColor(): Color {
     val opacity = LocalNiGlassPanelOpacity.current
     if (opacity >= 1f) return container
     return lerp(MaterialTheme.colorScheme.background, container, opacity)
+}
+
+/**
+ * 液态玻璃面板（**同窗口 overlay**）的半透明底色：surfaceContainer 按面板不透明度
+ * （[LocalNiGlassPanelOpacity]）半透明，供 [com.kyant.backdrop.drawBackdrop] 的
+ * `onDrawSurface` 使用。同窗口内面板背后有 backdrop 真模糊垫底，半透明不会像独立
+ * Dialog 窗口那样透出窗口垫层。仅在 backdrop 真模糊可用时使用；否则回退 [niFrostSurfaceColor]。
+ */
+@Composable
+@ReadOnlyComposable
+fun niGlassPanelSurfaceColor(): Color {
+    val container = MaterialTheme.colorScheme.surfaceContainer
+    if (!LocalNiGlassEnabled.current) return container
+    val opacity = LocalNiGlassPanelOpacity.current
+    if (opacity >= 1f) return container
+    return container.copy(alpha = opacity)
 }

@@ -386,14 +386,34 @@ class WebDavStorage(
      * 使用 OkHttp 的流式 RequestBody，避免一次性读取整个文件到内存。
      * 上传成功后失效目标目录的 listCache。
      */
-    override suspend fun uploadFile(remotePath: String, inputStream: InputStream): Boolean {
+    override suspend fun uploadFile(remotePath: String, inputStream: InputStream): Boolean =
+        uploadFileInternal(remotePath, inputStream, onProgress = {})
+
+    override suspend fun uploadFile(
+        remotePath: String,
+        inputStream: InputStream,
+        totalBytes: Long,
+        onProgress: (Long) -> Unit,
+    ): Boolean = uploadFileInternal(remotePath, inputStream, onProgress)
+
+    /**
+     * WebDAV 流式上传核心实现。使用 OkHttp 的流式 RequestBody，避免一次性读取整个文件到内存；
+     * 通过 [CountingInputStream] 在网络写盘时累计已读字节并经 [onProgress] 上报（用于进度条）。
+     * 上传成功后失效目标目录的 listCache。
+     */
+    private suspend fun uploadFileInternal(
+        remotePath: String,
+        inputStream: InputStream,
+        onProgress: (Long) -> Unit,
+    ): Boolean {
         val url = resourceUrl(remotePath)
         // 流式 RequestBody：OkHttp 按需从 InputStream 读取数据写入网络
         val requestBody = object : RequestBody() {
             override fun contentType() = OCTET_STREAM
             override fun writeTo(sink: okio.BufferedSink) {
-                val buffer = ByteArray(8192)
-                inputStream.use { input ->
+                val counting = com.nichx.niplayer.storage.util.CountingInputStream(inputStream, onProgress)
+                counting.use { input ->
+                    val buffer = ByteArray(8192)
                     while (true) {
                         val read = input.read(buffer)
                         if (read <= 0) break

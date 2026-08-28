@@ -54,14 +54,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.SnackbarHostState
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.datastore.PlayerSettings
+import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
 import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
-import com.nichx.niplayer.designsystem.components.NiSnackbarHost
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
 import com.nichx.niplayer.designsystem.components.niGlassBorderColor
-import com.nichx.niplayer.designsystem.components.showNiMessage
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -71,21 +70,23 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -99,7 +100,6 @@ import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import java.util.Locale
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /** 横屏沉浸模式：无操作自动隐藏控件的延时（ms）。 */
 private const val AUTO_HIDE_DELAY_MS = 3000L
@@ -111,18 +111,17 @@ fun AudioPlayerScreen(
     viewModel: PlayerViewModel = hiltViewModel(),
     audioPlaybackManager: AudioPlaybackManager? = null,
 ) {
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    val messageController = LocalAppMessageController.current
 
     LaunchedEffect(Unit) {
         viewModel.downloadEvent.collect { msg ->
-            snackbarHostState.showNiMessage(NiMessage.info(msg))
+            messageController.post(NiMessage.info(msg))
         }
     }
 
     LaunchedEffect(Unit) {
         viewModel.messageEvent.collect { msg ->
-            snackbarHostState.showNiMessage(NiMessage.info(msg))
+            messageController.post(NiMessage.info(msg))
         }
     }
 
@@ -267,15 +266,14 @@ fun AudioPlayerScreen(
             )
         }
 
-        if (showPlaylist && playlist.isNotEmpty()) {
-            PlaylistSheet(
-                playlist = playlist,
-                currentIndex = currentIndex,
-                playMode = playMode,
-                onDismiss = { showPlaylist = false },
-                onPlayAtIndex = { index -> viewModel.playAtIndex(index) },
-            )
-        }
+        PlaylistSheet(
+            show = showPlaylist && playlist.isNotEmpty(),
+            playlist = playlist,
+            currentIndex = currentIndex,
+            playMode = playMode,
+            onDismiss = { showPlaylist = false },
+            onPlayAtIndex = { index -> viewModel.playAtIndex(index) },
+        )
 
         if (showSavePlaylistDialog) {
             // 添加到歌单：只针对当前正在播放的歌曲，而非整个播放列表
@@ -285,15 +283,13 @@ fun AudioPlayerScreen(
                     items = listOf(currentItem),
                     onDismiss = { showSavePlaylistDialog = false },
                     onSaved = { message ->
-                        scope.launch { snackbarHostState.showNiMessage(NiMessage.info(message)) }
+                        messageController.post(NiMessage.info(message))
                     },
                 )
             } else {
                 showSavePlaylistDialog = false
             }
         }
-
-        NiSnackbarHost(hostState = snackbarHostState)
     }
 }
 
@@ -888,6 +884,8 @@ private fun TopBarActions(
     val primary = MaterialTheme.colorScheme.primary
     var showSpeedMenu by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
+    // 更多/倍速下拉菜单锚点（More 按钮屏幕坐标，供玻璃菜单定位）
+    var moreMenuAnchor by remember { mutableStateOf(Offset.Zero) }
     val safeSpeedIndex = currentSpeedIndex.coerceIn(0, speedOptions.lastIndex)
 
     // 任意下拉菜单展开/收起时通知外层（横屏用于暂停自动隐藏计时）
@@ -920,7 +918,13 @@ private fun TopBarActions(
         }
 
         // 更多：倍速（二级菜单）/ 均衡器 / 下载 收进溢出菜单，保持顶栏简洁
-        Box {
+        Box(
+            modifier = Modifier.onGloballyPositioned { coords ->
+                // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
+                val topLeft = coords.localToRoot(Offset.Zero)
+                moreMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+            },
+        ) {
             IconButton(onClick = { showMoreMenu = true }) {
                 Box(
                     modifier = Modifier
@@ -936,14 +940,10 @@ private fun TopBarActions(
                     )
                 }
             }
-            DropdownMenu(
+            NiGlassDropdownMenu(
                 expanded = showMoreMenu,
                 onDismissRequest = { showMoreMenu = false },
-                shape = menuShape,
-                containerColor = niFrostSurfaceColor(),
-                shadowElevation = 8.dp,
-                border = BorderStroke(NiGlassHairWidth, menuBorderColor),
-                modifier = Modifier.widthIn(min = 210.dp),
+                anchor = IntOffset(moreMenuAnchor.x.toInt(), moreMenuAnchor.y.toInt()),
             ) {
                 // 倍速：子菜单入口，尾部显示当前档位 + 展开箭头
                 DropdownMenuItem(
@@ -1038,14 +1038,10 @@ private fun TopBarActions(
                 )
             }
             // 倍速二级菜单：磨砂卡片 + 标题头，选择后自动关闭
-            DropdownMenu(
+            NiGlassDropdownMenu(
                 expanded = showSpeedMenu,
                 onDismissRequest = { showSpeedMenu = false },
-                shape = menuShape,
-                containerColor = niFrostSurfaceColor(),
-                shadowElevation = 8.dp,
-                border = BorderStroke(NiGlassHairWidth, menuBorderColor),
-                modifier = Modifier.widthIn(min = 170.dp),
+                anchor = IntOffset(moreMenuAnchor.x.toInt(), moreMenuAnchor.y.toInt()),
             ) {
                 // 菜单标题（本版本无 DropdownMenuHeader，用普通文本行代替）
                 Text(
