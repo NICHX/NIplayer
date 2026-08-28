@@ -72,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -447,6 +448,8 @@ private fun LibrarySourceCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(64.dp)
+                // 语义合并：图标/名称/描述合并为单一节点，降低语义树节点数
+                .semantics(mergeDescendants = true) {}
                 .clip(cardShape)
                 .background(extraColors.surfaceLevel2)
                 .combinedClickable(
@@ -663,6 +666,8 @@ private fun StorageTypePickerSheet(
 
 @Composable
 private fun LibrarySkeleton(modifier: Modifier = Modifier) {
+    // 骨架与真实列表同构（同为 LazyColumn，item key 命名一致），
+    // 数据就绪切换时 LazyColumn 结构与滚动位置保持，仅替换 item 内容，避免整树重建
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(
@@ -685,12 +690,23 @@ private fun LibrarySkeleton(modifier: Modifier = Modifier) {
                 }
             }
         }
-        item(key = "skeleton_count") {
+        item(key = "section_count") {
             Spacer(Modifier.height(16.dp))
             NiSkeletonLine(widthFraction = 0.15f)
         }
+        // 模拟一组存储源分区的 header + 卡片（与真实列表 key 风格一致）
+        item(key = "header_local") {
+            Row(
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                NiSkeletonBox(width = 4.dp, height = 16.dp, shape = RoundedCornerShape(2.dp))
+                Spacer(Modifier.width(8.dp))
+                NiSkeletonLine(widthFraction = 0.2f)
+            }
+        }
         repeat(6) {
-            item(key = "skeleton_row_$it") {
+            item(key = "library_loading_$it") {
                 SkeletonCard()
             }
         }

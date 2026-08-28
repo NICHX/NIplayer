@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.designsystem.R
@@ -38,6 +39,8 @@ fun NiSectionHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            // 语义合并：标题/计数/查看全部合并为单一节点，降低语义树节点数（切换动画卡顿优化）
+            .semantics(mergeDescendants = true) {}
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

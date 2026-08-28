@@ -1,0 +1,167 @@
+# NIplayer Baseline Profile
+# 覆盖启动热路径与关键交互（首页渲染 / 切 tab / 列表滚动），
+# 让 ART 在安装后即 AOT 编译这些代码，消除冷启动的解释 + JIT 阶段。
+#
+# 规则格式：L<类名>; = 该类所有方法的 AOT 编译规则。
+# 手动维护；如需更精准可在有设备的构建机上用 macrobenchmark 生成。
+
+# ===== 应用启动入口 =====
+Lcom/nichx/niplayer/NiApplication;
+Lcom/nichx/niplayer/MainActivity;
+Lcom/nichx/niplayer/common/crash/CrashHandler;
+Lcom/nichx/niplayer/common/coroutine/AppCoroutineScopeImpl;
+Lcom/nichx/niplayer/common/coroutine/DefaultDispatcherProvider;
+
+# ===== 首页（冷启动首屏 + 切 tab 常驻页） =====
+Lcom/nichx/niplayer/feature/home/HomeScreen;
+Lcom/nichx/niplayer/feature/home/HomeBottomNavBar;
+Lcom/nichx/niplayer/feature/home/home/HomeTabScreen;
+Lcom/nichx/niplayer/feature/home/home/HomeTabViewModel;
+Lcom/nichx/niplayer/feature/home/library/LibraryScreen;
+Lcom/nichx/niplayer/feature/home/library/LibraryViewModel;
+Lcom/nichx/niplayer/feature/home/library/LibraryTabNavHost;
+Lcom/nichx/niplayer/feature/home/settings/SettingsScreen;
+Lcom/nichx/niplayer/feature/home/HomeTab;
+
+# ===== 设计系统组件 =====
+Lcom/nichx/niplayer/designsystem/theme/NiTheme;
+Lcom/nichx/niplayer/designsystem/theme/NiColorSchemes;
+Lcom/nichx/niplayer/designsystem/components/NiScaffold;
+Lcom/nichx/niplayer/designsystem/components/NiTopBar;
+Lcom/nichx/niplayer/designsystem/components/NiGlassBottomBar;
+Lcom/nichx/niplayer/designsystem/components/NiHomeCards;
+Lcom/nichx/niplayer/designsystem/components/NiSectionHeader;
+Lcom/nichx/niplayer/designsystem/components/NiVideoThumbnail;
+
+# ===== 播放器（musicbar 常驻） =====
+Lcom/nichx/niplayer/feature/player/MusicBar;
+Lcom/nichx/niplayer/feature/player/AudioPlaybackManager;
+
+# ===== 导航 =====
+Lcom/nichx/niplayer/navigation/NiNavHost;
+Lcom/nichx/niplayer/navigation/Routes;
+
+# ===== Compose Runtime（核心重组/渲染热路径） =====
+Landroidx/compose/runtime/ComposerImpl;
+Landroidx/compose/runtime/ComposerKt;
+Landroidx/compose/runtime/CompositionImpl;
+Landroidx/compose/runtime/Recomposer;
+Landroidx/compose/runtime/RecomposerKt;
+Landroidx/compose/runtime/SnapshotStateKt;
+Landroidx/compose/runtime/LaunchedEffect;
+Landroidx/compose/runtime/RememberObserver;
+Landroidx/compose/runtime/saveable/SaveableStateRegistryImpl;
+Landroidx/compose/runtime/saveable/RememberSaveableKt;
+
+# ===== Compose UI 基础 =====
+Landroidx/compose/ui/platform/AndroidComposeView;
+Landroidx/compose/ui/platform/CompositionLocals;
+Landroidx/compose/ui/platform/WindowRecomposer_androidKt;
+Landroidx/compose/ui/platform/AndroidUiDispatcher;
+Landroidx/compose/ui/text/TextLayoutResult;
+Landroidx/compose/ui/text/AndroidTextLayout;
+Landroidx/compose/ui/graphics/drawscope/CanvasDrawScope;
+
+# ===== Compose Foundation（布局 / Lazy 列表） =====
+Landroidx/compose/foundation/lazy/LazyListKt;
+Landroidx/compose/foundation/lazy/LazyDslKt;
+Landroidx/compose/foundation/lazy/LazyColumn;
+Landroidx/compose/foundation/lazy/LazyRow;
+Landroidx/compose/foundation/pager/PagerKt;
+Landroidx/compose/foundation/pager/HorizontalPagerKt;
+Landroidx/compose/foundation/pager/PagerState;
+Landroidx/compose/foundation/gestures/ScrollableKt;
+Landroidx/compose/foundation/layout/ColumnRowCommonKt;
+Landroidx/compose/foundation/layout/BoxKt;
+Landroidx/compose/foundation/CanvasKt;
+Landroidx/compose/foundation/BackgroundKt;
+Landroidx/compose/foundation/ClickableKt;
+Landroidx/compose/foundation/ImageKt;
+Landroidx/compose/foundation/ShapeKt;
+
+# ===== Material3 =====
+Landroidx/compose/material3/TextKt;
+Landroidx/compose/material3/IconKt;
+Landroidx/compose/material3/MaterialThemeKt;
+Landroidx/compose/material3/ButtonKt;
+Landroidx/compose/material3/ScaffoldKt;
+Landroidx/compose/material3/TopAppBarKt;
+Landroidx/compose/material3/Material3ColorScheme;
+
+# ===== Compose 动画 =====
+Landroidx/compose/animation/core/Animatable;
+Landroidx/compose/animation/core/AnimationStateKt;
+Landroidx/compose/animation/core/SpringAnimatorKt;
+Landroidx/compose/animation/AnimatedContentKt;
+Landroidx/compose/animation/core/TransitionKt;
+
+# ===== Hilt / Dagger =====
+Ldagger/hilt/android/AndroidEntryPoint;
+Ldagger/hilt/internal/Preconditions;
+Ldagger/hilt/android/internal/managers/ActivityComponentManager;
+Ldagger/hilt/android/internal/managers/ApplicationComponentManager;
+Ldagger/hilt/android/internal/lifecycle/HiltViewModelFactory;
+Ldagger/internal/Provider;
+Ljavax/inject/Provider;
+
+# ===== Room（启动即查询） =====
+Landroidx/room/RoomDatabase;
+Landroidx/room/coroutines/RoomKt;
+Landroidx/room/CoroutinesRoom;
+Landroidx/room/impl/SQLiteStatementImpl;
+Landroidx/room/util/DBUtil;
+
+# ===== Coil（缩略图加载） =====
+Lcoil3/ImageLoader;
+Lcoil3/SingletonImageLoader;
+Lcoil3/compose/AsyncImage;
+Lcoil3/compose/AsyncImageKt;
+Lcoil3/request/ImageRequest;
+Lcoil3/video/VideoFrameDecoder;
+
+# ===== Coroutines =====
+Lkotlinx/coroutines/Dispatchers;
+Lkotlinx/coroutines/FlowKt;
+Lkotlinx/coroutines/flow/FlowKt;
+Lkotlinx/coroutines/flow/StateFlowKt;
+Lkotlinx/coroutines/flow/SharedFlowKt;
+Lkotlinx/coroutines/channels/ChannelsKt;
+Lkotlinx/coroutines/CoroutineStart;
+Lkotlinx/coroutines/BuildersKt;
+Lkotlinx/coroutines/JobKt;
+
+# ===== MMKV =====
+Lcom/tencent/mmkv/MMKV;
+Lcom/tencent/mmkv/MMKVContentProvider;
+Lcom/tencent/mmkv/MMKVLog;
+Lcom/tencent/mmkv/ParcelableMMKV;
+
+# ===== OkHttp（启动版本检查） =====
+Lokhttp3/OkHttpClient;
+Lokhttp3/internal/connection/RealConnection;
+Lokhttp3/internal/http/RealInterceptorChain;
+Lokhttp3/internal/concurrent/TaskRunner;
+
+# ===== Media3（播放内核，启动即实例化） =====
+Landroidx/media3/exoplayer/ExoPlayer;
+Landroidx/media3/exoplayer/ExoPlayerImpl;
+Landroidx/media3/session/MediaSession;
+Landroidx/media3/common/MediaItem;
+Landroidx/media3/common/PlaybackParameters;
+Landroidx/media3/effect/Presentation;
+
+# ===== Kotlin 集合 / 字符串（大量热路径） =====
+Lkotlin/collections/CollectionsKt;
+Lkotlin/collections/MapsKt;
+Lkotlin/collections/ArraysKt;
+Lkotlin/text/StringsKt;
+Lkotlin/io/FilesKt;
+Lkotlin/LazyKt;
+Lkotlin/sequences/SequencesKt;
+
+# ===== Kotlinx Serialization / DateTime（格式化为热路径） =====
+Lkotlinx/datetime/Instant;
+
+# ===== Moshi / Retrofit（网络层） =====
+Lcom/squareup/moshi/Moshi;
+Lretrofit2/Retrofit;

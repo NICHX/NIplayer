@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -88,7 +89,6 @@ import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiHeroResumeCard
-import com.nichx.niplayer.designsystem.components.NiHomeLoadingState
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessUiItem
 import com.nichx.niplayer.designsystem.components.NiSectionHeader
 import com.nichx.niplayer.designsystem.components.NiThumbCard
@@ -215,7 +215,10 @@ fun HomeTabScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             if (!dataReady) {
-                NiHomeLoadingState()
+                HomeSkeletonLayout(
+                    contentMaxWidth = contentMaxWidth,
+                    topInset = homeTopInset,
+                )
             } else if (useMagazine) {
                 HomeMagazineLayout(
                     recentPlays = recentPlays,
@@ -258,6 +261,117 @@ fun HomeTabScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * 首页加载骨架：与 [HomeSingleColumnLayout] 同构的 LazyColumn（item key 命名一致），
+ * 数据就绪切换时 LazyColumn 结构与滚动位置保持，仅替换 item 内容，避免整树重建与全量重测量。
+ */
+@Composable
+private fun HomeSkeletonLayout(
+    contentMaxWidth: Dp,
+    topInset: Dp,
+) {
+    val screenOuter = NiSpacings.responsiveScreenOuter
+    val listGap = NiSpacings.responsiveListGap
+    // 底部导航栏避让：与真实布局保持一致
+    val bottomBarClearance = with(LocalDensity.current) {
+        WindowInsets.navigationBars.getBottom(this).toDp()
+    } + 88.dp
+    val blockColor = NiExtraColors.current.surfaceLevel3
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .widthIn(max = contentMaxWidth)
+                .fillMaxWidth()
+                .align(Alignment.TopCenter),
+            contentPadding = PaddingValues(
+                start = screenOuter,
+                end = screenOuter,
+                top = topInset + 8.dp,
+                bottom = bottomBarClearance,
+            ),
+            verticalArrangement = Arrangement.spacedBy(listGap),
+            userScrollEnabled = false,
+        ) {
+            item(key = "hero") {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(blockColor),
+                )
+            }
+            item(key = "video_header") {
+                SkeletonHeaderBlock(blockColor)
+            }
+            item(key = "video_row") {
+                Row(horizontalArrangement = Arrangement.spacedBy(listGap)) {
+                    repeat(3) {
+                        Box(
+                            Modifier
+                                .width(160.dp)
+                                .aspectRatio(16f / 9f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(blockColor),
+                        )
+                    }
+                }
+            }
+            item(key = "audio_header") {
+                SkeletonHeaderBlock(blockColor)
+            }
+            item(key = "audio_row") {
+                Row(horizontalArrangement = Arrangement.spacedBy(listGap)) {
+                    repeat(3) {
+                        Box(
+                            Modifier
+                                .width(120.dp)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(blockColor),
+                        )
+                    }
+                }
+            }
+            item(key = "qa_header") {
+                SkeletonHeaderBlock(blockColor)
+            }
+            item(key = "qa_row_0") {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    repeat(2) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .aspectRatio(16f / 9f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(blockColor),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 分区标题骨架占位（与 [NiSectionHeader] 行高一致）。 */
+@Composable
+private fun SkeletonHeaderBlock(color: Color) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(96.dp)
+                .height(20.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(color),
+        )
     }
 }
 
@@ -441,6 +555,8 @@ private fun CinematicHeroBanner(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 200.dp, max = maxHeight)
+            // 语义合并：背景/标题/进度合并为单一节点，降低语义树节点数
+            .semantics(mergeDescendants = true) {}
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
             .background(NiExtraColors.current.surfaceLevel2)
@@ -1011,6 +1127,8 @@ private fun HomeQuickAccessGridItem(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            // 语义合并：封面/名称合并为单一节点，降低语义树节点数
+            .semantics(mergeDescendants = true) {}
             .graphicsLayer { scaleX = scale; scaleY = scale },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
