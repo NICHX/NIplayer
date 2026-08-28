@@ -30,7 +30,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.datastore.AudioSettings
+import com.nichx.niplayer.designsystem.components.NiGlassSwitch
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
@@ -143,7 +143,7 @@ fun EqualizerSettingsScreen(
                             modifier = Modifier.padding(top = 2.dp),
                         )
                     }
-                    Switch(checked = enabled, onCheckedChange = {
+                    NiGlassSwitch(checked = enabled, onCheckedChange = {
                         enabled = it
                         AudioSettings.equalizerEnabled = it
                         applyEqualizer()

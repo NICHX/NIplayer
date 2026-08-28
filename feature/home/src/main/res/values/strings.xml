@@ -382,6 +382,8 @@
     <string name="storage_file_collapse_menu">收起菜单</string>
     <string name="storage_file_download_tasks">下载任务</string>
     <string name="storage_file_upload_tasks">上传任务</string>
+    <string name="upload_task_created">已创建上传任务「%1$s」</string>
+    <string name="upload_task_create_failed">创建上传任务失败</string>
     <string name="storage_file_select">选择</string>
     <string name="storage_file_selected">已选</string>
     <string name="storage_file_select_all">全选</string>

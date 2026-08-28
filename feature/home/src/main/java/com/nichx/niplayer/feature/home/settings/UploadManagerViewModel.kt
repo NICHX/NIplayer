@@ -19,13 +19,15 @@ data class UploadItemUi(
     val progress: Float,
     /** 实时已上传字节（节流 DB 值可滞后于此）。 */
     val uploadedBytes: Long,
+    /** 实时上传速度（bytes/sec，0 = 未知/未活跃）。 */
+    val speedBytesPerSec: Long,
 )
 
 /**
  * 传输管理·上传 tab 的 ViewModel。
  *
  * 直接消费 [UploadManager]（App 级作用域后台调度，任务持久化于 Room），
- * 组合任务列表 + 实时字节数 → UI 进度视图项。
+ * 组合任务列表 + 实时字节数 + 实时速度 → UI 进度视图项。
  */
 @HiltViewModel
 class UploadManagerViewModel @Inject constructor(
@@ -35,15 +37,20 @@ class UploadManagerViewModel @Inject constructor(
     val uploads: StateFlow<List<UploadItemUi>> = combine(
         uploadManager.tasks,
         uploadManager.taskProgress,
-    ) { tasks, progress ->
+        uploadManager.taskSpeeds,
+    ) { tasks, progress, speeds ->
         tasks.map { t ->
             val uploaded = progress[t.id] ?: t.uploadedBytes
             val p = if (t.totalBytes > 0) {
                 (uploaded.toFloat() / t.totalBytes).coerceIn(0f, 1f)
             } else -1f
-            UploadItemUi(t, p, uploaded)
+            UploadItemUi(t, p, uploaded, speeds[t.id] ?: 0L)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun pause(taskId: Long) = uploadManager.pause(taskId)
+
+    fun resume(taskId: Long) = uploadManager.resume(taskId)
 
     fun cancel(taskId: Long) = uploadManager.cancel(taskId)
 

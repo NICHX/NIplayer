@@ -382,6 +382,8 @@
     <string name="storage_file_collapse_menu">Collapse menu</string>
     <string name="storage_file_download_tasks">Download tasks</string>
     <string name="storage_file_upload_tasks">Upload tasks</string>
+    <string name="upload_task_created">Upload task created: %1$s</string>
+    <string name="upload_task_create_failed">Failed to create upload task</string>
     <string name="storage_file_select">Select</string>
     <string name="storage_file_selected">Selected</string>
     <string name="storage_file_select_all">Select all</string>

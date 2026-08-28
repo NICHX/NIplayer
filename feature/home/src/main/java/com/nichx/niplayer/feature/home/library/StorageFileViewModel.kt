@@ -200,7 +200,8 @@ class StorageFileViewModel @Inject constructor(
     val uploads: StateFlow<List<ActiveUpload>> = combine(
         uploadManager.tasks,
         uploadManager.taskProgress,
-    ) { tasks, progress ->
+        uploadManager.taskSpeeds,
+    ) { tasks, progress, speeds ->
         tasks.filter { it.storageId == storageId }.mapNotNull { t ->
             when (t.state) {
                 DownloadState.WAITING, DownloadState.DOWNLOADING -> {
@@ -208,7 +209,7 @@ class StorageFileViewModel @Inject constructor(
                     val fraction = if (t.totalBytes > 0) {
                         (uploaded.toFloat() / t.totalBytes).coerceIn(0f, 1f)
                     } else -1f
-                    ActiveUpload(t.id, t.fileName, fraction)
+                    ActiveUpload(t.id, t.fileName, fraction, speeds[t.id] ?: 0L)
                 }
                 else -> null
             }
@@ -1594,7 +1595,7 @@ class StorageFileViewModel @Inject constructor(
         val totalBytes = queryUriSize(uri)
         // 交给 UploadManager 后台任务执行：App 级作用域，切出页面不中断；进度由上传条展示。
         viewModelScope.launch {
-            uploadManager.enqueue(
+            val taskId = uploadManager.enqueue(
                 storageId = library.id,
                 storageName = uiState.value.storageName,
                 fileName = fileName,
@@ -1602,6 +1603,19 @@ class StorageFileViewModel @Inject constructor(
                 sourceUri = uri.toString(),
                 totalBytes = totalBytes,
             )
+            if (taskId > 0) {
+                _events.tryEmit(
+                    StorageFileEvent.ShowToast(
+                        context.getString(R.string.upload_task_created, fileName),
+                    ),
+                )
+            } else {
+                _events.tryEmit(
+                    StorageFileEvent.ShowError(
+                        context.getString(R.string.upload_task_create_failed),
+                    ),
+                )
+            }
         }
     }
 
@@ -1817,6 +1831,8 @@ data class ActiveUpload(
     val taskId: Long,
     val fileName: String,
     val fraction: Float,
+    /** 实时上传速度（bytes/sec，0 = 未知）。 */
+    val speedBytesPerSec: Long,
 )
 
 data class StorageFileUiState(

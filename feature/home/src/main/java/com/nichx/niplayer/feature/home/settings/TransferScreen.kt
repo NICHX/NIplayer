@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -216,6 +218,8 @@ private fun UploadManagerTab(viewModel: UploadManagerViewModel) {
             items(uploads, key = { it.task.id }) { item ->
                 UploadTaskCard(
                     item = item,
+                    onPause = { viewModel.pause(item.task.id) },
+                    onResume = { viewModel.resume(item.task.id) },
                     onCancel = { viewModel.cancel(item.task.id) },
                     onDelete = { viewModel.delete(item.task.id) },
                 )
@@ -227,6 +231,8 @@ private fun UploadManagerTab(viewModel: UploadManagerViewModel) {
 @Composable
 private fun UploadTaskCard(
     item: UploadItemUi,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
     onCancel: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -265,20 +271,40 @@ private fun UploadTaskCard(
             modifier = Modifier.padding(top = 2.dp),
         )
 
-        if (state == DownloadState.DOWNLOADING || state == DownloadState.WAITING) {
+        if (state == DownloadState.DOWNLOADING ||
+            state == DownloadState.WAITING ||
+            state == DownloadState.PAUSED
+        ) {
             Spacer(Modifier.height(8.dp))
             val hasKnownSize = task.totalBytes > 0
             NiProgressTrack(fraction = if (hasKnownSize) item.progress else 0f)
             Spacer(Modifier.height(4.dp))
-            Text(
-                text = if (hasKnownSize) {
-                    "${formatBytes(item.uploadedBytes)} / ${formatBytes(task.totalBytes)}"
-                } else {
-                    stringResource(R.string.transfer_upload_waiting_unknown)
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = if (hasKnownSize) {
+                        "${formatBytes(item.uploadedBytes)} / ${formatBytes(task.totalBytes)}"
+                    } else {
+                        stringResource(R.string.transfer_upload_waiting_unknown)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+                if (state == DownloadState.DOWNLOADING && item.speedBytesPerSec > 0) {
+                    Text(
+                        text = buildString {
+                            append(formatSpeed(item.speedBytesPerSec))
+                            val eta = formatEta(item)
+                            if (eta.isNotEmpty()) append(" · ").append(eta)
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
         }
 
         if (state == DownloadState.FAILED && !task.errorMessage.isNullOrEmpty()) {
@@ -310,11 +336,30 @@ private fun UploadTaskCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             when (state) {
-                DownloadState.WAITING, DownloadState.DOWNLOADING -> UploadActionIconButton(
-                    icon = Icons.Filled.Clear,
-                    label = stringResource(R.string.transfer_upload_cancel),
-                    onClick = onCancel,
-                )
+                DownloadState.WAITING, DownloadState.DOWNLOADING -> {
+                    UploadActionIconButton(
+                        icon = Icons.Filled.Pause,
+                        label = stringResource(R.string.download_manager_pause),
+                        onClick = onPause,
+                    )
+                    UploadActionIconButton(
+                        icon = Icons.Filled.Clear,
+                        label = stringResource(R.string.transfer_upload_cancel),
+                        onClick = onCancel,
+                    )
+                }
+                DownloadState.PAUSED -> {
+                    UploadActionIconButton(
+                        icon = Icons.Filled.PlayArrow,
+                        label = stringResource(R.string.download_manager_resume),
+                        onClick = onResume,
+                    )
+                    UploadActionIconButton(
+                        icon = Icons.Filled.Clear,
+                        label = stringResource(R.string.transfer_upload_cancel),
+                        onClick = onCancel,
+                    )
+                }
                 else -> UploadActionIconButton(
                     icon = Icons.Filled.Delete,
                     label = stringResource(R.string.transfer_upload_delete),
@@ -330,6 +375,7 @@ private fun UploadStateBadge(state: Int) {
     val (text, color) = when (state) {
         DownloadState.WAITING -> stringResource(R.string.transfer_upload_state_waiting) to MaterialTheme.colorScheme.outline
         DownloadState.DOWNLOADING -> stringResource(R.string.transfer_upload_state_uploading) to MaterialTheme.colorScheme.primary
+        DownloadState.PAUSED -> stringResource(R.string.download_state_paused) to MaterialTheme.colorScheme.outline
         DownloadState.COMPLETED -> stringResource(R.string.transfer_upload_state_completed) to MaterialTheme.colorScheme.tertiary
         DownloadState.FAILED -> stringResource(R.string.transfer_upload_state_failed) to MaterialTheme.colorScheme.error
         DownloadState.CANCELLED -> stringResource(R.string.transfer_upload_state_cancelled) to MaterialTheme.colorScheme.outline
@@ -381,4 +427,26 @@ private fun formatBytes(bytes: Long): String {
         unitIndex++
     }
     return if (unitIndex == 0) "$bytes B" else String.format("%.1f %s", size, units[unitIndex])
+}
+
+private fun formatSpeed(bytesPerSec: Long): String = when {
+    bytesPerSec >= 1000 * 1000 -> String.format("%.1f MB/s", bytesPerSec / (1000.0 * 1000.0))
+    bytesPerSec >= 1000 -> "${bytesPerSec / 1000} KB/s"
+    else -> "$bytesPerSec B/s"
+}
+
+/** ETA 文本：由速度与剩余字节计算；未知时返回空串。 */
+private fun formatEta(item: UploadItemUi): String {
+    if (item.speedBytesPerSec <= 0 || item.task.totalBytes <= 0) return ""
+    val remaining = item.task.totalBytes - item.uploadedBytes
+    if (remaining <= 0) return ""
+    val seconds = remaining / item.speedBytesPerSec
+    if (seconds <= 0) return ""
+    val h = seconds / 3600
+    val m = (seconds % 3600) / 60
+    val s = seconds % 60
+    return when {
+        h > 0 -> String.format("%d:%02d:%02d", h, m, s)
+        else -> String.format("%d:%02d", m, s)
+    }
 }

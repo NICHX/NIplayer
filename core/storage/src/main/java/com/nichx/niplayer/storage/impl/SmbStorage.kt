@@ -7,6 +7,8 @@ import com.nichx.niplayer.storage.AbstractStorage
 import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFile
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.codelibs.jcifs.smb.CIFSContext
@@ -480,45 +482,48 @@ class SmbStorage(
     /**
      * SMB 流式上传：[SmbFile.getOutputStream] 返回的输出流流式写入。
      *
-     * 使用 8KB 缓冲区循环读取 [inputStream] 并写入远程文件，避免一次性加载到内存。
+     * 使用 1MB 缓冲合并写入，避免一次性加载到内存；通过同步写循环累计已写字节并经 [onProgress] 上报。
      */
     override suspend fun uploadFile(remotePath: String, inputStream: InputStream): Boolean =
-        uploadFileInternal(remotePath, inputStream, totalBytes = -1L, onProgress = {})
+        uploadFileInternal(remotePath, inputStream, totalBytes = -1L, offset = 0L, onProgress = {})
 
     override suspend fun uploadFile(
         remotePath: String,
         inputStream: InputStream,
         totalBytes: Long,
+        offset: Long,
         onProgress: (Long) -> Unit,
-    ): Boolean = uploadFileInternal(remotePath, inputStream, totalBytes, onProgress)
+    ): Boolean = uploadFileInternal(remotePath, inputStream, totalBytes, offset, onProgress)
 
     /**
-     * SMB 流式上传的核心实现：[SmbFile.getOutputStream] 返回的输出流流式写入。
+     * SMB 上传核心实现。
      *
-     * 使用 8KB 缓冲区循环读取 [inputStream] 并写入远程文件，避免一次性加载到内存；
-     * 通过 [CountingInputStream] 累计已写字节并经 [onProgress] 上报（用于进度条）。
+     * 性能关键点：codelibs/jcifs 的 [SmbFileOutputStream] **没有内部缓冲**，每次 write()
+     * 就是一次同步 SMB2 WRITE 请求（等服务器 ACK 后才返回）。若用小缓冲区（如 8KB）循环写，
+     * 每 8KB 一次 RTT，千兆局域网吞吐只有 1-2MB/s。因此这里在本地用 1MB 缓冲累积读取，
+     * **攒满一个缓冲块才发起一次同步写**（单块 1MB 与配置的 snd_buf_size 匹配），吞吐可接近线速。
+     *
+     * 断点续传：`offset > 0` 时用 [SmbRandomAccessFile] seek 到已上传位置继续写，
+     * 跳过本地前 offset 字节；`offset == 0` 时用 [SmbFile.getOutputStream]（O_TRUNC 截断重写）。
+     *
+     * 取消/暂停：写入循环内调用 [kotlinx.coroutines.ensureActive]，任务协程被取消时抛
+     * [kotlinx.coroutines.CancellationException]，由 UploadManager 落库为 PAUSED/CANCELLED。
      */
     private suspend fun uploadFileInternal(
         remotePath: String,
         inputStream: InputStream,
         totalBytes: Long,
+        offset: Long,
         onProgress: (Long) -> Unit,
     ): Boolean {
         return try {
             ensureShare()
             val url = buildSmbUrl(remotePath)
             val smbFile = SmbFile(url, smbContext)
-            smbFile.getOutputStream().use { output ->
-                val counting = com.nichx.niplayer.storage.util.CountingInputStream(inputStream, onProgress)
-                counting.use {
-                    val buffer = ByteArray(8192)
-                    while (true) {
-                        val read = counting.read(buffer)
-                        if (read <= 0) break
-                        output.write(buffer, 0, read)
-                    }
-                }
-                output.flush()
+            if (offset > 0) {
+                uploadResume(smbFile, inputStream, offset, onProgress)
+            } else {
+                uploadFresh(smbFile, inputStream, onProgress)
             }
             true
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -527,6 +532,84 @@ class SmbStorage(
             false
         } finally {
             runCatching { inputStream.close() }
+        }
+    }
+
+    /** 全新上传：O_TRUNC 截断目标文件后从头写入。 */
+    private suspend fun uploadFresh(
+        smbFile: SmbFile,
+        inputStream: InputStream,
+        onProgress: (Long) -> Unit,
+    ) {
+        smbFile.getOutputStream().use { rawOut ->
+            uploadWriteLoop(
+                inputStream = inputStream,
+                offset = 0L,
+                onProgress = onProgress,
+            ) { b, o, l -> rawOut.write(b, o, l) }
+        }
+    }
+
+    /** 断点续传：seek 到 offset，跳过本地已上传字节后继续写入。 */
+    private suspend fun uploadResume(
+        smbFile: SmbFile,
+        inputStream: InputStream,
+        offset: Long,
+        onProgress: (Long) -> Unit,
+    ) {
+        val raf = smbFile.openRandomAccess("rw")
+        try {
+            raf.seek(offset)
+            // 跳过本地前 offset 字节（这部分已上传到远程，无需重复读取）
+            var remaining = offset
+            val skipBuf = ByteArray(SMB_UPLOAD_BUFFER)
+            while (remaining > 0) {
+                currentCoroutineContext().ensureActive()
+                val n = inputStream.read(skipBuf, 0, minOf(skipBuf.size.toLong(), remaining).toInt())
+                if (n < 0) break
+                remaining -= n
+            }
+            uploadWriteLoop(
+                inputStream = inputStream,
+                offset = offset,
+                onProgress = onProgress,
+            ) { b, o, l -> raf.write(b, o, l) }
+        } finally {
+            runCatching { raf.close() }
+        }
+    }
+
+    /**
+     * 合并写循环：本地缓冲攒满 [SMB_UPLOAD_BUFFER] 才执行一次同步远程写，
+     * 并在**同步写返回后**才累计进度（保证 [onProgress] 与远程实际落盘字节一致，避免断点续传空洞）。
+     */
+    private suspend fun uploadWriteLoop(
+        inputStream: InputStream,
+        offset: Long,
+        onProgress: (Long) -> Unit,
+        write: (ByteArray, Int, Int) -> Unit,
+    ) {
+        val buffer = ByteArray(SMB_UPLOAD_BUFFER)
+        var buffered = 0
+        var total = offset
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val read = inputStream.read(buffer, buffered, buffer.size - buffered)
+            if (read < 0) {
+                if (buffered > 0) {
+                    write(buffer, 0, buffered)
+                    total += buffered
+                    onProgress(total)
+                }
+                break
+            }
+            buffered += read
+            if (buffered == buffer.size) {
+                write(buffer, 0, buffered)
+                total += buffered
+                onProgress(total)
+                buffered = 0
+            }
         }
     }
 
@@ -617,6 +700,13 @@ class SmbStorage(
         const val RCV_BUF_SIZE = 1_048_576
         const val SND_BUF_SIZE = 1_048_576
         const val BUFFER_SIZE = 2_097_152
+
+        /**
+         * 上传合并写缓冲：与 snd_buf_size 匹配（1MB）。
+         * SmbFileOutputStream 无内部缓冲，攒满一块才发起一次同步 SMB2 WRITE，
+         * 避免小缓冲（8KB）造成每块一次 RTT 导致千兆网只有 1-2MB/s。
+         */
+        const val SMB_UPLOAD_BUFFER = 1_048_576
 
         /** SMB2 最大并发未完成请求数（多路复用）。 */
         const val MAX_MPX_COUNT = 128

@@ -19,6 +19,8 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.ResponseBody
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import org.xmlpull.v1.XmlPullParser
 import java.io.IOException
 import java.io.InputStream
@@ -389,16 +391,23 @@ class WebDavStorage(
     override suspend fun uploadFile(remotePath: String, inputStream: InputStream): Boolean =
         uploadFileInternal(remotePath, inputStream, onProgress = {})
 
+    /**
+     * WebDAV 流式上传（带进度/偏移）。
+     *
+     * WebDAV 协议没有标准的断点续传（partial PUT）语义，`offset > 0` 时忽略该值、
+     * 从头重传（PUT + Overwrite: T 覆盖已存在文件）。
+     */
     override suspend fun uploadFile(
         remotePath: String,
         inputStream: InputStream,
         totalBytes: Long,
+        offset: Long,
         onProgress: (Long) -> Unit,
     ): Boolean = uploadFileInternal(remotePath, inputStream, onProgress)
 
     /**
      * WebDAV 流式上传核心实现。使用 OkHttp 的流式 RequestBody，避免一次性读取整个文件到内存；
-     * 通过 [CountingInputStream] 在网络写盘时累计已读字节并经 [onProgress] 上报（用于进度条）。
+     * 写入循环内检查协程取消（[kotlinx.coroutines.ensureActive]），任务暂停/取消时中断 PUT。
      * 上传成功后失效目标目录的 listCache。
      */
     private suspend fun uploadFileInternal(
@@ -407,14 +416,17 @@ class WebDavStorage(
         onProgress: (Long) -> Unit,
     ): Boolean {
         val url = resourceUrl(remotePath)
+        // 捕获协程上下文：writeTo 运行在 OkHttp 线程，需显式检查取消状态以便暂停/取消生效
+        val context = currentCoroutineContext()
         // 流式 RequestBody：OkHttp 按需从 InputStream 读取数据写入网络
         val requestBody = object : RequestBody() {
             override fun contentType() = OCTET_STREAM
             override fun writeTo(sink: okio.BufferedSink) {
                 val counting = com.nichx.niplayer.storage.util.CountingInputStream(inputStream, onProgress)
                 counting.use { input ->
-                    val buffer = ByteArray(8192)
+                    val buffer = ByteArray(WEBDAV_UPLOAD_BUFFER)
                     while (true) {
+                        context.ensureActive()
                         val read = input.read(buffer)
                         if (read <= 0) break
                         sink.write(buffer, 0, read)
@@ -435,6 +447,9 @@ class WebDavStorage(
             }
             if (ok) invalidateParentCache(remotePath)
             ok
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            runCatching { inputStream.close() }
+            throw e
         } catch (e: IOException) {
             Log.w(TAG, "uploadFile PUT $url 网络异常: ${e.message}", e)
             runCatching { inputStream.close() }
@@ -950,6 +965,8 @@ class WebDavStorage(
         private const val LIST_CACHE_TTL_MS = 10_000L
         /** PUT 回退创建目录时使用的临时标记文件名。 */
         private const val DIR_MARKER_FILE = ".tmp_dir_marker"
+        /** 上传读取缓冲：OkHttp BufferedSink 会继续合并写网络，64KB 已足够。 */
+        private const val WEBDAV_UPLOAD_BUFFER = 64 * 1024
 
         private val PROPFIND_XML = """
             <?xml version="1.0" encoding="utf-8"?>

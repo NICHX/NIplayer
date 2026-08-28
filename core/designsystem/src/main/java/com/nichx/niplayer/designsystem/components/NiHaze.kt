@@ -79,7 +79,7 @@ fun Modifier.niHazeSource(state: HazeState?): Modifier = this.then(
 /** 顶栏/底栏统一玻璃效果配置。 */
 object NiGlassDefaults {
     /** 背景高斯模糊半径。 */
-    val BlurRadius = 28.dp
+    val BlurRadius = 16.dp
 }
 
 /** 玻璃描边宽度：统一 1px 细发丝线，用于对话框、菜单等面板表面及其内控件。 */
@@ -92,23 +92,26 @@ fun niGlassBorderColor(): Color =
     if (NiExtraColors.current.isDark) Color.White.copy(alpha = 0.28f) else Color.Black.copy(alpha = 0.22f)
 
 /**
- * 构建液态玻璃 HazeStyle：以 surface 为基底，通过 [Color.luminance] 判断明暗主题
+ * 构建液态玻璃 HazeStyle：以页面背景为基底，通过 [Color.luminance] 判断明暗主题
  * 微调 tint 透明度，模拟玻璃通透折射。可配置模糊半径。
  *
- * 注意：这里 [HazeStyle.backgroundColor] 设为透明——若设为不透明，当 effect 因层级
- * 问题暂时采样不到 source 时会退化为一个纯色块，造成"一层背景挡在内容前"的假象。
+ * 注意：[HazeStyle.backgroundColor] 设为页面背景色（主题 background）而非透明——当背后内容
+ * 空白/透明时，透明背景会让 haze 模糊纹理按默认白色处理导致顶栏发白；改用页面背景色后空白区域
+ * 与页面融为一体。tint 刻意调低（亮色 0.10 / 暗色 0.15），避免多层半透明 surface 叠加
+ * 使顶栏在浅色主题下整体发白。
  */
 @OptIn(ExperimentalHazeApi::class)
 @Composable
 @ReadOnlyComposable
 fun niGlassStyle(blurRadius: Dp = NiGlassDefaults.BlurRadius): HazeStyle {
+    val background = MaterialTheme.colorScheme.background
     val surface = MaterialTheme.colorScheme.surface
-    // 暗色主题基底更重：亮色主题 0.28、暗色 0.40，再乘以统一玻璃不透明度（LocalNiGlassOpacity）
-    val baseAlpha = if (surface.luminance() >= 0.5f) 0.28f else 0.40f
+    // 玻璃色调刻意调低：亮色主题 0.10、暗色 0.15，再乘以统一玻璃不透明度（LocalNiGlassOpacity）
+    val baseAlpha = if (surface.luminance() >= 0.5f) 0.10f else 0.15f
     val opacity = LocalNiGlassOpacity.current
     return HazeStyle(
         blurRadius = blurRadius,
-        backgroundColor = Color.Transparent,
+        backgroundColor = background,
         tint = HazeTint(
             surface.copy(alpha = baseAlpha * opacity),
         ),
