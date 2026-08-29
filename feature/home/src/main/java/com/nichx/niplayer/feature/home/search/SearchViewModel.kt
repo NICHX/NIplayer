@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
-import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.PlayStartResult
@@ -32,18 +31,17 @@ import javax.inject.Inject
 /**
  * 首页搜索 ViewModel。
  *
- * 聚合三张本地表的 LIKE 搜索：
+ * 收敛为"快速续播 / 直达书签"用途，聚合两张本地表的 LIKE 搜索：
  * - **播放历史**：[PlayHistoryDao.searchByKeyword]（可续播）
  * - **快速访问**：[QuickAccessDao.searchByKeyword]（文件夹跳文件浏览，文件跳播放）
- * - **存储源**：[MediaLibraryDao.searchByKeyword]（跳文件浏览根目录）
  *
+ * 不再搜索存储源内容——全量目录遍历慢且不可靠。
  * 全本地查询（Room 毫秒级），不发起任何网络请求。
- * 输入经 [DEBOUNCE_MS] 防抖后再查询，避免每次按键都触发三表扫描。
+ * 输入经 [DEBOUNCE_MS] 防抖后再查询，避免每次按键都重复扫描。
  *
  * 打开行为与既有页面保持一致：
  * - 历史记录 → [PlayStarter.startFromHistory] 续播
  * - 快速访问 → 复用 [QuickAccessViewModel.openItem] 同款分流（文件夹 / 文件）
- * - 存储源 → emit [SearchEvent.NavigateToStorageFile] 跳文件浏览
  */
 @HiltViewModel
 class SearchViewModel @Inject constructor(
@@ -85,7 +83,6 @@ class SearchViewModel @Inject constructor(
                 SearchResults(
                     histories = playHistoryDao.searchByKeyword(q),
                     quickAccess = quickAccessDao.searchByKeyword(q),
-                    libraries = mediaLibraryDao.searchByKeyword(q),
                 )
             }
             val libMap = withContext(Dispatchers.IO) {
@@ -130,7 +127,6 @@ class SearchViewModel @Inject constructor(
                         libraryValid = libMap[entity.libraryId] != null,
                     )
                 },
-                libraries = results.libraries,
                 historyThumbs = historyThumbs,
                 qaThumbs = qaThumbs,
             )
@@ -172,11 +168,6 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    /** 打开存储源，跳文件浏览根目录。 */
-    fun openLibrary(library: MediaLibraryEntity) {
-        _events.tryEmit(SearchEvent.NavigateToStorageFile(library.id, ""))
-    }
-
     private companion object {
         /** 输入防抖间隔（ms）。平衡响应速度与查询次数。 */
         const val DEBOUNCE_MS = 300L
@@ -187,7 +178,6 @@ class SearchViewModel @Inject constructor(
 private data class SearchResults(
     val histories: List<PlayHistoryEntity>,
     val quickAccess: List<com.nichx.niplayer.database.entity.QuickAccessEntity>,
-    val libraries: List<MediaLibraryEntity>,
 )
 
 /** 首页搜索 UI 状态。 */
@@ -196,7 +186,6 @@ data class SearchUiState(
     val searching: Boolean = false,
     val histories: List<PlayHistoryEntity> = emptyList(),
     val quickAccessItems: List<QuickAccessUiItem> = emptyList(),
-    val libraries: List<MediaLibraryEntity> = emptyList(),
     /** 历史缩略图缓存映射：播放 url → 本地缓存路径。 */
     val historyThumbs: Map<String, String> = emptyMap(),
     /** 快速访问文件缩略图缓存映射："libraryId/storagePath" → 本地缓存路径。 */

@@ -257,13 +257,12 @@
     <!-- 搜索（SearchScreen / SearchViewModel） -->
     <string name="search_title">搜索</string>
     <string name="search_placeholder">搜索…</string>
-    <string name="search_empty_title">搜索媒体</string>
-    <string name="search_empty_hint">输入关键词搜索媒体库内容</string>
+    <string name="search_empty_title">未找到相关项</string>
+    <string name="search_empty_hint">试试搜索最近看过的影片或快速访问书签</string>
     <string name="search_hint_title">输入关键词开始搜索</string>
-    <string name="search_hint_body">搜索文件名，支持视频、音频与图片</string>
+    <string name="search_hint_body">搜索播放历史与快速访问，快速续播或直达书签</string>
     <string name="search_section_history">播放历史</string>
     <string name="search_section_quick_access">快速访问</string>
-    <string name="search_section_library">媒体库</string>
     <string name="search_folder_subtitle">%1$s 文件夹</string>
     <string name="search_unknown_storage">未知存储源</string>
 
