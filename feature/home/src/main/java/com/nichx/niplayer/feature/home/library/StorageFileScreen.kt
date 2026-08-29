@@ -2699,6 +2699,7 @@ fun RenameFileDialog(
 ) {
     // 预填名称：目录取全名，文件取主名（不含扩展名）以便用户改扩展名外的部分
     val isDirectory = !fileName.contains('.')
+    val extension = fileName.substringAfterLast('.')
     val initial = if (isDirectory) fileName else fileName.substringBeforeLast('.')
     var newName by remember { mutableStateOf(initial) }
 
@@ -2708,7 +2709,15 @@ fun RenameFileDialog(
         actions = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             TextButton(
-                onClick = { onConfirm(newName.trim()) },
+                onClick = {
+                    // 文件重命名时若新名称未携带扩展名，自动补回原扩展名，避免文件失去后缀
+                    val finalName = if (isDirectory || newName.trim().contains('.')) {
+                        newName.trim()
+                    } else {
+                        newName.trim() + ".$extension"
+                    }
+                    onConfirm(finalName)
+                },
                 enabled = newName.isNotBlank() && newName != initial,
             ) { Text(stringResource(R.string.confirm)) }
         },

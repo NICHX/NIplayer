@@ -308,11 +308,13 @@ private fun CrossfadePage(
     page: Int,
     content: @Composable () -> Unit,
 ) {
-    val alpha = remember { Animatable(0f) }
+    // 激活页初始即不透明：避免播放器进出导致组合重建时 content 从 0 起步，出现
+    // "薄白背景先全屏、卡片内容晚到"的闪白。非当前页保留 0，切 tab 时仍从 0 淡入
+    val alpha = remember { Animatable(if (current == page) 1f else 0f) }
     LaunchedEffect(current, previous, page) {
         if (current == page) {
-            // 冷启动/驻留当前页：若由其它页切来则先置透明再淡入
-            if (previous != page) alpha.snapTo(0f)
+            // 是当前激活页：向不透明度 1 收敛。冷启动由 remember 初值 1 直接可见；
+            // 切 tab（previous != page）时该页初值为 0，这里仍从 0 淡入，切换动画不变
             alpha.animateTo(1f, tween(durationMillis = TabCrossfadeDurationMs))
         } else if (previous == page) {
             // 刚离开的页面淡出
