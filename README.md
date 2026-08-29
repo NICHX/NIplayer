@@ -1,6 +1,6 @@
 # 🎬 NIplayer v2
 
-![Version](https://img.shields.io/badge/Version-2.2.2-blue)
+![Version](https://img.shields.io/badge/Version-2.4.0-blue)
 ![Language](https://img.shields.io/badge/Language-Kotlin-7F52FF)
 ![UI](https://img.shields.io/badge/UI-Compose%20%2B%20Material%203-4285F4)
 ![Player](https://img.shields.io/badge/Player-Media3-1DB954)
@@ -25,6 +25,24 @@
 | 🔍 **全局搜索** | 跨媒体库标题搜索，一键播放 / 定位 |
 | 🌍 **多语言** | 内置简体中文 / English，应用内一键切换 |
 | 🎨 **个性化** | 动态取色主题 · 播放统计 · 视频书签 · 快捷访问 |
+
+---
+
+## 📸 界面预览
+
+| 首页 | 视频播放器 | 媒体库 |
+|:---:|:---:|:---:|
+| <img width="230" src="screenshots/home.jpg" alt="首页"/> | <img width="230" src="screenshots/player.jpg" alt="视频播放器"/> | <img width="230" src="screenshots/library.jpg" alt="媒体库"/> |
+
+| 黑胶唱片 · 音频 | LRC 歌词 | 主题设置 |
+|:---:|:---:|:---:|
+| <img width="230" src="screenshots/vinyl.jpg" alt="黑胶唱片"/> | <img width="230" src="screenshots/lyrics.jpg" alt="歌词"/> | <img width="230" src="screenshots/theme.jpg" alt="主题设置"/> |
+
+| 设置 |
+|:---:|
+| <img width="230" src="screenshots/settings.jpg" alt="设置"/> |
+
+> 播放器画面截自《云南虫谷》《庆余年》等真实片源，音视频均来自 SMB / WebDAV 远程存储。
 
 ---
 
