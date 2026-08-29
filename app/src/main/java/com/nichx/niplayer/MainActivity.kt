@@ -274,12 +274,6 @@ class MainActivity : ComponentActivity() {
                     ) {
                         composable(
                             route = Routes.Home.ROOT,
-                            enterTransition = { fadeIn(tween(300)) },
-                            exitTransition = { fadeOut(tween(300)) },
-                            // 返回 Home 时显式淡入（无缩放）：Home 定义了 enter/exit 却未定义 popEnter，
-                            // 否则 Navigation 回退到内置默认 fadeIn+scaleIn 放大进场，视觉上像子页在缩小消失
-                            popEnterTransition = { fadeIn(tween(300)) },
-                            popExitTransition = { fadeOut(tween(300)) },
                         ) {
                             HomeScreen(
                                 onNavigateToGlobal = { route -> navController.navigate(route) },
