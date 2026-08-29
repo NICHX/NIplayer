@@ -18,11 +18,11 @@ import com.tencent.mmkv.MMKV
  * - [fontColor]：字幕文字颜色（ARGB Int），默认白色
  * - [outlineWidth]：描边宽度（px，相对字号），默认 2f
  * - [outlineColor]：描边颜色（ARGB Int），默认黑色
- * - [bottomPaddingDp]：字幕底部边距（dp），默认 48
+ * - [bottomPaddingDp]：字幕垂直位置（dp），正=上移、负=下移，默认 48
  *
  * 字幕样式应用规则：
  * - [applyEmbeddedStyles]=true 时，外挂字幕优先使用 ASS Style 自带的颜色/字体，但描边宽度、
- *   底部边距、字体族仍由用户设置覆盖（避免硬编码 2f/48.dp 导致不可调）
+ *   垂直位置、字体族仍由用户设置覆盖（避免硬编码 2f/48.dp 导致不可调）
  * - [applyEmbeddedStyles]=false 时，文字颜色与描边颜色强制使用用户配置覆盖 ASS Style
  *
  * 本对象保持纯净（无 Compose 依赖），仅存原始值类型。
@@ -103,7 +103,11 @@ object SubtitleSettings {
         get() = mmkv.decodeInt(KEY_OUTLINE_COLOR, 0xFF000000.toInt())
         set(value) { mmkv.encode(KEY_OUTLINE_COLOR, value) }
 
-    /** 字幕底部边距（dp）。默认 48。 */
+    /**
+     * 字幕垂直位置（dp）。正=上移（远离底部），负=下移（靠近/超出底部）。
+     *
+     * 默认 48。负值用于把偏上的字幕（如部分 PGS 位图）往下移。
+     */
     var bottomPaddingDp: Int
         get() = mmkv.decodeInt(KEY_BOTTOM_PADDING_DP, 48)
         set(value) { mmkv.encode(KEY_BOTTOM_PADDING_DP, value) }
@@ -163,16 +167,5 @@ object SubtitleSettings {
         R.string.subtitle_outline_color_white to 0xFFFFFFFF.toInt(),
         R.string.subtitle_outline_color_dark_gray to 0xFF424242.toInt(),
         R.string.subtitle_outline_color_red to 0xFFD32F2F.toInt(),
-    )
-
-    /**
-     * 底部边距选项（标签资源 ID + dp）。
-     *
-     * "近"=24、"中"=48（默认，贴近屏幕底部）、"远"=96（避开控制条与底部安全区）。
-     */
-    val BOTTOM_PADDING_OPTIONS: List<Pair<Int, Int>> = listOf(
-        R.string.subtitle_bottom_padding_near to 24,
-        R.string.subtitle_bottom_padding_medium to 48,
-        R.string.subtitle_bottom_padding_far to 96,
     )
 }

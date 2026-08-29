@@ -2,6 +2,7 @@ package com.nichx.niplayer.feature.player
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,12 +18,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.designsystem.components.NiGlassSwitch
+import kotlin.math.roundToInt
 
 /**
  * 字幕样式设置二级 Dialog（集成在播放器字幕管理 Dialog 内）。
@@ -122,7 +126,8 @@ fun SubtitleStyleDialog(
             )
             StyleClickRow(
                 label = stringResource(R.string.subtitle_bottom_padding_label),
-                value = stringResource(SubtitleSettings.BOTTOM_PADDING_OPTIONS.find { it.second == bottomPaddingDp }?.first ?: R.string.subtitle_bottom_padding_medium),
+                // 底部边距用滑条精确控制，直接显示数值（dp）
+                value = "${bottomPaddingDp} dp",
                 onClick = { showBottomPaddingPicker = true },
             )
             StyleSwitchRow(
@@ -191,13 +196,11 @@ fun SubtitleStyleDialog(
         )
     }
     if (showBottomPaddingPicker) {
-        SingleSelectDialog(
-            title = stringResource(R.string.subtitle_bottom_padding_label),
-            options = SubtitleSettings.BOTTOM_PADDING_OPTIONS,
-            selected = bottomPaddingDp,
-            onSelect = {
-                bottomPaddingDp = it
-                SubtitleSettings.bottomPaddingDp = it
+        BottomPaddingSliderDialog(
+            currentValue = bottomPaddingDp,
+            onValueChangeFinished = { value ->
+                bottomPaddingDp = value
+                SubtitleSettings.bottomPaddingDp = value
                 applyAndNotify()
                 showBottomPaddingPicker = false
             },
@@ -322,6 +325,60 @@ private fun ColorPickerDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+/** 底部边距滑条 Dialog（精确数值控制，替代固定档位）。 */
+@Composable
+private fun BottomPaddingSliderDialog(
+    currentValue: Int,
+    onValueChangeFinished: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // 拖动中只更新本地数值预览，点击"完成"时才一次性写回设置并通知，避免拖动期间频繁刷新渲染
+    var sliderValue by remember { mutableFloatStateOf(currentValue.toFloat()) }
+    PlayerDialog(onDismiss = onDismiss, maxWidth = 320, maxHeight = 240, scrollable = false) {
+        PlayerDialogTitle(text = stringResource(R.string.subtitle_bottom_padding_label))
+        PlayerDialogDivider()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "${sliderValue.roundToInt()} dp",
+                color = PlayerDialogColors.textPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Slider(
+                value = sliderValue,
+                onValueChange = { sliderValue = it },
+                // -100~160dp，每 5dp 一档（steps = 区间内等分数 - 1 = 52 - 1）；
+                // 正值上移、负值下移（PGS 位图默认偏上时用负值下移）
+                valueRange = -100f..160f,
+                steps = 51,
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                ),
+            )
+            Text(
+                text = stringResource(R.string.subtitle_bottom_padding_desc),
+                color = PlayerDialogColors.textSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        TextButton(
+            onClick = { onValueChangeFinished(sliderValue.roundToInt()) },
+            modifier = Modifier
+                .align(Alignment.End)
+                .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
+        ) {
+            Text(stringResource(R.string.subtitle_done))
         }
     }
 }

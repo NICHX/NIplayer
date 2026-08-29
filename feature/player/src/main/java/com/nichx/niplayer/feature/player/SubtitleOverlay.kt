@@ -54,7 +54,8 @@ import com.nichx.niplayer.subtitle.renderer.SubtitleEngine
  * - **定位**：[RenderableCaption.position] 非 null 时按归一化坐标绝对定位；否则按 [align] 对齐
  *
  * 字幕样式来源（用户可配，见 [SubtitleSettings]）：
- * - [SubtitleSettings.bottomPaddingDp]：底部安全距离（默认 48，避免被控制条遮挡）
+ * - [SubtitleSettings.bottomPaddingDp]：字幕垂直位置（默认 48，正=上移、负=下移，
+ *   负值可把默认偏上的字幕往下移）
  * - [SubtitleSettings.fontFamilyKey]：字体族（系统内置 4 选 1，经 [resolveFontFamily] 映射）
  * - [SubtitleSettings.fontColor]：仅 applyEmbeddedStyles=false 时作为 fallback；当 ASS Style / override
  *   tag 指定了 primaryColor 时优先使用 ASS 自带颜色（与 [SubtitleSettings.applyEmbeddedStyles]=true 语义一致）
@@ -70,14 +71,17 @@ fun SubtitleOverlay(
     modifier: Modifier = Modifier,
 ) {
     val renderables by engine.renderables.collectAsState()
+    // m-11 修复 + 样式实时响应：订阅 engine.styleVersion（用户改样式后 updateStyleConfig 自增），
+    // 与 ON_RESUME 一起驱动版本号，让底部边距/字体族在播放中修改也能立即重组生效
+    val styleVersion by engine.styleVersion.collectAsState()
     val density = LocalDensity.current
 
     // m-11 修复：SubtitleSettings 是 MMKV 封装（非响应式），原注释"每次重组自动应用最新值"
     // 是误导——Composable 中直接读取不会触发重组。用户在设置页改完 bottomPaddingDp /
     // fontFamilyKey 后返回播放器，若无其他触发因子，新值不生效。
     //
-    // 修复方案：监听 Lifecycle ON_RESUME 事件（用户从设置页返回时触发），
-    // 自增 settingsVersion 作为 [layoutCache] 与下方读取的 remember key。
+    // 修复方案：监听 Lifecycle ON_RESUME 事件（用户从设置页返回时触发）与 engine.styleVersion
+    // （播放中改样式触发），自增版本号作为 [layoutCache] 与下方读取的 remember key。
     // 每次版本号变化 → SubtitleOverlay 重组 → 重新读取 SubtitleSettings.* 取最新值，
     // 并重建 layoutCache（ fontFamily 变化时文本测量需重做）。
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -93,9 +97,10 @@ fun SubtitleOverlay(
         lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
         onDispose { lifecycleOwner.lifecycle.removeObserver(lifecycleObserver) }
     }
-    // 读取 SubtitleSettings 时把 settingsVersion 作为依赖，触发重组并取最新值
-    val bottomPaddingDp = remember(settingsVersion) { SubtitleSettings.bottomPaddingDp.dp }
-    val fontFamily = remember(settingsVersion) { resolveFontFamily(SubtitleSettings.fontFamilyKey) }
+    // 读取 SubtitleSettings 时把版本号作为依赖，触发重组并取最新值
+    val settingsCombinedVersion = settingsVersion + styleVersion
+    val bottomPaddingDp = remember(settingsCombinedVersion) { SubtitleSettings.bottomPaddingDp.dp }
+    val fontFamily = remember(settingsCombinedVersion) { resolveFontFamily(SubtitleSettings.fontFamilyKey) }
 
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
@@ -121,10 +126,10 @@ fun SubtitleOverlay(
         // - renderables 引用（M-14 保证 positionMs/offsetMs/styleConfig/viewHeightPx 未变化时引用稳定）
         // - fontFamily（用户改字体族触发失效）
         // - viewWidthPx（横竖屏切换触发失效）
-        // - settingsVersion（m-11 修复：用户改 bottomPaddingDp/fontFamilyKey 后触发失效）
+        // - settingsCombinedVersion（m-11 修复：用户改 bottomPaddingDp/fontFamilyKey 后触发失效）
         // caption.spans 内含 per-span 字号/颜色/样式，spans 变化时 caption 实例变化，
         // 进而 renderables 列表实例变化，触发缓存失效。
-        val layoutCache = remember(renderables, fontFamily, viewWidthPx, settingsVersion) {
+        val layoutCache = remember(renderables, fontFamily, viewWidthPx, settingsCombinedVersion) {
             HashMap<RenderableCaption, List<TextLayoutResult>>(renderables.size).also { map ->
                 val maxConstraintWidth = (viewWidthPx * 0.9f).toInt().coerceAtLeast(1)
                 for (caption in renderables) {
@@ -430,7 +435,7 @@ private fun buildAnnotatedString(
  * @param canvasHeight 画布高
  * @param textWidth 文本最大宽度
  * @param textHeight 文本总高度
- * @param bottomPaddingPx 底部安全距离（来自 [SubtitleSettings.bottomPaddingDp]）
+ * @param bottomPaddingPx 字幕垂直位置（px，正=上移/负=下移，来自 [SubtitleSettings.bottomPaddingDp]）
  * @return (startX, startY) 文本左上角坐标
  */
 private fun computePosition(

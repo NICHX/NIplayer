@@ -81,6 +81,10 @@ class SubtitleEngine(
     /** styleConfig 变更版本号，[updateStyleConfig] 时自增，用于触发 [update] 缓存失效。 */
     private var styleConfigVersion: Int = 0
 
+    /** 样式配置版本 StateFlow，供 UI 层订阅（改样式后触发重组，让底部边距等实时生效）。 */
+    private val _styleVersion = MutableStateFlow(0)
+    val styleVersion: StateFlow<Int> = _styleVersion.asStateFlow()
+
     /** 当前加载的字幕文件名（用于 UI 显示）。 */
     private val _subtitleName = MutableStateFlow<String?>(null)
     val subtitleName: StateFlow<String?> = _subtitleName.asStateFlow()
@@ -99,6 +103,8 @@ class SubtitleEngine(
         styleConfig = config
         // M-14 修复：版本号自增让 [update] 缓存失效，强制下次重新计算
         styleConfigVersion++
+        // 同步 UI 订阅版本号：SubtitleOverlay / 内嵌 SubtitleView 监听后重组，实时应用新样式
+        _styleVersion.value = styleConfigVersion
         // m-07 修复：原注释"立即重渲染一次"但实现仅赋值 styleConfig 未触发渲染。
         // 现主动调用 [update] 用最近一次 positionMs 重渲染，用户改样式后立即看到效果，
         // 即使暂停态或未在播放也立即刷新（update 内部缓存失效后会重新计算）。
@@ -300,9 +306,17 @@ class SubtitleEngine(
             parseStyleColor(style.backgroundColor) ?: cfg.outlineColor
         }
         val styleBack = SubtitleColor.BLACK
+        // 关闭内嵌样式：清空 per-span 颜色（含 Style 默认色、\c 覆盖色、\t 动画色），
+        // 让 SubtitleOverlay 回退到 stylePrimary/styleOutline（用户设置色）真正生效。
+        // 开启时保留 ASS 自带颜色（唱词高亮/多角色多色等特效）
+        val effectiveSpans = if (!cfg.applyEmbeddedStyles) {
+            scaledSpans.map { span -> span.copy(primaryColor = null, outlineColor = null) }
+        } else {
+            scaledSpans
+        }
 
         return RenderableCaption(
-            spans = scaledSpans,
+            spans = effectiveSpans,
             align = parsed.align,
             position = position,
             alpha = alpha,

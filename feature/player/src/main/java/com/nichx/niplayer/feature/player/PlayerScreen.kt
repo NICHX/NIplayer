@@ -146,6 +146,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.layout.ContentScale
@@ -164,6 +165,7 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.text.Cue
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.SubtitleView
@@ -458,6 +460,17 @@ fun PlayerScreen(
         viewModel.redetectBlackBars.collect {
             launch {
                 delay(200) // 等待 SurfaceView 切回 Fit 比例后再抓图
+                triggerBlackBarDetection()
+            }
+        }
+    }
+
+    // 黑边检测失败（画面全黑/太暗）时自动重试：等画面变亮后重新抓图检测。
+    // 多数影片首帧是黑屏，单次检测会返回 null，需自动重试直到画面变亮或达到上限
+    LaunchedEffect(Unit) {
+        viewModel.blackBarRetry.collect {
+            launch {
+                delay(500) // 等待画面变化（黑屏变亮/内容出现）
                 triggerBlackBarDetection()
             }
         }
@@ -786,6 +799,23 @@ fun PlayerScreen(
             } else {
                 SubtitleSettings.textSizeFraction
             }
+        // 订阅字幕样式版本：播放中改字幕位置/字体等样式后（SubtitleEngine.styleVersion 自增）
+        // 触发重组，让内嵌 SubtitleView 实时生效
+        val subtitleStyleVersion by viewModel.subtitleEngine.styleVersion.collectAsStateWithLifecycle()
+        // 内嵌字幕（文本+PGS）垂直偏移：把"字幕位置"（dp，正=上移/负=下移）折算成相对
+        // 屏幕高度的归一化偏移，统一改写 cue.line 实现。media3 对 PGS 位图只用 cue.line
+        // 定位（PgsParser 设 bitmapY/planeHeight），View padding 只能上移不能下移，
+        // 因此必须改写 cue.line 才能让 PGS 支持负值下移
+        val subtitlePositionPx = with(LocalDensity.current) {
+            remember(subtitleStyleVersion) { SubtitleSettings.bottomPaddingDp.dp.toPx() }
+        }
+        val subtitleOffsetFraction = if (maxHeight.value > 0f) {
+            subtitlePositionPx / with(LocalDensity.current) { maxHeight.toPx() }
+        } else 0f
+        val adjustedCues = remember(cues, subtitleOffsetFraction) {
+            if (subtitleOffsetFraction == 0f) cues
+            else cues.map { cue -> applySubtitlePositionOffset(cue, subtitleOffsetFraction) }
+        }
         AndroidView(
             modifier = if (portraitConfig.orientation == Configuration.ORIENTATION_PORTRAIT) {
                 // 竖屏：SubtitleView 画布需匹配视频显示区域（16:9 窄条）的宽高比，
@@ -795,12 +825,10 @@ fun PlayerScreen(
                     .fillMaxWidth()
                     .aspectRatio(videoAspect)
                     .align(Alignment.Center)
-                    .padding(bottom = SubtitleSettings.bottomPaddingDp.dp)
             } else {
                 Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = SubtitleSettings.bottomPaddingDp.dp)
             },
             factory = { ctx ->
                 SubtitleView(ctx).apply {
@@ -822,7 +850,7 @@ fun PlayerScreen(
                 }
             },
             update = {
-                it.setCues(cues)
+                it.setCues(adjustedCues)
                 it.setApplyEmbeddedStyles(SubtitleSettings.applyEmbeddedStyles)
                 it.setFractionalTextSize(embeddedSubtitleFraction)
             },
@@ -1579,6 +1607,38 @@ private fun MoreMenuDialog(
 }
 
 private enum class GestureMode { None, Seek, Brightness, Volume }
+
+/**
+ * 应用内嵌字幕（media3 cue）的垂直偏移（正=上移），统一改写 [Cue.line]。
+ *
+ * media3 定位：
+ * - 文本 cue 默认 [Cue.DIMEN_UNSET] 贴底（bottomPaddingFraction），转成 END 锚定 line=1 后平移
+ * - PGS 位图 cue 由 [Cue.line] = bitmapY/planeHeight（PgsParser 设置）决定，且只认 line，
+ *   View padding 只能上移不能下移，改写 line 才能支持负值下移
+ *
+ * PGS 位图下移时预留位图高度作为 line 上限，避免顶锚点被推到屏幕底后内容溢出被裁。
+ *
+ * @param cue 原始 cue
+ * @param offsetFraction 垂直偏移（相对画面高度，正=上移）
+ * @return 改写后的 cue
+ */
+private fun applySubtitlePositionOffset(cue: Cue, offsetFraction: Float): Cue {
+    val isPlainText = cue.bitmap == null && cue.line == Cue.DIMEN_UNSET
+    val baseLine = if (isPlainText) 1f else cue.line
+    val anchor = if (isPlainText) Cue.ANCHOR_TYPE_END else cue.lineAnchor
+    // 位图（PGS）下移上限：line 最多到 1-位图高度比例；位图高度用 16:9 cueBox 近似估算
+    val maxLine = if (cue.bitmap != null) {
+        val bmp = cue.bitmap
+        val bmpHeightRatio = cue.bitmapHeight.takeIf { it != Cue.DIMEN_UNSET }
+            ?: (bmp?.let { it.height.toFloat() / it.width * (16f / 9f) } ?: 0.2f).coerceIn(0.05f, 0.5f)
+        (1f - bmpHeightRatio).coerceIn(0.5f, 1f)
+    } else 1f
+    val newLine = (baseLine - offsetFraction).coerceIn(0f, maxLine)
+    return cue.buildUpon()
+        .setLine(newLine, Cue.LINE_TYPE_FRACTION)
+        .setLineAnchor(anchor)
+        .build()
+}
 
 private fun formatTime(ms: Long): String {
     val totalSeconds = (ms / 1000).coerceAtLeast(0)
