@@ -9,7 +9,7 @@ import com.tencent.mmkv.MMKV
  *   在播放器设置面板中可调整，供需要快速回看/速看的场景使用。
  * - [lastBrightness]：上次退出时的画面亮度（0.0~1.0），下次进入自动恢复。
  *   -1f 表示未设置（使用系统默认亮度）。
- * - [autoDetectBlackBars]：智能黑边检测，默认 true。首帧后抓图分析有效画面区域，
+ * - [autoDetectBlackBars]：智能黑边检测，默认 false。开启后首帧起抓图分析有效画面区域，
  *   在 Fit 模式下用真实内容宽高比替代容器宽高比，避免"四周都有黑边"。
  */
 object PlayerSettings {
@@ -41,9 +41,9 @@ object PlayerSettings {
         get() = mmkv.decodeFloat(KEY_LAST_BRIGHTNESS, -1f)
         set(value) { mmkv.encode(KEY_LAST_BRIGHTNESS, value) }
 
-    /** 智能黑边检测开关。默认 true。仅在 Fit 模式下生效。 */
+    /** 智能黑边检测开关。默认 false。仅在 Fit 模式下生效。 */
     var autoDetectBlackBars: Boolean
-        get() = mmkv.decodeBool(KEY_AUTO_DETECT_BLACK_BARS, true)
+        get() = mmkv.decodeBool(KEY_AUTO_DETECT_BLACK_BARS, false)
         set(value) { mmkv.encode(KEY_AUTO_DETECT_BLACK_BARS, value) }
 
     /** 上次退出时的常规倍速索引（SPEED_VALUES 索引），默认 1（1.0x）。 */

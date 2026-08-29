@@ -1533,7 +1533,14 @@ class PlayerViewModel @Inject constructor(
             // 用阈值比较（3%），避免采样误差导致误判：
             // BlackBarDetector 用 SAMPLE_STEP=4 下采样，rect 比例可能与真实比例有微小差异，
             // 精确比较 != 会让无黑边视频也触发 effectiveVideoSize 更新，导致画面比例变化两次
-            val hasBlackBars = kotlin.math.abs(rectAspect - videoAspect) > 0.03f
+            val differsFromContainer = kotlin.math.abs(rectAspect - videoAspect) > 0.03f
+            // 裁剪白名单闸门（参考 mpv dynamic-crop.lua）：只有当内容区域命中已知成品比例时
+            // 才允许裁剪。字幕/纵向文字等把画面边缘误判成"黑边"时，得到的裁剪矩形是
+            // 不成比例的形状，命中不了白名单，从而被否决、不裁剪，避免真实画面被裁残缺。
+            val longSide = maxOf(rect.width, rect.height)
+            val shortSide = minOf(rect.width, rect.height)
+            val knownAspect = BlackBarDetector.matchesKnownAspect(longSide, shortSide)
+            val hasBlackBars = differsFromContainer && knownAspect
 
             withContext(Dispatchers.Main) {
                 if (hasBlackBars) {

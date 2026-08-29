@@ -202,6 +202,37 @@ object BlackBarDetector {
     fun toRect(result: CropDetectResult): Rect =
         Rect(result.left, result.top, result.right + 1, result.bottom + 1)
 
+    /**
+     * 成品显示比例白名单（**长边:短边**，恒 >=1）。
+     *
+     * 智能去黑边的裁剪判定只在这些已知成品比例附近才生效。参考成熟实现
+     * （mpv dynamic-crop.lua 的 ratios 白名单）：字幕/纵向文字等把画面边缘误判成
+     * "黑边"时，得到的裁剪矩形往往是一个**不成比例**的形状，命中不了任何已知比例，
+     * 从而被整体否决、不裁剪，避免真实画面被裁残缺。
+     */
+    val KNOWN_ASPECT_RATIOS: List<Float> = listOf(
+        2.76f, 2.55f, 2.667f, 2.4f, 2.39f, 2.35f,
+        2.2f, 2.1f, 2.0f, 1.9f, 1.85f, 1.78f, 1.6f, 1.5f,
+        1.43f, 1.33f, 1.25f,
+    )
+
+    /**
+     * 判断内容区域比例是否命中已知成品比例（裁剪白名单判定）。
+     *
+     * 自动对较长边/较短边做归一化（长边:短边），因此横屏宽银幕与竖屏 9:16
+     * 都能正确命中，无需关心视频旋转方向。
+     *
+     * @param longSideLong 内容区域较长边像素
+     * @param shortSideLong 内容区域较短边像素
+     * @param tolerance 相对容差（0~1，相对已知比例的偏差），默认 4%
+     * @return 命中任一已知比例返回 true
+     */
+    fun matchesKnownAspect(longSide: Int, shortSide: Int, tolerance: Float = 0.04f): Boolean {
+        if (longSide <= 0 || shortSide <= 0) return false
+        val aspect = longSide.toFloat() / shortSide
+        return KNOWN_ASPECT_RATIOS.any { kotlin.math.abs(aspect - it) / it <= tolerance }
+    }
+
     // ---------------------------------------------------------------
     // 内部实现
     // ---------------------------------------------------------------
