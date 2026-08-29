@@ -490,16 +490,18 @@ class MainActivity : ComponentActivity() {
                         // 播放器页或文件浏览多选态下隐藏音乐条
                         visible = !isPlayerScreen && !fileBrowserMultiSelect,
                     )
+                    }
 
                     // 全局统一 Snackbar 宿主：跨导航存活，消息从 AppMessageController 全局总线收集，
                     // 播放器全屏页音乐条隐藏时取消底部抬升，避免通知上浮。
+                    // 置于 backdrop 捕获层之外（与弹窗/底栏一致），使 snackbar 能 drawBackdrop 真磨砂。
                     AppMessageHost(
                         controller = appMessageController,
                         bottomObstruction =
                             if (isPlayerScreen) 0.dp
                             else NiSnackbarDefaults.MINI_PLAYER_OBSTRUCTION,
                     )
-                    }
+
                     // 玻璃浮层宿主：渲染 NiGlassOverlay 栈（位于 backdrop 捕获层之外，避免循环采样）
                     NiGlassOverlayHost()
                     }

@@ -598,6 +598,7 @@
 
     <!-- 快速访问（QuickAccessScreen） -->
     <string name="quick_access_title">快速访问</string>
+    <string name="home_double_back_exit">再按一次返回退出</string>
     <string name="quick_access_empty">暂无快速访问</string>
     <string name="quick_access_empty_hint">在文件浏览器中长按文件夹即可添加</string>
     <string name="quick_access_delete_title">删除快速访问</string>

@@ -48,14 +48,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.common.error.NiMessageSeverity
 import com.nichx.niplayer.designsystem.R
@@ -230,7 +236,6 @@ private fun NiMessageSnackbar(data: SnackbarData) {
         NiMessageSeverity.WARNING -> Icons.Filled.Warning
         NiMessageSeverity.INFO -> Icons.Filled.Info
     }
-    val contentColor = glassOnSurface()
     val mutedColor = glassOnSurfaceMuted()
 
     val copyContent = buildString {
@@ -245,105 +250,139 @@ private fun NiMessageSnackbar(data: SnackbarData) {
         }
     }
 
+    val snackbarShape = RoundedCornerShape(20.dp)
+    // 瞬态（INFO/WARNING）自动消失：无关闭按钮、文字居中；常驻 ERROR 保留关闭与左对齐。
+    val transient = severity != NiMessageSeverity.ERROR
+    // 真磨砂（同弹窗/底栏）：宿主已置于 backdrop 捕获层之外，drawBackdrop 采样主内容做真实模糊，
+    // 半透明底色跟随"面板不透明度"设置并混入主题三级色（tertiary）轻着色。
+    val backdrop = LocalNiBackdrop.current
+    val glassEnabled = LocalNiGlassEnabled.current && backdrop != null &&
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    // 磨砂底向主题三级色轻着色：surfaceContainer → tertiary 混 40%，仍跟随面板不透明度
+    val themedSurface = lerp(
+        MaterialTheme.colorScheme.surfaceContainer,
+        MaterialTheme.colorScheme.tertiary,
+        0.4f,
+    )
+    val panelSurface = themedSurface.copy(alpha = LocalNiGlassPanelOpacity.current)
+
     Box(
         modifier = Modifier
-            .widthIn(max = 480.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(niGlassPanelSurfaceColor(), RoundedCornerShape(16.dp))
-            .border(NiGlassHairWidth, niGlassBorderColor(), RoundedCornerShape(16.dp)),
+            .widthIn(max = 380.dp)
+            .then(
+                if (glassEnabled) {
+                    Modifier.drawBackdrop(
+                        backdrop = backdrop!!,
+                        shape = { snackbarShape },
+                        effects = { blur(NiGlassSheetBlurRadius.toPx()) },
+                        onDrawSurface = { drawRect(panelSurface) },
+                    )
+                } else {
+                    // 无 backdrop 时回退为不透明主题色磨砂卡片
+                    Modifier.background(themedSurface, snackbarShape)
+                }
+            )
+            .clip(snackbarShape)
+            .border(NiGlassHairWidth, niGlassBorderColor(), snackbarShape),
     ) {
-        // 左侧严重级别色条，延续"玻璃面板 + 局部强调"的语言
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 10.dp)
-                .width(3.dp)
-                .height(26.dp)
-                .clip(RoundedCornerShape(1.5.dp))
-                .background(accentColor),
-        )
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 22.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                // 瞬态消息按内容贴合（capsule），ERROR 撑满以承载长文本
+                .then(if (!transient) Modifier.fillMaxWidth() else Modifier)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = accentColor,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(22.dp),
             )
-            Text(
-                text = messageText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = contentColor,
-                maxLines = if (details.isNullOrBlank()) 2 else 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .clickable(
-                        onClick = {
-                            clipboard.setText(AnnotatedString(copyContent))
-                            copied = true
-                        },
-                    )
-                    .padding(vertical = 2.dp),
-            )
-            if (copied) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+            // 消息文字独立占用一行（weight=1f 吸满左侧，仅 ERROR），瞬态 wrap 不加 weight 以免撑宽胶囊
+            Column(modifier = Modifier.then(if (!transient) Modifier.weight(1f) else Modifier)) {
+                Text(
+                    text = messageText,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Normal,
+                    ),
+                    // 柔和的半透 onSurface：避免纯黑/纯白的生硬对比，与磨砂底更融合
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.84f),
+                    textAlign = if (transient) TextAlign.Center else TextAlign.Start,
+                    maxLines = if (details.isNullOrBlank()) 2 else 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .then(if (!transient) Modifier.fillMaxWidth() else Modifier)
+                        .clickable(
+                            onClick = {
+                                clipboard.setText(AnnotatedString(copyContent))
+                                copied = true
+                            },
+                        )
+                        .padding(vertical = 2.dp),
+                )
+                val hasControls = copied || actionLabel != null || !details.isNullOrBlank()
+                if (hasControls) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 4.dp),
+                    ) {
+                        if (copied) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = accentColor,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Text(
+                                text = stringResource(R.string.copied),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = accentColor,
+                            )
+                        }
+                        if (actionLabel != null) {
+                            TextButton(
+                                onClick = { data.performAction() },
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                            ) {
+                                Text(
+                                    text = actionLabel,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = accentColor,
+                                )
+                            }
+                        }
+                        if (!details.isNullOrBlank()) {
+                            TextButton(
+                                onClick = { detailsExpanded = !detailsExpanded },
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                            ) {
+                                Text(
+                                    text = if (detailsExpanded) stringResource(R.string.collapse)
+                                    else stringResource(R.string.details),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = mutedColor,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            // 关闭按钮右对齐：仅常驻 ERROR 显示（INFO/WARNING 自动消失无需手动关闭）
+            if (!transient) {
+                IconButton(
+                    onClick = { data.dismiss() },
+                    modifier = Modifier.size(40.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Check,
-                        contentDescription = null,
-                        tint = accentColor,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Text(
-                        text = stringResource(R.string.copied),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = accentColor,
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.action_close),
+                        tint = mutedColor,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
-            }
-            if (actionLabel != null) {
-                TextButton(
-                    onClick = { data.performAction() },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                ) {
-                    Text(
-                        text = actionLabel,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = accentColor,
-                    )
-                }
-            }
-            if (!details.isNullOrBlank()) {
-                TextButton(
-                    onClick = { detailsExpanded = !detailsExpanded },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                ) {
-                    Text(
-                        text = if (detailsExpanded) stringResource(R.string.collapse)
-                        else stringResource(R.string.details),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = mutedColor,
-                    )
-                }
-            }
-            IconButton(
-                onClick = { data.dismiss() },
-                modifier = Modifier.size(36.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.action_close),
-                    tint = mutedColor,
-                    modifier = Modifier.size(18.dp),
-                )
             }
         }
         AnimatedVisibility(
@@ -357,7 +396,7 @@ private fun NiMessageSnackbar(data: SnackbarData) {
                 color = mutedColor.copy(alpha = 0.9f),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 22.dp, end = 16.dp, bottom = 12.dp),
+                    .padding(start = 24.dp, end = 56.dp, bottom = 12.dp),
             )
         }
     }
