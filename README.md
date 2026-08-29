@@ -25,24 +25,25 @@
 | 🔍 **全局搜索** | 跨媒体库标题搜索，一键播放 / 定位 |
 | 🌍 **多语言** | 内置简体中文 / English，应用内一键切换 |
 | 🎨 **个性化** | 动态取色主题 · 播放统计 · 视频书签 · 快捷访问 |
+| 🧊 **液态玻璃 UI** | 真实背景模糊 · 悬浮玻璃导航/弹窗/底栏 · 通透度可调 |
 
 ---
 
 ## 📸 界面预览
 
-| 首页 | 视频播放器 | 媒体库 |
+**视频播放器 · 横屏沉浸回放**
+
+<img width="760" src="screenshots/player.jpg" alt="视频播放器（横屏）"/>
+
+| 首页 | 媒体库 | 主题设置 |
 |:---:|:---:|:---:|
-| <img width="230" src="screenshots/home.jpg" alt="首页"/> | <img width="230" src="screenshots/player.jpg" alt="视频播放器"/> | <img width="230" src="screenshots/library.jpg" alt="媒体库"/> |
+| <img width="230" src="screenshots/home.jpg" alt="首页"/> | <img width="230" src="screenshots/library.jpg" alt="媒体库"/> | <img width="230" src="screenshots/theme.jpg" alt="主题设置"/> |
 
-| 黑胶唱片 · 音频 | LRC 歌词 | 主题设置 |
+| 黑胶唱片 · 音频 | LRC 歌词 | 设置 |
 |:---:|:---:|:---:|
-| <img width="230" src="screenshots/vinyl.jpg" alt="黑胶唱片"/> | <img width="230" src="screenshots/lyrics.jpg" alt="歌词"/> | <img width="230" src="screenshots/theme.jpg" alt="主题设置"/> |
+| <img width="230" src="screenshots/vinyl.jpg" alt="黑胶唱片"/> | <img width="230" src="screenshots/lyrics.jpg" alt="歌词"/> | <img width="230" src="screenshots/settings.jpg" alt="设置"/> |
 
-| 设置 |
-|:---:|
-| <img width="230" src="screenshots/settings.jpg" alt="设置"/> |
-
-> 播放器画面截自《云南虫谷》《庆余年》等真实片源，音视频均来自 SMB / WebDAV 远程存储。
+> ⚠️ **版权免责声明**：截图中出现的影视、音乐及封面内容（如《庆余年》《云南虫谷》及音乐 FLAC）均来自用户自有媒体库（SMB / WebDAV），仅用于展示本应用的功能与界面效果。所有影视作品、音乐、专辑封面之版权归各自版权方所有，请确保你拥有相应的播放与个人使用权限。
 
 ---
 
@@ -130,6 +131,15 @@
 - **播放统计**：观看次数 / 时长、媒体类型与存储分布、Top 观看榜单
 - **视频书签**：时间轴打点标记，快速跳转
 - **封面控制**：可选退出播放后更新封面，缩略图生成更省资源
+
+## 🧊 液态玻璃 UI
+
+贯穿全应用的玻璃拟态设计系统，基于 `backdrop` 捕获层实现**真实同窗口背景模糊**，而非普通半透明蒙层：
+
+- **真实背景模糊**：底部导航栏、顶栏、多选操作栏等薄浮层悬浮并穿透式虚化背后的页面内容，随滚动实时变化
+- **悬浮玻璃组件**：弹窗、菜单、底部面板、Snackbar 统一为磨砂玻璃卡片，配 1px 发丝描边与高对比前景，保证在复杂/深色背景下文字依然清晰
+- **通透度可调**：面板（弹窗/菜单）与薄浮层（导航栏/顶栏）两档不透明度可**独立调节**，并带实时预览
+- **主题自适应**：玻璃 tint 随浅色 / 深色及当前配色方案自动适配，与 18 套配色一键联动
 
 ## 🔒 安全
 
