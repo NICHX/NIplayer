@@ -433,6 +433,7 @@
     <string name="storage_file_unlocked">已解锁「%1$s」</string>
     <string name="storage_file_encrypted">已加密「%1$s」</string>
     <string name="storage_file_decrypted">已解密「%1$s」</string>
+    <string name="storage_file_preparing_playback">识别方向中…</string>
     <string name="storage_file_password_changed">已修改「%1$s」的密码</string>
     <string name="storage_file_renamed">已重命名为「%1$s」</string>
     <string name="storage_file_moved">已移动到「%1$s」</string>
@@ -627,6 +628,7 @@
     <string name="player_orientation_landscape">横屏</string>
     <string name="player_orientation_portrait">竖屏</string>
     <string name="player_orientation_auto">自动（按视频比例）</string>
+    <string name="player_orientation_auto_hint">首次播放远程文件时需读取视频比例，可能有短暂等待</string>
     <string name="player_subtitle_title">字幕</string>
     <string name="player_auto_subtitle">自动加载同名字幕</string>
     <string name="player_auto_subtitle_desc">播放时自动加载同文件夹下同名字幕文件</string>

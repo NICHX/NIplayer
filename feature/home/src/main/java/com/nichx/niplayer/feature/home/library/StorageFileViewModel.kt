@@ -277,6 +277,16 @@ class StorageFileViewModel @Inject constructor(
     val selectedPaths: StateFlow<Set<String>> = _selectedPaths.asStateFlow()
 
     /**
+     * 正在"准备播放"的文件路径（进入播放器前的方向预读阶段）。
+     *
+     * 自动方向模式下、无缩略图缓存时，进入前需读取视频宽高比（远程源可能耗时），
+     * UI 据此在该文件的占位图标上叠加"识别中…"状态标签，提示用户正在等待。
+     * 快速（本地/有缓存）场景几乎瞬间清除。null 表示当前无文件在准备。
+     */
+    private val _preparingPlaybackPath = MutableStateFlow<String?>(null)
+    val preparingPlaybackPath: StateFlow<String?> = _preparingPlaybackPath.asStateFlow()
+
+    /**
      * 进入多选模式（顶栏「选择」按钮触发），初始不选中任何项。
      *
      * 原实现由长按触发并选中当前项；长按已改为打开单文件操作菜单，
@@ -1161,12 +1171,20 @@ class StorageFileViewModel @Inject constructor(
                 // W-N7 修复：传入 uniqueKey 作为 mediaId，与播放历史 uniqueKey 一致。
                 val source = MediaSourceBuilder.buildMediaSource(s, file, mediaId = uniqueKey)
 
-                // 自动方向模式：进入播放器前预读视频显示宽高比，避免"先横屏后旋转"。
-                // 优先用本地缩略图缓存比例（缩略图是视频帧，已含旋转校正，纯本地 IO 极快），
-                // 缺失时回退 MediaMetadataRetriever 读取（本地/远程均支持，带超时）。
-                val initialAspectRatio = if (!isAudioFile(file.name) && PlayerSettings.orientationMode == 2) {
+                // 只有"自动方向"模式（orientationMode==2）才会在进入前预读视频宽高比并可能
+                // 触发等待，才标记"正在准备"以显示"识别方向中"标签；其余情况不显示该提示。
+                val needsAspect =
+                    !isAudioFile(file.name) && PlayerSettings.orientationMode == 2
+                val initialAspectRatio = if (needsAspect) {
+                    _preparingPlaybackPath.value = file.path
+                    // 进入播放前预算宽高比可能耗时（远程源无缩略图缓存时读取视频元数据），
+                    // 已标记"正在准备"，UI 在占位图标上显示"识别方向中…"。
+                    // 优先用本地缩略图缓存比例（缩略图是视频帧，已含旋转校正，纯本地 IO 极快），
+                    // 缺失时回退 MediaMetadataRetriever 读取（本地/远程均支持，带超时）。
                     PrePlayAspectReader.read(context, thumbnailManager, s, library.id, file)
-                } else null
+                } else {
+                    null
+                }
 
                 // 文件夹访问加密双保险：加密目录内的文件不写播放历史（history = null 走现有"不记历史"机制）
                 val withinEncrypted = encryptedFolderManager.isWithinEncrypted(library.id, file.path)
@@ -1203,6 +1221,8 @@ class StorageFileViewModel @Inject constructor(
                 _events.tryEmit(StorageFileEvent.NavigateToPlayer(isAudioFile(file.name)))
             } catch (e: Exception) {
                 _events.tryEmit(StorageFileEvent.ShowError(e.message ?: context.getString(R.string.play_error_open_failed)))
+            } finally {
+                _preparingPlaybackPath.value = null
             }
         }
     }

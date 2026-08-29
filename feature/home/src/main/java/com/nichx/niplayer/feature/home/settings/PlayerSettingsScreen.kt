@@ -73,6 +73,7 @@ fun PlayerSettingsScreen(
     var doubleTapStepSeconds by remember { mutableStateOf(PlayerSettings.doubleTapStepSeconds) }
     var orientationMode by remember { mutableStateOf(PlayerSettings.orientationMode) }
     var showOrientationDialog by remember { mutableStateOf(false) }
+    var showOrientationHintDialog by remember { mutableStateOf(false) }
     var showTokenDialog by remember { mutableStateOf(false) }
     var showPriorityDialog by remember { mutableStateOf(false) }
     var showLongPressDialog by remember { mutableStateOf(false) }
@@ -136,6 +137,7 @@ fun PlayerSettingsScreen(
                 SettingClickRow(
                     label = stringResource(R.string.player_orientation_mode),
                     value = orientationModeLabel,
+                    infoOnClick = { showOrientationHintDialog = true },
                     onClick = { showOrientationDialog = true },
                 )
             }
@@ -221,6 +223,19 @@ fun PlayerSettingsScreen(
                     )
                 },
         )
+    }
+
+    if (showOrientationHintDialog) {
+        NiInfoDialog(
+            title = stringResource(R.string.player_orientation_title),
+            onDismiss = { showOrientationHintDialog = false },
+        ) {
+            Text(
+                stringResource(R.string.player_orientation_auto_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
     }
 
     if (showTokenDialog) {

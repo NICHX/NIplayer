@@ -433,6 +433,7 @@
     <string name="storage_file_unlocked">Unlocked “%1$s”</string>
     <string name="storage_file_encrypted">Encrypted “%1$s”</string>
     <string name="storage_file_decrypted">Decrypted “%1$s”</string>
+    <string name="storage_file_preparing_playback">Detecting orientation…</string>
     <string name="storage_file_password_changed">Password changed for “%1$s”</string>
     <string name="storage_file_renamed">Renamed to “%1$s”</string>
     <string name="storage_file_moved">Moved to “%1$s”</string>
@@ -627,6 +628,7 @@
     <string name="player_orientation_landscape">Landscape</string>
     <string name="player_orientation_portrait">Portrait</string>
     <string name="player_orientation_auto">Auto (by video ratio)</string>
+    <string name="player_orientation_auto_hint">First playback of a remote file reads the video ratio, which may cause a brief wait.</string>
     <string name="player_subtitle_title">Subtitles</string>
     <string name="player_auto_subtitle">Auto-load matching subtitles</string>
     <string name="player_auto_subtitle_desc">Automatically load subtitles with the same name in the same folder while playing</string>

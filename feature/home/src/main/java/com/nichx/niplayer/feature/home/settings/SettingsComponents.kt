@@ -10,7 +10,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -91,9 +94,15 @@ internal fun SettingSwitchRow(label: String, description: String? = null, checke
     }
 }
 
-/** 可点击行：左标签（可带描述）+ 右值，点击打开弹窗/子页（保留涟漪）。 */
+/** 可点击行：左标签（可带描述）+ 右值 + 可选信息图标，点击打开弹窗/子页（保留涟漪）。 */
 @Composable
-internal fun SettingClickRow(label: String, value: String, onClick: () -> Unit, description: String? = null) {
+internal fun SettingClickRow(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    description: String? = null,
+    infoOnClick: (() -> Unit)? = null,
+) {
     Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = label, style = MaterialTheme.typography.bodyLarge)
@@ -102,5 +111,23 @@ internal fun SettingClickRow(label: String, value: String, onClick: () -> Unit, 
             }
         }
         Text(text = value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        infoOnClick?.let { cb ->
+            Spacer(Modifier.size(8.dp))
+            val interaction = remember { MutableInteractionSource() }
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .clickable(interactionSource = interaction, indication = null, onClick = cb),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = "?",
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
     }
 }
