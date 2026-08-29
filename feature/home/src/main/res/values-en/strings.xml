@@ -346,6 +346,9 @@
     <string name="storage_file_filter_image">Image</string>
     <string name="storage_file_view_grid">Grid view</string>
     <string name="storage_file_view_list">List view</string>
+    <string name="storage_file_view_gallery">Gallery view</string>
+    <string name="storage_file_gallery_empty">No media in this folder</string>
+    <string name="storage_file_gallery_empty_hint">Gallery shows only images and videos. Switch back to list or grid to browse other files</string>
     <string name="storage_file_file">File</string>
     <string name="storage_file_folder">Folder</string>
     <string name="storage_file_unknown">Unknown</string>

@@ -30,7 +30,9 @@ object FileBrowserSettings {
     private const val KEY_SHOW_ONLY_MEDIA = "show_only_media_files"
     private const val KEY_SHOW_HIDDEN_FILES = "show_hidden_files"
     private const val KEY_MEDIA_FILTER = "file_media_filter"
-    private const val KEY_IS_GRID_VIEW = "file_browser_is_grid_view"
+    private const val KEY_VIEW_MODE = "file_browser_view_mode"
+    // 旧版布尔视图模式 key（true=网格, false=列表），首次读取新枚举时做一次迁移
+    private const val KEY_LEGACY_IS_GRID_VIEW = "file_browser_is_grid_view"
 
     /** 排序字段枚举。 */
     enum class SortBy(val value: Int) {
@@ -53,6 +55,22 @@ object FileBrowserSettings {
 
         companion object {
             fun fromValue(v: Int): MediaFilter = entries.find { it.value == v } ?: ALL
+        }
+    }
+
+    /**
+     * 文件浏览视图模式：列表 / 网格 / 画廊。
+     *
+     * [GALLERY] 用手机相册式密集方形格子展示图片与视频媒体文件，
+     * 非媒体文件（音频/文档）隐藏，文件夹保底保留瓦片以便继续导航。
+     */
+    enum class ViewMode(val value: Int) {
+        LIST(0),
+        GRID(1),
+        GALLERY(2);
+
+        companion object {
+            fun fromValue(v: Int): ViewMode = entries.find { it.value == v } ?: LIST
         }
     }
 
@@ -84,12 +102,19 @@ object FileBrowserSettings {
             _sortFlow.value = _sortFlow.value.copy(showHiddenFiles = value)
         }
 
-    /** 文件浏览视图模式：true=网格，false=列表，默认列表。 */
-    var isGridView: Boolean
-        get() = mmkv.decodeBool(KEY_IS_GRID_VIEW, false)
+    /** 文件浏览视图模式，默认列表。 */
+    var viewMode: ViewMode
+        get() {
+            // 旧版布尔 key 存在且新枚举 key 未写入时做一次迁移（true=网格, false=列表）
+            if (!mmkv.contains(KEY_VIEW_MODE) && mmkv.contains(KEY_LEGACY_IS_GRID_VIEW)) {
+                return if (mmkv.decodeBool(KEY_LEGACY_IS_GRID_VIEW, false)) ViewMode.GRID else ViewMode.LIST
+            }
+            return ViewMode.fromValue(mmkv.decodeInt(KEY_VIEW_MODE, ViewMode.LIST.value))
+        }
         set(value) {
-            mmkv.encode(KEY_IS_GRID_VIEW, value)
-            _sortFlow.value = _sortFlow.value.copy(isGridView = value)
+            mmkv.remove(KEY_LEGACY_IS_GRID_VIEW)
+            mmkv.encode(KEY_VIEW_MODE, value.value)
+            _sortFlow.value = _sortFlow.value.copy(viewMode = value)
         }
 
     /** 设置排序字段，立即持久化并通知 StateFlow。 */
@@ -118,8 +143,7 @@ object FileBrowserSettings {
         val showOnlyMediaFiles = mmkv.decodeBool(KEY_SHOW_ONLY_MEDIA, false)
         val showHiddenFiles = mmkv.decodeBool(KEY_SHOW_HIDDEN_FILES, false)
         val mediaFilter = MediaFilter.fromValue(mmkv.decodeInt(KEY_MEDIA_FILTER, MediaFilter.ALL.value))
-        val isGridView = mmkv.decodeBool(KEY_IS_GRID_VIEW, false)
-        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, mediaFilter, isGridView)
+        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, mediaFilter, viewMode)
     }
 }
 
@@ -133,6 +157,6 @@ data class SortConfig(
     val showHiddenFiles: Boolean = false,
     /** 文件类型过滤，默认为全部。 */
     val mediaFilter: FileBrowserSettings.MediaFilter = FileBrowserSettings.MediaFilter.ALL,
-    /** 文件浏览视图模式：true=网格，false=列表，默认列表。 */
-    val isGridView: Boolean = false,
+    /** 文件浏览视图模式：列表/网格/画廊，默认列表。 */
+    val viewMode: FileBrowserSettings.ViewMode = FileBrowserSettings.ViewMode.LIST,
 )

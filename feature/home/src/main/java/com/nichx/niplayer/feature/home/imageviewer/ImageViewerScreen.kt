@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -87,10 +88,12 @@ fun ImageViewerScreen(
             )
         }
 
-        // 顶栏返回按钮（半透明，不占布局空间）
+        // 顶栏返回按钮（半透明；加 statusBarsPadding 避开系统状态栏点按/滚顶手势，否则点不到）
         IconButton(
             onClick = onBack,
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(8.dp),
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,

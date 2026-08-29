@@ -25,8 +25,8 @@ import javax.inject.Inject
 /**
  * 图片查看页 ViewModel。
  *
- * 从 [ImageViewerRequestHolder] 消费请求后，重建 Storage 实例并列出同目录下所有图片文件，
- * 供 [ImageViewerScreen] 的 HorizontalPager 横向滑动浏览。
+ * 从 [ImageViewerRequestHolder] 读取请求（不消费，可安全重建），重建 Storage 实例并列出
+ * 同目录下所有图片文件，供 [ImageViewerScreen] 的 HorizontalPager 横向滑动浏览。
  *
  * 图片加载策略（按 [Storage.createPlayUrl] 返回值分流）：
  * - 非 null URL（Local / DocumentFile / WebDAV）→ [ImageModel.Url]（携带认证头）
@@ -61,9 +61,9 @@ class ImageViewerViewModel @Inject constructor(
         loadImages()
     }
 
-    /** 从 Holder 消费请求，重建 Storage，列出目录图片。 */
+    /** 从 Holder 读取请求（不消费，ViewModel 可安全重建），重建 Storage，列出目录图片。 */
     private fun loadImages() {
-        val request = holder.consume() ?: run {
+        val request = holder.peek() ?: run {
             _uiState.update { it.copy(isLoading = false, error = context.getString(R.string.image_viewer_invalid_request)) }
             return
         }

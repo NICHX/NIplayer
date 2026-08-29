@@ -80,6 +80,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PhotoLibrary
 
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
@@ -228,7 +229,6 @@ fun FileBrowserScreen(
     val selectedPaths by viewModel.selectedPaths.collectAsStateWithLifecycle()
     val messageController = LocalAppMessageController.current
     var fileMenu by remember { mutableStateOf<Pair<StorageFile, Boolean>?>(null) }
-    var isGridView by remember { mutableStateOf(FileBrowserSettings.isGridView) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showFilterMenu by remember { mutableStateOf(false) }
     // 排序/过滤下拉菜单锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
@@ -253,7 +253,12 @@ fun FileBrowserScreen(
 
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
+    val galleryState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
+
+    var viewMode by remember { mutableStateOf(FileBrowserSettings.viewMode) }
+    val isGridView = viewMode == FileBrowserSettings.ViewMode.GRID
+    val isGalleryView = viewMode == FileBrowserSettings.ViewMode.GALLERY
 
     // 目录路径 -> 离开时的滚动位置(index, offset)
     // 切换文件夹时记录旧目录位置，返回/进入时恢复原滚动位置，而不是把目录重新顶到最顶
@@ -261,10 +266,10 @@ fun FileBrowserScreen(
 
     // 记录当前目录的精确滚动位置（在导航动作前调用）
     fun captureCurrentScroll() {
-        pathScrollCache[uiState.currentPath] = if (isGridView) {
-            gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
-        } else {
-            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        pathScrollCache[uiState.currentPath] = when {
+            isGridView -> gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+            isGalleryView -> galleryState.firstVisibleItemIndex to galleryState.firstVisibleItemScrollOffset
+            else -> listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
         }
     }
 
@@ -272,10 +277,10 @@ fun FileBrowserScreen(
     LaunchedEffect(uiState.currentPath, uiState.isLoading) {
         if (!uiState.isLoading) {
             pathScrollCache[uiState.currentPath]?.let { (index, offset) ->
-                if (isGridView) {
-                    gridState.scrollToItem(index, offset)
-                } else {
-                    listState.scrollToItem(index, offset)
+                when {
+                    isGridView -> gridState.scrollToItem(index, offset)
+                    isGalleryView -> galleryState.scrollToItem(index, offset)
+                    else -> listState.scrollToItem(index, offset)
                 }
             }
         }
@@ -283,8 +288,11 @@ fun FileBrowserScreen(
 
     val showScrollToTop by remember {
         derivedStateOf {
-            if (isGridView) gridState.firstVisibleItemIndex > 2
-            else listState.firstVisibleItemIndex > 2
+            when {
+                isGridView -> gridState.firstVisibleItemIndex > 2
+                isGalleryView -> galleryState.firstVisibleItemIndex > 2
+                else -> listState.firstVisibleItemIndex > 2
+            }
         }
     }
 
@@ -364,19 +372,6 @@ fun FileBrowserScreen(
             isMultiSelect -> viewModel.exitMultiSelect()
             uiState.canGoUp -> { captureCurrentScroll(); viewModel.goUp() }
             else -> onBack()
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        viewModel.events.collect { event ->
-            when (event) {
-                is StorageFileEvent.NavigateToPlayer -> onPlayVideo()
-                is StorageFileEvent.NavigateToImageViewer -> onNavigateToImageViewer()
-                is StorageFileEvent.ShowError -> messageController.post(NiMessage.error(event.message))
-                is StorageFileEvent.ShowToast -> messageController.post(NiMessage.info(event.message))
-                is StorageFileEvent.OpenFileActions ->
-                    fileMenu = event.file to event.isFavorited
-            }
         }
     }
 
@@ -581,19 +576,36 @@ fun FileBrowserScreen(
                         }
                     }
                     IconButton(onClick = {
-                        val newValue = !isGridView
-                        isGridView = newValue
-                        FileBrowserSettings.isGridView = newValue
+                        // 三态循环切换：列表 → 网格 → 画廊 → 列表，并持久化
+                        val next = when (viewMode) {
+                            FileBrowserSettings.ViewMode.LIST -> FileBrowserSettings.ViewMode.GRID
+                            FileBrowserSettings.ViewMode.GRID -> FileBrowserSettings.ViewMode.GALLERY
+                            FileBrowserSettings.ViewMode.GALLERY -> FileBrowserSettings.ViewMode.LIST
+                        }
+                        viewMode = next
+                        FileBrowserSettings.viewMode = next
                     }) {
+                        // 图标表示"点击后将进入的下一个视图"
+                        val nextMode = when (viewMode) {
+                            FileBrowserSettings.ViewMode.LIST -> FileBrowserSettings.ViewMode.GRID
+                            FileBrowserSettings.ViewMode.GRID -> FileBrowserSettings.ViewMode.GALLERY
+                            FileBrowserSettings.ViewMode.GALLERY -> FileBrowserSettings.ViewMode.LIST
+                        }
                         NiStyleIcon(
-                            icon = if (isGridView) Icons.AutoMirrored.Rounded.ViewList
-                            else Icons.Rounded.GridView,
+                            icon = when (nextMode) {
+                                FileBrowserSettings.ViewMode.LIST -> Icons.AutoMirrored.Rounded.ViewList
+                                FileBrowserSettings.ViewMode.GRID -> Icons.Rounded.GridView
+                                FileBrowserSettings.ViewMode.GALLERY -> Icons.Rounded.PhotoLibrary
+                            },
                             style = NiAppIconStyle,
                             containerSize = 40.dp,
                             iconSize = 22.dp,
                             contentDescription = stringResource(
-                                if (isGridView) R.string.storage_file_view_list
-                                else R.string.storage_file_view_grid,
+                                when (nextMode) {
+                                    FileBrowserSettings.ViewMode.LIST -> R.string.storage_file_view_list
+                                    FileBrowserSettings.ViewMode.GRID -> R.string.storage_file_view_grid
+                                    FileBrowserSettings.ViewMode.GALLERY -> R.string.storage_file_view_gallery
+                                },
                             ),
                         )
                     }
@@ -667,7 +679,23 @@ fun FileBrowserScreen(
                         )
                         uiState.rawFiles.isEmpty() -> EmptyDirState()
                         else -> {
-                            if (isGridView) {
+                            if (isGalleryView) {
+                                FileGallery(
+                                    files = uiState.files,
+                                    thumbnailUrls = thumbnailUrls,
+                                    tooShortPaths = tooShortPaths,
+                                    encryptedPaths = encryptedPaths,
+                                    isMultiSelect = isMultiSelect,
+                                    selectedPaths = selectedPaths,
+                                    onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
+                                    onPlayFile = viewModel::playFile,
+                                    onOpenImageFile = viewModel::openImageFile,
+                                    onShowFileActions = viewModel::openFileActions,
+                                    onToggleSelection = viewModel::toggleSelection,
+                                    galleryState = galleryState,
+                                    contentTopInset = topInset + breadcrumbHeight,
+                                )
+                            } else if (isGridView) {
                                 FileGrid(
                                     files = uiState.files,
                                     thumbnailUrls = thumbnailUrls,
@@ -748,8 +776,11 @@ fun FileBrowserScreen(
                     onClick = {
                         scope.launch {
                             // 跳转回顶部：瞬时定位替代滑动，长列表下更省时
-                            if (isGridView) gridState.scrollToItem(0)
-                            else listState.scrollToItem(0)
+                            when {
+                                isGridView -> gridState.scrollToItem(0)
+                                isGalleryView -> galleryState.scrollToItem(0)
+                                else -> listState.scrollToItem(0)
+                            }
                         }
                     },
                     contentDescription = stringResource(R.string.storage_file_back_to_top),
@@ -2060,6 +2091,287 @@ private fun GridFileCard(
                 .padding(horizontal = 4.dp, vertical = 6.dp)
                 .align(Alignment.CenterHorizontally),
         )
+    }
+}
+
+/**
+ * 画廊视图：手机相册式密集方形格子，仅展示图片/视频媒体与文件夹。
+ *
+ * 非媒体文件（音频/文档等）在画廊模式隐藏以保持画面纯净；文件夹保留为紧凑方形
+ * 瓦片以支持继续下钻导航。空媒体目录显示"暂无媒体"空态。
+ */
+@Composable
+private fun FileGallery(
+    files: List<StorageFile>,
+    thumbnailUrls: Map<String, String>,
+    tooShortPaths: Set<String>,
+    encryptedPaths: Set<String>,
+    isMultiSelect: Boolean,
+    selectedPaths: Set<String>,
+    onOpenDirectory: (StorageFile) -> Unit,
+    onPlayFile: (StorageFile) -> Unit,
+    onOpenImageFile: (StorageFile) -> Unit,
+    onShowFileActions: (StorageFile) -> Unit,
+    onToggleSelection: (StorageFile) -> Unit,
+    galleryState: LazyGridState,
+    contentTopInset: Dp = 0.dp,
+) {
+    // 仅保留：文件夹（继续导航）+ 图片 / 视频（相册媒体），隐藏音频与其他文件
+    val galleryItems = files.filter {
+        it.isDirectory || MediaFileTypes.isImageFile(it.name) || MediaFileTypes.isVideoFile(it.name)
+    }
+    if (galleryItems.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            contentAlignment = Alignment.Center,
+        ) {
+            NiEmptyState(
+                icon = Icons.Rounded.Image,
+                text = stringResource(R.string.storage_file_gallery_empty),
+                hint = stringResource(R.string.storage_file_gallery_empty_hint),
+            )
+        }
+        return
+    }
+    LazyVerticalGrid(
+        state = galleryState,
+        columns = GridCells.Adaptive(minSize = 112.dp),
+        contentPadding = PaddingValues(
+            start = 8.dp,
+            end = 8.dp,
+            top = contentTopInset,
+            bottom = FabBottomOffset,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        items(
+            items = galleryItems,
+            key = { it.path },
+        ) { file ->
+            GalleryCell(
+                file = file,
+                thumbnailUrl = thumbnailUrls[file.path],
+                isTooShort = tooShortPaths.contains(file.path),
+                isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
+                isMultiSelect = isMultiSelect,
+                isSelected = file.path in selectedPaths,
+                onOpenDirectory = { onOpenDirectory(file) },
+                onPlayFile = { onPlayFile(file) },
+                onOpenImageFile = { onOpenImageFile(file) },
+                onShowFileActions = { onShowFileActions(file) },
+                onToggleSelection = { onToggleSelection(file) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun GalleryCell(
+    file: StorageFile,
+    thumbnailUrl: String?,
+    isTooShort: Boolean,
+    isEncrypted: Boolean,
+    isMultiSelect: Boolean,
+    isSelected: Boolean,
+    onOpenDirectory: () -> Unit,
+    onPlayFile: () -> Unit,
+    onOpenImageFile: () -> Unit,
+    onShowFileActions: () -> Unit,
+    onToggleSelection: () -> Unit,
+) {
+    val isVideo = MediaFileTypes.isVideoFile(file.name)
+    val isImage = MediaFileTypes.isImageFile(file.name)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = tween(durationMillis = NiMotion.DURATION_MICRO),
+        label = "galleryCellScale",
+    )
+
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(RoundedCornerShape(4.dp))
+            .then(
+                if (isSelected) {
+                    Modifier.border(
+                        width = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(4.dp),
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .background(NiExtraColors.current.surfaceLevel3)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    if (isMultiSelect) {
+                        onToggleSelection()
+                    } else {
+                        when {
+                            file.isDirectory -> onOpenDirectory()
+                            isVideo -> onPlayFile()
+                            isImage -> onOpenImageFile()
+                            else -> onPlayFile()
+                        }
+                    }
+                },
+                onLongClick = {
+                    // 长按打开单文件操作菜单；多选模式下长按不弹菜单（避免与多选冲突）
+                    if (!isMultiSelect) onShowFileActions()
+                },
+            ),
+    ) {
+        if (file.isDirectory) {
+            // 文件夹：紧凑方形瓦片，品牌渐变 + 锁定角标 + 底部名称标签
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                            ),
+                        ),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+            // 底部名称：文件夹可见名称，媒体格子保持纯净
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                NiAutoSizeText(
+                    text = file.name,
+                    maxLines = 1,
+                    minFontSize = 9.sp,
+                    maxFontSize = 11.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (isEncrypted) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Lock,
+                        contentDescription = stringResource(R.string.storage_file_encrypted),
+                        tint = Color.White,
+                        modifier = Modifier.size(12.dp),
+                    )
+                }
+            }
+        } else {
+            // 媒体：方形相册格，缩略图满载裁剪
+            val hasThumbnail = thumbnailUrl != null
+            if (hasThumbnail) {
+                AsyncImage(
+                    model = thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when {
+                        isVideo && isTooShort -> Text(
+                            text = "<15s",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.85f),
+                            fontWeight = FontWeight.Medium,
+                        )
+                        isVideo -> Icon(
+                            imageVector = Icons.Rounded.Movie,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.65f),
+                            modifier = Modifier.size(34.dp),
+                        )
+                        isImage -> Icon(
+                            imageVector = Icons.Rounded.Image,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.65f),
+                            modifier = Modifier.size(34.dp),
+                        )
+                    }
+                }
+            }
+            // 视频中心播放徽章
+            if (isVideo && hasThumbnail) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = stringResource(R.string.storage_file_action_play),
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+            }
+        }
+
+        // 多选模式：左上角选中指示（圆形勾选）
+        if (isMultiSelect) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(4.dp)
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.primary
+                        else Color.Black.copy(alpha = 0.45f),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (isSelected) Icons.Rounded.Check else Icons.Rounded.Add,
+                    contentDescription = stringResource(
+                        if (isSelected) R.string.storage_file_selected else R.string.storage_file_select,
+                    ),
+                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.White,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
     }
 }
 
