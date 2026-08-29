@@ -208,7 +208,7 @@ fun FileBrowserScreen(
     storageId: Int,
     initialPath: String = "",
     onBack: () -> Unit,
-    onPlayVideo: () -> Unit,
+    onPlayVideo: (Boolean) -> Unit,
     onNavigateToImageViewer: () -> Unit = {},
     onNavigateToDownloadManager: () -> Unit = {},
     // 多选态上抛给宿主：进入多选时由 Home 隐藏底部导航栏、MainActivity 隐藏音乐条
@@ -322,7 +322,7 @@ fun FileBrowserScreen(
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is StorageFileEvent.NavigateToPlayer -> onPlayVideo()
+                is StorageFileEvent.NavigateToPlayer -> onPlayVideo(event.isAudio)
                 is StorageFileEvent.NavigateToImageViewer -> onNavigateToImageViewer()
                 is StorageFileEvent.ShowError -> messageController.post(NiMessage.error(event.message))
                 is StorageFileEvent.ShowToast -> messageController.post(NiMessage.info(event.message))
@@ -401,6 +401,8 @@ fun FileBrowserScreen(
                     // 点击逐级返回；长按直接回到存储根目录（深层目录快速返回）
                     Box(
                         modifier = Modifier
+                            // 先按圆形裁剪，让 combinedClickable 的涟漪跟随圆形按钮形状
+                            .clip(CircleShape)
                             .combinedClickable(
                                 onClick = {
                                     if (uiState.canGoUp) { captureCurrentScroll(); viewModel.goUp() } else onBack()

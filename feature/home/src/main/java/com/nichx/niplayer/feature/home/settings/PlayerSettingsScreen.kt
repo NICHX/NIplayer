@@ -71,7 +71,8 @@ fun PlayerSettingsScreen(
     var longPressTimeoutMs by remember { mutableStateOf(PlayerSettings.longPressTimeoutMs) }
     var seekSensitivity by remember { mutableStateOf(PlayerSettings.seekSensitivity) }
     var doubleTapStepSeconds by remember { mutableStateOf(PlayerSettings.doubleTapStepSeconds) }
-    var defaultPortrait by remember { mutableStateOf(PlayerSettings.defaultPortrait) }
+    var orientationMode by remember { mutableStateOf(PlayerSettings.orientationMode) }
+    var showOrientationDialog by remember { mutableStateOf(false) }
     var showTokenDialog by remember { mutableStateOf(false) }
     var showPriorityDialog by remember { mutableStateOf(false) }
     var showLongPressDialog by remember { mutableStateOf(false) }
@@ -91,6 +92,11 @@ fun PlayerSettingsScreen(
     val doubleTapLabel = when (doubleTapStepSeconds) {
         0 -> stringResource(R.string.player_double_tap_off)
         else -> stringResource(R.string.player_double_tap_seconds, doubleTapStepSeconds)
+    }
+    val orientationModeLabel = when (orientationMode) {
+        1 -> stringResource(R.string.player_orientation_portrait)
+        2 -> stringResource(R.string.player_orientation_auto)
+        else -> stringResource(R.string.player_orientation_landscape)
     }
 
     NiScaffold(
@@ -127,14 +133,10 @@ fun PlayerSettingsScreen(
                     },
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                SettingSwitchRow(
-                    label = stringResource(R.string.player_default_portrait),
-                    description = stringResource(R.string.player_default_portrait_desc),
-                    checked = defaultPortrait,
-                    onCheckedChange = {
-                        defaultPortrait = it
-                        PlayerSettings.defaultPortrait = it
-                    },
+                SettingClickRow(
+                    label = stringResource(R.string.player_orientation_mode),
+                    value = orientationModeLabel,
+                    onClick = { showOrientationDialog = true },
                 )
             }
 
@@ -196,6 +198,29 @@ fun PlayerSettingsScreen(
             }
             Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
+    }
+
+    if (showOrientationDialog) {
+        NiListItemDialog(
+            title = stringResource(R.string.player_orientation_title),
+            onDismiss = { showOrientationDialog = false },
+            items = listOf(
+                0 to stringResource(R.string.player_orientation_landscape),
+                1 to stringResource(R.string.player_orientation_portrait),
+                2 to stringResource(R.string.player_orientation_auto),
+            )
+                .map { (option, label) ->
+                    NiDialogItem(
+                        label = label,
+                        isSelected = orientationMode == option,
+                        onClick = {
+                            orientationMode = option
+                            PlayerSettings.orientationMode = option
+                            showOrientationDialog = false
+                        },
+                    )
+                },
+        )
     }
 
     if (showTokenDialog) {

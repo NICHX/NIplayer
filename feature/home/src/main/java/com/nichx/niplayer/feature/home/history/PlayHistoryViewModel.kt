@@ -267,7 +267,7 @@ class PlayHistoryViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = playStarter.startFromHistory(history)) {
                 is PlayStartResult.Success ->
-                    _events.tryEmit(PlayHistoryEvent.NavigateToPlayer)
+                    _events.tryEmit(PlayHistoryEvent.NavigateToPlayer(MediaFileTypes.isAudioFile(history.videoName)))
 
                 is PlayStartResult.Error ->
                     _events.tryEmit(PlayHistoryEvent.ShowError(result.message))
@@ -383,8 +383,8 @@ class PlayHistoryViewModel @Inject constructor(
 
 /** 一次性事件（导航、错误提示、Toast），由 [PlayHistoryScreen] collect。 */
 sealed class PlayHistoryEvent {
-    /** 播放请求已就绪，导航到播放页。 */
-    object NavigateToPlayer : PlayHistoryEvent()
+    /** 播放请求已就绪，携带音频标记以便直接分流到视频/音频播放页。 */
+    data class NavigateToPlayer(val isAudio: Boolean) : PlayHistoryEvent()
 
     /** 恢复播放失败，显示错误提示。 */
     data class ShowError(val message: String) : PlayHistoryEvent()

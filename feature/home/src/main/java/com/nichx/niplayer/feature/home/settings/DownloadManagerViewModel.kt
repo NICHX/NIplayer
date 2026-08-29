@@ -239,7 +239,7 @@ class DownloadManagerViewModel @Inject constructor(
             )
         )
         viewModelScope.launch {
-            _navigationEvent.emit(DownloadNavigationEvent.NavigateToPlayer)
+            _navigationEvent.emit(DownloadNavigationEvent.NavigateToPlayer(isAudio = false))
         }
     }
 
@@ -254,7 +254,7 @@ class DownloadManagerViewModel @Inject constructor(
             )
         )
         viewModelScope.launch {
-            _navigationEvent.emit(DownloadNavigationEvent.NavigateToPlayer)
+            _navigationEvent.emit(DownloadNavigationEvent.NavigateToPlayer(isAudio = true))
         }
     }
 
@@ -418,8 +418,8 @@ class DownloadManagerViewModel @Inject constructor(
 
 /** 导航事件，由 Screen 层 collect 后执行相应导航操作。 */
 sealed class DownloadNavigationEvent {
-    /** 导航到播放页（视频/音频）。 */
-    data object NavigateToPlayer : DownloadNavigationEvent()
+    /** 导航到播放页（视频/音频），携带 isAudio 用于直接分流。 */
+    data class NavigateToPlayer(val isAudio: Boolean) : DownloadNavigationEvent()
 
     /** 导航到图片查看页。 */
     data object NavigateToImageViewer : DownloadNavigationEvent()

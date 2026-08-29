@@ -280,6 +280,15 @@ class PlayerViewModel @Inject constructor(
     private val _title = MutableStateFlow("")
     val title: StateFlow<String> = _title.asStateFlow()
 
+    /**
+     * 进入播放器前预读的视频显示宽高比（[PlaybackRequest.initialAspectRatio]，已含旋转校正）。
+     *
+     * 供"自动方向"模式在首帧渲染前直接锁定横/竖屏；null 表示未预读成功（无缩略图缓存且
+     * 预读失败），UI 层回退到等 media3 [videoSize] 后再定方向。
+     */
+    private val _preReadAspectRatio = MutableStateFlow<Float?>(null)
+    val preReadAspectRatio: StateFlow<Float?> = _preReadAspectRatio.asStateFlow()
+
     /** 暴露 [NxPlayer] 供 UI 层 SurfaceView 挂载渲染。 */
     val nxPlayer: NxPlayer get() = player
 
@@ -820,6 +829,7 @@ class PlayerViewModel @Inject constructor(
 
         playbackRequestHolder.consume()?.let { request ->
             _title.value = request.title
+            _preReadAspectRatio.value = request.initialAspectRatio
             // C-02 修复：保存请求副本，错误后重试使用
             lastPlaybackRequest = request
             isAudioPlayback = request.isAudio

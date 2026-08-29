@@ -138,7 +138,7 @@ class SearchViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = playStarter.startFromHistory(history)) {
                 is PlayStartResult.Success ->
-                    _events.tryEmit(SearchEvent.NavigateToPlayer)
+                    _events.tryEmit(SearchEvent.NavigateToPlayer(MediaFileTypes.isAudioFile(history.videoName)))
 
                 is PlayStartResult.Error ->
                     _events.tryEmit(SearchEvent.ShowError(result.message))
@@ -159,7 +159,7 @@ class SearchViewModel @Inject constructor(
             } else {
                 when (val result = playStarter.startFromQuickAccess(entity)) {
                     is PlayStartResult.Success ->
-                        _events.tryEmit(SearchEvent.NavigateToPlayer)
+                        _events.tryEmit(SearchEvent.NavigateToPlayer(MediaFileTypes.isAudioFile(entity.name)))
 
                     is PlayStartResult.Error ->
                         _events.tryEmit(SearchEvent.ShowError(result.message))
@@ -194,8 +194,8 @@ data class SearchUiState(
 
 /** 首页搜索一次性事件，由 [SearchScreen] collect。 */
 sealed class SearchEvent {
-    /** 播放请求已就绪，导航到播放页。 */
-    object NavigateToPlayer : SearchEvent()
+    /** 播放请求已就绪，携带音频标记以便直接分流到视频/音频播放页。 */
+    data class NavigateToPlayer(val isAudio: Boolean) : SearchEvent()
 
     /** 打开文件浏览页（快速访问文件夹 / 存储源根目录）。 */
     data class NavigateToStorageFile(val libraryId: Int, val relativePath: String = "") : SearchEvent()

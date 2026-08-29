@@ -66,7 +66,7 @@ enum class TransferTab { DOWNLOAD, UPLOAD }
 @Composable
 fun TransferScreen(
     onBack: () -> Unit = {},
-    onPlayVideo: () -> Unit = {},
+    onPlayVideo: (Boolean) -> Unit = {},
     onNavigateToImageViewer: () -> Unit = {},
     downloadViewModel: DownloadManagerViewModel = hiltViewModel(),
     uploadViewModel: UploadManagerViewModel = hiltViewModel(),

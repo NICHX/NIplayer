@@ -78,7 +78,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun SearchScreen(
     onBack: () -> Unit,
-    onNavigateToPlayVideo: () -> Unit,
+    onNavigateToPlayVideo: (Boolean) -> Unit,
     onNavigateToStorageFile: (Int, String) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
@@ -90,7 +90,7 @@ fun SearchScreen(
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is SearchEvent.NavigateToPlayer -> onNavigateToPlayVideo()
+                is SearchEvent.NavigateToPlayer -> onNavigateToPlayVideo(event.isAudio)
                 is SearchEvent.NavigateToStorageFile ->
                     onNavigateToStorageFile(event.libraryId, event.relativePath)
 
