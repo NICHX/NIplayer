@@ -83,7 +83,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             fileSortAscending = FileBrowserSettings.sortAscending,
             fileShowOnlyMedia = FileBrowserSettings.showOnlyMediaFiles,
             fileShowHiddenFiles = FileBrowserSettings.showHiddenFiles,
-            fileIsGridView = FileBrowserSettings.isGridView,
+            fileViewMode = FileBrowserSettings.viewMode.value,
             // 视频扩展名白名单
             videoExtensions = VideoExtensionSettings.supportText,
             // 下载目录（SAF URI 跨设备可能失效，仍随备份导出便于同设备恢复）
@@ -155,7 +155,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.fileSortAscending?.let { FileBrowserSettings.setSortAscending(it) }
         s.fileShowOnlyMedia?.let { FileBrowserSettings.showOnlyMediaFiles = it }
         s.fileShowHiddenFiles?.let { FileBrowserSettings.showHiddenFiles = it }
-        s.fileIsGridView?.let { FileBrowserSettings.isGridView = it }
+        s.fileViewMode?.let { FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.fromValue(it) }
         // 视频扩展名
         s.videoExtensions?.let { VideoExtensionSettings.supportText = it }
         // 下载目录
@@ -228,7 +228,7 @@ data class AppSettingsData(
     val fileSortAscending: Boolean? = null,
     val fileShowOnlyMedia: Boolean? = null,
     val fileShowHiddenFiles: Boolean? = null,
-    val fileIsGridView: Boolean? = null,
+    val fileViewMode: Int? = null,
     // 视频扩展名白名单
     val videoExtensions: String? = null,
     // 下载目录（SAF URI 跨设备可能失效，仍随备份导出便于同设备恢复）

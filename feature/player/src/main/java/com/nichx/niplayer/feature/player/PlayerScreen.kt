@@ -3114,18 +3114,21 @@ private fun PlayerControllerLayer(
 
             Spacer(Modifier.height(6.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            if (isPortrait) {
+                // 竖屏：底部控制拆为两行布局，确保上/下一集与选集按钮可用
+                // 第一行：功能按钮（倍速/音量 | 选集/音轨/字幕）
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Start,
                 ) {
-                    val primary = MaterialTheme.colorScheme.primary
-                    if (isPortrait) {
-                        // 竖屏：倍速收为纯图标按钮，隐藏画面比例（空间有限）
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start,
+                    ) {
+                        val primary = MaterialTheme.colorScheme.primary
                         IconButton(onClick = onToggleSpeedMenu, modifier = Modifier.size(44.dp)) {
                             Icon(
                                 imageVector = Icons.Rounded.Speed,
@@ -3134,75 +3137,81 @@ private fun PlayerControllerLayer(
                                 modifier = Modifier.size(22.dp),
                             )
                         }
-                    } else {
-                        TextButton(
-                            onClick = onToggleSpeedMenu,
-                            modifier = Modifier.height(44.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Speed,
-                                    contentDescription = null,
-                                    tint = if (speedIndex != 1) primary else Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(2.dp))
-                                Text(
-                                    text = speedLabel,
-                                    color = if (speedIndex != 1) primary else Color.White.copy(alpha = 0.85f),
-                                    fontSize = 14.sp,
-                                    fontWeight = if (speedIndex != 1) FontWeight.Bold else FontWeight.Normal,
-                                )
-                            }
+                        var muted by remember {
+                            mutableStateOf(audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0)
                         }
-                        IconButton(onClick = onCycleScale, modifier = Modifier.size(44.dp)) {
+                        LaunchedEffect(previousMusicVolume) {
+                            muted = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+                        }
+                        IconButton(
+                            onClick = {
+                                val vol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+                                val max = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
+                                if (vol == 0) {
+                                    val restore = if (localPreviousVolume > 0) localPreviousVolume
+                                        else (max * 0.5f).toInt().coerceAtLeast(1)
+                                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, restore, 0)
+                                    onPreviousMusicVolumeChange(restore)
+                                    muted = false
+                                } else {
+                                    onPreviousMusicVolumeChange(vol)
+                                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                                    muted = true
+                                }
+                            },
+                            modifier = Modifier.size(44.dp),
+                        ) {
                             Icon(
-                                imageVector = Icons.Rounded.AspectRatio,
-                                contentDescription = stringResource(R.string.player_scale_icon),
-                                tint = if (scaleIndex != 0) primary else Color.White.copy(alpha = 0.85f),
+                                imageVector = if (muted) Icons.AutoMirrored.Rounded.VolumeOff
+                                    else Icons.AutoMirrored.Rounded.VolumeUp,
+                                contentDescription = if (muted) stringResource(R.string.player_unmute) else stringResource(R.string.player_mute),
+                                tint = if (muted) primary else Color.White.copy(alpha = 0.85f),
                                 modifier = Modifier.size(22.dp),
                             )
                         }
                     }
-                    var muted by remember {
-                        mutableStateOf(audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0)
-                    }
-                    LaunchedEffect(previousMusicVolume) {
-                        muted = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
-                    }
-                    IconButton(
-                        onClick = {
-                            val vol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-                            val max = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
-                            if (vol == 0) {
-                                val restore = if (localPreviousVolume > 0) localPreviousVolume
-                                    else (max * 0.5f).toInt().coerceAtLeast(1)
-                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, restore, 0)
-                                onPreviousMusicVolumeChange(restore)
-                                muted = false
-                            } else {
-                                onPreviousMusicVolumeChange(vol)
-                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
-                                muted = true
-                            }
-                        },
-                        modifier = Modifier.size(44.dp),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End,
                     ) {
-                        Icon(
-                            imageVector = if (muted) Icons.AutoMirrored.Rounded.VolumeOff
-                                else Icons.AutoMirrored.Rounded.VolumeUp,
-                            contentDescription = if (muted) stringResource(R.string.player_unmute) else stringResource(R.string.player_mute),
-                            tint = if (muted) primary else Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.size(22.dp),
-                        )
+                        if (playlist.isNotEmpty()) {
+                            IconButton(onClick = onTogglePlaylistDialog, modifier = Modifier.size(44.dp)) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.ViewList,
+                                    contentDescription = stringResource(R.string.player_episode_list_icon),
+                                    tint = Color.White.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                        }
+                        IconButton(onClick = onToggleAudioTrackMenu, modifier = Modifier.size(44.dp)) {
+                            Icon(
+                                imageVector = Icons.Rounded.MusicNote,
+                                contentDescription = stringResource(R.string.player_audio_track),
+                                tint = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        IconButton(onClick = onAddSubtitle, modifier = Modifier.size(44.dp)) {
+                            Icon(
+                                imageVector = Icons.Rounded.Subtitles,
+                                contentDescription = stringResource(R.string.player_subtitle),
+                                tint = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
                     }
                 }
 
+                Spacer(Modifier.height(6.dp))
+
+                // 第二行：核心播放控制（上一集/快退/播放/快进/下一集）
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (!isPortrait && playlist.size > 1) {
+                    if (playlist.size > 1) {
                         IconButton(onClick = onSkipPrevious, modifier = Modifier.size(44.dp)) {
                             Icon(
                                 imageVector = Icons.Rounded.SkipPrevious,
@@ -3242,7 +3251,7 @@ private fun PlayerControllerLayer(
                             modifier = Modifier.size(26.dp),
                         )
                     }
-                    if (!isPortrait && playlist.size > 1) {
+                    if (playlist.size > 1) {
                         IconButton(onClick = onSkipNext, modifier = Modifier.size(44.dp)) {
                             Icon(
                                 imageVector = Icons.Rounded.SkipNext,
@@ -3253,12 +3262,140 @@ private fun PlayerControllerLayer(
                         }
                     }
                 }
-
+            } else {
+                // 横屏：单行三层布局（功能 | 播放控制 | 功能）
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.End,
                 ) {
-                    if (!isPortrait) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start,
+                    ) {
+                        val primary = MaterialTheme.colorScheme.primary
+                        TextButton(
+                            onClick = onToggleSpeedMenu,
+                            modifier = Modifier.height(44.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Speed,
+                                    contentDescription = null,
+                                    tint = if (speedIndex != 1) primary else Color.White.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(2.dp))
+                                Text(
+                                    text = speedLabel,
+                                    color = if (speedIndex != 1) primary else Color.White.copy(alpha = 0.85f),
+                                    fontSize = 14.sp,
+                                    fontWeight = if (speedIndex != 1) FontWeight.Bold else FontWeight.Normal,
+                                )
+                            }
+                        }
+                        IconButton(onClick = onCycleScale, modifier = Modifier.size(44.dp)) {
+                            Icon(
+                                imageVector = Icons.Rounded.AspectRatio,
+                                contentDescription = stringResource(R.string.player_scale_icon),
+                                tint = if (scaleIndex != 0) primary else Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        var muted by remember {
+                            mutableStateOf(audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0)
+                        }
+                        LaunchedEffect(previousMusicVolume) {
+                            muted = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+                        }
+                        IconButton(
+                            onClick = {
+                                val vol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+                                val max = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
+                                if (vol == 0) {
+                                    val restore = if (localPreviousVolume > 0) localPreviousVolume
+                                        else (max * 0.5f).toInt().coerceAtLeast(1)
+                                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, restore, 0)
+                                    onPreviousMusicVolumeChange(restore)
+                                    muted = false
+                                } else {
+                                    onPreviousMusicVolumeChange(vol)
+                                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                                    muted = true
+                                }
+                            },
+                            modifier = Modifier.size(44.dp),
+                        ) {
+                            Icon(
+                                imageVector = if (muted) Icons.AutoMirrored.Rounded.VolumeOff
+                                    else Icons.AutoMirrored.Rounded.VolumeUp,
+                                contentDescription = if (muted) stringResource(R.string.player_unmute) else stringResource(R.string.player_mute),
+                                tint = if (muted) primary else Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        if (playlist.size > 1) {
+                            IconButton(onClick = onSkipPrevious, modifier = Modifier.size(44.dp)) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SkipPrevious,
+                                    contentDescription = stringResource(R.string.player_episode_previous),
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        }
+                        IconButton(onClick = onRewind, modifier = Modifier.size(48.dp)) {
+                            Icon(
+                                imageVector = Icons.Rounded.Replay10,
+                                contentDescription = stringResource(R.string.player_rewind_10s),
+                                tint = Color.White,
+                                modifier = Modifier.size(26.dp),
+                            )
+                        }
+                        IconButton(
+                            onClick = onTogglePlayPause,
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.18f)),
+                        ) {
+                            Icon(
+                                imageVector = if (state is PlaybackState.Playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                contentDescription = if (state is PlaybackState.Playing) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
+                                tint = Color.White,
+                                modifier = Modifier.size(32.dp),
+                            )
+                        }
+                        IconButton(onClick = onForward, modifier = Modifier.size(48.dp)) {
+                            Icon(
+                                imageVector = Icons.Rounded.Forward10,
+                                contentDescription = stringResource(R.string.player_forward_10s),
+                                tint = Color.White,
+                                modifier = Modifier.size(26.dp),
+                            )
+                        }
+                        if (playlist.size > 1) {
+                            IconButton(onClick = onSkipNext, modifier = Modifier.size(44.dp)) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SkipNext,
+                                    contentDescription = stringResource(R.string.player_episode_next),
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End,
+                    ) {
                         IconButton(onClick = onDownload, modifier = Modifier.size(44.dp)) {
                             Icon(
                                 imageVector = Icons.Rounded.ArrowDownward,
@@ -3267,31 +3404,31 @@ private fun PlayerControllerLayer(
                                 modifier = Modifier.size(22.dp),
                             )
                         }
-                    }
-                    IconButton(onClick = onToggleAudioTrackMenu, modifier = Modifier.size(44.dp)) {
-                        Icon(
-                            imageVector = Icons.Rounded.MusicNote,
-                            contentDescription = stringResource(R.string.player_audio_track),
-                            tint = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                    IconButton(onClick = onAddSubtitle, modifier = Modifier.size(44.dp)) {
-                        Icon(
-                            imageVector = Icons.Rounded.Subtitles,
-                            contentDescription = stringResource(R.string.player_subtitle),
-                            tint = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                    if (playlist.isNotEmpty() && !isPortrait) {
-                        IconButton(onClick = onTogglePlaylistDialog, modifier = Modifier.size(44.dp)) {
+                        IconButton(onClick = onToggleAudioTrackMenu, modifier = Modifier.size(44.dp)) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.ViewList,
-                                contentDescription = stringResource(R.string.player_episode_list_icon),
+                                imageVector = Icons.Rounded.MusicNote,
+                                contentDescription = stringResource(R.string.player_audio_track),
                                 tint = Color.White.copy(alpha = 0.85f),
                                 modifier = Modifier.size(22.dp),
                             )
+                        }
+                        IconButton(onClick = onAddSubtitle, modifier = Modifier.size(44.dp)) {
+                            Icon(
+                                imageVector = Icons.Rounded.Subtitles,
+                                contentDescription = stringResource(R.string.player_subtitle),
+                                tint = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        if (playlist.isNotEmpty()) {
+                            IconButton(onClick = onTogglePlaylistDialog, modifier = Modifier.size(44.dp)) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.ViewList,
+                                    contentDescription = stringResource(R.string.player_episode_list_icon),
+                                    tint = Color.White.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
                         }
                     }
                 }

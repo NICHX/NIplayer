@@ -346,6 +346,9 @@
     <string name="storage_file_filter_image">图片</string>
     <string name="storage_file_view_grid">网格视图</string>
     <string name="storage_file_view_list">列表视图</string>
+    <string name="storage_file_view_gallery">画廊视图</string>
+    <string name="storage_file_gallery_empty">此目录暂无媒体</string>
+    <string name="storage_file_gallery_empty_hint">画廊仅展示图片与视频，可切回列表或网格浏览其他文件</string>
     <string name="storage_file_file">文件</string>
     <string name="storage_file_folder">文件夹</string>
     <string name="storage_file_unknown">未知</string>
