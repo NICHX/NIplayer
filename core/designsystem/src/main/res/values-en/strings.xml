@@ -10,21 +10,29 @@
     <string name="collapse">Collapse</string>
 
     <!-- Color schemes (NiScheme.labelRes) -->
-    <string name="color_scheme_blue">Blue</string>
-    <string name="color_scheme_indigo">Indigo</string>
-    <string name="color_scheme_cyan">Cyan</string>
-    <string name="color_scheme_slate">Slate</string>
-    <string name="color_scheme_purple">Purple</string>
-    <string name="color_scheme_rose">Rose</string>
-    <string name="color_scheme_coral">Coral</string>
-    <string name="color_scheme_pink">Pink</string>
-    <string name="color_scheme_teal">Teal</string>
-    <string name="color_scheme_green">Green</string>
-    <string name="color_scheme_forest">Forest</string>
-    <string name="color_scheme_caramel">Caramel</string>
+    <string name="color_scheme_misty">Misty Blue</string>
+    <string name="color_scheme_blueberry">Blueberry Night</string>
+    <string name="color_scheme_denim">Retro Denim</string>
+    <string name="color_scheme_rose_dust">Rose Dust</string>
+    <string name="color_scheme_strawberry">Strawberry Cream</string>
+    <string name="color_scheme_coral">Sunset Coral</string>
+    <string name="color_scheme_forest">Forest Whispers</string>
+    <string name="color_scheme_matcha">Matcha Breeze</string>
+    <string name="color_scheme_caramel">Caramel Amber</string>
+    <string name="color_scheme_mint_macaron">Mint Candy</string>
+    <string name="color_scheme_sakura_macaron">Sakura Pudding</string>
+    <string name="color_scheme_lavender_macaron">Taro Mousse</string>
+    <string name="color_scheme_almond">Almond Mousse</string>
+    <string name="color_scheme_mauve">Grey Mauve</string>
+    <string name="color_scheme_sage">Sage</string>
+    <string name="color_scheme_spearmint">Lime Mint</string>
+    <string name="color_scheme_bubblegum">Bubblegum</string>
+    <string name="color_scheme_summer_soda">Summer Soda</string>
 
     <!-- Color scheme categories (NiScheme.categoryRes) -->
     <string name="color_scheme_category_cool">Cool</string>
     <string name="color_scheme_category_warm">Warm</string>
     <string name="color_scheme_category_nature">Nature</string>
+    <string name="color_scheme_category_macaron">Candy</string>
+    <string name="color_scheme_category_morandi">Morandi</string>
 </resources>

@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,6 +72,8 @@ fun HomeScreen(
         initialPage = tabKeys.indexOf(currentTab).coerceAtLeast(0),
         pageCount = { tabKeys.size },
     )
+    // 记录切 tab 前的上一页（供 Crossfade 淡出），对齐 unraid_assistant 的轻量交叉淡入淡出
+    var previousPage by remember { mutableIntStateOf(pagerState.currentPage) }
 
     // 媒体库 tab 的内部子返回栈（列表 → 文件浏览），随媒体库 pager 页常驻
     val libraryNavController: NavHostController = rememberNavController()
@@ -96,10 +99,13 @@ fun HomeScreen(
         onPendingFileBrowserConsumed()
     }
 
-    // pager -> currentTab：页面滑动后同步选中态（供底栏高亮使用）
+    // pager -> currentTab：页面滑动后同步选中态（供底栏高亮使用），并记录上一页供淡出
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
-            currentTab = tabKeys[page.coerceIn(0, tabKeys.size - 1)]
+            val newIdx = page.coerceIn(0, tabKeys.size - 1)
+            // currentTab 尚未更新，取 old ordinal 作为上一页；若页面确实切换则记录，供新页淡入时旧页淡出
+            if (page != currentTab.ordinal) previousPage = currentTab.ordinal
+            currentTab = tabKeys[newIdx]
         }
     }
 
@@ -134,6 +140,7 @@ fun HomeScreen(
             // 内容层：标记为 haze 模糊源 + 玻璃底栏的 backdrop 背景源
             HomeTabContent(
                 pagerState = pagerState,
+                previousPage = previousPage,
                 onOpenFileBrowser = openFileBrowser,
                 libraryNavController = libraryNavController,
                 onNavigateToGlobal = onNavigateToGlobal,
@@ -174,6 +181,7 @@ fun HomeScreen(
 @Composable
 private fun HomeTabContent(
     pagerState: PagerState,
+    previousPage: Int,
     onOpenFileBrowser: (Int, String) -> Unit,
     libraryNavController: NavHostController,
     onNavigateToGlobal: (String) -> Unit,
@@ -199,7 +207,11 @@ private fun HomeTabContent(
                 .consumeWindowInsets(WindowInsets.navigationBars),
         ) { page ->
             when (page) {
-                0 -> PageEntryEffect(isCurrent = pagerState.currentPage == 0) {
+                0 -> CrossfadePage(
+                    current = pagerState.currentPage,
+                    previous = previousPage,
+                    page = 0,
+                ) {
                     HomeTabScreen(
                         onNavigateToSearch = onNavigateToSearch,
                         onNavigateToPlayHistory = onNavigateToPlayHistory,
@@ -209,7 +221,11 @@ private fun HomeTabContent(
                         onNavigateToTheme = { onNavigateToGlobal(Routes.User.SWITCH_THEME) },
                     )
                 }
-                1 -> PageEntryEffect(isCurrent = pagerState.currentPage == 1) {
+                1 -> CrossfadePage(
+                    current = pagerState.currentPage,
+                    previous = previousPage,
+                    page = 1,
+                ) {
                     LibraryTabNavHost(
                         navController = libraryNavController,
                         onNavigateToStoragePlus = onNavigateToStoragePlus,
@@ -221,7 +237,11 @@ private fun HomeTabContent(
                         onFileBrowserMultiSelectChanged = onFileBrowserMultiSelectChanged,
                     )
                 }
-                else -> PageEntryEffect(isCurrent = pagerState.currentPage == 2) {
+                else -> CrossfadePage(
+                    current = pagerState.currentPage,
+                    previous = previousPage,
+                    page = 2,
+                ) {
                     SettingsScreen(
                         onNavigateToGlobal = onNavigateToGlobal,
                     )
@@ -232,33 +252,38 @@ private fun HomeTabContent(
 }
 
 /**
- * 切 tab 轻量入场动画：内容已由 scrollToPage 瞬时就位，仅对新显示页做 scale+alpha 入场
- * （graphicsLayer 合成级，不触发 measure/layout），替代 pager 平移的连续重绘开销。
- * 首次组合（冷启动首页）跳过，避免与加载骨架叠加。
+ * 切 tab 轻量交叉淡入淡出（对齐 unraid_assistant）：仅 alpha 淡入淡出，无 scale 无位移。
+ * 内容已由 scrollToPage 瞬时就位，通过合成级 alpha（graphicsLayer，不触发 measure/layout）
+ * 实现旧页淡出（1→0）+ 新页淡入（0→1）叠加；时长 120ms，避免切换拖沓感。
+ * 冷启动时当前页走"previous==自己"分支直接全显，不反复淡入。
  */
+private const val TabCrossfadeDurationMs = 120
+
 @Composable
-private fun PageEntryEffect(
-    isCurrent: Boolean,
+private fun CrossfadePage(
+    current: Int,
+    previous: Int,
+    page: Int,
     content: @Composable () -> Unit,
 ) {
-    val progress = remember { Animatable(1f) }
-    var firstRun by remember { mutableStateOf(true) }
-    LaunchedEffect(isCurrent) {
-        if (isCurrent && !firstRun) {
-            progress.snapTo(0f)
-            progress.animateTo(1f, tween(durationMillis = 200))
+    val alpha = remember { Animatable(0f) }
+    LaunchedEffect(current, previous, page) {
+        if (current == page) {
+            // 冷启动/驻留当前页：若由其它页切来则先置透明再淡入
+            if (previous != page) alpha.snapTo(0f)
+            alpha.animateTo(1f, tween(durationMillis = TabCrossfadeDurationMs))
+        } else if (previous == page) {
+            // 刚离开的页面淡出
+            alpha.animateTo(0f, tween(durationMillis = TabCrossfadeDurationMs))
+        } else {
+            // 其它页保持透明
+            alpha.snapTo(0f)
         }
-        firstRun = false
     }
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer {
-                val p = progress.value
-                scaleX = 0.98f + 0.02f * p
-                scaleY = 0.98f + 0.02f * p
-                alpha = 0.6f + 0.4f * p
-            },
+            .graphicsLayer { this.alpha = alpha.value },
     ) {
         content()
     }

@@ -9,20 +9,20 @@ import androidx.compose.ui.unit.dp
 /**
  * 应用主题入口。
  *
- * 在 M3 浅色/深色之上增加「配色方案」维度：Blue / Purple / Teal。
+ * 在 M3 浅色/深色之上增加「配色方案」维度：按 [scheme] 切换整套配色。
  *
  * 主要定制（区别于 M3 默认）：
- * - **配色**：主色可根据 [scheme] 切换为品牌蓝、紫色或青绿；浅色冷灰背景、深色真黑背景
+ * - **配色**：主色/次级/三级色可按方案切换；浅色冷灰背景、深色真黑背景
  * - **形状**：所有圆角减半，偏硬朗（NiShapes）
  * - **排版**：letterSpacing 归零，行高收紧
  *
  * @param darkTheme 是否使用暗色主题，默认跟随系统
- * @param scheme 配色方案，默认使用品牌蓝
+ * @param scheme 配色方案
  */
 @Composable
 fun NiTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    scheme: NiScheme = NiScheme.BLUE,
+    scheme: NiScheme = NiScheme.MISTY,
     content: @Composable () -> Unit,
 ) {
     val colorScheme = if (darkTheme) NiSchemes.buildDark(scheme) else NiSchemes.buildLight(scheme)

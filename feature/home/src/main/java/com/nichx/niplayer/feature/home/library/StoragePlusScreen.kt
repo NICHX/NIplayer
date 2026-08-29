@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,19 +37,18 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
+import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTextField
+import com.nichx.niplayer.designsystem.components.NiTopBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -71,7 +72,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StoragePlusScreen(
     onBack: () -> Unit,
@@ -113,10 +113,10 @@ fun StoragePlusScreen(
         }
     }
 
-    Scaffold(
+    NiScaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(if (viewModel.isEditMode) stringResource(R.string.storage_plus_edit_title) else stringResource(R.string.storage_plus_add_title)) },
+            NiTopBar(
+                title = if (viewModel.isEditMode) stringResource(R.string.storage_plus_edit_title) else stringResource(R.string.storage_plus_add_title),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
@@ -131,22 +131,19 @@ fun StoragePlusScreen(
                 },
             )
         },
-        bottomBar = {
-            StorageFormBottomBar(
-                state = state,
-                onTest = viewModel::testConnection,
-                onSave = viewModel::save,
-            )
-        },
     ) { padding ->
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
         ) {
+            Spacer(Modifier.height(padding.calculateTopPadding()))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
             StorageTypeBadge(type = state.mediaType, extraColors = extraColors)
 
             FormCard(
@@ -178,6 +175,14 @@ fun StoragePlusScreen(
             state.testResult?.let { ok ->
                 TestResultCard(ok = ok)
             }
+
+            StorageFormActions(
+                state = state,
+                onTest = viewModel::testConnection,
+                onSave = viewModel::save,
+            )
+            }
+            Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
     }
 
@@ -650,7 +655,7 @@ private fun SegmentedRow(
 }
 
 @Composable
-private fun StorageFormBottomBar(
+private fun StorageFormActions(
     state: StoragePlusUiState,
     onTest: () -> Unit,
     onSave: () -> Unit,
@@ -658,7 +663,7 @@ private fun StorageFormBottomBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(top = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (state.mediaType != MediaType.EXTERNAL_STORAGE) {

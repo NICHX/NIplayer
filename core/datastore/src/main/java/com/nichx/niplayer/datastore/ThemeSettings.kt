@@ -71,14 +71,14 @@ object ThemeSettings {
 
     /** 从备份快照恢复配色方案（接收存储原始值，外部模块无需依赖 NiScheme）。 */
     fun restoreScheme(schemeOrdinal: Int) {
-        setThemeScheme(NiScheme.entries.getOrElse(schemeOrdinal) { NiScheme.BLUE })
+        setThemeScheme(NiScheme.entries.getOrElse(schemeOrdinal) { NiScheme.MISTY })
     }
 
     private fun loadThemeConfig(): ThemeConfig {
         val mode = Mode.fromValue(mmkv.decodeInt(KEY_THEME_MODE, Mode.SYSTEM.value))
         val scheme = NiScheme.entries.getOrElse(
             mmkv.decodeInt(KEY_THEME_SCHEME, 0),
-        ) { NiScheme.BLUE }
+        ) { NiScheme.MISTY }
         return ThemeConfig(mode, scheme)
     }
 }
@@ -86,5 +86,5 @@ object ThemeSettings {
 /** 主题配置快照。 */
 data class ThemeConfig(
     val mode: ThemeSettings.Mode,
-    val scheme: NiScheme = NiScheme.BLUE,
+    val scheme: NiScheme = NiScheme.MISTY,
 )

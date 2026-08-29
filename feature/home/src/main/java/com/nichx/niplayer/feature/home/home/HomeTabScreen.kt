@@ -536,11 +536,11 @@ private fun CinematicHeroBanner(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(20.dp)
-    val isDark = NiExtraColors.current.isDark
+    // 组合色：无缩略图时用 主色→三级色 渐变更能体现整屏氛围
     val fallbackBrush = Brush.verticalGradient(
         listOf(
-            MaterialTheme.colorScheme.primaryContainer,
-            if (isDark) Color(0xFF0F0F17) else Color(0xFFEDEAE2),
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.tertiary,
         ),
     )
     val interactionSource = remember { MutableInteractionSource() }
