@@ -106,7 +106,7 @@ fun NiNavHost(
         },
         popExitTransition = {
             if (fromPlayer(initialState)) {
-                // 播放器退出：纯 fade 且与 popEnter 同长同步，黑底贯穿整个渐变防透白
+                // 播放器退出：纯 fade 且与 popEnter 同长同步，黑蒙层贯穿渐隐揭首页
                 fadeOut(tween(FromPlayerTransitionMs))
             } else {
                 fadeOut(tween(PAGE_TRANSITION_MS)) +
