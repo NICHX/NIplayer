@@ -34,10 +34,29 @@ fun NiNavHost(
             fadeOut(animationSpec = tween(PAGE_TRANSITION_MS))
         },
         popEnterTransition = {
-            fadeIn(animationSpec = tween(PAGE_TRANSITION_MS))
+            fadeIn(tween(PAGE_TRANSITION_MS)) +
+                slideInHorizontally(
+                    animationSpec = tween(PAGE_TRANSITION_MS),
+                    initialOffsetX = { -it / 4 },
+                )
         },
         popExitTransition = {
-            fadeOut(animationSpec = tween(PAGE_TRANSITION_MS)) +
+            fadeOut(tween(PAGE_TRANSITION_MS)) +
+                slideOutHorizontally(
+                    animationSpec = tween(PAGE_TRANSITION_MS),
+                    targetOffsetX = { it / 4 },
+                )
+        },
+        // 系统返回手势（predictive back）统一为滑入/滑出，避免默认 scaleOut(0.7) 缩放
+        predictivePopEnterTransition = {
+            fadeIn(tween(PAGE_TRANSITION_MS)) +
+                slideInHorizontally(
+                    animationSpec = tween(PAGE_TRANSITION_MS),
+                    initialOffsetX = { -it / 4 },
+                )
+        },
+        predictivePopExitTransition = {
+            fadeOut(tween(PAGE_TRANSITION_MS)) +
                 slideOutHorizontally(
                     animationSpec = tween(PAGE_TRANSITION_MS),
                     targetOffsetX = { it / 4 },
