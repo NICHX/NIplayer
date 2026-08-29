@@ -77,6 +77,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             thumbnailCustomPositionSeconds = ThumbnailSettings.customPositionSeconds,
             thumbnailGenerationModeKey = ThumbnailSettings.generationMode.key,
             thumbnailLibraryModes = ThumbnailSettings.snapshotAllLibraryModes().ifEmpty { null },
+            thumbnailLibraryWriteBacks = ThumbnailSettings.snapshotAllLibraryWriteBacks().ifEmpty { null },
             // 文件浏览
             fileSortBy = FileBrowserSettings.sortBy.value,
             fileSortAscending = FileBrowserSettings.sortAscending,
@@ -145,6 +146,9 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         }
         s.thumbnailLibraryModes?.forEach { (libId, key) ->
             ThumbnailSettings.setLibraryGenerationMode(libId, ThumbnailGenerationMode.fromKey(key))
+        }
+        s.thumbnailLibraryWriteBacks?.forEach { (libId, enabled) ->
+            ThumbnailSettings.setLibraryWriteBack(libId, enabled)
         }
         // 文件浏览
         s.fileSortBy?.let { FileBrowserSettings.setSortBy(FileBrowserSettings.SortBy.fromValue(it)) }
@@ -218,6 +222,7 @@ data class AppSettingsData(
     val thumbnailCustomPositionSeconds: Int? = null,
     val thumbnailGenerationModeKey: String? = null,
     val thumbnailLibraryModes: Map<Int, String>? = null,
+    val thumbnailLibraryWriteBacks: Map<Int, Boolean>? = null,
     // 文件浏览
     val fileSortBy: Int? = null,
     val fileSortAscending: Boolean? = null,

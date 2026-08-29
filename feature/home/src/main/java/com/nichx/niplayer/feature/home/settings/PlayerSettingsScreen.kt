@@ -1,6 +1,7 @@
 package com.nichx.niplayer.feature.home.settings
 
 import com.nichx.niplayer.feature.home.R
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -29,8 +31,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
@@ -40,6 +46,9 @@ import com.nichx.niplayer.designsystem.components.NiListItemDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTopBar
+
+/** assrt.net 字幕接口官网，用于 ASSRT Token 指引链接跳转。 */
+private const val ASSRT_URL = "https://assrt.net"
 
 /**
  * 播放器设置页：只保留与“播放行为”直接相关的设置。
@@ -62,6 +71,7 @@ fun PlayerSettingsScreen(
     var longPressTimeoutMs by remember { mutableStateOf(PlayerSettings.longPressTimeoutMs) }
     var seekSensitivity by remember { mutableStateOf(PlayerSettings.seekSensitivity) }
     var doubleTapStepSeconds by remember { mutableStateOf(PlayerSettings.doubleTapStepSeconds) }
+    var defaultPortrait by remember { mutableStateOf(PlayerSettings.defaultPortrait) }
     var showTokenDialog by remember { mutableStateOf(false) }
     var showPriorityDialog by remember { mutableStateOf(false) }
     var showLongPressDialog by remember { mutableStateOf(false) }
@@ -114,6 +124,16 @@ fun PlayerSettingsScreen(
                     onCheckedChange = {
                         pitchPreservation = it
                         PlayerSettings.pitchPreservationEnabled = it
+                    },
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SettingSwitchRow(
+                    label = stringResource(R.string.player_default_portrait),
+                    description = stringResource(R.string.player_default_portrait_desc),
+                    checked = defaultPortrait,
+                    onCheckedChange = {
+                        defaultPortrait = it
+                        PlayerSettings.defaultPortrait = it
                     },
                 )
             }
@@ -202,6 +222,27 @@ fun PlayerSettingsScreen(
                 onValueChange = { token = it },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = stringResource(R.string.player_assrt_token_placeholder),
+            )
+            Spacer(Modifier.size(16.dp))
+            Text(
+                stringResource(R.string.player_assrt_token_guide_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            val uriHandler = LocalUriHandler.current
+            Text(
+                text = stringResource(R.string.player_assrt_token_guide_link),
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(
+                        onClick = { runCatching { uriHandler.openUri(ASSRT_URL) } },
+                    )
+                    .padding(4.dp),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                textDecoration = TextDecoration.Underline,
             )
         }
     }

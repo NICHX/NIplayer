@@ -544,7 +544,12 @@ fun PlayerScreen(
 
     DisposableEffect(Unit) {
         val original = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // 默认方向：默认横屏；开启“默认竖屏播放”则进入时锁定竖屏（播放中仍可手动切换）
+        activity?.requestedOrientation = if (PlayerSettings.defaultPortrait) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
         val originalBrightness = window?.attributes?.screenBrightness
             ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
 

@@ -135,16 +135,21 @@ class AudioPlaybackManager @Inject constructor(
         applyPlaybackParameters(clamped)
     }
 
-    /** 音调保持（变速不变调）。与视频侧一致，通过 PlaybackParameters 手动应用。 */
-    private var _pitchPreservation = PlayerSettings.pitchPreservationEnabled
+    /**
+     * 设置音调保持（变速不变调），并实时持久化到 [PlayerSettings]。
+     *
+     * BUG 修复：Manager 是 @Singleton，若把设置值缓存进字段，切换后到进程重启前都不会
+     * 更新，导致“倍速音调保持”设置对音频不生效。这里统一读写 [PlayerSettings]，
+     * [applyPlaybackParameters] 也读取实时值，保证设置即时生效。
+     */
     fun setPitchPreservation(enabled: Boolean) {
-        _pitchPreservation = enabled
+        PlayerSettings.pitchPreservationEnabled = enabled
         applyPlaybackParameters(_playbackSpeed.value)
     }
 
     /** 应用倍速与音调参数（pitch=1 保持音调；pitch=speed 变速变调）。 */
     private fun applyPlaybackParameters(speed: Float) {
-        val pitch = if (_pitchPreservation) 1.0f else speed
+        val pitch = if (PlayerSettings.pitchPreservationEnabled) 1.0f else speed
         exoPlayer?.setPlaybackParameters(PlaybackParameters(speed, pitch))
     }
 

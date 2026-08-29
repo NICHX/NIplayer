@@ -42,6 +42,7 @@ import com.nichx.niplayer.datastore.ThumbnailFramePosition
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.designsystem.components.NiDialogItem
+import com.nichx.niplayer.designsystem.components.NiDialogItemRow
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiListItemDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
@@ -79,7 +80,7 @@ fun MediaLibrarySettingsScreen(
     var showCustomPositionDialog by remember { mutableStateOf(false) }
     var showStorageHelpDialog by remember { mutableStateOf(false) }
     var showGenerationModeDialog by remember { mutableStateOf(false) }
-    var modeDialogLibId by remember { mutableStateOf<Int?>(null) }
+    var configDialogLibId by remember { mutableStateOf<Int?>(null) }
 
     NiScaffold(
         topBar = {
@@ -198,16 +199,15 @@ fun MediaLibrarySettingsScreen(
                 val libraries by viewModel.libraries.collectAsStateWithLifecycle()
                 val displayLibraries = remember(libraries) {
                     libraries.filter { lib ->
-                        lib.mediaType == MediaType.SMB_SERVER ||
-                            lib.mediaType == MediaType.WEBDAV_SERVER ||
-                            lib.mediaType == MediaType.EXTERNAL_STORAGE ||
-                            lib.mediaType == MediaType.LOCAL_STORAGE
+                        // 仅远程存储需要按源配置：回写/生成时机针对服务器过度读取（封控）设计，
+                        // 本地与 SAF 无服务器可回写，且无读取风险，自动生成本地缩略图即可
+                        lib.mediaType == MediaType.SMB_SERVER || lib.mediaType == MediaType.WEBDAV_SERVER
                     }
                 }
                 if (displayLibraries.isEmpty()) {
                     SettingInfoRow(
-                        label = stringResource(R.string.player_storage_empty),
-                        value = stringResource(R.string.player_storage_empty_value),
+                        label = stringResource(R.string.player_storage_remote_empty),
+                        value = stringResource(R.string.player_storage_remote_empty_value),
                     )
                 } else {
                     displayLibraries.forEachIndexed { index, lib ->
@@ -219,15 +219,21 @@ fun MediaLibrarySettingsScreen(
                             else -> ""
                         }
                         val libMode = ThumbnailSettings.getLibraryGenerationMode(lib.id)
+                        val libWriteBack = ThumbnailSettings.getLibraryWriteBack(lib.id)
+                        val summary = buildString {
+                            append(libMode?.let { stringResource(it.labelRes) }
+                                ?: stringResource(R.string.thumbnail_default))
+                            when (libWriteBack) {
+                                true -> append(stringResource(R.string.thumbnail_wb_on))
+                                false -> append(stringResource(R.string.thumbnail_wb_off))
+                                null -> {}
+                            }
+                        }
                         SettingClickRow(
                             label = lib.displayName,
-                            value = if (libMode == null) {
-                                stringResource(R.string.thumbnail_follow_global, stringResource(generationMode.labelRes))
-                            } else {
-                                stringResource(libMode.labelRes)
-                            },
+                            value = summary,
                             description = typeLabel,
-                            onClick = { modeDialogLibId = lib.id },
+                            onClick = { configDialogLibId = lib.id },
                         )
                         if (index < displayLibraries.size - 1) {
                             HorizontalDivider(
@@ -345,47 +351,92 @@ fun MediaLibrarySettingsScreen(
         )
     }
 
-    val dialogLibId = modeDialogLibId
-    if (dialogLibId != null) {
+    val configLibId = configDialogLibId
+    if (configLibId != null) {
         val libs by viewModel.libraries.collectAsStateWithLifecycle()
-        val lib = libs.firstOrNull { it.id == dialogLibId }
-        var selectedMode by rememberSaveable(dialogLibId) {
-            mutableStateOf(ThumbnailSettings.getLibraryGenerationMode(dialogLibId))
+        val lib = libs.firstOrNull { it.id == configLibId }
+        var selectedMode by rememberSaveable(configLibId) {
+            mutableStateOf(ThumbnailSettings.getLibraryGenerationMode(configLibId))
+        }
+        var selectedWriteBack by rememberSaveable(configLibId) {
+            mutableStateOf(ThumbnailSettings.getLibraryWriteBack(configLibId))
         }
         val dialogTitle = stringResource(
-            R.string.player_storage_policy_title,
-            lib?.displayName ?: stringResource(R.string.player_storage_policy_fallback),
+            R.string.player_storage_config_title,
+            lib?.displayName ?: stringResource(R.string.player_storage_config_fallback),
         )
-        NiListItemDialog(
-            title = dialogTitle,
-            onDismiss = { modeDialogLibId = null },
-            items = buildList {
-                add(
+        val globalWriteBack = if (saveInSameDir) R.string.thumbnail_writeback_enabled
+        else R.string.thumbnail_writeback_disabled
+        val groupHeader: @Composable (Int) -> Unit = { labelRes ->
+            Text(
+                text = stringResource(labelRes),
+                modifier = Modifier.padding(start = 8.dp, top = 10.dp, bottom = 4.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        NiInfoDialog(title = dialogTitle, onDismiss = { configDialogLibId = null }) {
+            // 生成时机
+            groupHeader(R.string.player_thumbnail_timing)
+            NiDialogItemRow(
+                NiDialogItem(
+                    label = stringResource(R.string.thumbnail_follow_global, stringResource(generationMode.labelRes)),
+                    isSelected = selectedMode == null,
+                    onClick = {
+                        selectedMode = null
+                        ThumbnailSettings.setLibraryGenerationMode(configLibId, null)
+                    },
+                ),
+            )
+            ThumbnailGenerationMode.entries.forEach { option ->
+                NiDialogItemRow(
                     NiDialogItem(
-                        label = stringResource(R.string.thumbnail_follow_global, stringResource(generationMode.labelRes)),
-                        isSelected = selectedMode == null,
+                        label = stringResource(option.labelRes),
+                        isSelected = selectedMode == option,
                         onClick = {
-                            selectedMode = null
-                            ThumbnailSettings.setLibraryGenerationMode(dialogLibId, null)
-                            modeDialogLibId = null
+                            selectedMode = option
+                            ThumbnailSettings.setLibraryGenerationMode(configLibId, option)
                         },
                     ),
                 )
-                ThumbnailGenerationMode.entries.forEach { option ->
-                    add(
-                        NiDialogItem(
-                            label = stringResource(option.labelRes),
-                            isSelected = selectedMode == option,
-                            onClick = {
-                                selectedMode = option
-                                ThumbnailSettings.setLibraryGenerationMode(dialogLibId, option)
-                                modeDialogLibId = null
-                            },
-                        ),
-                    )
-                }
-            },
-        )
+            }
+            // 回写服务器
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+            )
+            groupHeader(R.string.player_thumbnail_upload)
+            NiDialogItemRow(
+                NiDialogItem(
+                    label = stringResource(R.string.thumbnail_follow_global, stringResource(globalWriteBack)),
+                    isSelected = selectedWriteBack == null,
+                    onClick = {
+                        selectedWriteBack = null
+                        ThumbnailSettings.setLibraryWriteBack(configLibId, null)
+                    },
+                ),
+            )
+            NiDialogItemRow(
+                NiDialogItem(
+                    label = stringResource(R.string.thumbnail_writeback_enabled),
+                    isSelected = selectedWriteBack == true,
+                    onClick = {
+                        selectedWriteBack = true
+                        ThumbnailSettings.setLibraryWriteBack(configLibId, true)
+                    },
+                ),
+            )
+            NiDialogItemRow(
+                NiDialogItem(
+                    label = stringResource(R.string.thumbnail_writeback_disabled),
+                    isSelected = selectedWriteBack == false,
+                    onClick = {
+                        selectedWriteBack = false
+                        ThumbnailSettings.setLibraryWriteBack(configLibId, false)
+                    },
+                ),
+            )
+        }
     }
 
     if (showStorageHelpDialog) {
@@ -400,6 +451,12 @@ fun MediaLibrarySettingsScreen(
             Spacer(Modifier.size(12.dp))
             Text(
                 stringResource(R.string.player_storage_help_detail),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            Spacer(Modifier.size(12.dp))
+            Text(
+                stringResource(R.string.player_storage_help_writeback_detail),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )

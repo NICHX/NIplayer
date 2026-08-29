@@ -26,6 +26,7 @@ object PlayerSettings {
     private const val KEY_DOUBLE_TAP_STEP_SECONDS = "player_double_tap_step_seconds"
     private const val KEY_AUDIO_PLAY_MODE_INDEX = "player_audio_play_mode_index"
     private const val KEY_AUDIO_SPEED_INDEX = "player_audio_speed_index"
+    private const val KEY_DEFAULT_PORTRAIT = "player_default_portrait"
 
     /** 允许的长按倍速候选值（UI 选择用）。 */
     val LONG_PRESS_SPEED_OPTIONS: List<Float> = listOf(1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
@@ -101,6 +102,18 @@ object PlayerSettings {
     var audioSpeedIndex: Int
         get() = mmkv.decodeInt(KEY_AUDIO_SPEED_INDEX, 1)
         set(value) { mmkv.encode(KEY_AUDIO_SPEED_INDEX, value) }
+
+    /**
+     * 进入播放器时的默认方向。默认 false（横屏，保持既有行为）。
+     *
+     * - false：进入播放器锁定为横屏（[android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE]）
+     * - true：进入播放器默认竖屏（[android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT]）
+     *
+     * 播放中仍可通过方向按钮手动切换，本设置只决定进入时刻的默认方向。
+     */
+    var defaultPortrait: Boolean
+        get() = mmkv.decodeBool(KEY_DEFAULT_PORTRAIT, false)
+        set(value) { mmkv.encode(KEY_DEFAULT_PORTRAIT, value) }
 
     // region 黑边检测结果缓存
 

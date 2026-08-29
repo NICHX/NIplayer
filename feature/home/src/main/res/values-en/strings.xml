@@ -20,7 +20,10 @@
     <string name="library_filter_webdav">WebDAV</string>
 
     <!-- Thumbnail settings -->
-    <string name="thumbnail_follow_global">Follow global (%1$s)</string>
+    <string name="thumbnail_follow_global">Default (global: %1$s)</string>
+    <string name="thumbnail_default">Default</string>
+    <string name="thumbnail_wb_on"> · write back</string>
+    <string name="thumbnail_wb_off"> · no write back</string>
     <string name="thumbnail_custom_suffix"> (%1$ss)</string>
 
     <!-- Network errors -->
@@ -480,6 +483,8 @@
     <string name="storage_plus_domain">Domain</string>
     <string name="storage_plus_domain_hint">e.g. example.com</string>
     <string name="storage_plus_advanced_title">Advanced</string>
+    <string name="storage_plus_thumbnail_mode_title">Generation timing</string>
+    <string name="storage_plus_thumbnail_writeback_title">Save to server</string>
     <string name="storage_plus_parse_mode">Parse mode</string>
     <string name="storage_plus_parse_strict">Strict</string>
     <string name="storage_plus_parse_normal">Standard</string>
@@ -615,6 +620,8 @@
     <string name="player_current_kernel">Current kernel</string>
     <string name="player_pitch_preserve">Keep pitch when speeding up</string>
     <string name="player_pitch_preserve_desc">Keep the original pitch at faster speeds; turn off to change pitch with speed (for quick browsing)</string>
+    <string name="player_default_portrait">Default to portrait</string>
+    <string name="player_default_portrait_desc">Open the video player in portrait by default; turn off to default to landscape (still switchable manually while playing)</string>
     <string name="player_subtitle_title">Subtitles</string>
     <string name="player_auto_subtitle">Auto-load matching subtitles</string>
     <string name="player_auto_subtitle_desc">Automatically load subtitles with the same name in the same folder while playing</string>
@@ -642,8 +649,8 @@
     <string name="player_thumbnail_timing">Generation timing</string>
     <string name="player_thumbnail_frame">Frame position</string>
     <string name="player_storage_thumbnail_title">Storage thumbnails</string>
-    <string name="player_storage_empty">No storages yet</string>
-    <string name="player_storage_empty_value">Storages will appear here after you add them</string>
+    <string name="player_storage_remote_empty">No remote storage</string>
+    <string name="player_storage_remote_empty_value">Only SMB / WebDAV can be configured per source. Local storage generates thumbnails locally automatically</string>
     <string name="player_browser_title">File browser</string>
     <string name="player_media_only">Show media files only</string>
     <string name="player_media_only_desc">Show only video, audio and images in the file browser and hide other file types</string>
@@ -656,6 +663,8 @@
     <string name="player_assrt_token_title">Set ASSRT token</string>
     <string name="player_assrt_token_hint">Register on assrt.net to get an API token for subtitle search.</string>
     <string name="player_assrt_token_placeholder">Enter ASSRT token</string>
+    <string name="player_assrt_token_guide_desc">Tap the link below to register on assrt.net and generate an API token:</string>
+    <string name="player_assrt_token_guide_link">assrt.net</string>
     <string name="player_priority_title">Subtitle priority</string>
     <string name="player_priority_hint">Comma-separated extensions or language tags, e.g. "chs,cht". Leave empty to sort by file name.</string>
     <string name="player_priority_placeholder">e.g. chs,cht</string>
@@ -676,10 +685,13 @@
     <string name="player_speed_standard">Standard</string>
     <string name="player_slide_sensitive_short">Sensitive</string>
     <string name="player_slide_precise_short">Precise</string>
-    <string name="player_storage_policy_title">%1$s generation policy</string>
-    <string name="player_storage_policy_fallback">Storage</string>
-    <string name="player_storage_help_intro">Each storage source can have its own thumbnail generation policy, overriding the global “Generation timing”.</string>
-    <string name="player_storage_help_detail">Follow global: use the global “Generation timing” setting.\nGenerate all: preload and batch-generate thumbnails while browsing.\nGenerate after playback: only load existing cache while browsing, and generate after playback exits —\n  recommended for cloud drives to avoid frequent reads/writes triggering rate limits.\nOff: do not generate thumbnails.</string>
+    <string name="player_storage_config_title">%1$s thumbnails</string>
+    <string name="player_storage_config_fallback">Storage</string>
+    <string name="player_storage_help_intro">Manage thumbnails per storage source, overriding the global settings:\n· Generation timing: when thumbnails are generated\n· Write back to server: whether thumbnails are saved back to the server</string>
+    <string name="player_storage_help_detail">Generation timing:\nGenerate all: preload and batch-generate thumbnails while browsing (for NAS / unlimited servers).\nAfter play: only load existing cache while browsing, then generate after playback exits —\n  recommended for cloud drives to avoid frequent reads triggering rate limits.\nOff: do not generate thumbnails.</string>
+    <string name="thumbnail_writeback_enabled">Write back on</string>
+    <string name="thumbnail_writeback_disabled">Write back off</string>
+    <string name="player_storage_help_writeback_detail">Write back to server:\nWrite back on: save generated thumbnails/covers back to the .thumb/ / .cover/ directory.\nWrite back off: only generate locally, never write to the server.\nOptional — if unset, follows the global “Save to server” switch.</string>
 
     <!-- Lyrics API (LrcApiSettingsScreen) -->
     <string name="lrcapi_title">Music metadata</string>
@@ -706,6 +718,10 @@
     <string name="lrcapi_help_point2">2. When playing audio, it loads the lyric file in the same directory first; if none exists, it fetches lyrics via the API.</string>
     <string name="lrcapi_help_api_title">API contract:</string>
     <string name="lrcapi_help_api_body">• GET /lyrics?title=&amp;artist=&amp;album=&amp;path=\n• GET /cover?title=&amp;artist=&amp;album=</string>
+    <string name="lrcapi_guide_title">Setup guide</string>
+    <string name="lrcapi_guide_desc">lrcapi is a self-hosted lyrics / cover metadata service. Tap the link below to learn how to set it up.</string>
+    <string name="lrcapi_guide_link">github.com/HisAtri/LrcApi</string>
+    <string name="lrcapi_guide_open">Open project</string>
 
     <!-- Download manager page (DownloadManagerScreen) -->
     <string name="download_manager_title">Download manager</string>

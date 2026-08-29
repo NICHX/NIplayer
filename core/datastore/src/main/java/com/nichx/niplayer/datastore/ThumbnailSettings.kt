@@ -156,6 +156,51 @@ object ThumbnailSettings {
         }
     }
 
+    // ---------- 存储源级别回写覆盖 ----------
+
+    private const val KEY_PREFIX_LIBRARY_WRITEBACK = "thumbnail_lib_writeback_"
+
+    /**
+     * 获取指定存储源的"回写"开关覆盖（是否把生成的缩略图/封面回写到服务器）。
+     * - 非 null：该存储源强制开启/关闭回写
+     * - null：未设置覆盖，遵循全局 [saveInSameDir]
+     */
+    fun getLibraryWriteBack(libId: Int): Boolean? {
+        val key = "$KEY_PREFIX_LIBRARY_WRITEBACK$libId"
+        return if (mmkv.contains(key)) mmkv.decodeBool(key) else null
+    }
+
+    /** 设置指定存储源的"回写"开关覆盖。传 `null` 清除覆盖，恢复为遵循全局开关。 */
+    fun setLibraryWriteBack(libId: Int, enabled: Boolean?) {
+        val key = "$KEY_PREFIX_LIBRARY_WRITEBACK$libId"
+        if (enabled == null) {
+            mmkv.removeValueForKey(key)
+        } else {
+            mmkv.encode(key, enabled)
+        }
+    }
+
+    /** 存储源生效的回写开关：存储源级覆盖优先，否则全局 [saveInSameDir]。 */
+    fun effectiveWriteBack(libId: Int): Boolean =
+        getLibraryWriteBack(libId) ?: saveInSameDir
+
+    /**
+     * 导出所有存储源级别回写覆盖（供备份）。
+     *
+     * 遍历 MMKV 中所有 `thumbnail_lib_writeback_*` 键，返回 libId -> 回写开关 映射。
+     * 空 map 表示无任何覆盖。
+     */
+    fun snapshotAllLibraryWriteBacks(): Map<Int, Boolean> = buildMap {
+        val keys = mmkv.allKeys() ?: return@buildMap
+        for (key in keys) {
+            if (!key.startsWith(KEY_PREFIX_LIBRARY_WRITEBACK)) continue
+            val libId = key.removePrefix(KEY_PREFIX_LIBRARY_WRITEBACK).toIntOrNull() ?: continue
+            put(libId, mmkv.decodeBool(key))
+        }
+    }
+
+    // ---------- 生成策略生效 ----------
+
     /** 存储源生效的生成策略：存储源级覆盖优先，否则全局策略。 */
     fun effectiveMode(libId: Int): ThumbnailGenerationMode =
         getLibraryGenerationMode(libId) ?: generationMode
