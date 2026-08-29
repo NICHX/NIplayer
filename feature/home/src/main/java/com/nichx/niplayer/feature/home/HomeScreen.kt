@@ -1,5 +1,8 @@
 package com.nichx.niplayer.feature.home
 
+import android.app.Activity
+import android.os.SystemClock
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -23,12 +26,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.LocalHazeState
 import com.nichx.niplayer.designsystem.components.niHazeSource
 import com.nichx.niplayer.designsystem.components.rememberNiHazeState
@@ -74,6 +79,22 @@ fun HomeScreen(
     var currentTab by rememberSaveable { mutableStateOf(TabKey.HOME) }
     val tabKeys = arrayOf(TabKey.HOME, TabKey.LIBRARY, TabKey.SETTINGS)
     val coroutineScope = rememberCoroutineScope()
+
+    // 返回防误触：首页根路由且无更上层(文件浏览等已用各自 BackHandler 优先拦截)，
+    // 第一次返回仅弹 snackbar 提示，2s 内第二次按才真正退出。退出属于非破坏性操作，
+    // 用轻量的"再按一次"替代确认弹窗，符合 Material 返回导航规范。
+    val messageController = LocalAppMessageController.current
+    val context = LocalContext.current
+    var lastBackPressedAt by remember { mutableStateOf(0L) }
+    BackHandler {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastBackPressedAt <= (2.5f * 1000).toLong()) {
+            (context as? Activity)?.finishAndRemoveTask()
+        } else {
+            lastBackPressedAt = now
+            messageController.postInfo(context.getString(R.string.home_double_back_exit))
+        }
+    }
 
     // 三个 Tab 用原生 HorizontalPager 承载：切走常驻保留后台状态（含文件浏览目录层级）
     val pagerState: PagerState = rememberPagerState(

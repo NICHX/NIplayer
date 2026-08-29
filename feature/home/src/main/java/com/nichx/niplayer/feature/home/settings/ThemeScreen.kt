@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -64,6 +65,13 @@ fun ThemeScreen(
     onBack: () -> Unit = {},
 ) {
     val themeConfig by ThemeSettings.themeFlow.collectAsStateWithLifecycle()
+    // 生效深浅色：跟随系统模式下用 isSystemInDarkTheme 实时判断，使预览正确随系统切换
+    val systemDark = isSystemInDarkTheme()
+    val effectiveDark = when (themeConfig.mode) {
+        ThemeSettings.Mode.LIGHT -> false
+        ThemeSettings.Mode.DARK -> true
+        ThemeSettings.Mode.SYSTEM -> systemDark
+    }
 
     // 选中的配色分类：默认定位到当前方案所属分类
     var selectedCategoryRes by remember {
@@ -152,7 +160,7 @@ fun ThemeScreen(
             )
 
             // ── 主题示意图预览 ──
-            ThemePreviewCard(scheme = themeConfig.scheme, dark = themeConfig.mode == ThemeSettings.Mode.DARK)
+            ThemePreviewCard(scheme = themeConfig.scheme, dark = effectiveDark)
 
             Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
