@@ -218,6 +218,8 @@ fun HomeTabScreen(
                 HomeSkeletonLayout(
                     contentMaxWidth = contentMaxWidth,
                     topInset = homeTopInset,
+                    recentColumns = recentColumns,
+                    qaColumns = qaColumns,
                 )
             } else if (useMagazine) {
                 HomeMagazineLayout(
@@ -272,6 +274,8 @@ fun HomeTabScreen(
 private fun HomeSkeletonLayout(
     contentMaxWidth: Dp,
     topInset: Dp,
+    recentColumns: Int,
+    qaColumns: Int,
 ) {
     val screenOuter = NiSpacings.responsiveScreenOuter
     val listGap = NiSpacings.responsiveListGap
@@ -310,13 +314,11 @@ private fun HomeSkeletonLayout(
             }
             item(key = "video_row") {
                 Row(horizontalArrangement = Arrangement.spacedBy(listGap)) {
-                    repeat(3) {
-                        Box(
-                            Modifier
-                                .width(160.dp)
-                                .aspectRatio(16f / 9f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(blockColor),
+                    repeat(recentColumns) {
+                        SkeletonMediaCard(
+                            thumbAspectRatio = 16f / 9f,
+                            blockColor = blockColor,
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -326,13 +328,11 @@ private fun HomeSkeletonLayout(
             }
             item(key = "audio_row") {
                 Row(horizontalArrangement = Arrangement.spacedBy(listGap)) {
-                    repeat(3) {
-                        Box(
-                            Modifier
-                                .width(120.dp)
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(blockColor),
+                    repeat(recentColumns) {
+                        SkeletonMediaCard(
+                            thumbAspectRatio = 1f,
+                            blockColor = blockColor,
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -342,18 +342,47 @@ private fun HomeSkeletonLayout(
             }
             item(key = "qa_row_0") {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    repeat(2) {
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .aspectRatio(16f / 9f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(blockColor),
+                    repeat(qaColumns) {
+                        SkeletonMediaCard(
+                            thumbAspectRatio = 16f / 9f,
+                            blockColor = blockColor,
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * 首页媒体卡骨架：缩略图占位 + 信息区占位，宽度由 weight 均分。
+ *
+ * 与真实媒体卡片（RecentMediaGrid：缩略图 + 标题区）结构同构，行高一致，避免
+ * 数据就绪切换时内容行变高导致下方内容整体下移。
+ */
+@Composable
+private fun SkeletonMediaCard(
+    thumbAspectRatio: Float,
+    blockColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(thumbAspectRatio)
+                .clip(RoundedCornerShape(12.dp))
+                .background(blockColor),
+        )
+        // 信息区占位：与真实卡片标题区（NiAutoSizeText 2 行 18sp + padding）同高，
+        // 保证骨架与真实行高一致
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .height(36.dp),
+        )
     }
 }
 
