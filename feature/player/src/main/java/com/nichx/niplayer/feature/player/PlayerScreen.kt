@@ -21,6 +21,7 @@ import android.view.SurfaceView
 import android.view.Window
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
@@ -28,6 +29,7 @@ import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -136,6 +138,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.input.key.Key
@@ -321,17 +324,62 @@ fun PlayerScreen(
         }
     }
 
+    // 进入播放器后的 1.5s 返回冷却期：此期间忽略返回操作。SurfaceView 在没有视频首帧时其
+    // 空白层会透出白屏，刚进入立即退出会在返回动画里闪白；给首帧渲染留出时间再放行返回
+    var backReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(1500)
+        backReady = true
+    }
+    // 系统返回的统一处理在下方 capturedBack 定义后注册（BackHandler），保证手势/返回键
+    // 与应用内返回按钮走同一套贴图退出逻辑
+
+    // 退出转场贴图：播放中抓当前帧作贴图，SurfaceView 移除后用普通 Image 顶住该位置，
+    // 随退出 fade 同步淡出（与控件一致）。独立于缩略图开关；DV/HDR 的 HDR buffer 用
+    // PixelCopy 抓取会损坏（白屏+品红），检测到 HDR 时跳过贴图直接退出
+    var exitFrame by remember { mutableStateOf<Bitmap?>(null) }
+
     // 进入播放器前的原始方向（通常为竖屏）。退出时先还原再 pop，避免返回页"下降"顿挫
     val originalOrientation = remember {
         activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
     val capturedBack: () -> Unit = {
-        captureThumbnailOnExit()
-        // 先还原方向：configChanges 拦截下瞬时切回竖屏，让深层文件浏览/首页等以竖屏稳定布局后
-        // 再 popBackStack。否则方向还原发生在 onDispose（pop 动画之后），popEnter 播放期间
-        // 返回页从横屏排布瞬间重排到竖屏排布，表现为主体内容向下坠落
-        activity?.requestedOrientation = originalOrientation
-        onBack()
+        // 1.5s 冷却内不响应返回（应用内返回按钮），避免首帧未到就退出导致闪白
+        if (backReady) {
+            captureThumbnailOnExit()
+
+            val doExit: () -> Unit = {
+                // 先还原方向：configChanges 拦截下瞬时切回竖屏，让深层文件浏览/首页等以竖屏稳定布局后
+                // 再 popBackStack。否则方向还原发生在 onDispose（pop 动画之后），popEnter 播放期间
+                // 返回页从横屏排布瞬间重排到竖屏排布，表现为主体内容向下坠落
+                activity?.requestedOrientation = originalOrientation
+                onBack()
+            }
+            val sv = surfaceViewRef
+            if (sv != null && sv.width > 0 && sv.height > 0 && mediaInfo?.hdrType == null) {
+                // 非 HDR：抓当前帧作退出贴图（PixelCopy 一帧，几乎零成本），随后 Image 顶位随 fade 淡出
+                val bmp = Bitmap.createBitmap(sv.width, sv.height, Bitmap.Config.ARGB_8888)
+                try {
+                    PixelCopy.request(sv, bmp, { result ->
+                        if (result == PixelCopy.SUCCESS) exitFrame = bmp else bmp.recycle()
+                        doExit()
+                    }, Handler(Looper.getMainLooper()))
+                } catch (e: Exception) {
+                    bmp.recycle()
+                    doExit()
+                }
+            } else {
+                // HDR / surface 未就绪：跳过贴图，直接退出
+                doExit()
+            }
+        }
+    }
+
+    // 系统返回（返回键 / 手势释放）统一走 capturedBack：与应用内返回按钮同一套贴图退出逻辑。
+    // 不依赖 NavHost 的 predictive back（那条路径会让 SurfaceView 不参与 fade），主动接管以
+    // 保证手势/按键退出时画面与控件同步淡出
+    BackHandler {
+        capturedBack()
     }
 
     // BUG-10 修复：onPause 时保存播放进度，兜底进程被杀 / 后台被回收场景
@@ -823,31 +871,41 @@ fun PlayerScreen(
                 }
             }
         }
-        AndroidView(
-            modifier = surfaceModifier,
-            factory = { ctx ->
-                SurfaceView(ctx).apply {
-                    holder.addCallback(object : SurfaceHolder.Callback {
-                        override fun surfaceCreated(holder: SurfaceHolder) {
-                            viewModel.nxPlayer.attachSurface(holder.surface)
-                        }
+        if (exitFrame != null) {
+            // 退出转场：用抓取的当前帧贴图顶替 SurfaceView，随退出 fade 与控件同步淡出
+            Image(
+                bitmap = exitFrame!!.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = surfaceModifier,
+            )
+        } else {
+            AndroidView(
+                modifier = surfaceModifier,
+                factory = { ctx ->
+                    SurfaceView(ctx).apply {
+                        holder.addCallback(object : SurfaceHolder.Callback {
+                            override fun surfaceCreated(holder: SurfaceHolder) {
+                                viewModel.nxPlayer.attachSurface(holder.surface)
+                            }
 
-                        override fun surfaceChanged(
-                            holder: SurfaceHolder,
-                            format: Int,
-                            width: Int,
-                            height: Int,
-                        ) = Unit
+                            override fun surfaceChanged(
+                                holder: SurfaceHolder,
+                                format: Int,
+                                width: Int,
+                                height: Int,
+                            ) = Unit
 
-                        override fun surfaceDestroyed(holder: SurfaceHolder) {
-                            viewModel.nxPlayer.attachSurface(null)
-                        }
-                    })
-                    keepScreenOn = true
-                    surfaceViewRef = this
-                }
-            },
-        )
+                            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                                viewModel.nxPlayer.attachSurface(null)
+                            }
+                        })
+                        keepScreenOn = true
+                        surfaceViewRef = this
+                    }
+                },
+            )
+        }
 
         // 内嵌字幕：media3 fractionalTextSize 相对视图高度，竖屏高度暴增导致字号过大，
         // 按 360dp 横屏参考高度折算，保持竖屏绝对字号与横屏一致

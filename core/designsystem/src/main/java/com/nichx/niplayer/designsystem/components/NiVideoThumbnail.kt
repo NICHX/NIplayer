@@ -17,9 +17,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.painter.Painter
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 
 /**
@@ -115,13 +126,39 @@ fun NiVideoThumbnail(
                         .build()
                     else -> model  // 其他类型（如 ByteArray）原样传递
                 }
-                AsyncImage(
-                    model = request,
-                    contentDescription = null,
-                    contentScale = contentScale,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                ThumbnailImage(request = request, contentScale = contentScale)
             }
+        }
+    }
+}
+
+/**
+ * 无闪烁缩略图：用 [rememberAsyncImagePainter] 并保留最近一次成功解码的 [Painter]，
+ * 当缩略图更新导致 Coil key 变化（memoryCacheKey 追加 ?t= 作 cache-buster）时，
+ * 上一张图继续显示、新图就绪后经 [Crossfade] 淡入替换，避免"旧图 → 空白 → 新图"的闪烁。
+ */
+@Composable
+private fun ThumbnailImage(request: Any, contentScale: ContentScale) {
+    val painter = rememberAsyncImagePainter(model = request)
+    val state by painter.state.collectAsState()
+    var lastPainter by remember { mutableStateOf<Painter?>(null) }
+    val successPainter = (state as? AsyncImagePainter.State.Success)?.painter
+    // state 切回 Loading（缩略图更新重载）期间保持 lastPainter 显示旧图，不露空白
+    LaunchedEffect(successPainter) {
+        if (successPainter != null) lastPainter = successPainter
+    }
+    Crossfade(
+        targetState = successPainter ?: lastPainter,
+        animationSpec = tween(220),
+        label = "thumbnail",
+    ) { painterOrNull ->
+        if (painterOrNull != null) {
+            Image(
+                painter = painterOrNull,
+                contentDescription = null,
+                contentScale = contentScale,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
