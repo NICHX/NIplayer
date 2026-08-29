@@ -276,6 +276,10 @@ class MainActivity : ComponentActivity() {
                             route = Routes.Home.ROOT,
                             enterTransition = { fadeIn(tween(300)) },
                             exitTransition = { fadeOut(tween(300)) },
+                            // 返回 Home 时显式淡入（无缩放）：Home 定义了 enter/exit 却未定义 popEnter，
+                            // 否则 Navigation 回退到内置默认 fadeIn+scaleIn 放大进场，视觉上像子页在缩小消失
+                            popEnterTransition = { fadeIn(tween(300)) },
+                            popExitTransition = { fadeOut(tween(300)) },
                         ) {
                             HomeScreen(
                                 onNavigateToGlobal = { route -> navController.navigate(route) },
@@ -320,9 +324,7 @@ class MainActivity : ComponentActivity() {
                                     defaultValue = 0
                                 },
                             ),
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             StoragePlusScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
@@ -333,9 +335,7 @@ class MainActivity : ComponentActivity() {
                                     defaultValue = 0
                                 },
                             ),
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) { backStackEntry ->
+                            ) { backStackEntry ->
                             PlayHistoryScreen(
                                 initialFilterOrdinal = backStackEntry.arguments?.getInt("filter") ?: 0,
                                 onNavigateToPlayVideo = navigateToPlayer,
@@ -343,9 +343,7 @@ class MainActivity : ComponentActivity() {
                         }
                         composable(
                             route = Routes.Local.QUICK_ACCESS,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             QuickAccessScreen(
                                 onNavigateToStorageFile = { storageId, path ->
                                     // 交给 Home 在媒体库 tab 子栈打开文件浏览，返回栈回到快速访问页
@@ -356,9 +354,7 @@ class MainActivity : ComponentActivity() {
                         }
                         composable(
                             route = Routes.Local.SEARCH,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             SearchScreen(
                                 onBack = { navController.popBackStack() },
                                 onNavigateToPlayVideo = navigateToPlayer,
@@ -404,44 +400,32 @@ class MainActivity : ComponentActivity() {
                         }
                         composable(
                             route = Routes.User.SWITCH_THEME,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             ThemeScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.LANGUAGE,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             LanguageScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.GLASS,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             GlassSettingsScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.SETTING_PLAYER,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             PlayerSettingsScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.MEDIA_LIBRARY,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             MediaLibrarySettingsScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.EQUALIZER,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             EqualizerSettingsScreen(
                                 onBack = { navController.popBackStack() },
                                 onApplyToPlayer = {
@@ -454,51 +438,37 @@ class MainActivity : ComponentActivity() {
                         }
                         composable(
                             route = Routes.User.PLAYBACK_STATS,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             PlaybackStatsScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.BACKUP,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             BackupScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.LRCAPI,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             LrcApiSettingsScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.CACHE_MANAGER,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             CacheManagerScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.SCAN_MANAGER,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             ScanManagerScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.ABOUT,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             AboutScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.Stream.DOWNLOAD_MANAGER,
-                            enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 4 } },
-                            exitTransition = { fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
-                        ) {
+                            ) {
                             TransferScreen(
                                 onBack = { navController.popBackStack() },
                                 onPlayVideo = navigateToPlayer,
@@ -511,6 +481,8 @@ class MainActivity : ComponentActivity() {
                             route = Routes.ImageViewer.VIEWER,
                             enterTransition = { fadeIn(tween(300)) },
                             exitTransition = { fadeOut(tween(300)) },
+                            // 与普通子页一致：显式 pop 退出（淡出，无缩放），避免回退到内置 scaleOut
+                            popExitTransition = { fadeOut(tween(300)) },
                         ) {
                             ImageViewerScreen(onBack = { navController.popBackStack() })
                         }
