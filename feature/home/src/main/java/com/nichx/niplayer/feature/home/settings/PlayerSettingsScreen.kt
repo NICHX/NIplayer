@@ -47,8 +47,8 @@ import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTopBar
 
-/** assrt.net 字幕接口官网，用于 ASSRT Token 指引链接跳转。 */
-private const val ASSRT_URL = "https://assrt.net"
+/** assrt.net 登录注册页，用于 ASSRT Token 指引链接跳转。 */
+private const val ASSRT_URL = "https://secure.assrt.net/user/logon.xml"
 
 /**
  * 播放器设置页：只保留与“播放行为”直接相关的设置。
