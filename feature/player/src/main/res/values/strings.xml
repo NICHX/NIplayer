@@ -173,13 +173,13 @@
     <string name="subtitle_color_label">文字颜色</string>
     <string name="subtitle_outline_width_label">描边宽度</string>
     <string name="subtitle_outline_color_label">描边颜色</string>
-    <string name="subtitle_bottom_padding_label">底部边距</string>
+    <string name="subtitle_bottom_padding_label">字幕位置</string>
+    <string name="subtitle_bottom_padding_desc">正值上移，负值下移（PGS 位图默认偏上时可用负值下移）</string>
     <string name="subtitle_font_default">默认字体</string>
     <string name="subtitle_size_medium">中等</string>
     <string name="subtitle_color_white">白色</string>
     <string name="subtitle_outline_medium">中等</string>
     <string name="subtitle_outline_color_black">黑色</string>
-    <string name="subtitle_bottom_padding_medium">中等</string>
     <string name="subtitle_apply_embedded">应用内嵌样式</string>
     <string name="subtitle_apply_embedded_desc">使用字幕文件自带的颜色和样式</string>
     <string name="subtitle_done">完成</string>

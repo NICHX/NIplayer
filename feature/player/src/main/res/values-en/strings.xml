@@ -173,13 +173,13 @@
     <string name="subtitle_color_label">Text color</string>
     <string name="subtitle_outline_width_label">Outline width</string>
     <string name="subtitle_outline_color_label">Outline color</string>
-    <string name="subtitle_bottom_padding_label">Bottom margin</string>
+    <string name="subtitle_bottom_padding_label">Subtitle position</string>
+    <string name="subtitle_bottom_padding_desc">Positive moves up, negative moves down (use negative for PGS bitmaps that sit too high)</string>
     <string name="subtitle_font_default">Default font</string>
     <string name="subtitle_size_medium">Medium</string>
     <string name="subtitle_color_white">White</string>
     <string name="subtitle_outline_medium">Medium</string>
     <string name="subtitle_outline_color_black">Black</string>
-    <string name="subtitle_bottom_padding_medium">Medium</string>
     <string name="subtitle_apply_embedded">Apply embedded style</string>
     <string name="subtitle_apply_embedded_desc">Use the color and style from the subtitle file itself</string>
     <string name="subtitle_done">Done</string>

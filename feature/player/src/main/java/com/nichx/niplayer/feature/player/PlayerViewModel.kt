@@ -733,6 +733,25 @@ class PlayerViewModel @Inject constructor(
     )
     val redetectBlackBars: SharedFlow<Unit> = _redetectBlackBars.asSharedFlow()
 
+    /**
+     * 黑边检测失败（画面全黑/太暗）时的自动重试请求。
+     *
+     * [applyBlackBarDetection] 检测到全黑或过暗画面（返回 null）时，若仍在播放且未超
+     * 重试上限，通过本事件请求 UI 层延迟重新抓图（PixelCopy），等画面变亮后再检测。
+     * 解决多数影片首帧是黑屏导致"智能去黑边"不生效、需手动关开开关重试的问题。
+     */
+    private val _blackBarRetry = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+    )
+    val blackBarRetry: SharedFlow<Unit> = _blackBarRetry.asSharedFlow()
+
+    /** 黑边检测失败自动重试计数（检测成功 / 切源 / 功能关闭时清零）。 */
+    private var blackBarRetryCount = 0
+
+    /** 黑边检测失败自动重试上限（× UI 层重试间隔 ≈ 最长等待时间）。 */
+    private val MAX_BLACK_BAR_RETRY = 8
+
     /** 以当前位置设置循环起点 A。若终点 B 已设置则自动启动循环。 */
     fun setAbLoopPointA() {
         val pos = player.positionMs.value
@@ -1456,6 +1475,7 @@ class PlayerViewModel @Inject constructor(
     fun applyBlackBarDetection(bitmap: Bitmap) {
         if (!PlayerSettings.autoDetectBlackBars) {
             _effectiveVideoSize.value = null
+            blackBarRetryCount = 0
             bitmap.recycle()
             return
         }
@@ -1480,9 +1500,21 @@ class PlayerViewModel @Inject constructor(
                 withContext(Dispatchers.Main) {
                     _effectiveVideoSize.value = null
                     player.setBlackBarCropEnabled(false)
+                    // 全黑/过暗导致检测失败：若仍在播放且未超重试上限，请求 UI 层延迟
+                    // 重新抓图，等画面变亮后再检测（多数影片首帧是黑屏，需自动重试）
+                    if (PlayerSettings.autoDetectBlackBars &&
+                        state.value is PlaybackState.Playing &&
+                        blackBarRetryCount < MAX_BLACK_BAR_RETRY
+                    ) {
+                        blackBarRetryCount++
+                        _blackBarRetry.tryEmit(Unit)
+                    }
                 }
                 return@launch
             }
+
+            // 检测到有效画面区域：重置重试计数
+            blackBarRetryCount = 0
 
             // 用检测到的有效像素区域重算 VideoSize
             // pixelWidthHeightRatio 保持原值（黑边不影响像素形状）
@@ -1518,6 +1550,7 @@ class PlayerViewModel @Inject constructor(
     /** 重置黑边检测结果（切换视频 / seek 跨度大时调用）。 */
     fun resetBlackBarDetection() {
         _effectiveVideoSize.value = null
+        blackBarRetryCount = 0
         if (Looper.myLooper() == Looper.getMainLooper()) {
             player.setBlackBarCropEnabled(false)
         } else {

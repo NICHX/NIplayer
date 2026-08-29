@@ -30,11 +30,6 @@
     <string name="subtitle_outline_color_dark_gray">深灰</string>
     <string name="subtitle_outline_color_red">红色</string>
 
-    <!-- 字幕底部边距选项（SubtitleSettings.BOTTOM_PADDING_OPTIONS） -->
-    <string name="subtitle_bottom_padding_near">近</string>
-    <string name="subtitle_bottom_padding_medium">中</string>
-    <string name="subtitle_bottom_padding_far">远</string>
-
     <!-- 缩略图生成策略（ThumbnailGenerationMode.labelRes） -->
     <string name="thumbnail_mode_all">全部生成</string>
     <string name="thumbnail_mode_after_play">仅播放后生成</string>
