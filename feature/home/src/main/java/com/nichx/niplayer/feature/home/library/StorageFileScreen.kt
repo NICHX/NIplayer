@@ -8,7 +8,11 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -227,6 +231,7 @@ fun FileBrowserScreen(
     val encryptedPaths by viewModel.encryptedPaths.collectAsStateWithLifecycle()
     val isMultiSelect by viewModel.isMultiSelect.collectAsStateWithLifecycle()
     val selectedPaths by viewModel.selectedPaths.collectAsStateWithLifecycle()
+    val preparingPath by viewModel.preparingPlaybackPath.collectAsStateWithLifecycle()
     val messageController = LocalAppMessageController.current
     var fileMenu by remember { mutableStateOf<Pair<StorageFile, Boolean>?>(null) }
     var showSortMenu by remember { mutableStateOf(false) }
@@ -689,6 +694,7 @@ fun FileBrowserScreen(
                                     encryptedPaths = encryptedPaths,
                                     isMultiSelect = isMultiSelect,
                                     selectedPaths = selectedPaths,
+                                    preparingPath = preparingPath,
                                     onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
                                     onPlayFile = viewModel::playFile,
                                     onOpenImageFile = viewModel::openImageFile,
@@ -705,6 +711,7 @@ fun FileBrowserScreen(
                                     encryptedPaths = encryptedPaths,
                                     isMultiSelect = isMultiSelect,
                                     selectedPaths = selectedPaths,
+                                    preparingPath = preparingPath,
                                     onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
                                     onPlayFile = viewModel::playFile,
                                     onOpenImageFile = viewModel::openImageFile,
@@ -721,6 +728,7 @@ fun FileBrowserScreen(
                                     encryptedPaths = encryptedPaths,
                                     isMultiSelect = isMultiSelect,
                                     selectedPaths = selectedPaths,
+                                    preparingPath = preparingPath,
                                     uploads = uploads,
                                     onCancelUpload = viewModel::cancelUpload,
                                     onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
@@ -1215,6 +1223,37 @@ private fun ThumbnailProgressBar(progress: Int) {
     }
 }
 
+/**
+ * "识别方向中…"状态标签：居中叠在文件占位图标上，提示正在为进入播放前读取视频宽高比。
+ * 仅当点击后又未立即进入播放（维持一小段时间）时让用户感知到等待，背景用主题色缓慢脉冲。
+ */
+@Composable
+private fun BoxScope.PreparingBadge() {
+    val transition = rememberInfiniteTransition(label = "preparing")
+    val alpha by transition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(NiMotion.DURATION_PAGE),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "preparingAlpha",
+    )
+    Box(
+        modifier = Modifier
+            .align(Alignment.Center)
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f * alpha))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.storage_file_preparing_playback),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onPrimary,
+        )
+    }
+}
+
 @Composable
 private fun BreadcrumbBar(
     path: String,
@@ -1362,6 +1401,7 @@ private fun FileList(
     encryptedPaths: Set<String>,
     isMultiSelect: Boolean,
     selectedPaths: Set<String>,
+    preparingPath: String?,
     uploads: List<ActiveUpload>,
     onCancelUpload: (Long) -> Unit,
     onOpenDirectory: (StorageFile) -> Unit,
@@ -1398,6 +1438,7 @@ private fun FileList(
                 isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
                 isMultiSelect = isMultiSelect,
                 isSelected = file.path in selectedPaths,
+                preparing = preparingPath != null && file.path == preparingPath,
                 onOpenDirectory = onOpenDirectory,
                 onPlayFile = onPlayFile,
                 onOpenImageFile = onOpenImageFile,
@@ -1492,6 +1533,7 @@ private fun FileRow(
     isEncrypted: Boolean,
     isMultiSelect: Boolean,
     isSelected: Boolean,
+    preparing: Boolean,
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
@@ -1546,7 +1588,6 @@ private fun FileRow(
             .background(rowBgColor)
             .combinedClickable(
                 interactionSource = interactionSource,
-                indication = null,
                 onClick = {
                     if (isMultiSelect) {
                         onToggleSelection()
@@ -1656,6 +1697,7 @@ private fun FileRow(
                         else Color.White.copy(alpha = 0.55f),
                         modifier = Modifier.size(if (isAudio) 26.dp else 24.dp),
                     )
+                    if (preparing) PreparingBadge()
                 }
             }
             Spacer(Modifier.width(12.dp))
@@ -1757,6 +1799,7 @@ private fun FileGrid(
     encryptedPaths: Set<String>,
     isMultiSelect: Boolean,
     selectedPaths: Set<String>,
+    preparingPath: String?,
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
@@ -1788,6 +1831,7 @@ private fun FileGrid(
                 isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
                 isMultiSelect = isMultiSelect,
                 isSelected = file.path in selectedPaths,
+                preparing = preparingPath != null && file.path == preparingPath,
                 onOpenDirectory = onOpenDirectory,
                 onPlayFile = onPlayFile,
                 onOpenImageFile = onOpenImageFile,
@@ -1807,6 +1851,7 @@ private fun GridFileCard(
     isEncrypted: Boolean,
     isMultiSelect: Boolean,
     isSelected: Boolean,
+    preparing: Boolean,
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
@@ -1855,7 +1900,6 @@ private fun GridFileCard(
                 .background(NiExtraColors.current.surfaceLevel3)
                 .combinedClickable(
                     interactionSource = interactionSource,
-                    indication = null,
                     onClick = {
                         if (isMultiSelect) {
                             onToggleSelection()
@@ -2048,6 +2092,7 @@ private fun GridFileCard(
                                     modifier = Modifier.size(52.dp),
                                 )
                             }
+                            if (preparing) PreparingBadge()
                         }
                     }
                 }
@@ -2110,6 +2155,7 @@ private fun FileGallery(
     encryptedPaths: Set<String>,
     isMultiSelect: Boolean,
     selectedPaths: Set<String>,
+    preparingPath: String?,
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
@@ -2160,6 +2206,7 @@ private fun FileGallery(
                 isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
                 isMultiSelect = isMultiSelect,
                 isSelected = file.path in selectedPaths,
+                preparing = preparingPath != null && file.path == preparingPath,
                 onOpenDirectory = { onOpenDirectory(file) },
                 onPlayFile = { onPlayFile(file) },
                 onOpenImageFile = { onOpenImageFile(file) },
@@ -2179,6 +2226,7 @@ private fun GalleryCell(
     isEncrypted: Boolean,
     isMultiSelect: Boolean,
     isSelected: Boolean,
+    preparing: Boolean,
     onOpenDirectory: () -> Unit,
     onPlayFile: () -> Unit,
     onOpenImageFile: () -> Unit,
@@ -2214,7 +2262,6 @@ private fun GalleryCell(
             .background(NiExtraColors.current.surfaceLevel3)
             .combinedClickable(
                 interactionSource = interactionSource,
-                indication = null,
                 onClick = {
                     if (isMultiSelect) {
                         onToggleSelection()
@@ -2328,6 +2375,7 @@ private fun GalleryCell(
                             modifier = Modifier.size(34.dp),
                         )
                     }
+                    if (preparing) PreparingBadge()
                 }
             }
             // 视频中心播放徽章
