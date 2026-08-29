@@ -257,13 +257,12 @@
     <!-- Search (SearchScreen / SearchViewModel) -->
     <string name="search_title">Search</string>
     <string name="search_placeholder">Search…</string>
-    <string name="search_empty_title">Search media</string>
-    <string name="search_empty_hint">Enter keywords to search your library</string>
+    <string name="search_empty_title">No matching items</string>
+    <string name="search_empty_hint">Try recently watched videos or quick-access bookmarks</string>
     <string name="search_hint_title">Type keywords to start searching</string>
-    <string name="search_hint_body">Search file names — supports video, audio and images</string>
+    <string name="search_hint_body">Search watch history and quick access to resume or jump instantly</string>
     <string name="search_section_history">Play history</string>
     <string name="search_section_quick_access">Quick access</string>
-    <string name="search_section_library">Library</string>
     <string name="search_folder_subtitle">%1$s folder</string>
     <string name="search_unknown_storage">Unknown storage source</string>
 

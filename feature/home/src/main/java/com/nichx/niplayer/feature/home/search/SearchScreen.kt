@@ -20,13 +20,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Computer
-import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -50,7 +46,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.common.error.NiMessage
@@ -74,11 +69,10 @@ import kotlinx.coroutines.delay
 /**
  * 首页搜索页。
  *
- * 顶部搜索框 + 分组结果（播放历史 / 快速访问 / 存储源），全部基于本地 Room 表，
- * 输入即搜、无网络请求。点击行为：
+ * 顶部搜索框 + 分组结果（播放历史 / 快速访问），全部基于本地 Room 表，
+ * 输入即搜、无网络请求。定位为"快速续播 / 直达书签"。点击行为：
  * - 历史 → 续播
  * - 快速访问文件夹 → 文件浏览；文件 → 播放
- * - 存储源 → 文件浏览根目录
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -163,14 +157,12 @@ fun SearchScreen(
                 uiState.searching -> SearchLoadingState(Modifier.weight(1f))
 
                 uiState.histories.isEmpty() &&
-                    uiState.quickAccessItems.isEmpty() &&
-                    uiState.libraries.isEmpty() -> SearchEmptyState(Modifier.weight(1f))
+                    uiState.quickAccessItems.isEmpty() -> SearchEmptyState(Modifier.weight(1f))
 
                 else -> SearchResultList(
                     state = uiState,
                     onResumePlay = viewModel::resumePlay,
                     onOpenQuickAccess = viewModel::openQuickAccess,
-                    onOpenLibrary = viewModel::openLibrary,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -220,13 +212,12 @@ private fun SearchEmptyState(modifier: Modifier = Modifier) {
     }
 }
 
-/** 分组结果列表：播放历史 / 快速访问 / 存储源。 */
+/** 分组结果列表：播放历史 / 快速访问。 */
 @Composable
 private fun SearchResultList(
     state: SearchUiState,
     onResumePlay: (PlayHistoryEntity) -> Unit,
     onOpenQuickAccess: (QuickAccessUiItem) -> Unit,
-    onOpenLibrary: (MediaLibraryEntity) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -265,23 +256,6 @@ private fun SearchResultList(
                     item = qa,
                     thumbPath = state.qaThumbs["${qa.entity.libraryId}/${qa.entity.storagePath}"],
                     onClick = { onOpenQuickAccess(qa) },
-                )
-            }
-        }
-
-        if (state.libraries.isNotEmpty()) {
-            item(key = "header_library") {
-                NiSectionHeader(
-                    title = stringResource(R.string.search_section_library),
-                    count = state.libraries.size,
-                    onClick = null,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-            }
-            items(state.libraries, key = { "lib_${it.id}" }) { library ->
-                LibraryResultRow(
-                    library = library,
-                    onClick = { onOpenLibrary(library) },
                 )
             }
         }
@@ -356,27 +330,6 @@ private fun mediaLabelForFile(isAudio: Boolean, isImage: Boolean): String = when
     isAudio -> stringResource(R.string.storage_file_type_audio)
     isImage -> stringResource(R.string.storage_file_type_image)
     else -> stringResource(R.string.storage_file_type_video)
-}
-
-/** 存储源结果行：类型图标 + 名称 + 类型名，点击打开文件浏览根目录。 */
-@Composable
-private fun LibraryResultRow(
-    library: MediaLibraryEntity,
-    onClick: () -> Unit,
-) {
-    val icon = when (library.mediaType) {
-        MediaType.LOCAL_STORAGE, MediaType.EXTERNAL_STORAGE -> Icons.Filled.PhoneAndroid
-        MediaType.SMB_SERVER -> Icons.Filled.Computer
-        MediaType.WEBDAV_SERVER -> Icons.Filled.CloudQueue
-        else -> Icons.Filled.Dns
-    }
-    SearchResultRow(
-        icon = icon,
-        iconStyle = NiAppIconStyle,
-        title = library.displayName,
-        subtitle = stringResource(library.mediaType.storageNameRes),
-        onClick = onClick,
-    )
 }
 
 /** 通用搜索结果行：左图标 + 中标题/副标题 + 右尾随。 */

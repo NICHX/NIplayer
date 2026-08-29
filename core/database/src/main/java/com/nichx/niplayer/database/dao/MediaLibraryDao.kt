@@ -39,17 +39,6 @@ interface MediaLibraryDao {
     @Query("SELECT * FROM media_library ORDER BY id ASC")
     suspend fun getAllSuspend(): List<MediaLibraryEntity>
 
-    /**
-     * 按显示名关键词搜索存储源（首页搜索）。
-     *
-     * 使用 LIKE 子串匹配，按 id 升序返回，限制 [limit] 条。
-     */
-    @Query(
-        "SELECT * FROM media_library WHERE display_name LIKE '%' || :keyword || '%' " +
-            "ORDER BY id ASC LIMIT :limit"
-    )
-    suspend fun searchByKeyword(keyword: String, limit: Int = 20): List<MediaLibraryEntity>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(vararg entity: MediaLibraryEntity)
 
