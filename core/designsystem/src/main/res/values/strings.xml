@@ -10,21 +10,29 @@
     <string name="collapse">收起</string>
 
     <!-- 配色方案（NiScheme.labelRes） -->
-    <string name="color_scheme_blue">蓝色</string>
-    <string name="color_scheme_indigo">靛蓝</string>
-    <string name="color_scheme_cyan">青色</string>
-    <string name="color_scheme_slate">石板</string>
-    <string name="color_scheme_purple">紫色</string>
-    <string name="color_scheme_rose">玫瑰</string>
-    <string name="color_scheme_coral">珊瑚</string>
-    <string name="color_scheme_pink">粉红</string>
-    <string name="color_scheme_teal">青绿</string>
-    <string name="color_scheme_green">翠绿</string>
-    <string name="color_scheme_forest">森林</string>
-    <string name="color_scheme_caramel">焦糖</string>
+    <string name="color_scheme_misty">雾蓝静谧</string>
+    <string name="color_scheme_blueberry">蓝莓之夜</string>
+    <string name="color_scheme_denim">复古牛仔</string>
+    <string name="color_scheme_rose_dust">玫瑰尘埃</string>
+    <string name="color_scheme_strawberry">草莓奶油</string>
+    <string name="color_scheme_coral">落日珊瑚</string>
+    <string name="color_scheme_forest">森野絮语</string>
+    <string name="color_scheme_matcha">抹茶微风</string>
+    <string name="color_scheme_caramel">焦糖琥珀</string>
+    <string name="color_scheme_mint_macaron">薄荷糖</string>
+    <string name="color_scheme_sakura_macaron">樱花布丁</string>
+    <string name="color_scheme_lavender_macaron">香芋慕斯</string>
+    <string name="color_scheme_almond">杏仁慕斯</string>
+    <string name="color_scheme_mauve">灰霭紫</string>
+    <string name="color_scheme_sage">鼠尾草</string>
+    <string name="color_scheme_spearmint">青柠薄荷</string>
+    <string name="color_scheme_bubblegum">泡泡糖</string>
+    <string name="color_scheme_summer_soda">橘夏汽水</string>
 
     <!-- 配色方案分类（NiScheme.categoryRes） -->
     <string name="color_scheme_category_cool">冷色系</string>
     <string name="color_scheme_category_warm">暖色系</string>
     <string name="color_scheme_category_nature">自然色系</string>
+    <string name="color_scheme_category_macaron">糖果系</string>
+    <string name="color_scheme_category_morandi">莫兰迪</string>
 </resources>

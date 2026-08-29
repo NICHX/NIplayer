@@ -52,13 +52,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -94,6 +94,9 @@ import com.nichx.niplayer.designsystem.components.NiTextFieldDefaults
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
+import com.nichx.niplayer.designsystem.components.NiGlassOverlay
+import com.nichx.niplayer.designsystem.components.NiGlassOverlayKind
+import com.nichx.niplayer.designsystem.components.NiGlassOverlayRequest
 import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
 import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
@@ -582,13 +585,12 @@ private fun LibrarySourceCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StorageTypePickerSheet(
     onDismiss: () -> Unit,
     onPick: (MediaType) -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetId = "library_storage_type_picker"
     val types = listOf(
         Triple(
             MediaType.SMB_SERVER,
@@ -606,63 +608,65 @@ private fun StorageTypePickerSheet(
             stringResource(R.string.library_type_external_desc),
         ),
     )
+    val title = stringResource(R.string.library_select_storage_type)
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        tonalElevation = 2.dp,
-    ) {
-        Column(modifier = Modifier.padding(bottom = 32.dp)) {
-            Text(
-                text = stringResource(R.string.library_select_storage_type),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-            )
-            types.forEach { (type, label, desc) ->
-                val typeInfo = storageTypeInfo(type, NiExtraColors.current, LocalContext.current)
-                val iconBg = typeInfo.color.copy(alpha = 0.1f)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            onClick = { onPick(type) },
-                        )
-                        .padding(horizontal = 24.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(iconBg),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = typeInfo.icon,
-                            contentDescription = null,
-                            tint = typeInfo.color,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Text(
-                            text = desc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline,
-                        )
+    DisposableEffect(sheetId) {
+        onDispose { NiGlassOverlay.dismiss(sheetId) }
+    }
+    LaunchedEffect(sheetId) {
+        NiGlassOverlay.show(
+            NiGlassOverlayRequest(
+                id = sheetId,
+                kind = NiGlassOverlayKind.BottomSheet,
+                title = title,
+                onDismiss = onDismiss,
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    types.forEach { (type, label, desc) ->
+                        val typeInfo = storageTypeInfo(type, NiExtraColors.current, LocalContext.current)
+                        val iconBg = typeInfo.color.copy(alpha = 0.1f)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    onClick = { onPick(type) },
+                                )
+                                .padding(horizontal = 24.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(iconBg),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = typeInfo.icon,
+                                    contentDescription = null,
+                                    tint = typeInfo.color,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                            Spacer(Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                                Text(
+                                    text = desc,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline,
+                                )
+                            }
+                        }
                     }
                 }
-            }
-        }
+            },
+        )
     }
 }
 

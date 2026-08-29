@@ -132,8 +132,16 @@ class SmbStorage(
      *
      * codelibs/jcifs 的 SmbFile 使用 `smb://host:port/share/path` 格式，
      * 认证信息通过 context.withCredentials() 传递，不嵌入 URL。
+     *
+     * - 配置了共享路径：`smb://host:port/{share}/{prefix}{path}`，path 是共享内的相对路径；
+     * - 未配置共享路径（可选，[MediaLibraryEntity.smbSharePath] 为 null）：path 首段即共享名
+     *   （由服务器根目录的共享枚举产生），直接 `smb://host:port/{path}`。
      */
     private fun buildSmbUrl(path: String, isPlay: Boolean = false): String {
+        if (shareName.isNullOrBlank()) {
+            val p = path.trim('/')
+            return if (p.isEmpty()) "smb://$host:$port/" else "smb://$host:$port/$p"
+        }
         val prefix = if (isPlay) playRootPrefix else shareRootPrefix
         val normalizedPath = prefix + path
         val share = shareName?.trim('/')?.split("/")?.first()?.trim()
@@ -149,9 +157,14 @@ class SmbStorage(
      */
     private suspend fun ensureShare() {
         connectMutex.withLock {
-            if (!shareRootPrefix.isEmpty()) return@withLock
+            if (shareRootPrefix.isNotEmpty()) return@withLock
             val name = shareName
-                ?: throw IllegalStateException("未配置 SMB 共享路径，无法浏览文件")
+            // 未配置共享路径：以服务器根为浏览起点，前缀留空，由 buildSmbUrl 处理
+            // （根目录 listFiles 会枚举服务器上可用的共享）
+            if (name.isNullOrBlank()) {
+                shareRootPrefix = ""
+                return@withLock
+            }
             val shareOnly = name.trim('/').split("/").first().trim()
             if (shareOnly.isBlank()) {
                 throw IllegalArgumentException("SMB 共享名不能为空")
@@ -163,7 +176,11 @@ class SmbStorage(
 
     private suspend fun ensurePlayShare() {
         val name = shareName
-            ?: throw IllegalStateException("未配置 SMB 共享路径")
+        // 未配置共享路径的同主线处理：直接由 buildSmbUrl 处理（命令首段即共享名）
+        if (name.isNullOrBlank()) {
+            playRootPrefix = ""
+            return
+        }
         val shareOnly = name.trim('/').split("/").first().trim()
         if (shareOnly.isBlank()) {
             throw IllegalArgumentException("SMB 共享名不能为空")
@@ -202,9 +219,16 @@ class SmbStorage(
         val url = buildSmbUrl(directory.path)
         val dirFile = SmbFile(url, smbContext)
 
-        if (!dirFile.exists()) return emptyList()
+        // 未配置共享路径时，服务器根目录（path 为空）的 exists() 因无共享会失败，
+        // 因此跳过 exists 检查，直接枚举服务器上可用的共享列表。
+        val children: List<SmbFile> = if (shareName.isNullOrBlank() && directory.path.isBlank()) {
+            dirFile.listFiles().toList()
+        } else {
+            if (!dirFile.exists()) return emptyList()
+            dirFile.listFiles().toList()
+        }
 
-        return dirFile.listFiles().toList()
+        return children
             .filter { file ->
                 val n = extractName(file)
                 n != "." && n != ".." && !isSystemFile(file)
@@ -655,9 +679,10 @@ class SmbStorage(
                 }
             }
         } else {
-            // 无 share 配置时至少验证服务器可达（通过 SmbFile 构造不抛异常）
+            // 无 share 配置时通过枚举服务器共享验证主机可达与凭据有效
+            //（根目录 listFiles 触发 IPC$ 树连接与共享枚举，成功即登录通过）
             val testUrl = "smb://$host:$port/"
-            SmbFile(testUrl, smbContext)
+            SmbFile(testUrl, smbContext).listFiles()
         }
         return true
     }

@@ -67,7 +67,8 @@ fun HomeBottomNavBar(
         tabs.forEachIndexed { index, tab ->
             val selected = index == selectedIndex()
             val contentColor = if (selected) {
-                MaterialTheme.colorScheme.primary
+                // 组合色：选中态用三级色强调，与主色(primary)区分，形成多色观感
+                MaterialTheme.colorScheme.tertiary
             } else {
                 // 未选中项用玻璃浮层高对比前景色，避免灰色在玻璃底（复杂/深色背景）上对比不足
                 glassOnSurfaceMuted()
