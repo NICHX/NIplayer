@@ -272,7 +272,8 @@ class ThumbnailManager @Inject constructor(
      */
     suspend fun uploadThumbnail(storage: Storage, file: StorageFile) = withContext(Dispatchers.IO) {
         // BUG-7 修复：方法自身检查 saveInSameDir，避免调用方遗漏导致绕过用户设置
-        if (!ThumbnailSettings.saveInSameDir) return@withContext
+        // （每存储源按 effectiveWriteBack 生效，存储源覆盖优先于全局开关）
+        if (!ThumbnailSettings.effectiveWriteBack(storage.library.id)) return@withContext
         val storageId = storage.library.id
         val cacheFile = File(cacheDir, "${md5("$storageId-${file.path}")}.jpg")
         if (!cacheFile.exists()) return@withContext
@@ -1209,7 +1210,7 @@ class ThumbnailManager @Inject constructor(
      * 避免同名异扩展名音频（如 `theme.mp3` 与 `theme.flac`）互相覆盖。
      */
     suspend fun uploadAudioCover(storage: Storage, file: StorageFile) = withContext(Dispatchers.IO) {
-        if (!ThumbnailSettings.saveInSameDir) return@withContext
+        if (!ThumbnailSettings.effectiveWriteBack(storage.library.id)) return@withContext
         val storageId = storage.library.id
         val cacheFile = File(audioCacheDir, "${md5("$storageId-${file.path}")}.jpg")
         if (!cacheFile.exists()) return@withContext
@@ -1683,7 +1684,7 @@ class ThumbnailManager @Inject constructor(
                     // BUG-T-M2 修复：Step 3 - 上传新生成的缩略图到服务端 .thumb/
                     // uploadThumbnail 内部已应用 BUG-T-C1 fileExists 检查，不覆盖服务端已有文件
                     // R6 修复：coroutineScope 等待上传完成，原因同 Step 2（storage 生命周期归调用方）
-                    if (ThumbnailSettings.saveInSameDir && successFiles.isNotEmpty()) {
+                    if (ThumbnailSettings.effectiveWriteBack(storage.library.id) && successFiles.isNotEmpty()) {
                         val uploadConcurrency = minOf(storage.thumbnailConcurrency, successFiles.size)
                         val uploadSemaphore = Semaphore(uploadConcurrency)
                         coroutineScope {
@@ -1765,7 +1766,7 @@ class ThumbnailManager @Inject constructor(
                     // BUG-T-M2 修复：Step 3 - 上传新生成的封面到服务端 .cover/
                     // uploadAudioCover 内部已应用 BUG-T-C1 fileExists 检查
                     // R6 修复：coroutineScope 等待上传完成（原因同视频组）
-                    if (ThumbnailSettings.saveInSameDir && successFiles.isNotEmpty()) {
+                    if (ThumbnailSettings.effectiveWriteBack(storage.library.id) && successFiles.isNotEmpty()) {
                         val uploadConcurrency = minOf(storage.thumbnailConcurrency, successFiles.size)
                         val uploadSemaphore = Semaphore(uploadConcurrency)
                         coroutineScope {

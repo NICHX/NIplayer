@@ -747,8 +747,9 @@ fun FileBrowserScreen(
                     icon = Icons.Rounded.KeyboardArrowUp,
                     onClick = {
                         scope.launch {
-                            if (isGridView) gridState.animateScrollToItem(0)
-                            else listState.animateScrollToItem(0)
+                            // 跳转回顶部：瞬时定位替代滑动，长列表下更省时
+                            if (isGridView) gridState.scrollToItem(0)
+                            else listState.scrollToItem(0)
                         }
                     },
                     contentDescription = stringResource(R.string.storage_file_back_to_top),

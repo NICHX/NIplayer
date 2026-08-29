@@ -8,6 +8,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Delete
@@ -33,17 +35,23 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import com.nichx.niplayer.common.error.NiMessage
+import com.nichx.niplayer.datastore.ThumbnailGenerationMode
+import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
+import com.nichx.niplayer.designsystem.components.NiDialogItem
+import com.nichx.niplayer.designsystem.components.NiListItemDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTopBar
@@ -82,6 +90,8 @@ fun StoragePlusScreen(
     val messageController = LocalAppMessageController.current
     var showDeleteDialog by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
+    var showThumbnailModeDialog by remember { mutableStateOf(false) }
+    var showThumbnailWriteBackDialog by remember { mutableStateOf(false) }
     val extraColors = NiExtraColors.current
 
     val treeLauncher = rememberLauncherForActivityResult(
@@ -176,6 +186,14 @@ fun StoragePlusScreen(
                 TestResultCard(ok = ok)
             }
 
+            if (state.mediaType == MediaType.SMB_SERVER || state.mediaType == MediaType.WEBDAV_SERVER) {
+                ThumbnailCard(
+                    state = state,
+                    onPickMode = { showThumbnailModeDialog = true },
+                    onPickWriteBack = { showThumbnailWriteBackDialog = true },
+                )
+            }
+
             StorageFormActions(
                 state = state,
                 onTest = viewModel::testConnection,
@@ -196,6 +214,76 @@ fun StoragePlusScreen(
             },
             onDismiss = { showDeleteDialog = false },
             confirmText = stringResource(R.string.delete),
+        )
+    }
+
+    if (showThumbnailModeDialog) {
+        val globalMode = ThumbnailSettings.generationMode
+        NiListItemDialog(
+            title = stringResource(R.string.storage_plus_thumbnail_mode_title),
+            onDismiss = { showThumbnailModeDialog = false },
+            items = buildList {
+                add(
+                    NiDialogItem(
+                        label = stringResource(R.string.thumbnail_follow_global, stringResource(globalMode.labelRes)),
+                        isSelected = state.thumbnailMode == null,
+                        onClick = {
+                            viewModel.updateThumbnailMode(null)
+                            showThumbnailModeDialog = false
+                        },
+                    ),
+                )
+                ThumbnailGenerationMode.entries.forEach { option ->
+                    add(
+                        NiDialogItem(
+                            label = stringResource(option.labelRes),
+                            isSelected = state.thumbnailMode == option,
+                            onClick = {
+                                viewModel.updateThumbnailMode(option)
+                                showThumbnailModeDialog = false
+                            },
+                        ),
+                    )
+                }
+            },
+        )
+    }
+
+    if (showThumbnailWriteBackDialog) {
+        val globalWb = if (ThumbnailSettings.saveInSameDir) {
+            stringResource(R.string.thumbnail_writeback_enabled)
+        } else {
+            stringResource(R.string.thumbnail_writeback_disabled)
+        }
+        NiListItemDialog(
+            title = stringResource(R.string.storage_plus_thumbnail_writeback_title),
+            onDismiss = { showThumbnailWriteBackDialog = false },
+            items = listOf(
+                NiDialogItem(
+                    label = stringResource(R.string.thumbnail_follow_global, globalWb),
+                    isSelected = state.thumbnailWriteBack == null,
+                    onClick = {
+                        viewModel.updateThumbnailWriteBack(null)
+                        showThumbnailWriteBackDialog = false
+                    },
+                ),
+                NiDialogItem(
+                    label = stringResource(R.string.thumbnail_writeback_enabled),
+                    isSelected = state.thumbnailWriteBack == true,
+                    onClick = {
+                        viewModel.updateThumbnailWriteBack(true)
+                        showThumbnailWriteBackDialog = false
+                    },
+                ),
+                NiDialogItem(
+                    label = stringResource(R.string.thumbnail_writeback_disabled),
+                    isSelected = state.thumbnailWriteBack == false,
+                    onClick = {
+                        viewModel.updateThumbnailWriteBack(false)
+                        showThumbnailWriteBackDialog = false
+                    },
+                ),
+            ),
         )
     }
 }
@@ -559,6 +647,85 @@ private fun ExternalCard(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
             )
         }
+    }
+}
+
+// ---- 缩略图卡片（仅 SMB / WebDAV） ----
+
+@Composable
+private fun ThumbnailCard(
+    state: StoragePlusUiState,
+    onPickMode: () -> Unit,
+    onPickWriteBack: () -> Unit,
+) {
+    val globalMode = ThumbnailSettings.generationMode
+    val modeValue = state.thumbnailMode?.let { stringResource(it.labelRes) }
+        ?: stringResource(R.string.thumbnail_follow_global, stringResource(globalMode.labelRes))
+    val globalWb = if (ThumbnailSettings.saveInSameDir) {
+        stringResource(R.string.thumbnail_writeback_enabled)
+    } else {
+        stringResource(R.string.thumbnail_writeback_disabled)
+    }
+    val writeBackValue = when (state.thumbnailWriteBack) {
+        true -> stringResource(R.string.thumbnail_writeback_enabled)
+        false -> stringResource(R.string.thumbnail_writeback_disabled)
+        null -> stringResource(R.string.thumbnail_follow_global, globalWb)
+    }
+
+    FormCard(
+        title = stringResource(R.string.player_thumbnail_title),
+        icon = Icons.Filled.Wallpaper,
+        iconBg = Color(0xFF00ACC1),
+    ) {
+        FormSelectRow(
+            label = stringResource(R.string.player_thumbnail_timing),
+            value = modeValue,
+            onClick = onPickMode,
+        )
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+        )
+        FormSelectRow(
+            label = stringResource(R.string.player_thumbnail_upload),
+            value = writeBackValue,
+            onClick = onPickWriteBack,
+        )
+    }
+}
+
+@Composable
+private fun FormSelectRow(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.outline,
+            maxLines = 1,
+        )
+        Spacer(Modifier.size(4.dp))
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 

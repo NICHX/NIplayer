@@ -20,7 +20,10 @@
     <string name="library_filter_webdav">WebDAV</string>
 
     <!-- 缩略图设置 -->
-    <string name="thumbnail_follow_global">跟随全局（%1$s）</string>
+    <string name="thumbnail_follow_global">默认（全局：%1$s）</string>
+    <string name="thumbnail_default">默认</string>
+    <string name="thumbnail_wb_on"> · 回写</string>
+    <string name="thumbnail_wb_off"> · 不回写</string>
     <string name="thumbnail_custom_suffix">（%1$ss）</string>
 
     <!-- 网络错误 -->
@@ -480,6 +483,8 @@
     <string name="storage_plus_domain">域名</string>
     <string name="storage_plus_domain_hint">如 example.com</string>
     <string name="storage_plus_advanced_title">高级选项</string>
+    <string name="storage_plus_thumbnail_mode_title">生成时机</string>
+    <string name="storage_plus_thumbnail_writeback_title">保存到服务器</string>
     <string name="storage_plus_parse_mode">解析模式</string>
     <string name="storage_plus_parse_strict">严格</string>
     <string name="storage_plus_parse_normal">标准</string>
@@ -615,6 +620,8 @@
     <string name="player_current_kernel">当前内核</string>
     <string name="player_pitch_preserve">倍速音调保持</string>
     <string name="player_pitch_preserve_desc">倍速播放时保持原音调，关闭则变速变调（适合快速浏览）</string>
+    <string name="player_default_portrait">默认竖屏播放</string>
+    <string name="player_default_portrait_desc">进入视频播放器时默认竖屏，关闭则默认横屏（播放中仍可手动切换）</string>
     <string name="player_subtitle_title">字幕</string>
     <string name="player_auto_subtitle">自动加载同名字幕</string>
     <string name="player_auto_subtitle_desc">播放时自动加载同文件夹下同名字幕文件</string>
@@ -642,8 +649,8 @@
     <string name="player_thumbnail_timing">生成时机</string>
     <string name="player_thumbnail_frame">取帧位置</string>
     <string name="player_storage_thumbnail_title">存储源缩略图</string>
-    <string name="player_storage_empty">暂无存储源</string>
-    <string name="player_storage_empty_value">添加存储源后将自动显示</string>
+    <string name="player_storage_remote_empty">暂无远程存储</string>
+    <string name="player_storage_remote_empty_value">仅 SMB / WebDAV 可单独配置，本地存储自动生成本地缩略图</string>
     <string name="player_browser_title">文件浏览</string>
     <string name="player_media_only">仅显示媒体文件</string>
     <string name="player_media_only_desc">文件浏览页仅显示视频、音频和图片，隐藏其他文件类型</string>
@@ -656,6 +663,8 @@
     <string name="player_assrt_token_title">设置 ASSRT Token</string>
     <string name="player_assrt_token_hint">在 assrt.net 注册获取 API Token，用于字幕搜索。</string>
     <string name="player_assrt_token_placeholder">输入 ASSRT Token</string>
+    <string name="player_assrt_token_guide_desc">点击下方链接前往 assrt.net 注册并生成 API Token：</string>
+    <string name="player_assrt_token_guide_link">assrt.net</string>
     <string name="player_priority_title">字幕优先级</string>
     <string name="player_priority_hint">按逗号分隔的扩展名或语言标识，如 "chs,cht"。留空则按文件名排序。</string>
     <string name="player_priority_placeholder">如：chs,cht</string>
@@ -676,10 +685,13 @@
     <string name="player_speed_standard">标准</string>
     <string name="player_slide_sensitive_short">灵敏</string>
     <string name="player_slide_precise_short">精细</string>
-    <string name="player_storage_policy_title">%1$s 生成策略</string>
-    <string name="player_storage_policy_fallback">存储源</string>
-    <string name="player_storage_help_intro">每个存储源可独立设置缩略图生成策略，覆盖全局“生成时机”。</string>
-    <string name="player_storage_help_detail">跟随全局：使用全局“生成时机”设置。\n全部生成：浏览时预加载并批量生成缩略图。\n仅播放后生成：浏览时仅加载已有缓存，播放退出后再生成，\n  适合网盘类存储，避免频繁读写触发风控限制。\n关闭：不生成缩略图。</string>
+    <string name="player_storage_config_title">%1$s 缩略图</string>
+    <string name="player_storage_config_fallback">存储源</string>
+    <string name="player_storage_help_intro">每个存储源可独立管理缩略图，覆盖全局设置：\n· 生成时机：何时生成缩略图\n· 回写服务器：是否把缩略图存回服务器</string>
+    <string name="player_storage_help_detail">生成时机：\n全部生成：浏览时预加载并批量生成缩略图（适合 NAS / 不限流服务器）。\n仅播放后生成：浏览时仅加载已有缓存，播放退出后再生成，\n  适合网盘类存储，避免频繁读写触发风控限制。\n关闭：不生成缩略图。</string>
+    <string name="thumbnail_writeback_enabled">开启回写</string>
+    <string name="thumbnail_writeback_disabled">关闭回写</string>
+    <string name="player_storage_help_writeback_detail">回写服务器：\n开启回写：把生成的缩略图/封面存回服务器 .thumb/ / .cover/ 目录。\n关闭回写：仅在本地生成，不写入服务器。\n此项为可选，未设置时遵循全局“保存到服务器”开关。</string>
 
     <!-- 歌词 API（LrcApiSettingsScreen） -->
     <string name="lrcapi_title">音乐元数据</string>
@@ -706,6 +718,10 @@
     <string name="lrcapi_help_point2">2. 播放音频时，优先加载同目录歌词文件，不存在时通过 API 获取歌词。</string>
     <string name="lrcapi_help_api_title">API 接口约定：</string>
     <string name="lrcapi_help_api_body">• GET /lyrics?title=&amp;artist=&amp;album=&amp;path=\n• GET /cover?title=&amp;artist=&amp;album=</string>
+    <string name="lrcapi_guide_title">使用指引</string>
+    <string name="lrcapi_guide_desc">lrcapi 是自建的歌词 / 封面元数据服务，点击下方链接了解如何搭建。</string>
+    <string name="lrcapi_guide_link">github.com/HisAtri/LrcApi</string>
+    <string name="lrcapi_guide_open">打开项目</string>
 
     <!-- 下载管理页面（DownloadManagerScreen） -->
     <string name="download_manager_title">下载管理</string>

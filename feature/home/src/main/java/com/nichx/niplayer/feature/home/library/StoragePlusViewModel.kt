@@ -11,6 +11,8 @@ import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.datastore.ThumbnailGenerationMode
+import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.storage.StorageFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -87,7 +89,12 @@ class StoragePlusViewModel @Inject constructor(
                 _events.tryEmit(StoragePlusEvent.NavigateBack)
                 return@launch
             }
-            _uiState.value = library.toUiState()
+            val base = library.toUiState()
+            // 编辑模式：回填已配置的缩略图按源覆盖
+            _uiState.value = base.copy(
+                thumbnailMode = ThumbnailSettings.getLibraryGenerationMode(storageId),
+                thumbnailWriteBack = ThumbnailSettings.getLibraryWriteBack(storageId),
+            )
         }
     }
 
@@ -125,6 +132,14 @@ class StoragePlusViewModel @Inject constructor(
     fun updateSmbSharePath(v: String) = _uiState.update { it.copy(smbSharePath = v.trim()) }
     fun updateSmbEncryption(v: Boolean) = _uiState.update { it.copy(smbEncryption = v) }
     fun updateExternalUri(v: String) = _uiState.update { it.copy(externalUri = v) }
+
+    // ---- 缩略图按源配置（仅 SMB / WebDAV 生效，存 ThumbnailSettings） ----
+
+    fun updateThumbnailMode(v: ThumbnailGenerationMode?) =
+        _uiState.update { it.copy(thumbnailMode = v) }
+
+    fun updateThumbnailWriteBack(v: Boolean?) =
+        _uiState.update { it.copy(thumbnailWriteBack = v) }
 
     /** External 模式下 SAF 选定目录后，回填 displayName 兜底。 */
     fun ensureExternalDisplayName(fallback: String) {
@@ -192,6 +207,7 @@ class StoragePlusViewModel @Inject constructor(
                     return@launch
                 }
                 withContext(Dispatchers.IO) { mediaLibraryDao.insert(library) }
+                applyThumbnailOverrides(state, library)
                 _events.tryEmit(StoragePlusEvent.Saved)
                 _events.tryEmit(StoragePlusEvent.NavigateBack)
             } catch (e: Exception) {
@@ -254,6 +270,29 @@ class StoragePlusViewModel @Inject constructor(
     }
 
     // ---- 构造实体 ----
+
+    /**
+     * 保存后写入按源缩略图配置。
+     *
+     * 生成时机 / 回写服务器覆盖以存储源 id 为键存于 [ThumbnailSettings] MMKV。
+     * 新增模式下 [MediaLibraryDao.insert] 不返回 id，需按 url + mediaType 回查拿到新 id；
+     * 编辑模式直接用 [storageId]。仅远程存储（SMB / WebDAV）写入，本地/SAF 无服务器可回写。
+     */
+    private suspend fun applyThumbnailOverrides(
+        state: StoragePlusUiState,
+        library: MediaLibraryEntity,
+    ) {
+        val isRemote = state.mediaType == MediaType.SMB_SERVER || state.mediaType == MediaType.WEBDAV_SERVER
+        if (!isRemote) return
+        val savedId = if (storageId > 0) {
+            storageId
+        } else {
+            withContext(Dispatchers.IO) { mediaLibraryDao.getByUrl(library.url, library.mediaType)?.id ?: 0 }
+        }
+        if (savedId <= 0) return
+        ThumbnailSettings.setLibraryGenerationMode(savedId, state.thumbnailMode)
+        ThumbnailSettings.setLibraryWriteBack(savedId, state.thumbnailWriteBack)
+    }
 
     private fun buildLibrary(state: StoragePlusUiState): MediaLibraryEntity {
         val id = if (storageId > 0) storageId else 0
@@ -359,6 +398,8 @@ data class StoragePlusUiState(
     val smbEncryption: Boolean = false,
     val domain: String = "",
     val externalUri: String = "",
+    val thumbnailMode: ThumbnailGenerationMode? = null,
+    val thumbnailWriteBack: Boolean? = null,
     val isTesting: Boolean = false,
     val testResult: Boolean? = null,
     val isSaving: Boolean = false,
