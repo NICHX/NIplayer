@@ -85,6 +85,7 @@ fun HomeScreen(
     // 用轻量的"再按一次"替代确认弹窗，符合 Material 返回导航规范。
     val messageController = LocalAppMessageController.current
     val context = LocalContext.current
+    val doubleBackExitHint = stringResource(R.string.home_double_back_exit)
     var lastBackPressedAt by remember { mutableStateOf(0L) }
     BackHandler {
         val now = SystemClock.uptimeMillis()
@@ -92,7 +93,7 @@ fun HomeScreen(
             (context as? Activity)?.finishAndRemoveTask()
         } else {
             lastBackPressedAt = now
-            messageController.postInfo(context.getString(R.string.home_double_back_exit))
+            messageController.postInfo(doubleBackExitHint)
         }
     }
 
