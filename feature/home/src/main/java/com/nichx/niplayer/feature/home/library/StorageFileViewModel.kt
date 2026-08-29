@@ -16,10 +16,12 @@ import com.nichx.niplayer.database.security.EncryptedFolderManager
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.FileBrowserSettings
 import com.nichx.niplayer.datastore.LrcApiSettings
+import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SortConfig
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.feature.home.PrePlayAspectReader
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequest
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequestHolder
 import com.nichx.niplayer.player.kernel.HistoryDescriptor
@@ -1159,6 +1161,13 @@ class StorageFileViewModel @Inject constructor(
                 // W-N7 修复：传入 uniqueKey 作为 mediaId，与播放历史 uniqueKey 一致。
                 val source = MediaSourceBuilder.buildMediaSource(s, file, mediaId = uniqueKey)
 
+                // 自动方向模式：进入播放器前预读视频显示宽高比，避免"先横屏后旋转"。
+                // 优先用本地缩略图缓存比例（缩略图是视频帧，已含旋转校正，纯本地 IO 极快），
+                // 缺失时回退 MediaMetadataRetriever 读取（本地/远程均支持，带超时）。
+                val initialAspectRatio = if (!isAudioFile(file.name) && PlayerSettings.orientationMode == 2) {
+                    PrePlayAspectReader.read(context, thumbnailManager, s, library.id, file)
+                } else null
+
                 // 文件夹访问加密双保险：加密目录内的文件不写播放历史（history = null 走现有"不记历史"机制）
                 val withinEncrypted = encryptedFolderManager.isWithinEncrypted(library.id, file.path)
 
@@ -1188,9 +1197,10 @@ class StorageFileViewModel @Inject constructor(
                             fileSize = file.length,
                         ),
                         isAudio = isAudioFile(file.name),
+                        initialAspectRatio = initialAspectRatio,
                     )
                 )
-                _events.tryEmit(StorageFileEvent.NavigateToPlayer)
+                _events.tryEmit(StorageFileEvent.NavigateToPlayer(isAudioFile(file.name)))
             } catch (e: Exception) {
                 _events.tryEmit(StorageFileEvent.ShowError(e.message ?: context.getString(R.string.play_error_open_failed)))
             }
@@ -1773,8 +1783,8 @@ data class StorageFileUiState(
 
 /** 一次性事件（导航、Toast），由 [StorageFileScreen] collect。 */
 sealed class StorageFileEvent {
-    /** 播放源已就绪，导航到 [com.nichx.niplayer.navigation.Routes.Player.PLAYER]。 */
-    object NavigateToPlayer : StorageFileEvent()
+    /** 播放源已就绪，携带音频标记以便直接分流到视频/音频播放页。 */
+    data class NavigateToPlayer(val isAudio: Boolean) : StorageFileEvent()
 
     /** 图片请求已就绪，导航到 [com.nichx.niplayer.navigation.Routes.ImageViewer.VIEWER]。 */
     object NavigateToImageViewer : StorageFileEvent()

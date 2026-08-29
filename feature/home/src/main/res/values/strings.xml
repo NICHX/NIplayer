@@ -622,8 +622,11 @@
     <string name="player_current_kernel">当前内核</string>
     <string name="player_pitch_preserve">倍速音调保持</string>
     <string name="player_pitch_preserve_desc">倍速播放时保持原音调，关闭则变速变调（适合快速浏览）</string>
-    <string name="player_default_portrait">默认竖屏播放</string>
-    <string name="player_default_portrait_desc">进入视频播放器时默认竖屏，关闭则默认横屏（播放中仍可手动切换）</string>
+    <string name="player_orientation_mode">进入播放器方向</string>
+    <string name="player_orientation_title">默认播放方向</string>
+    <string name="player_orientation_landscape">横屏</string>
+    <string name="player_orientation_portrait">竖屏</string>
+    <string name="player_orientation_auto">自动（按视频比例）</string>
     <string name="player_subtitle_title">字幕</string>
     <string name="player_auto_subtitle">自动加载同名字幕</string>
     <string name="player_auto_subtitle_desc">播放时自动加载同文件夹下同名字幕文件</string>

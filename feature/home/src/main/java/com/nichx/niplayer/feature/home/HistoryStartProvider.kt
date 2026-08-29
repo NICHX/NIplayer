@@ -3,6 +3,7 @@ package com.nichx.niplayer.feature.home
 import com.nichx.niplayer.feature.home.R
 import android.content.Context
 import com.nichx.niplayer.common.coroutine.AppCoroutineScope
+import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.entity.resumeStartPositionMs
@@ -16,6 +17,7 @@ import com.nichx.niplayer.player.kernel.PlaylistItem
 import com.nichx.niplayer.player.kernel.isAudioFile
 import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.StorageFactory
+import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -39,6 +41,7 @@ class HistoryStartProvider @Inject constructor(
     private val playbackRequestHolder: PlaybackRequestHolder,
     private val playlistHolder: PlaylistHolder,
     private val appScope: AppCoroutineScope,
+    private val thumbnailManager: ThumbnailManager,
     @ApplicationContext private val context: Context,
 ) {
 
@@ -71,6 +74,13 @@ class HistoryStartProvider @Inject constructor(
             // W-N7 修复：传入 uniqueKey 作为 mediaId
             val source = MediaSourceBuilder.buildMediaSource(storage, file, mediaId = history.uniqueKey)
 
+            val isAudio = isAudioFile(history.videoName)
+            // 自动方向模式：视频 + 自动方向时预读视频显示宽高比，让首页续播/快速访问也能在
+            // 进入播放器前锁定横/竖屏，避免"先横屏后旋转"（与文件浏览 playFile 一致）。
+            val initialAspectRatio = if (!isAudio && PlayerSettings.orientationMode == 2) {
+                PrePlayAspectReader.read(context, thumbnailManager, storage, storageId, file)
+            } else null
+
             // BUG-22 修复：先 set Holder 再 build playlist。
             // 原实现先 buildAndSetPlaylist（可能耗时 1-3 秒列 SMB 大目录）再 set Holder，
             // 期间 UI 不导航到播放页，用户看到长时间转圈。改为先 set Holder 让 UI 立即导航，
@@ -89,14 +99,14 @@ class HistoryStartProvider @Inject constructor(
                         httpHeader = history.httpHeader,
                         playlistId = history.playlistId,
                     ),
-                    isAudio = isAudioFile(history.videoName),
+                    isAudio = isAudio,
+                    initialAspectRatio = initialAspectRatio,
                 )
             )
 
             // BUG-21+22：后台构造同目录播放列表，不阻塞返回。
             // BUG-21 修复：按 history.videoName 扩展名判断音/视频类型，相应过滤。
             // 原实现固定 isVideoFile 过滤，从历史恢复音频时 playlist 为空，连播按钮禁用。
-            val isAudio = isAudioFile(history.videoName)
             // playlist 在后台异步构造（不阻塞返回），大目录 SMB/WebDAV listFiles 可能耗时 1-3 秒。
             // buildAndSetPlaylist 内部 set playlistHolder，player 开始播放时不依赖 playlist 立即可用
             // （失败不影响播放，仅丢失连播能力）。
@@ -197,6 +207,11 @@ class HistoryStartProvider @Inject constructor(
             val uniqueKey = "${item.libraryId}:${item.storagePath}"
             // W-N7 修复：传入 uniqueKey 作为 mediaId
             val source = MediaSourceBuilder.buildMediaSource(storage, file, mediaId = uniqueKey)
+            val isAudio = isAudioFile(item.name)
+            // 自动方向模式：视频 + 自动方向时预读视频显示宽高比，进入播放器前锁定方向。
+            val initialAspectRatio = if (!isAudio && PlayerSettings.orientationMode == 2) {
+                PrePlayAspectReader.read(context, thumbnailManager, storage, item.libraryId, file)
+            } else null
             playbackRequestHolder.set(
                 PlaybackRequest(
                     source = source,
@@ -209,7 +224,8 @@ class HistoryStartProvider @Inject constructor(
                         storageId = item.libraryId,
                         storagePath = item.storagePath,
                     ),
-                    isAudio = isAudioFile(item.name),
+                    isAudio = isAudio,
+                    initialAspectRatio = initialAspectRatio,
                 )
             )
             PlayStartResult.Success

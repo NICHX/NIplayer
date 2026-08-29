@@ -72,8 +72,24 @@ class HomeTabViewModel @Inject constructor(
     private val recentFlow = playHistoryDao.getRecentFlow(RECENT_WINDOW)
     private val quickFlow = quickAccessDao.getRecentFlow(QUICK_ACCESS_LIMIT)
     private val shieldedPathsFlow = videoDao.getAllFolder()
-    /** 全部播放历史（用于统计各类型总数，展示在分区标题；展示行仍由 [recentFlow] 截断）。 */
-    private val allHistoryFlow = playHistoryDao.getAllFlow()
+
+    /**
+     * 视频/音频历史总数（分区标题计数）。
+     *
+     * 独立于 [homeUi] combine：仅当全部播放历史（[PlayHistoryDao.getAllFlow]）本身变化时
+     * 才重算，避免首页其他数据源（最近播放窗口 / 快速访问 / 存储源 / 屏蔽目录）变化时
+     * 反复全表遍历计数。单次遍历同时算两个 count，不做两次过滤。
+     */
+    private val historyCounts: StateFlow<HistoryCounts> = playHistoryDao.getAllFlow()
+        .map { allHistory ->
+            var video = 0
+            var audio = 0
+            for (h in allHistory) {
+                if (MediaFileTypes.isAudioFile(h.videoName)) audio++ else video++
+            }
+            HistoryCounts(video, audio)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HistoryCounts(0, 0))
 
     /**
      * 首页统一展示态：一次 combine 产出「已加载 + 最近播放 + 快速访问 + 各类型总数」。
@@ -82,8 +98,8 @@ class HomeTabViewModel @Inject constructor(
      * 各派生子流由 [distinctUntilChanged] 去重，避免无关源变化触发多余的下游刷新。
      */
     private val homeUi: StateFlow<HomeUiState> = combine(
-        recentFlow, quickFlow, mediaLibraryDao.getAll(), shieldedPathsFlow, allHistoryFlow,
-    ) { histories, quickList, libraries, folders, allHistory ->
+        recentFlow, quickFlow, mediaLibraryDao.getAll(), shieldedPathsFlow, historyCounts,
+    ) { histories, quickList, libraries, folders, counts ->
         val shielded = folders.filter { it.isFilter }.map { it.folderPath }.toSet()
         val recent = if (shielded.isEmpty()) histories
         else histories.filter { h ->
@@ -93,8 +109,8 @@ class HomeTabViewModel @Inject constructor(
         HomeUiState(
             loaded = true,
             recent = recent,
-            videoCount = allHistory.count { !MediaFileTypes.isAudioFile(it.videoName) },
-            audioCount = allHistory.count { MediaFileTypes.isAudioFile(it.videoName) },
+            videoCount = counts.video,
+            audioCount = counts.audio,
             quick = quickList.map { entity ->
                 val lib = libMap[entity.libraryId]
                 QuickAccessUiItem(
@@ -176,21 +192,24 @@ class HomeTabViewModel @Inject constructor(
                     _thumbnailUrls.value = _thumbnailUrls.value.filterKeys { it in currentUrls }
                 }
 
-                // 先扫描本地缓存（视频 + 音频），已存在的缩略图立即可用
+                // 先扫描本地缓存（视频 + 音频），已存在的缩略图立即可用。
+                // getCached* 为文件系统 exists() 检查（IO），搬到 IO 线程避免在主线程逐条阻塞。
                 val uncached = plays.filter { it.url !in _thumbnailUrls.value }
                     .filter { it.storageId != null && !it.storagePath.isNullOrEmpty() }
-                val cached = uncached.mapNotNull { item ->
-                    val path = if (MediaFileTypes.isAudioFile(item.videoName)) {
-                        thumbnailManager.getCachedAudioCoverPath(
-                            item.storageId!!, item.storagePath!!
-                        )
-                    } else {
-                        thumbnailManager.getCachedThumbnailPath(
-                            item.storageId!!, item.storagePath!!
-                        )
-                    }
-                    if (path != null) item.url to path else null
-                }.toMap()
+                val cached = withContext(Dispatchers.IO) {
+                    uncached.mapNotNull { item ->
+                        val path = if (MediaFileTypes.isAudioFile(item.videoName)) {
+                            thumbnailManager.getCachedAudioCoverPath(
+                                item.storageId!!, item.storagePath!!
+                            )
+                        } else {
+                            thumbnailManager.getCachedThumbnailPath(
+                                item.storageId!!, item.storagePath!!
+                            )
+                        }
+                        if (path != null) item.url to path else null
+                    }.toMap()
+                }
                 if (cached.isNotEmpty()) {
                     _thumbnailUrls.update { it + cached }
                 }
@@ -215,19 +234,22 @@ class HomeTabViewModel @Inject constructor(
                 }
                 if (mediaItems.isEmpty()) return@collect
 
-                val cached = mediaItems.mapNotNull { item ->
-                    val name = item.entity.name
-                    val sid = item.entity.libraryId
-                    val path = item.entity.storagePath
-                    val thumbPath = if (MediaFileTypes.isAudioFile(name)) {
-                        thumbnailManager.getCachedAudioCoverPath(sid, path)
-                    } else if (MediaFileTypes.isImageFile(name)) {
-                        thumbnailManager.getCachedImageThumbnailPath(sid, path)
-                    } else {
-                        thumbnailManager.getCachedThumbnailPath(sid, path)
-                    }
-                    if (thumbPath != null) path to thumbPath else null
-                }.toMap()
+                // getCached* 为文件系统 exists() 检查（IO），搬到 IO 线程避免在主线程逐条阻塞
+                val cached = withContext(Dispatchers.IO) {
+                    mediaItems.mapNotNull { item ->
+                        val name = item.entity.name
+                        val sid = item.entity.libraryId
+                        val path = item.entity.storagePath
+                        val thumbPath = if (MediaFileTypes.isAudioFile(name)) {
+                            thumbnailManager.getCachedAudioCoverPath(sid, path)
+                        } else if (MediaFileTypes.isImageFile(name)) {
+                            thumbnailManager.getCachedImageThumbnailPath(sid, path)
+                        } else {
+                            thumbnailManager.getCachedThumbnailPath(sid, path)
+                        }
+                        if (thumbPath != null) path to thumbPath else null
+                    }.toMap()
+                }
                 if (cached.isNotEmpty()) {
                     _qaThumbnailUrls.update { it + cached }
                 }
@@ -236,11 +258,14 @@ class HomeTabViewModel @Inject constructor(
             }
         }
 
-        // 首页加载时验证存储源可达性（仅一次；下拉刷新会再次验证）
+        // 首页加载时验证存储源可达性（仅一次；下拉刷新会再次验证）。
         viewModelScope.launch {
             recentPlays.collect {
                 if (!connectionsValidated) {
                     connectionsValidated = true
+                    // 首次验证延后片刻执行：让首屏概览与最近缩略图先渲染，避免与缩略图生成
+                    // 网络风暴并发抢占 IO/带宽，也把晚到的可达性结果（整页重组）推迟到渲染稳定后。
+                    delay(INITIAL_REACHABILITY_DELAY_MS)
                     validateStorageConnections()
                 }
             }
@@ -450,7 +475,11 @@ class HomeTabViewModel @Inject constructor(
                     }
                 }
             }.awaitAll().toMap()
-            _storageReachability.value = results
+            // 值相等则跳过 set（StateFlow 值语义），避免下拉刷新/重复验证时
+            // 即使连接状态未变也触发整页重组（每个不可达卡片都读此 Map）
+            if (_storageReachability.value != results) {
+                _storageReachability.value = results
+            }
         }
     }
 
@@ -462,7 +491,7 @@ class HomeTabViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = playStarter.startFromHistory(history)) {
                 is PlayStartResult.Success ->
-                    _events.tryEmit(HomeTabEvent.NavigateToPlayer)
+                    _events.tryEmit(HomeTabEvent.NavigateToPlayer(MediaFileTypes.isAudioFile(history.videoName)))
 
                 is PlayStartResult.Error ->
                     _events.tryEmit(HomeTabEvent.ShowError(result.message))
@@ -483,7 +512,7 @@ class HomeTabViewModel @Inject constructor(
             } else {
                 when (val result = playStarter.startFromQuickAccess(entity)) {
                     is PlayStartResult.Success ->
-                        _events.tryEmit(HomeTabEvent.NavigateToPlayer)
+                        _events.tryEmit(HomeTabEvent.NavigateToPlayer(MediaFileTypes.isAudioFile(entity.name)))
 
                     is PlayStartResult.Error ->
                         _events.tryEmit(HomeTabEvent.ShowError(result.message))
@@ -525,8 +554,16 @@ class HomeTabViewModel @Inject constructor(
         const val ROW_PREVIEW_LIMIT = 8
         /** 批量提交缩略图结果的间隔（ms）。降低 StateFlow emit 次数，减少 Compose 重组。 */
         const val FLUSH_INTERVAL_MS = 250L
+        /** 首次存储源可达性验证的延迟（ms）。避开首屏渲染与缩略图生成网络风暴。 */
+        const val INITIAL_REACHABILITY_DELAY_MS = 800L
     }
 }
+
+/** 视频/音频历史总数。 */
+private data class HistoryCounts(
+    val video: Int = 0,
+    val audio: Int = 0,
+)
 
 /** 首页展示态：同帧携带加载标记与列表，供派生子流使用。 */
 private data class HomeUiState(
@@ -539,8 +576,8 @@ private data class HomeUiState(
 
 /** 首页一次性事件，由 [HomeTabScreen] collect。 */
 sealed class HomeTabEvent {
-    /** 续播请求已就绪，导航到播放页。 */
-    object NavigateToPlayer : HomeTabEvent()
+    /** 续播请求已就绪，携带音频标记以便直接分流到视频/音频播放页。 */
+    data class NavigateToPlayer(val isAudio: Boolean) : HomeTabEvent()
 
     /** 文件夹书签打开，导航到文件浏览页。 */
     data class NavigateToStorageFile(val libraryId: Int, val relativePath: String = "") : HomeTabEvent()

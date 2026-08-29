@@ -53,7 +53,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -122,6 +121,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -205,6 +205,7 @@ fun PlayerScreen(
     val bufferedMs by viewModel.bufferedMs.collectAsStateWithLifecycle()
     val videoSize by viewModel.videoSize.collectAsStateWithLifecycle()
     val effectiveVideoSize by viewModel.effectiveVideoSize.collectAsStateWithLifecycle()
+    val preReadAspectRatio by viewModel.preReadAspectRatio.collectAsStateWithLifecycle()
     val title by viewModel.title.collectAsStateWithLifecycle()
     val cues by viewModel.cues.collectAsStateWithLifecycle()
     val scaleIndex by viewModel.scaleIndex.collectAsStateWithLifecycle()
@@ -256,6 +257,13 @@ fun PlayerScreen(
     var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showBookmarkDialog by rememberSaveable { mutableStateOf(false) }
     var surfaceViewRef by remember { mutableStateOf<SurfaceView?>(null) }
+
+    // 换源过渡状态：setSource 到新源首帧渲染(RenderingStart)之间，SurfaceView 表面
+    // 仍停留在旧帧残影上，而 media3 会提前触发新源的 onVideoSizeChanged 改变布局比例。
+    // 若此时直接跟随新比例，旧帧会被压扁/拉伸（竖屏切换下一集时画面先压扁才切换）。
+    // 故过渡期内冻结为切换前的显示比例，等新帧真正渲染后再解冻跟随。
+    var sourceTransition by remember { mutableStateOf(false) }
+    var frozenAspect by remember { mutableFloatStateOf(-1f) }
 
     // 画中画模式状态：PiP 中隐藏全部播放器控件（控制栏/手势/OSD/弹窗），
     // 仅保留视频画面与字幕，避免小窗内控件挤压遮挡（真机适配问题）
@@ -313,8 +321,16 @@ fun PlayerScreen(
         }
     }
 
+    // 进入播放器前的原始方向（通常为竖屏）。退出时先还原再 pop，避免返回页"下降"顿挫
+    val originalOrientation = remember {
+        activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
     val capturedBack: () -> Unit = {
         captureThumbnailOnExit()
+        // 先还原方向：configChanges 拦截下瞬时切回竖屏，让深层文件浏览/首页等以竖屏稳定布局后
+        // 再 popBackStack。否则方向还原发生在 onDispose（pop 动画之后），popEnter 播放期间
+        // 返回页从横屏排布瞬间重排到竖屏排布，表现为主体内容向下坠落
+        activity?.requestedOrientation = originalOrientation
         onBack()
     }
 
@@ -446,6 +462,8 @@ fun PlayerScreen(
     LaunchedEffect(Unit) {
         viewModel.nxPlayer.events.collect { event ->
             if (event is PlaybackEvent.RenderingStart) {
+                // 新源首帧已渲染，解除换源过渡冻结，让画面比例跟随新源
+                sourceTransition = false
                 launch {
                     delay(300)
                     triggerBlackBarDetection()
@@ -480,6 +498,10 @@ fun PlayerScreen(
     LaunchedEffect(title) {
         if (title.isNotEmpty()) {
             viewModel.resetBlackBarDetection()
+            // 进入换源过渡：冻结当前显示比例（frozenAspect 已由主比例处持续跟踪，
+            // 此处无需重新读取，避免 onVideoSizeChanged 覆盖目标比例前竞态取到新值），
+            // 防止旧帧残影被新源比例压扁，待新源 RenderingStart 后再解冻。
+            sourceTransition = true
         }
     }
 
@@ -560,13 +582,25 @@ fun PlayerScreen(
         }
     }
 
+    // 自动方向：预读成功时进入即定横/竖屏，否则等 videoSize 兜底校正。仅应用一次，避免覆盖用户手动切换
+    var autoOrientationApplied by remember { mutableStateOf(false) }
+
     DisposableEffect(Unit) {
-        val original = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        // 默认方向：默认横屏；开启“默认竖屏播放”则进入时锁定竖屏（播放中仍可手动切换）
-        activity?.requestedOrientation = if (PlayerSettings.defaultPortrait) {
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-        } else {
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // 默认方向：横屏 / 竖屏 / 自动。自动模式优先用播放前预读的宽高比直接锁定
+        // （首帧渲染前方向已正确）；未预读成功则先按横屏，随后由下方 LaunchedEffect 校正
+        val preRatio = preReadAspectRatio
+        activity?.requestedOrientation = when (PlayerSettings.orientationMode) {
+            1 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            2 -> if (preRatio != null) {
+                if (preRatio < 1f) {
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                } else {
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                }
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            }
+            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         }
         val originalBrightness = window?.attributes?.screenBrightness
             ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
@@ -588,7 +622,8 @@ fun PlayerScreen(
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
         onDispose {
-            activity?.requestedOrientation = original
+            // capturedBack 已提前还原方向，此处幂等兜底（系统返回/异常路径仍会走到这里）
+            activity?.requestedOrientation = originalOrientation
 
             window?.let { w ->
                 val current = w.attributes.screenBrightness
@@ -603,6 +638,21 @@ fun PlayerScreen(
                 originalSystemBarsBehavior?.let { controller.systemBarsBehavior = it }
             }
             pendingSingleTap?.let { tapHandler.removeCallbacks(it) }
+        }
+    }
+
+    // 自动方向兜底：预读失败/缺失（无缩略图缓存且预读超时）时，等首个有效视频尺寸就绪后
+    // 再按分辨率宽高比锁定横/竖屏（仅应用一次，预读成功时此兜底永不触发）
+    LaunchedEffect(videoSize) {
+        if (PlayerSettings.orientationMode == 2 &&
+            preReadAspectRatio == null && videoSize.isValid && !autoOrientationApplied
+        ) {
+            autoOrientationApplied = true
+            activity?.requestedOrientation = if (videoSize.aspectRatio >= 1f) {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            }
         }
     }
 
@@ -710,7 +760,17 @@ fun PlayerScreen(
         // 检测到黑边时：SurfaceView 用 effectiveVideoSize 比例 + media3 切到裁剪模式
         // → 16:9 视频帧保持比例裁剪填满 2.35:1 surface，正好裁掉上下黑边，画面不变形
         val activeVideoSize = effectiveVideoSize?.takeIf { it.isValid } ?: videoSize
-        val videoAspect = if (activeVideoSize.isValid) activeVideoSize.aspectRatio else 16f / 9f
+        val targetAspect = if (activeVideoSize.isValid) activeVideoSize.aspectRatio else 16f / 9f
+
+        // 非过渡期持续把 frozenAspect 跟踪为当前实际显示比例；
+        // 换源过渡(sourceTransition=true)期间不再更新它，从而天然锁定"切换前的比例"，
+        // 避免 onVideoSizeChanged 提前把目标比例切到新源导致旧帧残影被压扁。
+        LaunchedEffect(targetAspect, sourceTransition) {
+            if (!sourceTransition) {
+                frozenAspect = targetAspect
+            }
+        }
+        val videoAspect = if (sourceTransition && frozenAspect > 0f) frozenAspect else targetAspect
 
         // PiP 尺寸适配：小窗期间视频尺寸变化（切源/黑边检测完成/首帧渲染）时，
         // 同步更新系统 PiP 宽高比，避免小窗始终保持进入时的单一尺寸
@@ -1270,7 +1330,8 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
+                    // 底部挖孔 inset 是硬件稳定值，系统栏隐藏时不变化，避免进入时被导航栏顶起再下移的跳变
+                    .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Bottom))
                     .padding(bottom = 24.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color(0xFFFFAB40).copy(alpha = 0.4f))
@@ -3141,7 +3202,8 @@ private fun PlayerControllerLayer(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .navigationBarsPadding()
+                // 底部挖孔 inset 是硬件稳定值，系统栏隐藏时不变化，避免进入时被导航栏顶起再下移的跳变
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Bottom))
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         ) {
             // 拖动进度条时记录预览位置（fraction），时间文本跟随显示目标时间

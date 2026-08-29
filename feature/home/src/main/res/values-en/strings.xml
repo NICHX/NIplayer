@@ -622,8 +622,11 @@
     <string name="player_current_kernel">Current kernel</string>
     <string name="player_pitch_preserve">Keep pitch when speeding up</string>
     <string name="player_pitch_preserve_desc">Keep the original pitch at faster speeds; turn off to change pitch with speed (for quick browsing)</string>
-    <string name="player_default_portrait">Default to portrait</string>
-    <string name="player_default_portrait_desc">Open the video player in portrait by default; turn off to default to landscape (still switchable manually while playing)</string>
+    <string name="player_orientation_mode">Player orientation</string>
+    <string name="player_orientation_title">Default orientation</string>
+    <string name="player_orientation_landscape">Landscape</string>
+    <string name="player_orientation_portrait">Portrait</string>
+    <string name="player_orientation_auto">Auto (by video ratio)</string>
     <string name="player_subtitle_title">Subtitles</string>
     <string name="player_auto_subtitle">Auto-load matching subtitles</string>
     <string name="player_auto_subtitle_desc">Automatically load subtitles with the same name in the same folder while playing</string>

@@ -95,7 +95,7 @@ private enum class HistoryFilter(@StringRes val labelRes: Int) {
 
 @Composable
 fun PlayHistoryScreen(
-    onNavigateToPlayVideo: () -> Unit = {},
+    onNavigateToPlayVideo: (Boolean) -> Unit = {},
     initialFilterOrdinal: Int = 0,
     viewModel: PlayHistoryViewModel = hiltViewModel(),
 ) {
@@ -133,7 +133,7 @@ fun PlayHistoryScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is PlayHistoryEvent.Toast -> messageController.post(NiMessage.info(event.message))
-                is PlayHistoryEvent.NavigateToPlayer -> onNavigateToPlayVideo()
+                is PlayHistoryEvent.NavigateToPlayer -> onNavigateToPlayVideo(event.isAudio)
                 is PlayHistoryEvent.ShowError -> messageController.post(NiMessage.error(event.message))
                 else -> {}
             }

@@ -68,13 +68,14 @@ object Routes {
     /**
      * 旧 RouteTable.Player namespace。
      *
-     * - [GUARD]：播放路由守卫，替代旧仓库 PlayerInterceptorActivity（透明网关 Activity）。
-     *   PlayerGuardViewModel peek PlaybackRequestHolder 按 isAudio 分流到 [PLAYER] / [AUDIO_PLAYER]。
+     * 播放器已去除守卫路由（原 GUARD 按 isAudio 分流已改为各入口直接分流）：
      * - [PLAYER]：视频播放页（PlayerScreen，SurfaceView 渲染）
      * - [AUDIO_PLAYER]：音频播放页（AudioPlayerScreen，无 SurfaceView）
+     *
+     * 两个路由都由 [com.nichx.niplayer.feature.player.PlayerViewModel] 消费播放请求
+     * （音频场景委托 AudioPlaybackManager），入口仅按文件 isAudio 选择目标路由。
      */
     object Player {
-        const val GUARD = "player/guard"
         const val PLAYER = "player/player"
         const val AUDIO_PLAYER = "player/audio_player"
     }

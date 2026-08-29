@@ -52,6 +52,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             playerLongPressTimeoutMs = PlayerSettings.longPressTimeoutMs,
             playerSeekSensitivity = PlayerSettings.seekSensitivity,
             playerDoubleTapStepSeconds = PlayerSettings.doubleTapStepSeconds,
+            playerOrientationMode = PlayerSettings.orientationMode,
             // 字幕
             subtitleAutoLoadSameName = SubtitleSettings.autoLoadSameNameSubtitle,
             subtitlePriority = SubtitleSettings.subtitlePriority,
@@ -116,6 +117,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.playerLongPressTimeoutMs?.let { PlayerSettings.longPressTimeoutMs = it }
         s.playerSeekSensitivity?.let { PlayerSettings.seekSensitivity = it }
         s.playerDoubleTapStepSeconds?.let { PlayerSettings.doubleTapStepSeconds = it }
+        s.playerOrientationMode?.let { PlayerSettings.orientationMode = it }
         // 字幕
         s.subtitleAutoLoadSameName?.let { SubtitleSettings.autoLoadSameNameSubtitle = it }
         s.subtitlePriority?.let { SubtitleSettings.subtitlePriority = it }
@@ -197,6 +199,7 @@ data class AppSettingsData(
     val playerLongPressTimeoutMs: Int? = null,
     val playerSeekSensitivity: Float? = null,
     val playerDoubleTapStepSeconds: Int? = null,
+    val playerOrientationMode: Int? = null,
     // 字幕
     val subtitleAutoLoadSameName: Boolean? = null,
     val subtitlePriority: String? = null,

@@ -17,15 +17,19 @@ import javax.inject.Singleton
  * 替代旧仓库 `VideoSourceManager` 全局单例，改进点：
  * - Hilt @Singleton 管理生命周期，类型安全
  * - [PlaybackRequestHolder.consume] 取出后立即清空，避免跨会话残留
- * - [isAudio] 由生产者按文件扩展名预判，PlayerGuard 据此分流到视频/音频播放页
+ * - [isAudio] 由生产者按文件扩展名预判，各入口据此直接分流到视频/音频播放页
  *
  * @param source 已就绪的播放源（Http / Local / DataSource）
  * @param title 标题（文件名），用于播放页顶栏与 MediaSession 元数据
  * @param startPositionMs 续播起始位置（ms），0 表示从头播放；由调用方从 PlayHistory 查询后填充
  * @param history 历史记录描述符；非空时 PlayerViewModel 会写入/更新 play_history 表，
  *   为 null 表示本次播放不记录历史（如预览）
- * @param isAudio 是否为音频文件（按文件扩展名预判）。true 时 PlayerGuard 路由到
+ * @param isAudio 是否为音频文件（按文件扩展名预判）。true 时入口路由到
  *   AudioPlayerScreen（无 SurfaceView），false 路由到 PlayerScreen（视频）
+ * @param initialAspectRatio 视频显示宽高比（width/height，已含旋转校正）。由文件浏览页
+ *   在进入播放器前预读（优先本地缩略图缓存比例，回退 MediaMetadataRetriever），
+ *   供"自动方向"模式在播放器首帧渲染前直接锁定横/竖屏，避免进入后再旋转。null 表示
+ *   未预读成功，PlayerScreen 回退到等 media3 videoSize
  */
 data class PlaybackRequest(
     val source: NxMediaSource,
@@ -33,6 +37,7 @@ data class PlaybackRequest(
     val startPositionMs: Long = 0L,
     val history: HistoryDescriptor? = null,
     val isAudio: Boolean = false,
+    val initialAspectRatio: Float? = null,
 )
 
 /**
@@ -42,7 +47,7 @@ data class PlaybackRequest(
  * （缺 `amr`，且曾误含 `m4s`）。改为委托到 [com.nichx.niplayer.player.kernel
  * .MediaFileTypes.isAudioFile]，扩展名表统一管理。
  *
- * PlayerGuard 据此结果决定路由到 [com.nichx.niplayer.feature.player.PlayerScreen]
+ * 各入口据此 [isAudio] 决定路由到 [com.nichx.niplayer.feature.player.PlayerScreen]
  *（视频）或 [com.nichx.niplayer.feature.player.AudioPlayerScreen]（音频）。
  */
 fun isAudioFile(name: String): Boolean = MediaFileTypes.isAudioFile(name)

@@ -23,6 +23,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -60,7 +62,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.common.message.AppMessageController
@@ -103,7 +105,6 @@ import com.nichx.niplayer.feature.home.update.UpdateViewModel
 import com.nichx.niplayer.feature.player.AudioPlaybackManager
 import com.nichx.niplayer.feature.player.AudioPlayerScreen
 import com.nichx.niplayer.feature.player.MusicBar
-import com.nichx.niplayer.feature.player.PlayerGuardScreen
 import com.nichx.niplayer.feature.player.PlayerScreen
 import com.nichx.niplayer.navigation.NiNavHost
 import com.nichx.niplayer.navigation.Routes
@@ -220,6 +221,12 @@ class MainActivity : ComponentActivity() {
                     insetsController?.isAppearanceLightNavigationBars = !darkTheme
                 }
                 val navController = rememberNavController()
+                // 守卫路由已移除：入口按 isAudio 直接分流到视频 / 音频播放页
+                val navigateToPlayer: (Boolean) -> Unit = { isAudio ->
+                    navController.navigate(
+                        if (isAudio) Routes.Player.AUDIO_PLAYER else Routes.Player.PLAYER
+                    )
+                }
                 // 外部页（搜索/快速访问）请求在媒体库 tab 打开文件浏览的待办状态，
                 // 回到 Home 根路由后由 HomeScreen 消费（切入媒体库子栈）
                 var pendingFileBrowser by remember { mutableStateOf<Pair<Int, String>?>(null) }
@@ -227,7 +234,6 @@ class MainActivity : ComponentActivity() {
                 val isPlayerScreen =
                     currentBackStackEntry?.destination?.route == Routes.Player.AUDIO_PLAYER ||
                             currentBackStackEntry?.destination?.route == Routes.Player.PLAYER ||
-                            currentBackStackEntry?.destination?.route == Routes.Player.GUARD ||
                             // 均衡器是播放器的子页：从全屏播放器进入时不显示 musicbar，
                             // 否则用户会误点 musicbar 再次进播放器，导致返回栈错乱
                             currentBackStackEntry?.destination?.route == Routes.User.EQUALIZER
@@ -282,7 +288,7 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToQuickAccess = {
                                     navController.navigate(Routes.Local.QUICK_ACCESS)
                                 },
-                                onPlayVideo = { navController.navigate(Routes.Player.GUARD) },
+                                onPlayVideo = navigateToPlayer,
                                 onNavigateToStoragePlus = { type, storageId ->
                                     val route = if (type != null) {
                                         Routes.Stream.storagePlusRoute(type)
@@ -332,7 +338,7 @@ class MainActivity : ComponentActivity() {
                         ) { backStackEntry ->
                             PlayHistoryScreen(
                                 initialFilterOrdinal = backStackEntry.arguments?.getInt("filter") ?: 0,
-                                onNavigateToPlayVideo = { navController.navigate(Routes.Player.GUARD) },
+                                onNavigateToPlayVideo = navigateToPlayer,
                             )
                         }
                         composable(
@@ -355,7 +361,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             SearchScreen(
                                 onBack = { navController.popBackStack() },
-                                onNavigateToPlayVideo = { navController.navigate(Routes.Player.GUARD) },
+                                onNavigateToPlayVideo = navigateToPlayer,
                                 onNavigateToStorageFile = { storageId, path ->
                                     // 交给 Home 在媒体库 tab 子栈打开文件浏览，返回栈回到搜索页
                                     pendingFileBrowser = storageId to path
@@ -364,25 +370,18 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable(
-                            route = Routes.Player.GUARD,
-                            enterTransition = { fadeIn(tween(0)) },
-                            exitTransition = { fadeOut(tween(0)) },
-                        ) {
-                            PlayerGuardScreen(
-                                onNavigate = { route ->
-                                    navController.navigate(route) {
-                                        popUpTo(Routes.Player.GUARD) { inclusive = true }
-                                    }
-                                },
-                                onBack = { navController.popBackStack() },
-                            )
-                        }
-                        composable(
                             route = Routes.Player.PLAYER,
-                            enterTransition = { fadeIn(tween(300)) },
-                            exitTransition = { fadeOut(tween(300)) },
-                            popEnterTransition = { fadeIn(tween(0)) },
-                            popExitTransition = { fadeOut(tween(0)) },
+                            // 播放器作为全屏沉浸场景，使用「内容放大进入 / 缩小退出」的缩放过渡，
+                            // 替代普通页面式的水平滑动，降低从竖屏列表切入横屏全屏的生硬感。
+                            // 进入/退出使用对称动画，避免之前退出瞬时消失（fadeOut tween 0）的卡切。
+                            enterTransition = {
+                                scaleIn(tween(260), initialScale = 0.92f) + fadeIn(tween(260))
+                            },
+                            exitTransition = {
+                                scaleOut(tween(220), targetScale = 0.92f) + fadeOut(tween(220))
+                            },
+                            popEnterTransition = { fadeIn(tween(200)) },
+                            popExitTransition = { fadeOut(tween(200)) },
                         ) {
                             PlayerScreen(onBack = { navController.popBackStack() })
                         }
@@ -502,7 +501,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             TransferScreen(
                                 onBack = { navController.popBackStack() },
-                                onPlayVideo = { navController.navigate(Routes.Player.GUARD) },
+                                onPlayVideo = navigateToPlayer,
                                 onNavigateToImageViewer = {
                                     navController.navigate(Routes.ImageViewer.VIEWER)
                                 },

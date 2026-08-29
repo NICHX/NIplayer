@@ -77,7 +77,7 @@ import com.nichx.niplayer.designsystem.theme.NiExtraColors
 @SuppressLint("LocalContextGetResourceValueCall")
 fun DownloadManagerScreen(
     onBack: () -> Unit = {},
-    onPlayVideo: () -> Unit = {},
+    onPlayVideo: (Boolean) -> Unit = {},
     onNavigateToImageViewer: () -> Unit = {},
     viewModel: DownloadManagerViewModel = hiltViewModel(),
 ) {
@@ -155,7 +155,7 @@ fun DownloadManagerScreen(
 @SuppressLint("LocalContextGetResourceValueCall")
 internal fun DownloadManagerTab(
     viewModel: DownloadManagerViewModel,
-    onPlayVideo: () -> Unit,
+    onPlayVideo: (Boolean) -> Unit,
     onNavigateToImageViewer: () -> Unit,
     topPadding: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
@@ -166,7 +166,7 @@ internal fun DownloadManagerTab(
     LaunchedEffect(Unit) {
         viewModel.navigationEvent.collect { event ->
             when (event) {
-                DownloadNavigationEvent.NavigateToPlayer -> onPlayVideo()
+                is DownloadNavigationEvent.NavigateToPlayer -> onPlayVideo(event.isAudio)
                 DownloadNavigationEvent.NavigateToImageViewer -> onNavigateToImageViewer()
             }
         }
