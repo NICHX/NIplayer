@@ -1683,6 +1683,7 @@ private enum class GestureMode { None, Seek, Brightness, Volume }
  * @param offsetFraction 垂直偏移（相对画面高度，正=上移）
  * @return 改写后的 cue
  */
+@OptIn(UnstableApi::class)
 private fun applySubtitlePositionOffset(cue: Cue, offsetFraction: Float): Cue {
     val isPlainText = cue.bitmap == null && cue.line == Cue.DIMEN_UNSET
     val baseLine = if (isPlainText) 1f else cue.line
