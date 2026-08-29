@@ -353,6 +353,14 @@ fun PlayerScreen(
                 // 再 popBackStack。否则方向还原发生在 onDispose（pop 动画之后），popEnter 播放期间
                 // 返回页从横屏排布瞬间重排到竖屏排布，表现为主体内容向下坠落
                 activity?.requestedOrientation = originalOrientation
+                // 提前恢复系统栏：播放器进入时全屏隐藏了状态栏/导航栏（insetsController.hide），
+                // 若等 onDispose 才恢复，首页 popEnter 首帧仍按"系统栏隐藏"的 insets 布局（偏高抵顶），
+                // 待系统栏出现后 insets 让位造成整页下移到正确位置。这里在 pop 前恢复，让首页
+                // 首帧即按正确 insets 就位。systemBarsBehavior 由 onDispose 兜底还原。
+                activity?.window?.let { w ->
+                    WindowCompat.getInsetsController(w, w.decorView)
+                        .show(WindowInsetsCompat.Type.systemBars())
+                }
                 onBack()
             }
             val sv = surfaceViewRef
