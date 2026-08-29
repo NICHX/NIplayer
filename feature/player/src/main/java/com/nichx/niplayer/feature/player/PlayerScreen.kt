@@ -44,7 +44,10 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,12 +55,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -2857,7 +2862,10 @@ private fun PlayerControllerLayer(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
+                // 用稳定的挖孔安全区替代 statusBarsPadding：进入播放页时系统栏是带动画收起的，
+                // statusBars 的 inset 会逐帧变化，导致顶部控件先被顶到靠下位置、再升回最顶部；
+                // displayCutout 是硬件挖孔 inset，系统栏隐藏时保持不变，控件从首帧就停在最终位置
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top))
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
