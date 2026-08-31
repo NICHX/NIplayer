@@ -45,7 +45,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             // 主题
             themeMode = ThemeSettings.themeMode.value,
             themeScheme = ThemeSettings.themeSchemeOrdinal,
-            // 播放器（lastBrightness / lastSpeedIndex 等运行时状态不备份）
+            // 播放器（lastSpeedIndex 等运行时状态不备份）
             playerLongPressSpeed = PlayerSettings.longPressSpeed,
             playerAutoDetectBlackBars = PlayerSettings.autoDetectBlackBars,
             playerPitchPreservation = PlayerSettings.pitchPreservationEnabled,
@@ -192,7 +192,7 @@ data class AppSettingsData(
     // 主题
     val themeMode: Int? = null,
     val themeScheme: Int? = null,
-    // 播放器（lastBrightness / lastSpeedIndex 等运行时状态不备份）
+    // 播放器（lastSpeedIndex 等运行时状态不备份）
     val playerLongPressSpeed: Float? = null,
     val playerAutoDetectBlackBars: Boolean? = null,
     val playerPitchPreservation: Boolean? = null,
