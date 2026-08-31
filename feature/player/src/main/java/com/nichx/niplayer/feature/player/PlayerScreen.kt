@@ -75,7 +75,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.ArrowDownward
-import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.Bedtime
@@ -159,7 +158,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -180,9 +178,11 @@ import androidx.media3.common.text.Cue
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.SubtitleView
+import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.database.entity.VideoBookmarkEntity
+import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiDialogItem
 import com.nichx.niplayer.designsystem.components.NiDialogItemRow
@@ -238,6 +238,7 @@ fun PlayerScreen(
     val abLoopB by viewModel.abLoopB.collectAsStateWithLifecycle()
     val networkSpeed by viewModel.networkSpeed.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+    val showDownloadDialog by viewModel.showDownloadDialog.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val activity = context as? Activity
@@ -305,12 +306,6 @@ fun PlayerScreen(
     var resumeDialogMs by remember { mutableStateOf<Long?>(null) }
 
     var autoBlackBarCrop by remember { mutableStateOf(PlayerSettings.autoDetectBlackBars) }
-
-    // 竖屏抖音式竖滑切视频：开关 + 拖拽滑动量（px，负 = 向上滑 = 下一集）。
-    // 开启后竖屏竖滑由「亮度/音量」让位为「切上一集/下一集」；水平进度与长按倍速保留。
-    var swipeSwitchOn by remember { mutableStateOf(PlayerSettings.swipeSwitchVideo) }
-    var swipeSwitchDragValue by remember { mutableFloatStateOf(0f) }
-    val isPortraitPlayer = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
 
     /**
      * 退出播放时截取最后一帧设为缩略图。
@@ -805,6 +800,19 @@ fun PlayerScreen(
         }
     }
 
+    if (showDownloadDialog) {
+        DownloadTargetChooserDialog(
+            presetPath = DownloadSettings.downloadDirPath,
+            onDismiss = { viewModel.closeDownloadDialog() },
+            onDownloadToPreset = { viewModel.downloadToPreset() },
+            onDownloadToPath = { path, dirName, setAsPreset ->
+                viewModel.downloadToPath(path, dirName, setAsPreset)
+            },
+            // 视频播放器固定深色
+            forceDark = true,
+        )
+    }
+
     val currentScreenBrightness: () -> Float = {
         val sb = window?.attributes?.screenBrightness
             ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
@@ -1040,7 +1048,7 @@ fun PlayerScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(locked, isInPip, swipeSwitchOn, isPortraitPlayer) {
+                .pointerInput(locked, isInPip) {
                     val touchSlop = viewConfiguration.touchSlop
                     awaitEachGesture {
                         // PiP 小窗内禁用全部手势（控制栏/OSD 均隐藏，避免误触干扰小窗画面）
@@ -1111,30 +1119,6 @@ fun PlayerScreen(
                                         tapHandler.postDelayed(r, 280)
                                     }
                                 }
-                                // 竖滑切视频：松手时判定是否达到切换阈值（上滑=下一集，下滑=上一集）
-                                if (gestureMode == GestureMode.SwipeSwitch) {
-                                    val dragOffset = swipeSwitchDragValue
-                                    val threshold = size.height * 0.25f
-                                    val swipeUp = dragOffset < 0f
-                                    val committed = abs(dragOffset) > threshold
-                                    swipeSwitchDragValue = 0f
-                                    if (committed) {
-                                        val list = viewModel.playlist.value
-                                        val idx = viewModel.currentIndex.value
-                                        val targetIdx = if (swipeUp) idx + 1 else idx - 1
-                                        val target = list.getOrNull(targetIdx)
-                                        if (target == null) {
-                                            infoOsd = context.getString(
-                                                if (swipeUp) R.string.player_swipe_last else R.string.player_swipe_first,
-                                            )
-                                        } else {
-                                            if (swipeUp) viewModel.playNext() else viewModel.playPrevious()
-                                            infoOsd = context.getString(
-                                                if (swipeUp) R.string.player_swipe_next else R.string.player_swipe_previous,
-                                            )
-                                        }
-                                    }
-                                }
                                 gestureMode = GestureMode.None
                                 break
                             }
@@ -1162,9 +1146,6 @@ fun PlayerScreen(
                                     dragged = true
                                     gestureMode = if (abs(totalDx) > abs(totalDy)) {
                                         GestureMode.Seek
-                                    } else if (isPortraitPlayer && swipeSwitchOn) {
-                                        // 竖屏竖滑切视频开启：竖直滑动切换上一集/下一集，亮度/音量让位
-                                        GestureMode.SwipeSwitch
                                     } else if (startX < size.width / 2f) {
                                         initialBrightness = currentScreenBrightness()
                                         GestureMode.Brightness
@@ -1210,14 +1191,6 @@ fun PlayerScreen(
                                         // 记录用户手势选定的非零音量，作为后续解除静音时的恢复值
                                         if (value > 0) VolumeState.restoreVolume = value
                                         volumeOsd = if (max > 0) value.toFloat() / max else 0f
-                                        change.consume()
-                                    }
-
-                                    GestureMode.SwipeSwitch -> {
-                                        swipeSwitchDragValue = totalDy.coerceIn(
-                                            -size.height.toFloat(),
-                                            size.height.toFloat(),
-                                        )
                                         change.consume()
                                     }
 
@@ -1390,27 +1363,14 @@ fun PlayerScreen(
                 stringResource(R.string.player_bookmark),
                 onClick = { showBookmarkDialog = true },
             )
-            "swipe_switch" -> HudButtonConfig(
-                id, SwipeSwitchIcon,
-                stringResource(R.string.player_swipe_switch),
-                tint = if (swipeSwitchOn) Color(0xFFFFAB40) else Color.White.copy(alpha = 0.9f),
-                onClick = {
-                    swipeSwitchOn = !swipeSwitchOn
-                    PlayerSettings.swipeSwitchVideo = swipeSwitchOn
-                    infoOsd = context.getString(
-                        if (swipeSwitchOn) R.string.player_swipe_switch_on else R.string.player_swipe_switch_off,
-                    )
-                },
-            )
             else -> null
         }
         val ctrlEntries = PlayerControlLayout.ALL_IDS.mapIndexed { i, id ->
             PlayerControlLayout.loadEntry(id, i, ctrlOrientation)
         }
-        // HUD 侧边按钮：配置为 左/右 列且可见的功能；竖滑切视频按钮仅竖屏显示
+        // HUD 侧边按钮：配置为 左/右 列且可见的功能
         val hudButtons = ctrlEntries
             .filter { it.visible && it.surface != PlayerControlSurface.MORE }
-            .filter { !(it.id == "swipe_switch" && !isPortraitPlayer) }
             .sortedBy { it.order }
             .mapNotNull { e ->
                 ctrlButtonUnit(e.id)?.copy(
@@ -1418,10 +1378,9 @@ fun PlayerScreen(
                     side = if (e.surface == PlayerControlSurface.LEFT) HudButtonSide.LEFT else HudButtonSide.RIGHT,
                 )
             }
-        // 更多菜单项：配置为「更多」面且可见的功能（pip 需有效尺寸才可点）；竖滑切视频横屏亦不显示
+        // 更多菜单项：配置为「更多」面且可见的功能（pip 需有效尺寸才可点）
         val moreActions = ctrlEntries
             .filter { it.visible && it.surface == PlayerControlSurface.MORE }
-            .filter { !(it.id == "swipe_switch" && !isPortraitPlayer) }
             .sortedBy { it.order }
             .mapNotNull { e ->
                 val b = ctrlButtonUnit(e.id) ?: return@mapNotNull null
@@ -1519,7 +1478,7 @@ fun PlayerScreen(
                         if (autoBlackBarCrop) triggerBlackBarDetection()
                         else viewModel.resetBlackBarDetection()
                     },
-                    onDownload = { viewModel.downloadCurrentFile() },
+                    onDownload = { viewModel.requestDownload() },
                     hudButtons = hudButtons,
                 )
             }
@@ -1651,35 +1610,6 @@ fun PlayerScreen(
                 text = "${(value * 100).toInt()}%",
                 modifier = Modifier.align(Alignment.Center),
             )
-        }
-
-        // 竖屏竖滑切视频覆盖层：拖拽时目标集（下一集/上一集）从底部/顶部滑入，
-        // 顶层的半透明面板随手指位移，松手越过阈值后由手势层触发真实切换。
-        if (!isInPip && isPortraitPlayer && swipeSwitchOn && gestureMode == GestureMode.SwipeSwitch) {
-            val drag = swipeSwitchDragValue
-            val density = LocalDensity.current
-            val screenHdp = with(density) { LocalConfiguration.current.screenHeightDp.dp }
-            val dragDp = with(density) { drag.toDp() }
-            val nextTopPx = with(density) { (screenHdp + dragDp).toPx() }   // 初始在屏幕底，随上滑抬升
-            val prevTopPx = with(density) { (-screenHdp + dragDp).toPx() }  // 初始在屏幕顶上方，随下滑显现
-            playlist.getOrNull(currentIndex + 1)?.let { item ->
-                SwipeSwitchPanel(
-                    title = item.fileName,
-                    isNext = true,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .offset { IntOffset(0, nextTopPx.roundToInt()) },
-                )
-            }
-            playlist.getOrNull(currentIndex - 1)?.let { item ->
-                SwipeSwitchPanel(
-                    title = item.fileName,
-                    isNext = false,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .offset { IntOffset(0, prevTopPx.roundToInt()) },
-                )
-            }
         }
 
         if (showSpeedMenu) {
@@ -1906,7 +1836,8 @@ private fun MoreMenuDialog(
     actions: List<MoreAction>,
 ) {
     val onSurface = PlayerDialogColors.textPrimary
-    PlayerDialog(onDismiss = onDismiss, maxWidth = 320, scrollable = false) {
+    // scrollable = true：把所有功能放进「更多」时项很多，容器在限高内滚动，避免内容超出窗口被裁切。
+    PlayerDialog(onDismiss = onDismiss, maxWidth = 340, scrollable = true) {
         Text(
             text = stringResource(R.string.player_more),
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -1920,27 +1851,32 @@ private fun MoreMenuDialog(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                    .padding(horizontal = 2.dp, vertical = 3.dp),
             ) {
-                row.forEach { action ->
-                    MoreMenuItem(
-                        icon = action.icon,
-                        label = action.label,
-                        enabled = action.enabled,
-                        onClick = action.onClick,
-                        isActive = action.isActive,
-                    )
-                }
-                repeat(3 - row.size) {
-                    Spacer(Modifier.size(72.dp))
+                // 固定 3 等份槽位，保证各行的图标/项目落在同一列，末行项数不足也不错位
+                repeat(3) { i ->
+                    val action = row.getOrNull(i)
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (action != null) {
+                            MoreMenuItem(
+                                icon = action.icon,
+                                label = action.label,
+                                enabled = action.enabled,
+                                onClick = action.onClick,
+                                isActive = action.isActive,
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-private enum class GestureMode { None, Seek, Brightness, Volume, SwipeSwitch }
+private enum class GestureMode { None, Seek, Brightness, Volume }
 
 /**
  * 应用内嵌字幕（media3 cue）的垂直偏移（正=上移），统一改写 [Cue.line]。
@@ -2161,41 +2097,6 @@ private fun GestureOsd(
                 color = Color.White,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
-            )
-        }
-    }
-}
-
-/**
- * 竖滑切视频的滑入面板：全屏半透明暗底 + 居中方向箭头与目标集标题。
- * 由手势层按拖拽位移做 [Modifier.offset] 位移，形成「下一集从底部抬升/上一集从顶部下探」的抖音式观感。
- */
-@Composable
-private fun SwipeSwitchPanel(
-    title: String,
-    isNext: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier.background(Color.Black.copy(alpha = 0.45f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = if (isNext) Icons.Rounded.ArrowUpward
-                    else Icons.Rounded.ArrowDownward,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.9f),
-                modifier = Modifier.size(48.dp),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = title,
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
     }

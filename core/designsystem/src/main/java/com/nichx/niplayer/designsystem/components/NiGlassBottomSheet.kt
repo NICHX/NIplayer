@@ -1,8 +1,8 @@
 package com.nichx.niplayer.designsystem.components
 
 import android.os.Build
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -78,7 +78,8 @@ fun NiGlassBottomSheet(
     val glassEnabled = LocalNiGlassEnabled.current && backdrop != null &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
 
-    BackHandler(enabled = show, onBack = onDismissRequest)
+    // 返回键统一由其宿主 NiGlassOverlayHost 处理（此处不再自注册 BackHandler）：
+    // 避免返回手势期间回调栈中的 BackHandler 被动态移除导致 predictive back 状态不一致卡死。
 
     // 面板最大高度：窗口的 80%
     val maxHeight = with(LocalDensity.current) {
@@ -91,13 +92,13 @@ fun NiGlassBottomSheet(
         topEnd = NiGlassSheetCornerRadius,
     )
 
-    AnimatedVisibility(
-        visible = show,
-        enter = fadeIn(tween(220)) + slideInVertically(tween(320)) { it },
-        exit = fadeOut(tween(160)) + slideOutVertically(tween(240)) { it },
-    ) {
-        Box(modifier = modifier.fillMaxSize()) {
-            // 压暗层：点击关闭
+    Box(modifier = modifier.fillMaxSize()) {
+        // 压暗层：整体淡入淡出（位置固定，不随面板上移），点击关闭
+        AnimatedVisibility(
+            visible = show,
+            enter = fadeIn(tween(260)),
+            exit = fadeOut(tween(200)),
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -108,58 +109,69 @@ fun NiGlassBottomSheet(
                         onClick = onDismissRequest,
                     ),
             )
-            // 玻璃面板：贴底全宽（背景覆盖到屏幕底部），顶部圆角
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .heightIn(max = maxHeight)
-                    .then(
-                        if (glassEnabled) {
-                            Modifier.drawBackdrop(
-                                backdrop = backdrop!!,
-                                shape = { sheetShape },
-                                effects = {
-                                    blur(blurRadius.toPx())
-                                },
-                                onDrawSurface = { drawRect(panelSurface) },
-                            )
-                        } else {
-                            Modifier.background(
-                                color = niFrostSurfaceColor(),
-                                shape = sheetShape,
-                            )
-                        }
-                    ),
-            ) {
-                // 内容层：导航栏避让 + 底部 inset（玻璃背景保持贴底）
+        }
+
+        // 玻璃面板：仅面板本身自下而上滑入/滑出
+        AnimatedVisibility(
+            visible = show,
+            enter = slideInVertically(tween(360, easing = FastOutSlowInEasing)) { it },
+            exit = slideOutVertically(tween(280, easing = FastOutSlowInEasing)) { it },
+        ) {
+            // 内层再包一个与父同尺寸的 Box：col{align} 必须落在 BoxScope 上，面板才能正确贴底，
+            // 否则 align 会错误解析到外层 Box 导致面板被顶到顶部。
+            Box(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .navigationBarsPadding()
+                        .heightIn(max = maxHeight)
                         .then(
-                            if (bottomInset != Dp.Unspecified) {
-                                Modifier.padding(bottom = bottomInset)
+                            if (glassEnabled) {
+                                Modifier.drawBackdrop(
+                                    backdrop = backdrop!!,
+                                    shape = { sheetShape },
+                                    effects = {
+                                        blur(blurRadius.toPx())
+                                    },
+                                    onDrawSurface = { drawRect(panelSurface) },
+                                )
                             } else {
-                                Modifier
-                            },
+                                Modifier.background(
+                                    color = niFrostSurfaceColor(),
+                                    shape = sheetShape,
+                                )
+                            }
                         ),
                 ) {
-                    if (title != null) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 56.dp, vertical = 16.dp),
-                        )
+                    // 内容层：导航栏避让 + 底部 inset（玻璃背景保持贴底）
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .then(
+                                if (bottomInset != Dp.Unspecified) {
+                                    Modifier.padding(bottom = bottomInset)
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                    ) {
+                        if (title != null) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 56.dp, vertical = 16.dp),
+                            )
+                        }
+                        content()
                     }
-                    content()
                 }
             }
         }

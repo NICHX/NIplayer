@@ -643,7 +643,6 @@
     <string name="player_ctrl_name_sleep_timer">定时关闭</string>
     <string name="player_ctrl_name_media_info">媒体信息</string>
     <string name="player_ctrl_name_bookmarks">书签</string>
-    <string name="player_ctrl_name_swipe_switch">竖滑切视频</string>
     <!-- 媒体库设置（MediaLibrarySettingsScreen） -->
     <string name="media_library_settings_title">媒体库设置</string>
     <string name="player_kernel">播放器内核</string>
@@ -773,19 +772,9 @@
     <string name="download_manager_clear">清除</string>
     <string name="download_manager_set">设置</string>
     <string name="download_manager_reset">重设</string>
-    <string name="download_dir_picker_cancel">取消</string>
-    <string name="download_choose_target_title">下载到</string>
-    <string name="download_target_preset">预设目录</string>
-    <string name="download_target_preset_subtitle">%1$s</string>
-    <string name="download_target_preset_not_set">未设置下载目录</string>
-    <string name="download_target_custom">选择下载目录</string>
     <string name="download_dir_permission_title">需要存储权限</string>
     <string name="download_dir_permission_message">下载目录需写入共享存储，请开启「所有文件访问权限」以获得原生读写速度</string>
     <string name="download_dir_permission_grant">前往开启</string>
-    <string name="download_dir_picker_choose_title">选择下载目录</string>
-    <string name="download_dir_picker_choose_here">选择此目录</string>
-    <string name="download_dir_picker_parent">返回上级目录</string>
-    <string name="download_dir_picker_empty">此目录为空</string>
     <string name="download_manager_target_fallback">缓存</string>
     <string name="download_manager_saved_to">保存至：%1$s</string>
     <string name="download_manager_unknown_size">未知大小</string>

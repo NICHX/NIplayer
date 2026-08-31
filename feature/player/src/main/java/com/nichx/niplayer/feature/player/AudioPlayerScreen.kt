@@ -55,7 +55,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import com.nichx.niplayer.common.error.NiMessage
+import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.PlayerSettings
+import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
 import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
 import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
@@ -135,6 +137,7 @@ fun AudioPlayerScreen(
     val currentIndex by audioPlaybackManager?.currentIndex?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(-1) }
     val lrcText by audioPlaybackManager?.lrcText?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
     val playbackError by audioPlaybackManager?.playbackError?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
+    val showDownloadDialog by viewModel.showDownloadDialog.collectAsStateWithLifecycle()
 
     val hasActiveContent = title.isNotEmpty()
 
@@ -222,7 +225,7 @@ fun AudioPlayerScreen(
                 onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
                 onShowPlaylist = { showPlaylist = true },
                 onBack = onBack,
-                onDownload = { viewModel.downloadCurrentFile() },
+                onDownload = { viewModel.requestDownload() },
                 onEqualizer = onEqualizer,
                 speedOptions = speedValues,
                 currentSpeedIndex = speedIndex,
@@ -255,7 +258,7 @@ fun AudioPlayerScreen(
                 onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
                 onShowPlaylist = { showPlaylist = true },
                 onBack = onBack,
-                onDownload = { viewModel.downloadCurrentFile() },
+                onDownload = { viewModel.requestDownload() },
                 onEqualizer = onEqualizer,
                 speedOptions = speedValues,
                 currentSpeedIndex = speedIndex,
@@ -271,6 +274,17 @@ fun AudioPlayerScreen(
             onDismiss = { showPlaylist = false },
             onPlayAtIndex = { index -> viewModel.playAtIndex(index) },
         )
+
+        if (showDownloadDialog) {
+            DownloadTargetChooserDialog(
+                presetPath = DownloadSettings.downloadDirPath,
+                onDismiss = { viewModel.closeDownloadDialog() },
+                onDownloadToPreset = { viewModel.downloadToPreset() },
+                onDownloadToPath = { path, dirName, setAsPreset ->
+                    viewModel.downloadToPath(path, dirName, setAsPreset)
+                },
+            )
+        }
 
         }
 }

@@ -20,11 +20,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -39,6 +43,9 @@ import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
  * 全局玻璃浮层（**同窗口 overlay**）的单例槽位。
@@ -131,10 +138,34 @@ fun NiGlassOverlayHost(
         NiGlassOverlay.dismissTop()
     }
 
-    NiGlassOverlay.requests.forEach { request ->
+    // 渲染中的浮层集合。新增即时加入；关闭的由 visible 置 false 播退场动画，
+    // 延迟 [EXIT_ANIM_BUFFER_MS] 后再移除节点。否则节点被即时移除，进出场动画会被跳过。
+    val rendered = remember { mutableStateMapOf<String, NiGlassOverlayRequest>() }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        snapshotFlow { NiGlassOverlay.requests.map { it.id } }
+            .distinctUntilChanged()
+            .collect { ids ->
+                val idSet = ids.toSet()
+                NiGlassOverlay.requests.forEach { rendered[it.id] = it }
+                rendered.keys
+                    .filterNot { it in idSet }
+                    .forEach { id ->
+                        scope.launch {
+                            delay(EXIT_ANIM_BUFFER_MS)
+                            if (NiGlassOverlay.requests.none { it.id == id }) rendered.remove(id)
+                        }
+                    }
+            }
+    }
+
+    rendered.forEach { (id, request) ->
+        // 可见性 = 请求是否仍在栈中，驱动浮层各自的进入/退出动画
+        val active = NiGlassOverlay.requests.any { it.id == id }
+
         when (request.kind) {
             NiGlassOverlayKind.BottomSheet -> NiGlassBottomSheet(
-                show = true,
+                show = active,
                 onDismissRequest = request.onDismiss,
                 title = request.title,
                 bottomInset = bottomInset,
@@ -143,7 +174,7 @@ fun NiGlassOverlayHost(
             }
 
             NiGlassOverlayKind.Dialog -> NiGlassDialog(
-                show = true,
+                show = active,
                 onDismissRequest = request.onDismiss,
                 title = request.title,
             ) {
@@ -152,6 +183,7 @@ fun NiGlassOverlayHost(
 
             NiGlassOverlayKind.Dropdown ->
                 DropdownGlassOverlay(
+                    active = active,
                     request = request,
                     backdrop = backdrop,
                     glassEnabled = glassEnabled,
@@ -163,6 +195,9 @@ fun NiGlassOverlayHost(
     }
 }
 
+/** 浮层退场动画缓冲：等待的内部 exit 动画最长约 280ms，留出裕量后再销毁节点。 */
+private const val EXIT_ANIM_BUFFER_MS = 450L
+
 /**
  * 锚定玻璃下拉菜单（同窗口 overlay）。
  *
@@ -172,6 +207,7 @@ fun NiGlassOverlayHost(
  */
 @Composable
 private fun DropdownGlassOverlay(
+    active: Boolean,
     request: NiGlassOverlayRequest,
     backdrop: Backdrop?,
     glassEnabled: Boolean,
@@ -195,7 +231,7 @@ private fun DropdownGlassOverlay(
     ) {
         // 展开动画：淡入 + 从顶点（左上角）缩放展开，仿 M3 DropdownMenu
         AnimatedVisibility(
-            visible = true,
+            visible = active,
             enter = fadeIn(tween(120)) + scaleIn(
                 initialScale = 0.9f,
                 transformOrigin = TransformOrigin(0f, 0f),
