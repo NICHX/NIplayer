@@ -177,10 +177,13 @@ fun PlayerDialog(
     ) {
         // 竖屏下按屏幕宽度动态收缩，横屏时仍用 maxWidth 上限
         val effectiveMaxWidth = adaptiveDialogMaxWidth(maxWidth)
+        // 高度同样按屏幕比例封顶，避免内容多时弹窗顶满整个屏幕（始终留出上下余白，较美观）
+        val effectiveMaxHeight =
+            minOf(maxHeight, (LocalConfiguration.current.screenHeightDp * 0.72f).toInt().coerceAtLeast(320))
         PlayerDialogSurface(
             modifier = modifier
                 .widthIn(min = 280.dp, max = effectiveMaxWidth.dp)
-                .heightIn(max = maxHeight.dp),
+                .heightIn(max = effectiveMaxHeight.dp),
         ) {
             val colModifier = if (scrollable) {
                 Modifier.verticalScroll(rememberScrollState())

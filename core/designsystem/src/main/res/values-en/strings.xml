@@ -9,6 +9,19 @@
     <string name="details">Details</string>
     <string name="collapse">Collapse</string>
 
+    <!-- In-app folder picker (FolderPickerDialog) -->
+    <string name="folder_picker_choose_title">Choose download directory</string>
+    <string name="folder_picker_choose_here">Choose this directory</string>
+    <string name="folder_picker_parent">Go up</string>
+    <string name="folder_picker_empty">This folder is empty</string>
+
+    <!-- Download target chooser (DownloadTargetChooserDialog) -->
+    <string name="download_choose_target_title">Download to</string>
+    <string name="download_target_preset">Preset directory</string>
+    <string name="download_target_preset_subtitle">%1$s</string>
+    <string name="download_target_preset_not_set">No download directory set</string>
+    <string name="download_target_custom">Choose download directory</string>
+
     <!-- Color schemes (NiScheme.labelRes) -->
     <string name="color_scheme_misty">Misty Blue</string>
     <string name="color_scheme_blueberry">Blueberry Night</string>

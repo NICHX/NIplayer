@@ -681,6 +681,13 @@ class PlayerViewModel @Inject constructor(
     )
     val downloadEvent: SharedFlow<String> = _downloadEvent.asSharedFlow()
 
+    /** 待下载文件信息（用户在目标选择弹窗确认后才真正入队）。 */
+    private var pendingDownload: PendingDownload? = null
+
+    /** 是否显示下载目标选择弹窗。 */
+    private val _showDownloadDialog = MutableStateFlow(false)
+    val showDownloadDialog: StateFlow<Boolean> = _showDownloadDialog.asStateFlow()
+
     // endregion
 
     // region P0 续播提示
@@ -1357,35 +1364,71 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 下载当前播放文件。
-     *
-     * 若已设置下载目录，下载到该目录并使用实际文件大小；
-     * 若未设置或缺少共享存储写入权限，提示用户配置。
+     * 下载当前播放文件：先校验共享存储写入权限，再弹出「预设 / 选择」目标选择器。
+     * 实际入队由 [downloadToPreset] / [downloadToPath] 在用户确认目标后触发。
      */
-    fun downloadCurrentFile() {
-        if (!DownloadSettings.isDownloadDirSet) {
-            _downloadEvent.tryEmit(appContext.getString(R.string.player_download_dir_not_set))
-            return
-        }
+    fun requestDownload() {
         if (!StorageAccess.canWriteSharedStorage(appContext)) {
             _downloadEvent.tryEmit(appContext.getString(R.string.player_download_no_permission))
             return
         }
-        val history = currentHistory ?: return
-        val storageId = history.storageId ?: return
-        val filePath = history.storagePath ?: return
-        val fileName = _title.value.ifEmpty { history.url.substringAfterLast('/') }
+        if (currentHistory == null) return
+        val storageId = currentHistory!!.storageId ?: return
+        val filePath = currentHistory!!.storagePath ?: return
+        val fileName = _title.value.ifEmpty { currentHistory!!.url.substringAfterLast('/') }
         val uniqueKey = "${storageId}:$filePath"
-        downloadManager.addTask(
+        pendingDownload = PendingDownload(
             storageId = storageId,
             filePath = filePath,
             fileName = fileName,
+            fileSize = currentHistory!!.fileSize,
             uniqueKey = uniqueKey,
-            totalBytes = history.fileSize,
+        )
+        _showDownloadDialog.value = true
+    }
+
+    /** 下载到预设下载目录。 */
+    fun downloadToPreset() {
+        _showDownloadDialog.value = false
+        val pending = pendingDownload ?: return
+        pendingDownload = null
+        downloadManager.addTask(
+            storageId = pending.storageId,
+            filePath = pending.filePath,
+            fileName = pending.fileName,
+            uniqueKey = pending.uniqueKey,
+            totalBytes = pending.fileSize,
             targetStorageUrl = DownloadSettings.downloadDirTargetUrl,
             targetStorageName = DownloadSettings.downloadDirName,
         )
         _downloadEvent.tryEmit(appContext.getString(R.string.player_added_to_download_queue))
+    }
+
+    /**
+     * 下载到指定目录。
+     *
+     * @param setAsPreset 同时将所选目录保存为预设下载目录
+     */
+    fun downloadToPath(path: String, dirName: String, setAsPreset: Boolean) {
+        _showDownloadDialog.value = false
+        val pending = pendingDownload ?: return
+        pendingDownload = null
+        if (setAsPreset) DownloadSettings.setDownloadDir(path, dirName)
+        downloadManager.addTask(
+            storageId = pending.storageId,
+            filePath = pending.filePath,
+            fileName = pending.fileName,
+            uniqueKey = pending.uniqueKey,
+            totalBytes = pending.fileSize,
+            targetStorageUrl = "file://$path",
+            targetStorageName = dirName,
+        )
+        _downloadEvent.tryEmit(appContext.getString(R.string.player_added_to_download_queue))
+    }
+
+    /** 关闭下载目标选择弹窗。 */
+    fun closeDownloadDialog() {
+        _showDownloadDialog.value = false
     }
 
     /**
@@ -1955,6 +1998,15 @@ class PlayerViewModel @Inject constructor(
         }
     }
 }
+
+/** 待下载文件信息，用于用户在选择下载目标后真正入队。 */
+private data class PendingDownload(
+    val storageId: Int,
+    val filePath: String,
+    val fileName: String,
+    val fileSize: Long,
+    val uniqueKey: String,
+)
 
 /**
  * 缩放模式常量，索引 0:1:2:3 对应「适应:裁剪:拉伸:16:9」。

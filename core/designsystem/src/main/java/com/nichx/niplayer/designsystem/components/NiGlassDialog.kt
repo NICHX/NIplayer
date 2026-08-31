@@ -1,7 +1,6 @@
 package com.nichx.niplayer.designsystem.components
 
 import android.os.Build
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -66,7 +65,8 @@ fun NiGlassDialog(
     // 面板半透明底色，先在 @Composable 作用域内求值
     val panelSurface = niGlassPanelSurfaceColor()
 
-    BackHandler(enabled = show, onBack = onDismissRequest)
+    // 返回键统一由其宿主 NiGlassOverlayHost 处理（此处不再自注册 BackHandler），
+    // 避免返回手势期间浮层关闭导致回调栈中的 BackHandler 被动态移除而卡死。
 
     AnimatedVisibility(
         visible = show,

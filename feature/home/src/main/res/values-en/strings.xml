@@ -643,7 +643,6 @@
     <string name="player_ctrl_name_sleep_timer">Sleep timer</string>
     <string name="player_ctrl_name_media_info">Media info</string>
     <string name="player_ctrl_name_bookmarks">Bookmarks</string>
-    <string name="player_ctrl_name_swipe_switch">Vertical swipe switch</string>
     <!-- 媒体库设置（MediaLibrarySettingsScreen） -->
     <string name="media_library_settings_title">Media library settings</string>
     <string name="player_kernel">Player kernel</string>
@@ -773,19 +772,9 @@
     <string name="download_manager_clear">Clear</string>
     <string name="download_manager_set">Set</string>
     <string name="download_manager_reset">Reset</string>
-    <string name="download_dir_picker_cancel">Cancel</string>
-    <string name="download_choose_target_title">Download to</string>
-    <string name="download_target_preset">Preset directory</string>
-    <string name="download_target_preset_subtitle">%1$s</string>
-    <string name="download_target_preset_not_set">No download directory set</string>
-    <string name="download_target_custom">Choose download directory</string>
     <string name="download_dir_permission_title">Storage permission required</string>
     <string name="download_dir_permission_message">The download directory needs to write to shared storage. Enable "All files access" for native read/write speed</string>
     <string name="download_dir_permission_grant">Go enable</string>
-    <string name="download_dir_picker_choose_title">Choose download directory</string>
-    <string name="download_dir_picker_choose_here">Choose this directory</string>
-    <string name="download_dir_picker_parent">Go up</string>
-    <string name="download_dir_picker_empty">This folder is empty</string>
     <string name="download_manager_target_fallback">Cache</string>
     <string name="download_manager_saved_to">Saved to: %1$s</string>
     <string name="download_manager_unknown_size">Unknown size</string>

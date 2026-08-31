@@ -33,7 +33,6 @@ import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Speed
-import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -225,7 +224,6 @@ private fun ctrlIcon(id: String): ImageVector = when (id) {
     "pip" -> Icons.Rounded.PictureInPictureAlt
     "sleep_timer" -> Icons.Rounded.Bedtime
     "media_info" -> Icons.Rounded.Info
-    "swipe_switch" -> Icons.Rounded.SwapVert
     else -> Icons.Rounded.Bookmark // bookmarks
 }
 
@@ -237,19 +235,15 @@ private fun ControlDragEditor(
     modifier: Modifier = Modifier,
 ) {
     var entries by remember(orientation, resetTick) {
-        // 竖滑切视频仅竖屏有意义，横屏 Tab 不展示、不参与布局
-        val editableIds = PlayerControlLayout.ALL_IDS.filter {
-            !(it == "swipe_switch" && orientation == PlayerControlOrientation.LANDSCAPE)
-        }
         // 移除显隐开关后，布局不再暴露可见性；把历史遗留的隐藏项一并置为可见，保证不会永久隐藏。
-        editableIds.forEachIndexed { i, id ->
+        PlayerControlLayout.ALL_IDS.forEachIndexed { i, id ->
             val e = PlayerControlLayout.loadEntry(id, i, orientation)
             if (!e.visible) {
                 PlayerControlLayout.saveEntry(id, e.surface, true, e.order, orientation)
             }
         }
         mutableStateOf(
-            editableIds.mapIndexed { i, id ->
+            PlayerControlLayout.ALL_IDS.mapIndexed { i, id ->
                 PlayerControlLayout.loadEntry(id, i, orientation).copy(visible = true)
             },
         )
@@ -517,7 +511,6 @@ internal fun ctrlName(id: String): String = stringResource(
         "sleep_timer" -> R.string.player_ctrl_name_sleep_timer
         "media_info" -> R.string.player_ctrl_name_media_info
         "bookmarks" -> R.string.player_ctrl_name_bookmarks
-        "swipe_switch" -> R.string.player_ctrl_name_swipe_switch
         else -> R.string.player_ctrl_name_bookmarks
     },
 )

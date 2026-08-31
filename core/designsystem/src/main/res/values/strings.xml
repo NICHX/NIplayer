@@ -9,6 +9,19 @@
     <string name="details">详情</string>
     <string name="collapse">收起</string>
 
+    <!-- 应用内目录选择器（FolderPickerDialog） -->
+    <string name="folder_picker_choose_title">选择下载目录</string>
+    <string name="folder_picker_choose_here">选择此目录</string>
+    <string name="folder_picker_parent">返回上级目录</string>
+    <string name="folder_picker_empty">此目录为空</string>
+
+    <!-- 下载目标选择（DownloadTargetChooserDialog） -->
+    <string name="download_choose_target_title">下载到</string>
+    <string name="download_target_preset">预设目录</string>
+    <string name="download_target_preset_subtitle">%1$s</string>
+    <string name="download_target_preset_not_set">未设置下载目录</string>
+    <string name="download_target_custom">选择下载目录</string>
+
     <!-- 配色方案（NiScheme.labelRes） -->
     <string name="color_scheme_misty">雾蓝静谧</string>
     <string name="color_scheme_blueberry">蓝莓之夜</string>
