@@ -86,7 +86,7 @@ import javax.inject.Inject
  * 播放器屏幕 ViewModel。
  *
  * 从 [PlaybackRequestHolder] 消费 [PlaybackRequest]（由文件浏览页 :feature:home 构造并写入），
- * 自动加载播放源。替代阶段3 验证版的测试视频 URL。
+ * 自动加载播放源。
  *
  * 生命周期：
  * - init 时 [PlaybackRequestHolder.consume] 取出请求（取出即清空，避免跨会话残留）
@@ -94,7 +94,7 @@ import javax.inject.Inject
  * - 无请求时（如直接进入播放路由而无待播放源）进入 [PlaybackState.Idle]，UI 显示提示
  * - [onCleared] 释放 [NxPlayer]，并保存最终播放进度到 play_history 表
  *
- * 播放历史记录（P1）：
+ * 播放历史记录：
  * - init 时若 [PlaybackRequest.history] 非空，写入/更新 play_history（标记开始播放）
  * - [onCleared] 时用独立 [CoroutineScope(Dispatchers.IO)] 异步保存
  *   最终 videoPosition / videoDuration / playTime（NonCancellable 保护进度写入），
@@ -165,7 +165,7 @@ class PlayerViewModel @Inject constructor(
      * [onCleared] 中优先使用此 Bitmap 保存为缩略图（对 SMB/WebDAV 更可靠），
      * 失败时回退到 [ThumbnailManager.generateThumbnailAtMs]。
      *
-     * M-08 修复：加 @Volatile，UI 主线程写入与 onCleared 的 IO 协程读取保证可见性。
+     * @Volatile：UI 主线程写入与 onCleared 的 IO 协程读取保证可见性。
      */
     @Volatile
     private var lastFrameBitmap: Bitmap? = null
@@ -177,7 +177,7 @@ class PlayerViewModel @Inject constructor(
      * （音频文件无视频帧，[MediaMetadataRetriever.getFrameAtTime] 必然返回 null，
      * 且对 SMB/WebDAV 远程音频会建立 MediaDataSource 并阻塞数秒）。
      *
-     * M-08 修复：加 @Volatile，init 主线程写入与 onCleared IO 协程读取保证可见性。
+     * @Volatile：init 主线程写入与 onCleared IO 协程读取保证可见性。
      */
     @Volatile
     private var isAudioPlayback: Boolean = false
@@ -193,7 +193,7 @@ class PlayerViewModel @Inject constructor(
     private var transitioningToBackground = false
 
     /**
-     * PixelCopy 完成信号（R5 修复）。
+     * PixelCopy 完成信号。
      *
      * UI 层 [setLastFrameBitmap] 回调（主线程）与 [onCleared] 的 IO 协程读取
      * 存在竞态：`capturedBack` 发起 [android.view.PixelCopy.request]（异步）后
@@ -201,7 +201,7 @@ class PlayerViewModel @Inject constructor(
      * 为"未抓帧"而走远程取帧（SMB/WebDAV 需重新建连）。
      *
      * [onCleared] 通过 [awaitLastFrameBitmap] 创建此 latch 并短超时等待，
-     * [setLastFrameBitmap] 完成它；等待超时后回退远程取帧（语义不变）。
+     * [setLastFrameBitmap] 完成它；等待超时后回退远程取帧。
      */
     @Volatile
     private var lastFrameLatch: CompletableDeferred<Unit>? = null
@@ -213,15 +213,14 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 等待 UI 层 PixelCopy 抓帧结果（R5 修复）。
+     * 等待 UI 层 PixelCopy 抓帧结果。
      *
      * - 已抓帧：直接返回
      * - 未抓帧：创建 latch 后 double-check（赋值 latch 前可能已完成），
-     *   仍为空则短超时等待 [setLastFrameBitmap] 完成
-     * - 超时：返回 null，调用方回退 [ThumbnailManager.generateThumbnailAtMs]
+     *   仍为空则等待 [setLastFrameBitmap] 完成；超时回退 [ThumbnailManager.generateThumbnailAtMs]
      *
      * @param timeoutMs 等待上限。PixelCopy 回调通常数十毫秒到达，等待仅用于
-     *   覆盖异步竞态窗口，超时回退不改变既有语义。
+     *   覆盖异步竞态窗口。
      */
     private suspend fun awaitLastFrameBitmap(timeoutMs: Long): Bitmap? {
         var bitmap = lastFrameBitmap
@@ -241,16 +240,11 @@ class PlayerViewModel @Inject constructor(
      *
      * 与 [onCleared] 中缩略图生成条件对齐（总开关 + 视频开关 + 生成策略门控
      * [ThumbnailSettings.shouldGenerateOnPlayback]），供 UI 层在返回导航前决定
-     * 是否执行 PixelCopy 抓帧，避免"关闭"策略下无谓的 SurfaceView 截图与 bitmap 分配。
+     * 是否执行 PixelCopy 抓帧，避免"关闭"策略下无谓的截图与 bitmap 分配。
      *
-     * R1 修复：此方法仅作性能优化，不再承担 HDR 正确性责任——HDR 正确性由
-     * [onCleared] 生成分支显式兜底（`bitmap != null && !isHdrPlayback` 才用
-     * PixelCopy bitmap）。此处拦截 HDR 仅为避免浪费抓帧与整幅 bitmap 分配：
-     * SurfaceView 表面是 10-bit HDR buffer，PixelCopy 抓取在部分设备上返回
-     * 损坏数据（白屏 + 品红块），HDR 由 [onCleared] 走
-     * [ThumbnailManager.generateThumbnailAtMs]（getFrameAtTime 在 API 34+ 由
-     * 系统自动 tone map HDR→SDR，颜色正确）。即使此拦截漏判，onCleared 也会
-     * 正确兜底，不会产生 HDR 错图入库。
+     * HDR 播放不抓帧（SurfaceView 表面是 10-bit HDR buffer，PixelCopy 在部分
+     * 设备返回损坏数据），HDR 由 [onCleared] 走 [ThumbnailManager.generateThumbnailAtMs]
+     * （API 34+ 系统自动 tone map HDR→SDR，颜色正确）。
      *
      * storageId 为 null（如本地文件）时返回 false，与 [onCleared] 生成条件一致
      * （无存储源不生成缩略图）。
@@ -263,7 +257,7 @@ class PlayerViewModel @Inject constructor(
         if (!ThumbnailSettings.updateOnExit) return false
         val sid = currentHistory?.storageId ?: return false
         if (!ThumbnailSettings.shouldGenerateOnPlayback(sid)) return false
-        // R1 修复：HDR 拦截仅为性能优化（省一次抓帧与 bitmap 分配），正确性由 onCleared 兜底
+        // HDR 拦截仅为性能优化（省一次抓帧与 bitmap 分配），正确性由 onCleared 兜底
         if (player.mediaInfo.value?.hdrType != null) return false
         return true
     }
@@ -330,7 +324,7 @@ class PlayerViewModel @Inject constructor(
      * - ASS 特效：通过 [SubtitleEngine] + [com.nichx.niplayer.subtitle.renderer.AssOverrideParser]
      *   解析 override tags（颜色/字体/位置/淡入淡出/移动），由 [com.nichx.niplayer.feature.player.SubtitleOverlay] 渲染
      * - 字幕偏移：[SubtitleEngine.update] 查询时使用 `positionMs + offsetMs`，正负偏移都精确生效
-     *   （替代 media3 无原生 setSubtitleOffsetMs API 的缺陷，issue #1976 仍 Open）
+     *   （media3 无原生 setSubtitleOffsetMs API）
      *
      * 内嵌字幕仍走 media3 TextRenderer → SubtitleView（[cues] StateFlow）。
      */
@@ -370,8 +364,8 @@ class PlayerViewModel @Inject constructor(
     /**
      * 当前播放请求的历史描述符，onCleared 时用于定位并更新 play_history 记录。
      *
-     * M-08 修复：加 @Volatile，init 主线程 / playAtIndex 协程 / onCleared IO 协程
-     * 多上下文读写保证可见性。配合 [playAtIndexMutex] 防止快速切歌竞态。
+     * @Volatile：init 主线程 / playAtIndex 协程 / onCleared IO 协程多上下文读写保证可见性。
+     * 配合 [playAtIndexMutex] 防止快速切歌竞态。
      */
     @Volatile
     private var currentHistory: HistoryDescriptor? = null
@@ -392,7 +386,7 @@ class PlayerViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
-     * 最近一次播放请求（C-02 修复：错误后重试需要）。
+     * 最近一次播放请求。
      *
      * 持有原始 [PlaybackRequest] 副本，错误状态下用户点"重试"/"从头播放"时复用：
      * - 重试：用原 [PlaybackRequest.startPositionMs] 重新 setSource/prepare/play
@@ -405,15 +399,10 @@ class PlayerViewModel @Inject constructor(
     private val closeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * M-10 修复：保护 playAtIndex 全流程的互斥锁。
+     * 保护 playAtIndex 全流程的互斥锁。
      *
-     * 原实现入口同步读取 _playlist/_currentIndex 后启动协程，协程内先 saveProgressSync（保存当前曲目）
-     * 再覆盖 currentHistory（指向新曲目）。用户快速连续调用 playAtIndex 两次时：
-     * - 第一次 saveProgressSync 尚未完成
-     * - 第二次已覆盖 currentHistory
-     * - 第一次保存的是错误曲目的进度
-     *
-     * withLock 串行化整个 playAtIndex 流程，确保前一次切歌完全结束（含进度保存）后才开始下一次。
+     * withLock 串行化整个 playAtIndex 流程：快速连续切歌时，确保前一次切换
+     * 完全结束（含当前曲目进度保存）后才开始下一次，避免进度错存到新曲目。
      */
     private val playAtIndexMutex = kotlinx.coroutines.sync.Mutex()
     // 注：保留全限定名避免顶部再加一行 import Mutex；withLock 已 import
@@ -421,8 +410,8 @@ class PlayerViewModel @Inject constructor(
     /**
      * 当前播放源持有的 Storage 实例（仅 SMB/DocumentFile 等需要 DataSource 注入的协议）。
      *
-     * BUG-19+23 修复：playAtIndex / PlayStarter（经 PlaybackRequest.source）创建的
-     * Storage 现在随 NxMediaSource.DataSource 一并传递到此，由本 ViewModel 统一管理：
+     * playAtIndex / PlayStarter（经 PlaybackRequest.source）创建的 Storage 随
+     * NxMediaSource.DataSource 一并传递到此，由本 ViewModel 统一管理：
      * - 切换源（[playAtIndex] / setSource）前关闭旧 storage
      * - [onCleared] 中关闭当前 storage
      * - HTTP/Local 类型 source 不携带 storage（为 null），无需关闭
@@ -599,7 +588,7 @@ class PlayerViewModel @Inject constructor(
     /** 截图结果事件（保存成功时的文件名 / 失败时的错误信息），供 UI 层显示 Toast。 */
     private val _screenshotEvent = MutableSharedFlow<String>(
         extraBufferCapacity = 8,
-        // m-06 修复：增大 buffer，避免快速连续截图时 tryEmit 丢弃事件
+        // 增大 buffer，避免快速连续截图时 tryEmit 丢弃事件
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
     )
     val screenshotEvent: SharedFlow<String> = _screenshotEvent.asSharedFlow()
@@ -607,12 +596,11 @@ class PlayerViewModel @Inject constructor(
     /**
      * 用户可见消息事件（OSD / Toast），用于播放器内部错误反馈。
      *
-     * BUG-20 修复：原 playAtIndex 切集失败仅 Log.w 不通知 UI，用户点「下一集」无反馈。
-     * 现通过此 SharedFlow 发送中文错误信息，UI 层 collect 后用 OSD 显示。
+     * 如「下一集」切集失败等错误通过它通知 UI 显示中文信息。
      */
     private val _messageEvent = MutableSharedFlow<String>(
         extraBufferCapacity = 8,
-        // m-06 修复：增大 buffer，避免快速连续切换/重试时 tryEmit 丢弃提示
+        // 增大 buffer，避免快速连续切换/重试时 tryEmit 丢弃提示
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
     )
     val messageEvent: SharedFlow<String> = _messageEvent.asSharedFlow()
@@ -699,7 +687,7 @@ class PlayerViewModel @Inject constructor(
     /** 续播提示事件（携带已保存的播放位置 ms），供 UI 显示"接着上次看"对话框。 */
     private val _resumeEvent = MutableSharedFlow<Long>(
         extraBufferCapacity = 8,
-        // m-06 修复：增大 buffer，避免快速连续 seek 时 tryEmit 丢弃
+        // 增大 buffer，避免快速连续 seek 时 tryEmit 丢弃
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
     )
     val resumeEvent: SharedFlow<Long> = _resumeEvent.asSharedFlow()
@@ -721,7 +709,7 @@ class PlayerViewModel @Inject constructor(
     /** A-B 循环事件（提示消息），供 UI 层显示 Toast。 */
     private val _abLoopEvent = MutableSharedFlow<String>(
         extraBufferCapacity = 8,
-        // m-06 修复：增大 buffer，避免快速连续设置 A/B 点时 tryEmit 丢弃
+        // 增大 buffer，避免快速连续设置 A/B 点时 tryEmit 丢弃
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
     )
     val abLoopEvent: SharedFlow<String> = _abLoopEvent.asSharedFlow()
@@ -731,10 +719,7 @@ class PlayerViewModel @Inject constructor(
      *
      * 触发场景：用户从 Crop/Stretch 切回 Fit 时，[effectiveVideoSize] 已被清除，
      * 需要重新抓图检测。UI 层收到此事件后执行 PixelCopy → [applyBlackBarDetection]。
-     *
-     * m-06 修复：原 [MutableSharedFlow] extraBufferCapacity=1，快速触发两次（如
-     * 渲染首帧 + 用户点击重检测按钮）时第二次 tryEmit 静默丢弃。
-     * 现增到 4 + DROP_OLDEST，保留最新请求。
+     * extraBufferCapacity=4 + DROP_OLDEST，快速触发多次时保留最新请求。
      */
     private val _redetectBlackBars = MutableSharedFlow<Unit>(
         extraBufferCapacity = 4,
@@ -796,15 +781,9 @@ class PlayerViewModel @Inject constructor(
         val b = _abLoopB.value ?: return
         if (b <= a) return
         abLoopJob = viewModelScope.launch {
-            // m-05 修复：原实现 200ms 轮询 player.positionMs 检测是否到达 B 点，
-            // 切回 A 点最多有 200ms 延迟，且持续轮询占用 CPU。
-            //
-            // 现改为事件驱动：订阅 player.positionMs StateFlow（由 positionTicker 每 500ms
-            // 更新 + onPositionDiscontinuity 立即更新），到达 B 点立即 seekTo(A)。
-            // 优势：
-            // 1. 无独立轮询协程，复用 positionMs 流；CPU 占用降低
-            // 2. 检测精度由 200ms 提升到 positionMs 流更新频率（500ms 或 onPositionDiscontinuity 立即）
-            // 3. positionMs 流取消时（如 onCleared）协程自动结束，无悬挂 Job
+            // 事件驱动：订阅 player.positionMs（由 positionTicker 每 500ms 更新，
+            // onPositionDiscontinuity 时立即更新），到达 B 点立即 seekTo(A)。
+            // 复用 positionMs 流，无独立轮询协程；流取消时协程自动结束。
             player.positionMs.collect { pos ->
                 if (pos >= b) {
                     player.seekTo(a)
@@ -830,7 +809,7 @@ class PlayerViewModel @Inject constructor(
         playbackRequestHolder.consume()?.let { request ->
             _title.value = request.title
             _preReadAspectRatio.value = request.initialAspectRatio
-            // C-02 修复：保存请求副本，错误后重试使用
+            // 保存请求副本，错误后重试使用
             lastPlaybackRequest = request
             isAudioPlayback = request.isAudio
 
@@ -874,8 +853,8 @@ class PlayerViewModel @Inject constructor(
             } else {
                 // 视频：使用 NxPlayer
                 swapStorage(extractStorageFromSource(request.source))
-                // W-M8 修复：将 startPositionMs 直接传给 setSource，由 media3 在 prepare 时
-                // 自动 seek 到此位置开始下载，避免先从 0 buffer 再被 seekTo 中断的无效请求。
+                // 将 startPositionMs 直接传给 setSource，由 media3 在 prepare 时
+                // 自动 seek 到此位置开始下载，避免先从 0 buffer 再被 seekTo 中断。
                 player.setSource(request.source, request.startPositionMs)
                 val hasResume = request.startPositionMs > 30_000
                 player.prepare()
@@ -891,7 +870,7 @@ class PlayerViewModel @Inject constructor(
             request.history?.let { history ->
                 viewModelScope.launch {
                     recordPlayStart(history, request.title, request.startPositionMs)
-                    // BUG-30：恢复播放时自动加载历史外挂字幕（仅视频）
+                    // 恢复播放时自动加载历史外挂字幕（仅视频）
                     if (!request.isAudio) {
                         val storageId = history.storageId
                         if (storageId != null) {
@@ -919,10 +898,7 @@ class PlayerViewModel @Inject constructor(
             }
         }
 
-        // W-M5 修复：订阅播放错误事件，解析 HTTP 错误码并通过 OSD 反馈给用户。
-        // 原 onPlayerError 仅更新 state 为 PlaybackState.Error 和 emit PlaybackEvent.Error，
-        // 但 PlayerViewModel 未订阅 events 的 Error 分支，用户在 401/403/404/网络异常场景
-        // 下只能看到加载转圈消失后无任何提示。
+        // 订阅播放错误事件，解析 HTTP 错误码并通过 OSD 反馈给用户。
         viewModelScope.launch {
             player.events.collect { event ->
                 when (event) {
@@ -952,12 +928,9 @@ class PlayerViewModel @Inject constructor(
             }
         }
 
-        // BUG-10 修复：周期性保存播放进度（每 30s 一次），兜底进程被杀 /
-        // 长时间播放未退出场景。onCleared 仍是最终保存点，本协程只做中途快照。
-        // m-04 修复：原实现 `while { delay(30_000); saveProgress() }` 首次保存延迟 30s，
-        // 进入播放页后前 30s 内若进程被杀，进度完全丢失（仅有 onCleared 兜底）。
-        // 现首次保存提前到 [PROGRESS_FIRST_SAVE_DELAY_MS]（5s），后续按
-        // [PROGRESS_SAVE_INTERVAL_MS]（30s）周期保存。5s 足以等播放稳定后写入初始位置。
+        // 周期性保存播放进度：首次延迟 [PROGRESS_FIRST_SAVE_DELAY_MS]（5s）写入初始位置，
+        // 后续每 [PROGRESS_SAVE_INTERVAL_MS]（30s）保存，兜底进程被杀场景。
+        // onCleared 仍是最终保存点，本协程只做中途快照。
         viewModelScope.launch {
             // 音频周期保存已下沉 AudioPlaybackManager 轮询协程（不依赖 ViewModel 存活，
             // MusicBar 场景下 ViewModel 销毁后仍持续落盘），此处仅服务视频。
@@ -969,19 +942,15 @@ class PlayerViewModel @Inject constructor(
             }
             while (isActive) {
                 delay(PROGRESS_SAVE_INTERVAL_MS)
-                // W-M10 修复：原 runCatching 静默吞掉所有异常，DB 错误（如 SQLiteFullException）
-                // 无日志，排查"进度丢失"问题困难。现记录失败日志。
+                // 记录保存失败日志，便于排查进度丢失问题
                 runCatching { saveProgress() }.onFailure { e ->
                     android.util.Log.w("PlayerViewModel", "周期性保存进度失败: ${e.message}", e)
                 }
             }
         }
 
-        // BUG-H2 修复：PlayStarter 在后台异步构造同目录播放列表（SMB/WebDAV 大目录
-        // listFiles 耗时 1-3 秒），可能晚于本 ViewModel 初始化。同步路径（文件浏览页）
-        // 已在上方 consume 消费；此处订阅 PlaylistHolder 的流，接收延迟到达的列表，
-        // 避免首页英雄卡/播放历史恢复播放时连播列表丢失（竞态）。此时请求已消费，
-        // isAudioPlayback 已确定，可安全按请求类型过滤并同步 AudioPlaybackManager。
+        // 订阅 PlaylistHolder 的流，接收 PlayStarter 延迟异步构造的播放列表
+        // （SMB/WebDAV 大目录 listFiles 较慢），避免首页/历史恢复播放时连播列表丢失。
         viewModelScope.launch {
             playlistHolder.playlistFlow.collect { update ->
                 val (items, startIndex) = update ?: return@collect
@@ -1043,7 +1012,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * W-M5 修复：将 [PlaybackException] 转换为用户可读的中文错误信息。
+     * 将 [PlaybackException] 转换为用户可读的中文错误信息。
      *
      * 识别 media3 包装的 HttpDataSourceException，提取 HTTP 响应码分类提示：
      * - 401：账号密码错误或凭据过期
@@ -1097,19 +1066,11 @@ class PlayerViewModel @Inject constructor(
     /**
      * 记录播放开始（写入 play_history 表）。
      *
-     * BUG-H3 修复：不再用 [startPositionMs] 覆盖 [PlayHistoryEntity.videoPosition]。
+     * 只更新 playTime（刷新"最近播放"排序）与新记录初始值，不覆盖已有 videoPosition：
+     * 进度保存完全交给 [saveProgress] / [onCleared]（它们读取 player 实际位置），
+     * 避免"未实际播放却用 startPositionMs/0 覆盖已有进度"的窗口期。
      *
-     * 原实现 `existing.videoPosition = startPositionMs` 的问题：
-     * - 用户从 1h 处续播 → recordPlayStart 写入 videoPosition=1h（与 DB 一致，无变化）
-     * - 用户立即退出（未实际播放）→ onCleared 中 player.positionMs=0
-     * - saveProgressInternal 用 0 覆盖 1h → **进度丢失**
-     *
-     * 修复后：recordPlayStart 只更新 playTime（刷新"最近播放"排序），
-     * 不写 videoPosition。进度保存完全交给 [saveProgress] / [onCleared]，
-     * 它们读取 player 实际位置，避免"未播放但覆盖为 startPositionMs"的窗口期。
-     *
-     * 新记录（existing==null）仍写入 startPositionMs 作为初始值，
-     * 因为此时 DB 无任何进度，startPositionMs（续播位置）是合理的初始值。
+     * 新记录（existing==null）仍写入 startPositionMs 作为初始值。
      */
     private suspend fun recordPlayStart(
         history: HistoryDescriptor,
@@ -1121,8 +1082,8 @@ class PlayerViewModel @Inject constructor(
         if (encryptedFolderManager.isWithinEncrypted(storageId, history.storagePath)) return
         val mediaType = MediaType.fromValue(history.mediaTypeValue)
         val now = Date()
-        // C-04 修复：改用 @Transaction upsert，避免并发场景下 query-then-update/insert
-        // 窗口期导致 insert 冲突被 IGNORE 静默丢弃（如周期性 saveProgress 与 recordPlayStart 并发）
+        // 使用 @Transaction upsert，避免并发下 query-then-update/insert 窗口期
+        // 导致 insert 冲突被 IGNORE 静默丢弃（如周期保存与 recordPlayStart 并发）
         val newEntity = PlayHistoryEntity(
             videoName = title,
             url = history.url,
@@ -1144,7 +1105,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 应用延迟到达的播放列表（PlayStarter 异步构造场景，BUG-H2 修复）。
+     * 应用延迟到达的播放列表（PlayStarter 异步构造场景）。
      *
      * 与 init 中同步路径的区别：调用时请求已消费、[isAudioPlayback] 已确定，
      * 可安全按当前请求类型过滤，避免上一会话残留的异构列表混入。音频场景同步
@@ -1202,17 +1163,6 @@ class PlayerViewModel @Inject constructor(
     /**
      * 播放列表中指定索引的项。
      *
-     * 1. 查询存储源 → 重建 Storage → 构造 NxMediaSource
-     * 2. 查询续播位置
-     * 3. setSource → seekTo → prepare → play
-     * 4. 更新 [currentHistory] + 写入 play_history
-     *
-     * BUG-P2 修复：切换到新曲目前，先保存当前曲目的播放进度，
-     * 避免 currentHistory 被覆盖后旧进度丢失。
-     */
-    /**
-     * 播放列表中指定索引的项。
-     *
      * 音频项：切歌全流程已下沉 [AudioPlaybackManager.switchToIndex]（保存旧进度 → 查库 →
      * 重建 Storage → 建源 → 查续播位置 → 播放 → 记录历史 → 回调刷新封面/LRC），
      * 本方法仅转发并同步标题。
@@ -1235,8 +1185,7 @@ class PlayerViewModel @Inject constructor(
     /**
      * 视频项切歌：查询存储源 → 重建 Storage → 构造 NxMediaSource → setSource → 播放。
      *
-     * BUG-P2 修复：切换到新曲目前，先保存当前曲目的播放进度，
-     * 避免 currentHistory 被覆盖后旧进度丢失。
+     * 切到新曲目前先保存当前曲目的播放进度，避免 currentHistory 被覆盖后旧进度丢失。
      */
     private fun playVideoAtIndex(index: Int) {
         val list = _playlist.value
@@ -1244,12 +1193,12 @@ class PlayerViewModel @Inject constructor(
         val item = list[index]
 
         viewModelScope.launch {
-            // M-10 修复：用 Mutex 串行化 playAtIndex 全流程，避免快速连续切歌时
-            // 第一次 saveProgressSync 尚未完成、第二次已覆盖 currentHistory 导致
-            // 第一次保存的是错误曲目的进度
+            // 用 Mutex 串行化切歌全流程，避免快速连续切歌时进度保存错曲目
             playAtIndexMutex.withLock {
                 try {
-                    // 切歌前先保存当前曲目进度（BUG-P2 修复）
+                    // 为即将被切走的视频异步更新最近播放帧缩略图，不阻塞切歌
+                    scheduleSwitchOutThumbnail()
+                    // 切歌前先保存当前曲目进度
                     saveProgressSync()
 
                     val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(item.libraryId) }
@@ -1258,7 +1207,7 @@ class PlayerViewModel @Inject constructor(
                         ?: return@withLock
                     val file = MediaSourceBuilder.createVirtualFile(item.filePath, item.fileName, item.fileSize)
                     val uniqueKey = "${library.id}:${item.filePath}"
-                    // W-N7 修复：传入 uniqueKey 作为 mediaId，让 media3 MediaItem.mediaId
+                    // 传入 uniqueKey 作为 mediaId，让 media3 MediaItem.mediaId
                     // 与应用层 uniqueKey 一致，便于未来 MediaSession 集成。
                     val source = MediaSourceBuilder.buildMediaSource(storage, file, mediaId = uniqueKey)
                     val startPositionMs = withContext(Dispatchers.IO) {
@@ -1282,7 +1231,7 @@ class PlayerViewModel @Inject constructor(
                     isAudioPlayback = false
                     // 视频：使用 NxPlayer
                     swapStorage(extractStorageFromSource(source))
-                    // W-M8 修复：同 init 路径，startPositionMs 直接传给 setSource。
+                    // 同 init 路径，startPositionMs 直接传给 setSource。
                     player.setSource(source, startPositionMs)
                     player.prepare()
                     player.play()
@@ -1310,12 +1259,9 @@ class PlayerViewModel @Inject constructor(
 
                     recordPlayStart(currentHistory!!, item.fileName, startPositionMs)
                 } catch (e: Exception) {
-                    // M-09 修复：CancellationException 必须重新抛出，遵守结构化并发。
-                    // viewModelScope 取消时若吞掉 CancellationException，协程继续执行 catch 块
-                    // 可能导致资源未释放或状态不一致。
+                    // CancellationException 必须重新抛出，遵守结构化并发
                     if (e is kotlinx.coroutines.CancellationException) throw e
-                    // BUG-20 修复：切集失败不中断当前播放，但需通过 messageEvent 通知 UI
-                    // 显示错误信息（OSD），避免用户点「下一集」后无反馈。
+                    // 切集失败不中断当前播放，但通过 messageEvent 通知 UI 显示错误信息
                     android.util.Log.w("PlayerViewModel", "playAtIndex($index) failed", e)
                     _messageEvent.tryEmit(appContext.getString(R.string.player_switch_failed, e.message ?: e::class.simpleName))
                 }
@@ -1324,9 +1270,9 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 从 [NxMediaSource] 提取携带的 [com.nichx.niplayer.storage.Storage]（仅 DataSource 类型有）。
+     * 从 [NxMediaSource] 提取携带的 [com.nichx.niplayer.storage.Storage]。
      *
-     * BUG-19+23 修复：[NxMediaSource.DataSource] 现携带 storage 引用，HTTP/Local 类型不携带。
+     * 仅 [NxMediaSource.DataSource] 类型携带 storage 引用，HTTP/Local 类型不携带。
      */
     private fun extractStorageFromSource(
         source: com.nichx.niplayer.player.kernel.NxMediaSource,
@@ -1337,10 +1283,8 @@ class PlayerViewModel @Inject constructor(
     /**
      * 切换 [currentStorage]：先关闭旧 storage（异步），再赋值新 storage。
      *
-     * BUG-19+23 修复：原 playAtIndex / PlaybackRequest 消费路径创建的 Storage 永不关闭，
-     * 每次切集或退出泄漏一个 SMB 连接。现统一由本方法管理：
-     * - 旧 storage 关闭用独立 CoroutineScope(Dispatchers.IO)，避免 viewModelScope 取消时阻塞
-     * - storage.close() 是 suspend，需在协程中调用
+     * - 旧 storage 关闭用独立 closeScope（Dispatchers.IO），避免 viewModelScope
+     *   取消时阻塞；storage.close() 是 suspend，需在协程中调用
      * - null 入参表示新源是 HTTP/Local，无需持有 storage
      */
     private fun swapStorage(newStorage: com.nichx.niplayer.storage.Storage?) {
@@ -1366,7 +1310,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * C-02 修复：错误状态下用户点"重试"调用。
+     * 错误状态下用户点"重试"调用。
      *
      * 用 [lastPlaybackRequest] 的原始 startPositionMs 重新装载播放源。
      * 适用于 SMB/WebDAV/FTP 临时断连、解码失败等场景。
@@ -1375,7 +1319,7 @@ class PlayerViewModel @Inject constructor(
         val request = lastPlaybackRequest ?: return
         viewModelScope.launch {
             // 重新装载 source（NxMediaSource 已闭包 storage，无需重新创建）
-            // C-01 修复：setSource/prepare 会清零 hasError，UI 状态从 Error → Buffering
+            // setSource/prepare 会清零错误状态，UI 从 Error → Buffering
             player.setSource(request.source, request.startPositionMs)
             player.prepare()
             player.play()
@@ -1383,7 +1327,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * C-02 修复：错误状态下用户点"从头播放"调用。
+     * 错误状态下用户点"从头播放"调用。
      *
      * 用 [lastPlaybackRequest] 但 startPositionMs=0 重新装载播放源。
      */
@@ -1604,12 +1548,8 @@ class PlayerViewModel @Inject constructor(
      * 2. 用 [FormatASS] / [FormatSRT] 解析为 [com.nichx.niplayer.subtitle.info.TimedTextObject]
      * 3. 加载到 [subtitleEngine]，由 [SubtitleOverlay] 渲染
      *
-     * 外挂字幕不走 media3 TextRenderer，以支持 ASS 特效和精确字幕偏移。
-     * （BUG-P7 修复后 [NxPlayer] 不再提供 addSubtitle 接口）
-     *
-     * BUG-30 修复：解析成功后将字幕复制到持久目录 `files/subtitles/`，并调用
-     * [PlayHistoryDao.updateSubtitle] 持久化路径。下次恢复播放时 init 自动加载，
-     * 避免用户每次重新搜索/选择字幕。
+     * 解析成功后复制到持久目录 `files/subtitles/` 并经 [PlayHistoryDao.updateSubtitle]
+     * 持久化路径，恢复播放时自动加载，避免用户每次重新搜索/选择字幕。
      *
      * @param uri 字幕文件 URI（content:// / file://）
      * @param mimeType 字幕 MIME 类型（用于选择解析器）
@@ -1626,10 +1566,10 @@ class PlayerViewModel @Inject constructor(
                 }
                 subtitleEngine.load(tto, tempFile.name)
 
-                // BUG-30：解析成功后持久化字幕到内部存储，并更新历史记录
+                // 解析成功后持久化字幕到内部存储，并更新历史记录
                 persistSubtitle(tempFile, mimeType)
             } catch (e: Exception) {
-                // M-09 修复：CancellationException 必须重新抛出，遵守结构化并发
+                // CancellationException 必须重新抛出，遵守结构化并发
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 // 解析失败时静默忽略，避免崩溃；后续可加错误提示
             } finally {
@@ -1641,7 +1581,7 @@ class PlayerViewModel @Inject constructor(
     /**
      * 持久化字幕文件到 `files/subtitles/` 并更新 [PlayHistoryEntity.subtitlePath]。
      *
-     * BUG-30 修复：将字幕从临时缓存复制到持久目录，确保进程重启后仍可加载。
+     * 将字幕从临时缓存复制到持久目录，确保进程重启后仍可加载。
      * 文件名基于 uniqueKey 哈希避免冲突，扩展名从 mimeType 推断。
      */
     private suspend fun persistSubtitle(tempFile: File, mimeType: String) {
@@ -1661,7 +1601,7 @@ class PlayerViewModel @Inject constructor(
             tempFile.copyTo(persistentFile, overwrite = true)
             playHistoryDao.updateSubtitle(history.uniqueKey, storageId, persistentFile.absolutePath)
         } catch (e: Exception) {
-            // M-09 修复：CancellationException 必须重新抛出，遵守结构化并发
+            // CancellationException 必须重新抛出，遵守结构化并发
             if (e is kotlinx.coroutines.CancellationException) throw e
             // 持久化失败不影响当前播放，仅无法恢复字幕
         }
@@ -1670,7 +1610,7 @@ class PlayerViewModel @Inject constructor(
     /**
      * 从持久化路径加载外挂字幕。
      *
-     * BUG-30 修复：恢复播放时若历史记录含 subtitlePath，调用本方法自动加载。
+     * 恢复播放时，历史记录含 subtitlePath 则调用本方法自动加载。
      */
     private fun loadPersistedSubtitle(path: String) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -1684,7 +1624,7 @@ class PlayerViewModel @Inject constructor(
                 }
                 subtitleEngine.load(tto, file.name)
             } catch (e: Exception) {
-                // M-09 修复：CancellationException 必须重新抛出，遵守结构化并发
+                // CancellationException 必须重新抛出，遵守结构化并发
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 // 恢复失败静默忽略
             }
@@ -1692,10 +1632,10 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 清除外挂字幕。
+     * 清除外挂字幕，并同步重置 player 的 subtitleOffsetMs。
      *
-     * M-13 修复：同步重置 player 的 subtitleOffsetMs，避免 SubtitleEngine._offsetMs=0
-     * 而 player.subtitleOffsetMs 仍保留旧值导致下次 adjustSubtitleOffset 基于旧值计算。
+     * 避免 SubtitleEngine._offsetMs=0 而 player 仍保留旧值，导致下次
+     * adjustSubtitleOffset 基于旧值计算。
      */
     fun clearExternalSubtitle() {
         subtitleEngine.clear()
@@ -1719,7 +1659,7 @@ class PlayerViewModel @Inject constructor(
             } ?: return null
             tempFile
         } catch (e: Exception) {
-            // M-09 修复：CancellationException 必须重新抛出，遵守结构化并发
+            // CancellationException 必须重新抛出，遵守结构化并发
             if (e is kotlinx.coroutines.CancellationException) throw e
             null
         }
@@ -1728,13 +1668,11 @@ class PlayerViewModel @Inject constructor(
     /**
      * 保存当前播放进度到 play_history（upsert）。
      *
-     * BUG-10 修复：补充 [onCleared] 之外的中途保存点：
-     * - 周期性保存（[init] 中每 [PROGRESS_SAVE_INTERVAL_MS] 一次，兜底进程被杀）
-     * - onPause 保存（UI 层在 [androidx.lifecycle.Lifecycle.Event.ON_PAUSE] 时调用）
-     * - playAtIndex 切歌前调用 [saveProgressSync] 同步保存
+     * onCleared 之外的中途保存点：周期性保存（[init] 中每 [PROGRESS_SAVE_INTERVAL_MS] 一次）、
+     * onPause 保存（UI 层 [androidx.lifecycle.Lifecycle.Event.ON_PAUSE] 时调用）、
+     * 切歌前 [saveProgressSync] 同步保存。
      *
-     * 与 [onCleared] 不同：不释放 player，不生成缩略图，仅写 DB。
-     * 多次调用安全（幂等 upsert）。
+     * 与 [onCleared] 不同：不释放 player，不生成缩略图，仅写 DB。多次调用安全（幂等 upsert）。
      */
     fun saveProgress() {
         val history = currentHistory ?: return
@@ -1747,10 +1685,8 @@ class PlayerViewModel @Inject constructor(
             }
             return
         }
-        // BUG-24 修复：播放器处于 Error / Idle 状态时 player.positionMs 可能为 0
-        // （如 SMB 断网后 onPlayerError 触发，exoPlayer.currentPosition 归零）。
-        // 若此时调用 saveProgressInternal 会用 0 覆盖 DB 中已有进度（如 1 小时），
-        // 导致用户下次恢复从头播放。仅在播放中/暂停/就绪/缓冲状态下保存。
+        // Error / Idle 状态下 player.positionMs 可能为 0（如 SMB 断网后归零），
+        // 若此时保存会用 0 覆盖 DB 已有进度。仅在播放中/暂停/就绪/缓冲状态下保存。
         val state = player.state.value
         if (state !is PlaybackState.Playing &&
             state !is PlaybackState.Paused &&
@@ -1761,9 +1697,8 @@ class PlayerViewModel @Inject constructor(
         }
         val position = player.positionMs.value
         val duration = player.durationMs.value
-        // BUG-24 双重保险：即使状态判断通过，position=0 且 duration>0 也跳过
-        // （理论上 Ready/Buffering 早期 position 可能短暂为 0，但此时 DB 已有进度，
-        // 写入 0 会覆盖。仅在 DB 已有记录且 position=0 时跳过，新记录（position 本就该是 0）不受影响）
+        // 双重保险：即使状态判断通过，position=0 且已有进度时也跳过，
+        // 避免覆盖 DB 已有进度；仅新记录（position 本就该是 0）不受影响
         if (position <= 0) return
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             saveProgressInternal(history, storageId, position, duration)
@@ -1773,13 +1708,8 @@ class PlayerViewModel @Inject constructor(
     /**
      * 同步保存当前播放进度，用于切歌场景。
      *
-     * BUG-P2 修复：[playAtIndex] 切换前必须在覆盖 [currentHistory] 之前保存当前进度，
-     * 否则旧曲目的最终位置会被新曲目的 currentHistory 覆盖丢失。
-     *
-     * 在调用方协程上下文执行，不启动新协程，确保保存完成后再切换曲目。
-     *
-     * BUG-24 修复：同 [saveProgress]，Error/Idle 状态下跳过，避免用 0 覆盖进度。
-     * 注意：切歌场景下切歌前状态通常是 Playing/Paused，此检查不会误拦正常切歌保存。
+     * 在调用方协程上下文执行，不启动新协程，确保切换前保存完成。
+     * 同 [saveProgress]，Error/Idle 状态下跳过，避免用 0 覆盖进度。
      */
     private suspend fun saveProgressSync() {
         val history = currentHistory ?: return
@@ -1803,17 +1733,11 @@ class PlayerViewModel @Inject constructor(
     /**
      * 进度落盘内部实现（upsert），由 [saveProgress] 和 [saveProgressSync] 复用。
      *
-     * BUG-24 修复：当传入 [position] 为 0 且 DB 已有记录时，**不覆盖**已有进度。
-     * 触发场景：onCleared 兜底保存时，player 可能处于 Error 状态导致 position=0，
-     * 若直接覆盖会让 DB 中真实的 1 小时进度归零。新记录（existing==null）仍写入 0
-     * 作为初始值，不影响首次 insert。中途保存（[saveProgress]）已在调用方拦截 position=0，
-     * 此处的保护主要针对 onCleared 兜底路径。
+     * 当 [position] 为 0 且 DB 已有记录时**不覆盖**已有进度，避免 onCleared 兜底
+     * 保存时 player 处于 Error 导致进度归零；新记录（existing==null）仍写入 0。
      *
-     * W-N13 修复：原实现采用非事务的 query-then-update/insert 模式，并发场景
-     * （周期性保存 + 切歌保存同时触发）下两个协程可能都查到 existing==null，
-     * 都尝试 insert，第二个被 IGNORE 静默失败导致进度丢失。改为调用
-     * [PlayHistoryDao.upsertProgress]（@Transaction 包裹 query+update/insert），
-     * Room 在数据库层加事务锁串行化，确保并发安全。
+     * 使用 [PlayHistoryDao.upsertProgress]（@Transaction 包裹 query+update/insert），
+     * Room 在数据库层加事务锁串行化，保证并发安全。
      */
     private suspend fun saveProgressInternal(
         history: HistoryDescriptor,
@@ -1849,17 +1773,110 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 连续播放切歌前，为即将被切走的视频异步更新最近播放帧缩略图。
+     *
+     * 切走前同步快照出库视频信息，再经 appScope 异步执行（远程取帧可能耗时数秒，
+     * 不阻塞切歌）。音频切走（[isAudioPlayback]）跳过。
+     */
+    private fun scheduleSwitchOutThumbnail() {
+        val history = currentHistory ?: return
+        val storageId = history.storageId ?: return
+        if (isAudioPlayback) return
+        val filePath = history.storagePath ?: return
+        val position = player.positionMs.value
+        if (position <= 0) return
+        appScope.launch {
+            updatePlaybackThumbnail(
+                history = history,
+                storageId = storageId,
+                filePath = filePath,
+                position = position,
+                bitmap = null,
+                isHdrPlayback = false,
+            )
+        }
+    }
+
+    /**
+     * 为已播放过的视频生成/更新缩略图（最近播放帧）并上传服务端。
+     *
+     * [bitmap] 非空且非 HDR 时用 UI 层 PixelCopy 抓帧（质量更高），否则走远程取帧
+     * [ThumbnailManager.generateThumbnailAtMs]。超时/失败静默，不影响主流程。
+     *
+     * @param bitmap PixelCopy 抓帧（退出播放非 HDR 路径使用）；null 走远程取帧
+     * @param isHdrPlayback 当前播放是否 HDR（HDR 一律走远程取帧）
+     */
+    private suspend fun updatePlaybackThumbnail(
+        history: HistoryDescriptor,
+        storageId: Int,
+        filePath: String,
+        position: Long,
+        bitmap: Bitmap?,
+        isHdrPlayback: Boolean,
+    ) {
+        // 门控：总开关 + 视频开关 + 退出时更新开关 + 播放后生成策略
+        if (!ThumbnailSettings.generateThumbnail || !ThumbnailSettings.generateForVideo ||
+            !ThumbnailSettings.updateOnExit
+        ) return
+        if (!ThumbnailSettings.shouldGenerateOnPlayback(storageId)) return
+        if (filePath.isBlank()) return
+
+        // 生成后 storage 暂不关闭，交给下方上传阶段完成后再关
+        var uploadTask: Pair<Storage, StorageFile>? = null
+        withTimeoutOrNull(THUMBNAIL_TIMEOUT_MS) {
+            try {
+                val library = mediaLibraryDao.getById(storageId) ?: return@withTimeoutOrNull
+                val storage = storageFactory.create(library) ?: return@withTimeoutOrNull
+                var storageTransferred = false
+                try {
+                    val existing = playHistoryDao.getPlayHistory(history.uniqueKey, storageId)
+                    val fileName = existing?.videoName ?: history.url.substringAfterLast('/')
+                    val file = MediaSourceBuilder.createVirtualFile(filePath, fileName)
+
+                    if (bitmap != null && !isHdrPlayback) {
+                        thumbnailManager.saveThumbnailFromBitmap(
+                            storageId = storageId,
+                            file = file,
+                            bitmap = bitmap,
+                            isHdr = false,
+                        )
+                        lastFrameBitmap = null
+                    } else {
+                        thumbnailManager.generateThumbnailAtMs(storage, storageId, file, position)
+                    }
+                    uploadTask = storage to file
+                    storageTransferred = true
+                } finally {
+                    if (!storageTransferred) storage.close()
+                }
+            } catch (_: Exception) {
+                // 缩略图生成失败不影响主流程
+            }
+        }
+
+        // 上传独立执行，不挤占生成超时预算；失败静默
+        uploadTask?.let { (storage, file) ->
+            try {
+                withTimeoutOrNull(UPLOAD_TIMEOUT_MS) {
+                    thumbnailManager.uploadThumbnail(storage, file)
+                }
+            } catch (_: Exception) {
+            } finally {
+                try { storage.close() } catch (_: Exception) {}
+            }
+        }
+    }
+
     override fun onCleared() {
         // 清理 AudioPlaybackManager 回调，避免 @Singleton 持有已销毁的 ViewModel 导致泄漏
         audioPlaybackManager.onPlaybackError = null
         audioPlaybackManager.onMessage = null
         audioPlaybackManager.onTrackChanged = null
 
-        // R1 修复：快照 HDR 标志（player.release() 会清空 mediaInfo）。
-        // HDR 正确性由下方生成分支显式兜底（非 HDR 才用 PixelCopy bitmap，
-        // HDR 一律走 generateThumbnailAtMs），不再依赖 UI 层拦截的隐式约定。
-        // DV / HDR10 / HLG 走 generateThumbnailAtMs：getFrameAtTime 在 API 34+ 由
-        // 系统自动 tone map HDR→SDR，生成缩略图颜色正确（用户实测确认）。
+        // 快照 HDR 标志（player.release() 会清空 mediaInfo）。
+        // 非 HDR 才用 PixelCopy bitmap，HDR（DV/HDR10/HLG）一律走
+        // generateThumbnailAtMs（API 34+ 由系统自动 tone map HDR→SDR，颜色正确）。
         val hdrTypePlayback = player.mediaInfo.value?.hdrType
         val isHdrPlayback = hdrTypePlayback != null
 
@@ -1870,11 +1887,10 @@ class PlayerViewModel @Inject constructor(
         if (!transitioningToBackground) {
             player.release()
         }
-        // M-12 修复：释放 SubtitleEngine 持有的字幕数据（parsed List、startMsToIndex TreeMap），
-        // 避免大字幕文件（含特效）的 ParsedCaption 列表延迟到 GC 才回收，占用数 MB 内存。
+        // 释放 SubtitleEngine 持有的字幕数据，避免大字幕文件的列表占内存
         subtitleEngine.clear()
 
-        // BUG-19+23 修复：释放播放源持有的 Storage（SMB 连接等），避免泄漏。
+        // 释放播放源持有的 Storage（SMB 连接等），避免泄漏。
         // 用独立 scope + NonCancellable 确保关闭完成（storage.close 是 suspend）。
         val storageToClose = currentStorage
         currentStorage = null
@@ -1891,24 +1907,11 @@ class PlayerViewModel @Inject constructor(
         // 保证 Kotlin 对 val 的 smart-cast 在下方 appScope.launch 闭包内仍然生效。
         if (history == null || storageId == null) return
 
-        // BUG-H7 修复：onCleared 后 viewModelScope 已取消，改用独立协程作用域异步保存。
-        // 原实现用 CoroutineScope(Dispatchers.IO + NonCancellable).launch 包裹全部逻辑，
-        // 缩略图生成（storageFactory.create + generateThumbnailAtMs）可能因 SMB/WebDAV
-        // 连接问题阻塞数分钟，NonCancellable 导致协程无法被取消，IO 线程被无限占用。
-        // 改为分阶段保护：
+        // viewModelScope 在 onCleared 已取消，改用应用级 appScope 异步保存：
         // - 进度保存（快）：withContext(NonCancellable) 确保完成
-        // - 缩略图生成（慢）：withTimeoutOrNull(10s) 超时自动放弃，不阻塞 IO 线程
-        //
-        // M-11 修复：保留独立 CoroutineScope 设计（viewModelScope 已取消无法使用），
-        // 但通过 withTimeoutOrNull 限制总执行时间，避免进程被杀时协程未完成导致进度丢失。
-        // 进度保存用 NonCancellable 确保完成；缩略图生成用 withTimeoutOrNull 超时放弃。
-        // O-13：使用注入的 AppCoroutineScope 替代游离 CoroutineScope(Dispatchers.IO)，
-        // 该作用域生命周期与进程一致，onCleared 后仍可完成进度保存与缩略图生成。
+        // - 缩略图生成（慢）：withTimeoutOrNull(10s) 超时放弃，不阻塞 IO 线程
         appScope.launch {
-            // 1. 优先保存播放进度（upsert：有则 update，无则 insert 兜底）
-            //    recordPlayStart 协程在 viewModelScope 中，用户快速退出时可能被取消，
-            //    导致 DB 中无记录，此处必须兜底 insert，否则进度会静默丢失
-            //    （WebDAV/SMB 音频起播快、用户易快速返回，是高发场景）
+            // 1. 保存播放进度（upsert，缺失时兜底 insert，避免静默丢失）
             withContext(NonCancellable) {
                 // 音频进度由 Manager 自维护（currentHistory 在 Manager 内部），
                 // 视频仍由 ViewModel 直接落库
@@ -1919,96 +1922,23 @@ class PlayerViewModel @Inject constructor(
                 }
             }
 
-            // 2. 视频缩略图生成（音频跳过：音频无视频帧，getFrameAtTime 必然返回 null，
-            //    且对远程音频会建立 MediaDataSource 阻塞数秒）
-            //    用 withTimeoutOrNull 包裹，超时后自动放弃，不阻塞 IO 线程；
-            //    runCatching 隔离其他异常，任何失败都不影响上面已写入的进度
-            //    updateOnExit 门控：仅当设置开启时，退出播放才用最后一帧覆盖缩略图；
-            //    关闭时保持浏览生成的默认缩略图（跳过本段全部逻辑）
+            // 2. 视频缩略图生成（"退出时更新封面"开启时用最后一帧覆盖缩略图）
             if (!isAudioPlayback && position > 0 &&
                 ThumbnailSettings.generateThumbnail && ThumbnailSettings.generateForVideo &&
-                ThumbnailSettings.updateOnExit
+                ThumbnailSettings.updateOnExit &&
+                ThumbnailSettings.shouldGenerateOnPlayback(storageId)
             ) {
-                // 播放后生成策略检查：非关闭模式均生成（文件已被读取，无额外封控风险）
-                if (ThumbnailSettings.shouldGenerateOnPlayback(storageId)) {
-                    // R5 修复：等待 UI 层 PixelCopy 抓帧结果（短超时）。
-                    // capturedBack 发起 PixelCopy.request 后立即导航返回，onCleared 执行时
-                    // 异步回调可能未到达，此前直接读 lastFrameBitmap 会误判为 null，
-                    // 导致 SMB/WebDAV 视频白白重新建连远程取帧。
-                    val bitmap = awaitLastFrameBitmap(FRAME_WAIT_MS)
+                // 优先用 UI 层 PixelCopy 抓帧（非 HDR 时质量更高），等待短超时后交给公共方法
+                val bitmap = awaitLastFrameBitmap(FRAME_WAIT_MS)
 
-                    // R4 修复：上传任务延迟到超时块外执行，不挤占生成超时预算。
-                    // 生成后 storage 暂不关闭，交给上传阶段完成后再关。
-                    var uploadTask: Pair<Storage, StorageFile>? = null
-                    withTimeoutOrNull(THUMBNAIL_TIMEOUT_MS) {
-                        // BUG-01 修复：原 runCatching 无法释放 storage，改为 try-catch + 内层 try-finally：
-                        // 外层 catch 吞异常（保持原"缩略图失败不影响退出"语义），内层 finally 关闭 storage。
-                        try {
-                            val library = mediaLibraryDao.getById(storageId) ?: return@withTimeoutOrNull
-                            val storage = storageFactory.create(library) ?: return@withTimeoutOrNull
-                            // storage 默认在 finally 关闭；生成成功且需要上传时转交给 uploadTask 延迟关闭
-                            var storageTransferred = false
-                        try {
-                            val filePath = history.storagePath ?: return@withTimeoutOrNull
-                            val existing = playHistoryDao.getPlayHistory(history.uniqueKey, storageId)
-                            val fileName = existing?.videoName ?: history.url.substringAfterLast('/')
-                            val file = MediaSourceBuilder.createVirtualFile(filePath, fileName)
-
-                            // R1 修复：HDR 正确性显式兜底。
-                            // 此前路径选择只看 bitmap != null，HDR 正确性完全依赖 UI 层
-                            // shouldCaptureThumbnailOnExit 的拦截（让 bitmap 保持 null）来间接保证，
-                            // 一旦 hdrType 判定晚于退出（tracks 未就绪）或绕过 capturedBack 的销毁路径
-                            // （后台被杀、直接 finish），HDR 错图就会入库。
-                            // 现改为显式条件：非 HDR 才用 PixelCopy bitmap，HDR 一律走
-                            // generateThumbnailAtMs（MMR + API 34+ 系统 tone map，唯一正确路径）；
-                            // UI 层拦截降级为性能优化（HDR 不浪费抓帧与 bitmap 分配）。
-                            if (bitmap != null && !isHdrPlayback) {
-                                thumbnailManager.saveThumbnailFromBitmap(
-                                    storageId = storageId,
-                                    file = file,
-                                    bitmap = bitmap,
-                                    isHdr = false,
-                                )
-                                // BUG-P4 修复：不手动 recycle，置 null 交给 GC 回收。
-                                // 原 bitmap.recycle() 与 UI 层 dispose 存在竞态：
-                                // PlayerScreen 在 onDispose 中通过 PixelCopy 截图并 setLastFrameBitmap，
-                                // 若 onCleared 的 recycle 先于 Compose 完成对 bitmap 的最后一次绘制，
-                                // 会触发 "Cannot draw a recycled Bitmap" IllegalStateException。
-                                // Bitmap 的 native 内存由 GC 最终回收，延迟回收的内存开销可接受。
-                                lastFrameBitmap = null
-                            } else {
-                                // DV / HDR10 / HLG：getFrameAtTime 在 API 34+ 由系统自动
-                                // tone map HDR→SDR，生成的缩略图颜色正确（用户实测确认）
-                                thumbnailManager.generateThumbnailAtMs(storage, storageId, file, position)
-                            }
-                            // R4 修复：上传移出超时块。uploadThumbnail 内部会检查 saveInSameDir
-                            // 和 cacheFile.exists()，并通过 fileExists 避免覆盖服务端已有缩略图；
-                            // 失败不影响退出流程（下方 catch 已捕获）
-                            uploadTask = storage to file
-                            storageTransferred = true
-                        } finally {
-                            if (!storageTransferred) {
-                                storage.close()
-                            }
-                        }
-                        } catch (_: Exception) {
-                        // 缩略图生成失败不影响退出流程
-                        }
-                    }
-
-                    // R4 修复：上传独立执行，不挤占生成超时预算（HDR 远程取帧慢时尤其明显），
-                    // 避免跨设备缩略图复用因超时被截断。失败静默，不影响退出。
-                    uploadTask?.let { (storage, file) ->
-                        try {
-                            withTimeoutOrNull(UPLOAD_TIMEOUT_MS) {
-                                thumbnailManager.uploadThumbnail(storage, file)
-                            }
-                        } catch (_: Exception) {
-                        } finally {
-                            try { storage.close() } catch (_: Exception) {}
-                        }
-                    }
-                }
+                updatePlaybackThumbnail(
+                    history = history,
+                    storageId = storageId,
+                    filePath = history.storagePath ?: "",
+                    position = position,
+                    bitmap = bitmap,
+                    isHdrPlayback = isHdrPlayback,
+                )
             }
 
             // 3. 播放器退出后触发播放历史云同步（若启用自动同步）。
@@ -2051,46 +1981,40 @@ private fun formatTime(ms: Long): String {
 /**
  * 周期性保存播放进度的时间间隔。
  *
- * BUG-10：30s 是平衡 DB 写入频率与磁盘/电量开销的折中值。
+ * 30s 是平衡 DB 写入频率与磁盘/电量开销的折中值：
  * - 太短（如 5s）：频繁写 SQLite，低端设备可能卡顿
  * - 太长（如 5min）：进程被杀时丢失进度上限过大
  */
 private const val PROGRESS_SAVE_INTERVAL_MS = 30_000L
 
 /**
- * m-04 修复：进入播放页后首次保存进度的延迟。
+ * 进入播放页后首次保存进度的延迟。
  *
- * 原 [PROGRESS_SAVE_INTERVAL_MS] 首次延迟 30s 期间进程被杀会丢失全部进度。
- * 5s 足以让播放稳定（Buffering → Ready），写入初始位置作为快照。
+ * 5s 足以让播放稳定（Buffering → Ready），避免前 5s 内进程被杀丢失初始进度快照。
  */
 private const val PROGRESS_FIRST_SAVE_DELAY_MS = 5_000L
 
 /**
  * onCleared 中缩略图生成的超时上限。
  *
- * BUG-H7：storageFactory.create（SMB/WebDAV 建连）+ generateThumbnailAtMs（远程取帧）
- * 在网络不佳时可能阻塞数分钟。10s 是平衡"尽量生成成功"与"不阻塞 IO 线程"的折中值：
- * - SMB 局域网建连 + 取帧通常 < 5s
- * - WebDAV 广域网可能 5-8s
- * - 超过 10s 视为网络异常，放弃生成（下次播放时会重新生成）
+ * storageFactory.create（SMB/WebDAV 建连）+ generateThumbnailAtMs（远程取帧）
+ * 在网络不佳时可能阻塞数分钟。10s 是平衡"尽量生成成功"与"不阻塞 IO 线程"的折中值。
  */
 private const val THUMBNAIL_TIMEOUT_MS = 10_000L
 
 /**
- * R4 修复：退出时缩略图上传（uploadThumbnail）的独立超时上限。
+ * 退出时缩略图上传（uploadThumbnail）的独立超时上限。
  *
- * 上传移出生成超时块后单独执行，避免 HDR 远程取帧（最慢路径）挤占上传预算、
- * 导致跨设备缩略图复用被截断。10s 与生成超时一致，覆盖 SMB/WebDAV 建目录 +
- * fileExists + 写文件往返。
+ * 上传移出生成超时块后单独执行，避免 HDR 远程取帧（最慢路径）挤占上传预算。
+ * 10s 与生成超时一致，覆盖 SMB/WebDAV 建目录 + fileExists + 写文件往返。
  */
 private const val UPLOAD_TIMEOUT_MS = 10_000L
 
 /**
- * R5 修复：退出时等待 PixelCopy 抓帧结果的上限。
+ * 退出时等待 PixelCopy 抓帧结果的上限。
  *
- * capturedBack 发起 PixelCopy.request（异步）后立即导航返回，onCleared 执行时
- * 回调可能未到达。PixelCopy 回调通常数十毫秒内到达主线程，300ms 足够覆盖竞态
- * 窗口；超时则回退 generateThumbnailAtMs（远程取帧），语义不变。
+ * 发起 PixelCopy.request（异步）后立即导航返回，onCleared 执行时回调可能未到达；
+ * PixelCopy 回调通常数十毫秒到达，300ms 足够覆盖竞态窗口，超时回退远程取帧。
  */
 private const val FRAME_WAIT_MS = 300L
 

@@ -7,6 +7,7 @@
     <string name="play_error_folder_bookmark">Cannot open folder bookmarks</string>
     <string name="play_error_open_failed">Failed to open playback source</string>
     <string name="play_error_invalid_position">Invalid playback position</string>
+    <string name="play_error_storage_unreachable">Storage source unreachable, cannot play</string>
 
     <!-- Play history filters (HistoryFilter.labelRes) -->
     <string name="history_filter_all">All</string>
