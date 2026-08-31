@@ -343,6 +343,21 @@ fun PlayerScreen(
     val originalOrientation = remember {
         activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
+    // 进入播放器前的系统亮度（0~1）。退出时显式写回该值恢复原亮度：
+    // 部分设备/ROM 对 BRIGHTNESS_OVERRIDE_NONE 不会真正清除窗口覆盖（退出后仍停留在播放器
+    // 调整后的亮度），而显式写入具体亮度值是生效的，故退出时写回进入前亮度而非 NONE。
+    val preEntryBrightness = remember {
+        val sys = try {
+            Settings.System.getInt(
+                context.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS,
+                128,
+            )
+        } catch (e: Exception) {
+            128
+        }
+        (sys / 255f).coerceIn(0.02f, 1f)
+    }
     val capturedBack: () -> Unit = {
         // 1.5s 冷却内不响应返回（应用内返回按钮），避免首帧未到就退出导致闪白
         if (backReady) {
@@ -360,6 +375,16 @@ fun PlayerScreen(
                 activity?.window?.let { w ->
                     WindowCompat.getInsetsController(w, w.decorView)
                         .show(WindowInsetsCompat.Type.systemBars())
+                }
+                // 提前恢复系统亮度：在 onBack() 之前恢复（与方向/系统栏同一时机）。若等 onDispose
+                // （pop 动画结束、黑色蒙层已完全揭开）才恢复，亮度会在首页上"啪"地一跳。此处恢复后
+                // onBack() 立即触发退出，黑色蒙层 snap 到全黑盖住亮度跳变，全程无感知。
+                // 显式写回进入前亮度值：BRIGHTNESS_OVERRIDE_NONE 在部分设备上不生效，具体值才可靠。
+                // onDispose 仍保留兜底恢复（系统返回/异常路径未走 capturedBack 时）。
+                window?.let { w ->
+                    val attrs = w.attributes
+                    attrs.screenBrightness = preEntryBrightness
+                    w.attributes = attrs
                 }
                 onBack()
             }
@@ -658,18 +683,6 @@ fun PlayerScreen(
             }
             else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         }
-        val originalBrightness = window?.attributes?.screenBrightness
-            ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-
-        val saved = PlayerSettings.lastBrightness
-        if (saved >= 0f) {
-            window?.let { w ->
-                val attrs = w.attributes
-                attrs.screenBrightness = saved
-                w.attributes = attrs
-            }
-        }
-
         val insetsController = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         val originalSystemBarsBehavior = insetsController?.systemBarsBehavior
         activity?.window?.let { WindowCompat.setDecorFitsSystemWindows(it, false) }
@@ -681,11 +694,12 @@ fun PlayerScreen(
             // capturedBack 已提前还原方向，此处幂等兜底（系统返回/异常路径仍会走到这里）
             activity?.requestedOrientation = originalOrientation
 
+            // 兜底恢复系统亮度：主恢复已提前到 capturedBack 的 doExit()（onBack 前，黑色蒙层盖住跳变）；
+            // 此处兜底覆盖未走 capturedBack 的异常路径。显式写回进入前亮度值（BRIGHTNESS_OVERRIDE_NONE
+            // 在部分设备上不生效）。亮度仅本次播放生效，不做跨次持久化。
             window?.let { w ->
-                val current = w.attributes.screenBrightness
-                if (current >= 0f) PlayerSettings.lastBrightness = current
                 val attrs = w.attributes
-                attrs.screenBrightness = originalBrightness
+                attrs.screenBrightness = preEntryBrightness
                 w.attributes = attrs
             }
             activity?.window?.let { w ->

@@ -7,8 +7,6 @@ import com.tencent.mmkv.MMKV
  *
  * - [longPressSpeed]：长按画面时临时切换到的倍速（松手恢复），默认 2.0x。
  *   在播放器设置面板中可调整，供需要快速回看/速看的场景使用。
- * - [lastBrightness]：上次退出时的画面亮度（0.0~1.0），下次进入自动恢复。
- *   -1f 表示未设置（使用系统默认亮度）。
  * - [autoDetectBlackBars]：智能黑边检测，默认 false。开启后首帧起抓图分析有效画面区域，
  *   在 Fit 模式下用真实内容宽高比替代容器宽高比，避免"四周都有黑边"。
  */
@@ -17,7 +15,6 @@ object PlayerSettings {
     private val mmkv: MMKV by lazy { MMKV.defaultMMKV() }
 
     private const val KEY_LONG_PRESS_SPEED = "player_long_press_speed"
-    private const val KEY_LAST_BRIGHTNESS = "player_last_brightness"
     private const val KEY_AUTO_DETECT_BLACK_BARS = "player_auto_detect_black_bars"
     private const val KEY_LAST_SPEED_INDEX = "player_last_speed_index"
     private const val KEY_PITCH_PRESERVATION = "player_pitch_preservation"
@@ -35,11 +32,6 @@ object PlayerSettings {
     var longPressSpeed: Float
         get() = mmkv.decodeFloat(KEY_LONG_PRESS_SPEED, 2.0f)
         set(value) { mmkv.encode(KEY_LONG_PRESS_SPEED, value) }
-
-    /** 上次退出时的画面亮度（0.0~1.0），-1f 表示未设置（使用系统默认）。 */
-    var lastBrightness: Float
-        get() = mmkv.decodeFloat(KEY_LAST_BRIGHTNESS, -1f)
-        set(value) { mmkv.encode(KEY_LAST_BRIGHTNESS, value) }
 
     /** 智能黑边检测开关。默认 false。仅在 Fit 模式下生效。 */
     var autoDetectBlackBars: Boolean
