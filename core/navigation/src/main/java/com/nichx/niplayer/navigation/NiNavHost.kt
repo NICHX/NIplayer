@@ -64,7 +64,8 @@ fun NiNavHost(
     var lastRoute by remember { mutableStateOf<String?>(null) }
     val route = currentEntry?.destination?.route
     LaunchedEffect(route, currentEntry?.id) {
-        if (isPlayerRoute(lastRoute) && !isPlayerRoute(route)) {
+        // 仅视频播放器退出时施加黑色亮度蒙层；音频播放器退出保留画面原样淡出，不遮罩
+        if (lastRoute == Routes.Player.PLAYER && !isPlayerRoute(route)) {
             exitMask.snapTo(1f)
             // 慢启动缓动：蒙层在开头几乎仍是不透明黑，只缓缓揭开，避免一上来就"唰"地变亮
             exitMask.animateTo(

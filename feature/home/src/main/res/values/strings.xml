@@ -7,6 +7,7 @@
     <string name="play_error_folder_bookmark">不支持打开文件夹书签</string>
     <string name="play_error_open_failed">无法打开播放源</string>
     <string name="play_error_invalid_position">播放位置无效</string>
+    <string name="play_error_storage_unreachable">存储源不可达，无法播放</string>
 
     <!-- 播放历史筛选（HistoryFilter.labelRes） -->
     <string name="history_filter_all">全部</string>

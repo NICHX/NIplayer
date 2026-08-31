@@ -489,6 +489,11 @@ class HomeTabViewModel @Inject constructor(
     /** 续播指定历史记录。 */
     fun resumePlay(history: PlayHistoryEntity) {
         viewModelScope.launch {
+            // 存储源级预检：首页已缓存每源可达性，明确不可达直接拦截，避免进入播放器卡加载。
+            if (!isStorageReachableNow(history.storageId)) {
+                _events.tryEmit(HomeTabEvent.ShowError(context.getString(R.string.play_error_storage_unreachable)))
+                return@launch
+            }
             when (val result = playStarter.startFromHistory(history)) {
                 is PlayStartResult.Success ->
                     _events.tryEmit(HomeTabEvent.NavigateToPlayer(MediaFileTypes.isAudioFile(history.videoName)))
@@ -508,8 +513,18 @@ class HomeTabViewModel @Inject constructor(
                 return@launch
             }
             if (entity.isDirectory) {
+                // 目录书签：若存储源已明确不可达，打开文件浏览也无意义，直接拦截提示。
+                if (!isStorageReachableNow(entity.libraryId)) {
+                    _events.tryEmit(HomeTabEvent.ShowError(context.getString(R.string.play_error_storage_unreachable)))
+                    return@launch
+                }
                 _events.tryEmit(HomeTabEvent.NavigateToStorageFile(entity.libraryId, entity.storagePath))
             } else {
+                // 文件书签：存储源级预检，不可达直接拦截，避免进入播放器卡加载。
+                if (!isStorageReachableNow(item.entity.libraryId)) {
+                    _events.tryEmit(HomeTabEvent.ShowError(context.getString(R.string.play_error_storage_unreachable)))
+                    return@launch
+                }
                 when (val result = playStarter.startFromQuickAccess(entity)) {
                     is PlayStartResult.Success ->
                         _events.tryEmit(HomeTabEvent.NavigateToPlayer(MediaFileTypes.isAudioFile(entity.name)))
@@ -544,6 +559,17 @@ class HomeTabViewModel @Inject constructor(
 
     /** 存储源可达性验证是否已执行（仅首页首次加载时触发一次）。 */
     private var connectionsValidated = false
+
+    /**
+     * 复用首页已缓存的 [storageReachability] Map 做同步拦截预检（不新建连接）。
+     *
+     * 存储源级判定，与 UI 置灰 [HomeTabScreen.isHistoryReachable] 同口径：
+     * - 本地播放（storageId == null）视为可达；
+     * - 未验证（null，如验证尚未完成）视为可达，交由启动链路 [HistoryStartProvider] 兜底；
+     * - 明确 false 才判定不可达并拦截。
+     */
+    private fun isStorageReachableNow(storageId: Int?): Boolean =
+        storageId == null || _storageReachability.value[storageId] != false
 
     private companion object {
         /** 首页拉取最近播放的窗口大小（混合视频+单曲，取大窗口再按类型拆，避免某类型被挤空）。 */

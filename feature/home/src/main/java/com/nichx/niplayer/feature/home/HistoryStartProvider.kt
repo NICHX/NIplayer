@@ -8,6 +8,7 @@ import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.entity.resumeStartPositionMs
 import com.nichx.niplayer.database.entity.QuickAccessEntity
+import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.player.kernel.HistoryDescriptor
 import com.nichx.niplayer.player.kernel.MediaSourceBuilder
 import com.nichx.niplayer.player.kernel.PlaybackRequest
@@ -16,6 +17,7 @@ import com.nichx.niplayer.player.kernel.PlaylistHolder
 import com.nichx.niplayer.player.kernel.PlaylistItem
 import com.nichx.niplayer.player.kernel.isAudioFile
 import com.nichx.niplayer.storage.AbstractStorageFile
+import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -65,6 +67,10 @@ class HistoryStartProvider @Inject constructor(
                     context.getString(library.mediaType.storageNameRes),
                 )
             )
+
+        if (!isStorageReachable(library.mediaType, storage)) {
+            return PlayStartResult.Error(context.getString(R.string.play_error_storage_unreachable))
+        }
 
         return try {
             val file = MediaSourceBuilder.createVirtualFile(
@@ -199,6 +205,10 @@ class HistoryStartProvider @Inject constructor(
                 )
             )
 
+        if (!isStorageReachable(library.mediaType, storage)) {
+            return PlayStartResult.Error(context.getString(R.string.play_error_storage_unreachable))
+        }
+
         return try {
             val file = MediaSourceBuilder.createVirtualFile(
                 path = item.storagePath,
@@ -231,6 +241,24 @@ class HistoryStartProvider @Inject constructor(
             PlayStartResult.Success
         } catch (e: Exception) {
             PlayStartResult.Error(e.message ?: context.getString(R.string.play_error_open_failed))
+        }
+    }
+
+    /**
+     * 存储源级可达性校验：本地存储始终可达；远程存储（SMB/WebDAV/SAF）执行
+     * [Storage.testConnection] 探测连接，失败或抛异常视为不可达。
+     *
+     * 该检查以「存储源」为粒度（同源内文件共享，单次探测），而非逐文件检测，
+     * 避免进入播放器后才发现源不可达而陷入长时间无效加载。
+     */
+    private suspend fun isStorageReachable(mediaType: MediaType, storage: Storage): Boolean {
+        if (mediaType == MediaType.LOCAL_STORAGE) return true
+        return withContext(Dispatchers.IO) {
+            try {
+                storage.testConnection()
+            } catch (_: Exception) {
+                false
+            }
         }
     }
 }
