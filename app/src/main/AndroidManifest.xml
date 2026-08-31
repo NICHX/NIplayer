@@ -43,6 +43,14 @@
             </intent-filter>
         </activity>
 
+        <!-- 视频播放器独立 Activity：由 MainActivity 经 startActivity 启动（非 Launcher 入口） -->
+        <activity
+            android:name="com.nichx.niplayer.feature.player.PlayerActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard"
+            android:theme="@style/Theme.NIplayer" />
+
         <service
             android:name="com.nichx.niplayer.feature.player.AudioPlaybackService"
             android:foregroundServiceType="mediaPlayback"
