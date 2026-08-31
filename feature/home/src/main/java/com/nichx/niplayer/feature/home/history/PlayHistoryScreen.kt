@@ -2,14 +2,17 @@ package com.nichx.niplayer.feature.home.history
 
 import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,6 +32,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -39,7 +44,11 @@ import androidx.compose.material3.TextButton
 import com.nichx.niplayer.designsystem.components.NiGlassOverlay
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayKind
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayRequest
+import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
+import com.nichx.niplayer.designsystem.components.niGlassBorderColor
+import com.nichx.niplayer.designsystem.components.niGlassPanelSurfaceColor
 import androidx.compose.animation.core.LinearEasing
+import coil3.compose.AsyncImage
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -51,6 +60,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.annotation.StringRes
@@ -62,6 +72,7 @@ import android.content.Context
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -104,6 +115,10 @@ fun PlayHistoryScreen(
     }
     var selectedItem by remember { mutableStateOf<PlayHistoryEntity?>(null) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
+    // 分组方式：false=按日期（默认），true=按文件夹聚合
+    var groupByFolder by remember { mutableStateOf(false) }
+    // 文件夹分组的展开状态（key 为存储源+目录，data class 的 equals/hashCode 稳定）
+    val expandedFolders = remember { mutableStateMapOf<FolderKey, Boolean>() }
     val allHistory by viewModel.histories.collectAsStateWithLifecycle()
     val videoHistories by viewModel.videoHistories.collectAsStateWithLifecycle()
     val audioHistories by viewModel.audioHistories.collectAsStateWithLifecycle()
@@ -118,6 +133,21 @@ fun PlayHistoryScreen(
 
     val grouped = displayHistory.groupBy {
         SimpleDateFormat("yyyy-MM-dd", LocalConfiguration.current.locales[0]).format(Date(it.playTime.time))
+    }
+
+    val rootLabel = stringResource(R.string.play_history_root_folder)
+    // 按文件夹聚合（storageId + 存储内父目录为分组键），组内按播放时间倒序，组间按最新播放时间倒序。
+    val folderGroups = remember(groupByFolder, displayHistory, rootLabel) {
+        if (!groupByFolder) emptyList()
+        else displayHistory.groupBy { h ->
+            FolderKey(h.storageId, folderDirOf(h.storagePath))
+        }.map { (key, items) ->
+            HistoryFolderGroup(
+                key = key,
+                displayName = key.folder.ifEmpty { rootLabel }.substringAfterLast('/'),
+                items = items.sortedByDescending { it.playTime.time },
+            )
+        }.sortedByDescending { group -> group.items.maxOf { it.playTime.time } }
     }
 
     val hasHistory = allHistory.isNotEmpty()
@@ -246,45 +276,94 @@ fun PlayHistoryScreen(
             }
             if (hasHistory) {
                 item(key = "filter_chips") {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        HistoryFilter.entries.forEach { filter ->
-                            val count = when (filter) {
-                                HistoryFilter.ALL -> allHistory.size
-                                HistoryFilter.VIDEO -> videoHistories.size
-                                HistoryFilter.AUDIO -> audioHistories.size
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            HistoryFilter.entries.forEach { filter ->
+                                val count = when (filter) {
+                                    HistoryFilter.ALL -> allHistory.size
+                                    HistoryFilter.VIDEO -> videoHistories.size
+                                    HistoryFilter.AUDIO -> audioHistories.size
+                                }
+                                FilterChip(
+                                    selected = activeFilter == filter,
+                                    onClick = { activeFilter = filter },
+                                    label = { Text(stringResource(filter.labelRes) + " ($count)") },
+                                )
                             }
-                            FilterChip(
-                                selected = activeFilter == filter,
-                                onClick = { activeFilter = filter },
-                                label = { Text(stringResource(filter.labelRes) + " ($count)") },
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.history_group_label),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            HistoryGroupToggle(
+                                selectedFolderMode = groupByFolder,
+                                onSelectDate = { groupByFolder = false },
+                                onSelectFolder = { groupByFolder = true },
+                                modifier = Modifier.weight(1f),
                             )
                         }
                     }
                 }
             }
-            grouped.forEach { (dateKey, items) ->
-                item(key = "header_$dateKey") {
-                    NiSectionHeader(
-                        title = formatDateGroup(dateKey, context),
-                        count = items.size,
-                        onClick = null,
-                    )
+            if (groupByFolder) {
+                folderGroups.forEach { group ->
+                    val expanded = expandedFolders[group.key] ?: false
+                    item(key = "folder_header_${group.key.stableKey}") {
+                        FolderGroupHeader(
+                            name = group.displayName,
+                            count = group.items.size,
+                            thumbPath = thumbnailUrls[group.items.first().url],
+                            expanded = expanded,
+                            onClick = { expandedFolders[group.key] = !expanded },
+                        )
+                    }
+                    if (expanded) {
+                        items(
+                            items = group.items,
+                            key = { it.id },
+                        ) { item ->
+                            HistoryItem(
+                                item = item,
+                                thumbPath = thumbnailUrls[item.url],
+                                onClick = { viewModel.resumePlay(item) },
+                                onLongClick = { selectedItem = item },
+                            )
+                        }
+                    }
                 }
-                items(
-                    items = items,
-                    key = { it.id },
-                ) { item ->
-                    HistoryItem(
-                        item = item,
-                        thumbPath = thumbnailUrls[item.url],
-                        onClick = { viewModel.resumePlay(item) },
-                        onLongClick = { selectedItem = item },
-                    )
+            } else {
+                grouped.forEach { (dateKey, items) ->
+                    item(key = "header_$dateKey") {
+                        NiSectionHeader(
+                            title = formatDateGroup(dateKey, context),
+                            count = items.size,
+                            onClick = null,
+                        )
+                    }
+                    items(
+                        items = items,
+                        key = { it.id },
+                    ) { item ->
+                        HistoryItem(
+                            item = item,
+                            thumbPath = thumbnailUrls[item.url],
+                            onClick = { viewModel.resumePlay(item) },
+                            onLongClick = { selectedItem = item },
+                        )
+                    }
                 }
             }
         }
@@ -491,6 +570,144 @@ private fun HistoryItem(
 }
 
 @Composable
+private fun FolderGroupHeader(
+    name: String,
+    count: Int,
+    thumbPath: String?,
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(niGlassPanelSurfaceColor())
+            .border(NiGlassHairWidth, niGlassBorderColor(), RoundedCornerShape(14.dp))
+            .clickable(
+                onClick = onClick,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (thumbPath != null) {
+                AsyncImage(
+                    model = thumbPath,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Outlined.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = name,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .padding(horizontal = 9.dp, vertical = 3.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowDown,
+            contentDescription = null,
+            tint = if (expanded) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .size(20.dp)
+                .graphicsLayer { rotationZ = if (expanded) 180f else 0f },
+        )
+    }
+    Spacer(Modifier.height(8.dp))
+}
+
+/** 分组方式切换：液玻璃胶囊分段控件（按日期 / 按文件夹）。 */
+@Composable
+private fun HistoryGroupToggle(
+    selectedFolderMode: Boolean,
+    onSelectDate: () -> Unit,
+    onSelectFolder: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(niGlassPanelSurfaceColor())
+            .border(NiGlassHairWidth, niGlassBorderColor(), RoundedCornerShape(50))
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        HistoryGroupToggleOption(
+            text = stringResource(R.string.history_group_by_date),
+            selected = !selectedFolderMode,
+            onClick = onSelectDate,
+        )
+        HistoryGroupToggleOption(
+            text = stringResource(R.string.history_group_by_folder),
+            selected = selectedFolderMode,
+            onClick = onSelectFolder,
+        )
+    }
+}
+
+@Composable
+private fun RowScope.HistoryGroupToggleOption(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+            )
+            .clickable(
+                onClick = onClick,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+            )
+            .padding(vertical = 7.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
 private fun mediaTypeLabel(type: MediaType): String = when (type) {
     MediaType.LOCAL_STORAGE -> stringResource(R.string.storage_type_local)
     MediaType.EXTERNAL_STORAGE -> stringResource(R.string.storage_type_device)
@@ -666,4 +883,23 @@ private fun formatPositionMs(ms: Long): String {
     } else {
         String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
     }
+}
+
+/** 文件夹分组键：存储源 + 存储内父目录。 */
+private data class FolderKey(val storageId: Int?, val folder: String) {
+    val stableKey: String get() = "${storageId ?: "local"}_$folder"
+}
+
+/** 按文件夹聚合的播放历史组。 */
+private data class HistoryFolderGroup(
+    val key: FolderKey,
+    val displayName: String,
+    val items: List<PlayHistoryEntity>,
+)
+
+/** 从存储内相对路径提取父目录；无目录（文件在存储根下）返回空串。 */
+private fun folderDirOf(path: String?): String {
+    if (path.isNullOrEmpty()) return ""
+    val idx = path.lastIndexOf('/')
+    return if (idx <= 0) "" else path.substring(0, idx)
 }

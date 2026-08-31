@@ -794,6 +794,9 @@
     <string name="download_manager_delete_confirm">This will delete the task record and the downloaded file “%1$s”. Continue?</string>
     <string name="download_state_waiting">Waiting</string>
     <string name="download_state_unknown">Unknown</string>
+    <string name="download_settings_title">Download settings</string>
+    <string name="download_lrc_with_audio">Also download lyrics</string>
+    <string name="download_lrc_with_audio_desc">Also download the same-directory .lrc lyric file when downloading audio</string>
 
     <!-- Transfer manager hub (TransferScreen, download/upload tabs) -->
     <string name="transfer_manager_title">Transfers</string>

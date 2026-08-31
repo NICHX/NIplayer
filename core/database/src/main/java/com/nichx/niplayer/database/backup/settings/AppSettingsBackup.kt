@@ -5,8 +5,11 @@ import com.nichx.niplayer.database.backup.RestoreMode
 import com.nichx.niplayer.datastore.AudioSettings
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.FileBrowserSettings
+import com.nichx.niplayer.datastore.GlassSettings
+import com.nichx.niplayer.datastore.LanguageSettings
 import com.nichx.niplayer.datastore.LrcApiSettings
 import com.nichx.niplayer.datastore.PlayHistorySyncSettings
+import com.nichx.niplayer.datastore.PlayerControlLayout
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.datastore.ThemeSettings
@@ -53,6 +56,10 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             playerSeekSensitivity = PlayerSettings.seekSensitivity,
             playerDoubleTapStepSeconds = PlayerSettings.doubleTapStepSeconds,
             playerOrientationMode = PlayerSettings.orientationMode,
+            playerAudioPlayModeIndex = PlayerSettings.audioPlayModeIndex,
+            playerAudioSpeedIndex = PlayerSettings.audioSpeedIndex,
+            playerAutoPip = PlayerSettings.autoPip,
+            playerControlLayouts = PlayerControlLayout.snapshotAll().ifEmpty { null },
             // 字幕
             subtitleAutoLoadSameName = SubtitleSettings.autoLoadSameNameSubtitle,
             subtitlePriority = SubtitleSettings.subtitlePriority,
@@ -85,11 +92,18 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             fileShowOnlyMedia = FileBrowserSettings.showOnlyMediaFiles,
             fileShowHiddenFiles = FileBrowserSettings.showHiddenFiles,
             fileViewMode = FileBrowserSettings.viewMode.value,
+            fileMediaFilter = FileBrowserSettings.mediaFilter.value,
+            // 玻璃不透明度
+            glassOpacity = GlassSettings.opacity,
+            glassPanelOpacity = GlassSettings.panelOpacity,
+            // 应用语言
+            languageMode = LanguageSettings.languageMode.value,
             // 视频扩展名白名单
             videoExtensions = VideoExtensionSettings.supportText,
             // 下载目录（绝对路径，随备份导出便于恢复）
             downloadDirPath = DownloadSettings.downloadDirPath.ifBlank { null },
             downloadDirName = DownloadSettings.downloadDirName.ifBlank { null },
+            downloadLrcWithAudio = DownloadSettings.downloadLrcWithAudio,
             // 播放历史云同步（deviceId 不备份：跨设备恢复后重新生成，避免设备冲突）
             historySyncEnabled = PlayHistorySyncSettings.enabled,
             historySyncAutoSync = PlayHistorySyncSettings.autoSync,
@@ -118,6 +132,10 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.playerSeekSensitivity?.let { PlayerSettings.seekSensitivity = it }
         s.playerDoubleTapStepSeconds?.let { PlayerSettings.doubleTapStepSeconds = it }
         s.playerOrientationMode?.let { PlayerSettings.orientationMode = it }
+        s.playerAudioPlayModeIndex?.let { PlayerSettings.audioPlayModeIndex = it }
+        s.playerAudioSpeedIndex?.let { PlayerSettings.audioSpeedIndex = it }
+        s.playerAutoPip?.let { PlayerSettings.autoPip = it }
+        s.playerControlLayouts?.let { PlayerControlLayout.restoreAll(it) }
         // 字幕
         s.subtitleAutoLoadSameName?.let { SubtitleSettings.autoLoadSameNameSubtitle = it }
         s.subtitlePriority?.let { SubtitleSettings.subtitlePriority = it }
@@ -158,11 +176,18 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.fileShowOnlyMedia?.let { FileBrowserSettings.showOnlyMediaFiles = it }
         s.fileShowHiddenFiles?.let { FileBrowserSettings.showHiddenFiles = it }
         s.fileViewMode?.let { FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.fromValue(it) }
+        s.fileMediaFilter?.let { FileBrowserSettings.mediaFilter = FileBrowserSettings.MediaFilter.fromValue(it) }
+        // 玻璃不透明度
+        s.glassOpacity?.let { GlassSettings.opacity = it }
+        s.glassPanelOpacity?.let { GlassSettings.panelOpacity = it }
+        // 应用语言
+        s.languageMode?.let { LanguageSettings.setLanguageMode(LanguageSettings.Mode.fromValue(it)) }
         // 视频扩展名
         s.videoExtensions?.let { VideoExtensionSettings.supportText = it }
         // 下载目录
         s.downloadDirPath?.let { DownloadSettings.downloadDirPath = it }
         s.downloadDirName?.let { DownloadSettings.downloadDirName = it }
+        s.downloadLrcWithAudio?.let { DownloadSettings.downloadLrcWithAudio = it }
         // 播放历史云同步：恢复开关与所选服务器，并重新生成设备标识
         s.historySyncEnabled?.let { PlayHistorySyncSettings.enabled = it }
         s.historySyncAutoSync?.let { PlayHistorySyncSettings.autoSync = it }
@@ -200,6 +225,11 @@ data class AppSettingsData(
     val playerSeekSensitivity: Float? = null,
     val playerDoubleTapStepSeconds: Int? = null,
     val playerOrientationMode: Int? = null,
+    val playerAudioPlayModeIndex: Int? = null,
+    val playerAudioSpeedIndex: Int? = null,
+    val playerAutoPip: Boolean? = null,
+    // 播放器控制功能自定义布局（"ORIENTATION_id" -> "surface|visible|order"）
+    val playerControlLayouts: Map<String, String>? = null,
     // 字幕
     val subtitleAutoLoadSameName: Boolean? = null,
     val subtitlePriority: String? = null,
@@ -232,11 +262,18 @@ data class AppSettingsData(
     val fileShowOnlyMedia: Boolean? = null,
     val fileShowHiddenFiles: Boolean? = null,
     val fileViewMode: Int? = null,
+    val fileMediaFilter: Int? = null,
+    // 玻璃不透明度
+    val glassOpacity: Float? = null,
+    val glassPanelOpacity: Float? = null,
+    // 应用语言
+    val languageMode: Int? = null,
     // 视频扩展名白名单
     val videoExtensions: String? = null,
     // 下载目录（绝对路径，随备份导出便于恢复跨设备设定）
     val downloadDirPath: String? = null,
     val downloadDirName: String? = null,
+    val downloadLrcWithAudio: Boolean? = null,
     // 播放历史云同步（deviceId 不备份：跨设备恢复后重新生成，避免设备冲突）
     val historySyncEnabled: Boolean? = null,
     val historySyncAutoSync: Boolean? = null,

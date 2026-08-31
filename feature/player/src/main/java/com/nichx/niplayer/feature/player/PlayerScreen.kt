@@ -239,6 +239,8 @@ fun PlayerScreen(
     val networkSpeed by viewModel.networkSpeed.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val showDownloadDialog by viewModel.showDownloadDialog.collectAsStateWithLifecycle()
+    // 本地文件（已下载/缓存直链）来源时隐藏下载按钮
+    val isLocalSource by viewModel.isLocalSource.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val activity = context as? Activity
@@ -1479,6 +1481,7 @@ fun PlayerScreen(
                         else viewModel.resetBlackBarDetection()
                     },
                     onDownload = { viewModel.requestDownload() },
+                    showDownload = !isLocalSource,
                     hudButtons = hudButtons,
                 )
             }
@@ -3476,6 +3479,8 @@ private fun PlayerControllerLayer(
     onPictureInPicture: () -> Unit = {},
     onShowBookmarks: () -> Unit = {},
     onDownload: () -> Unit = {},
+    /** 本地文件（已下载/缓存直链）来源时为 false，隐藏下载按钮。 */
+    showDownload: Boolean = true,
     /** 已按用户自定义好的 HUD 按钮配置（含所在侧与序），用于渲染左右列。 */
     hudButtons: List<HudButtonConfig> = emptyList(),
 ) {
@@ -3949,13 +3954,15 @@ private fun PlayerControllerLayer(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.End,
                     ) {
-                        IconButton(onClick = onDownload, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.ArrowDownward,
-                                contentDescription = stringResource(R.string.player_download_icon),
-                                tint = Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp),
-                            )
+                        if (showDownload) {
+                            IconButton(onClick = onDownload, modifier = Modifier.size(44.dp)) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ArrowDownward,
+                                    contentDescription = stringResource(R.string.player_download_icon),
+                                    tint = Color.White.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
                         }
                         IconButton(onClick = onToggleAudioTrackMenu, modifier = Modifier.size(44.dp)) {
                             Icon(

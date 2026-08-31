@@ -21,10 +21,15 @@ object DownloadSettings {
 
     private const val KEY_DOWNLOAD_DIR_PATH = "download_dir_path"
     private const val KEY_DOWNLOAD_DIR_NAME = "download_dir_name"
+    private const val KEY_DOWNLOAD_LRC_WITH_AUDIO = "download_lrc_with_audio"
 
     private val _downloadDirFlow = MutableStateFlow(loadDownloadDir())
 
     val downloadDirFlow: StateFlow<DownloadDirInfo> = _downloadDirFlow.asStateFlow()
+
+    /** 音频下载时是否顺带下载同目录 .lrc 歌词。默认开启。 */
+    private val _downloadLrcWithAudio = MutableStateFlow(loadDownloadLrcWithAudio())
+    val downloadLrcWithAudioFlow: StateFlow<Boolean> = _downloadLrcWithAudio.asStateFlow()
 
     var downloadDirPath: String
         get() = _downloadDirFlow.value.path
@@ -38,6 +43,13 @@ object DownloadSettings {
         set(value) {
             mmkv.encode(KEY_DOWNLOAD_DIR_NAME, value)
             _downloadDirFlow.value = _downloadDirFlow.value.copy(name = value)
+        }
+
+    var downloadLrcWithAudio: Boolean
+        get() = _downloadLrcWithAudio.value
+        set(value) {
+            mmkv.encode(KEY_DOWNLOAD_LRC_WITH_AUDIO, value)
+            _downloadLrcWithAudio.value = value
         }
 
     val isDownloadDirSet: Boolean
@@ -63,6 +75,9 @@ object DownloadSettings {
         val name = mmkv.decodeString(KEY_DOWNLOAD_DIR_NAME, "") ?: ""
         return DownloadDirInfo(path, name)
     }
+
+    private fun loadDownloadLrcWithAudio(): Boolean =
+        mmkv.decodeBool(KEY_DOWNLOAD_LRC_WITH_AUDIO, true)
 }
 
 data class DownloadDirInfo(

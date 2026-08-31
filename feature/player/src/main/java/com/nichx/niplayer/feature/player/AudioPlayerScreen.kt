@@ -138,6 +138,9 @@ fun AudioPlayerScreen(
     val lrcText by audioPlaybackManager?.lrcText?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
     val playbackError by audioPlaybackManager?.playbackError?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
     val showDownloadDialog by viewModel.showDownloadDialog.collectAsStateWithLifecycle()
+    // 本地文件（已下载/缓存直链）来源时隐藏下载按钮
+    val isLocalSource by audioPlaybackManager?.isLocalSource?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf(false) }
 
     val hasActiveContent = title.isNotEmpty()
 
@@ -230,6 +233,7 @@ fun AudioPlayerScreen(
                 speedOptions = speedValues,
                 currentSpeedIndex = speedIndex,
                 onSpeedSelect = { speedIndex = it },
+                showDownload = !isLocalSource,
             )
         } else {
             PortraitLayout(
@@ -263,6 +267,7 @@ fun AudioPlayerScreen(
                 speedOptions = speedValues,
                 currentSpeedIndex = speedIndex,
                 onSpeedSelect = { speedIndex = it },
+                showDownload = !isLocalSource,
             )
         }
 
@@ -372,6 +377,7 @@ private fun PortraitLayout(
     speedOptions: List<Float> = listOf(1f),
     currentSpeedIndex: Int = 0,
     onSpeedSelect: (Int) -> Unit = {},
+    showDownload: Boolean = true,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
 
@@ -388,6 +394,7 @@ private fun PortraitLayout(
             speedOptions = speedOptions,
             currentSpeedIndex = currentSpeedIndex,
             onSpeedSelect = onSpeedSelect,
+            showDownload = showDownload,
         )
 
         Box(
@@ -558,6 +565,7 @@ private fun LandscapeLayout(
     speedOptions: List<Float> = listOf(1f),
     currentSpeedIndex: Int = 0,
     onSpeedSelect: (Int) -> Unit = {},
+    showDownload: Boolean = true,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     // 大屏（平板/大屏手机横屏）下歌词行数更多，配合 LyricsView 内部字号/行高自适应放大
@@ -681,6 +689,7 @@ private fun LandscapeLayout(
                             currentSpeedIndex = currentSpeedIndex,
                             onSpeedSelect = onSpeedSelect,
                             onMenuOpenChange = { menuOpen = it },
+                            showDownload = showDownload,
                         )
                     }
 
@@ -869,6 +878,7 @@ private fun TopBarActions(
     currentSpeedIndex: Int,
     onSpeedSelect: (Int) -> Unit,
     onMenuOpenChange: (Boolean) -> Unit = {},
+    showDownload: Boolean = true,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
@@ -988,28 +998,30 @@ private fun TopBarActions(
                         onEqualizer()
                     },
                 )
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = stringResource(R.string.player_download_icon),
-                            fontSize = 14.sp,
-                            color = onSurface,
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Download,
-                            contentDescription = null,
-                            tint = onSurfaceVariant,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    },
-                    contentPadding = menuItemPadding,
-                    onClick = {
-                        showMoreMenu = false
-                        onDownload()
-                    },
-                )
+                if (showDownload) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = stringResource(R.string.player_download_icon),
+                                fontSize = 14.sp,
+                                color = onSurface,
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Rounded.Download,
+                                contentDescription = null,
+                                tint = onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        },
+                        contentPadding = menuItemPadding,
+                        onClick = {
+                            showMoreMenu = false
+                            onDownload()
+                        },
+                    )
+                }
             }
             // 倍速二级菜单：磨砂卡片 + 标题头，选择后自动关闭
             NiGlassDropdownMenu(
@@ -1071,6 +1083,7 @@ private fun TopBar(
     speedOptions: List<Float> = listOf(1f),
     currentSpeedIndex: Int = 0,
     onSpeedSelect: (Int) -> Unit = {},
+    showDownload: Boolean = true,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     Row(
@@ -1115,6 +1128,7 @@ private fun TopBar(
             speedOptions = speedOptions,
             currentSpeedIndex = currentSpeedIndex,
             onSpeedSelect = onSpeedSelect,
+            showDownload = showDownload,
         )
     }
 }

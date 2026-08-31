@@ -97,4 +97,43 @@ object PlayerControlLayout {
     fun reset(orientation: PlayerControlOrientation) {
         ALL_IDS.forEach { mmkv.removeValueForKey(key(it, orientation)) }
     }
+
+    /**
+     * 导出全部布局配置（供备份）。
+     *
+     * 键为去掉前缀后的持久化 key（`${orientation.name}_${id}`），
+     * 值为内部存储的 `surface|visible|order` 原始串，横竖屏各一份。
+     */
+    fun snapshotAll(): Map<String, String> = buildMap {
+        for (orientation in PlayerControlOrientation.entries) {
+            for ((index, id) in ALL_IDS.withIndex()) {
+                val entry = loadEntry(id, index, orientation)
+                put(key(id, orientation).removePrefix(PREFIX), "${entry.surface}|${entry.visible}|${entry.order}")
+            }
+        }
+    }
+
+    /**
+     * 从备份恢复全部布局配置。
+     *
+     * 键格式为 `${orientation.name}_${id}`，值为 `surface|visible|order`，与
+     * [saveEntry] 持久化格式一致；无法解析的项静默跳过（恢复为默认）。
+     */
+    fun restoreAll(entries: Map<String, String>) {
+        for ((rawKey, rawValue) in entries) {
+            val dot = rawKey.indexOf('_')
+            if (dot <= 0) continue
+            val orientationName = rawKey.substring(0, dot)
+            val id = rawKey.substring(dot + 1)
+            val orientation = runCatching { PlayerControlOrientation.valueOf(orientationName) }.getOrNull()
+                ?: continue
+            if (id !in ALL_IDS) continue
+            val parts = rawValue.split("|")
+            val surface = runCatching { PlayerControlSurface.valueOf(parts.getOrElse(0) { "" }) }.getOrNull()
+                ?: defaultSurface(id)
+            val visible = parts.getOrNull(1)?.toBooleanStrictOrNull() ?: true
+            val order = parts.getOrNull(2)?.toIntOrNull() ?: ALL_IDS.indexOf(id)
+            saveEntry(id, surface, visible, order, orientation)
+        }
+    }
 }
