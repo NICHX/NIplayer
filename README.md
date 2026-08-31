@@ -1,6 +1,6 @@
 # 🎬 NIplayer v2
 
-![Version](https://img.shields.io/badge/Version-2.4.0-blue)
+![Version](https://img.shields.io/badge/Version-2.5.0-blue)
 ![Language](https://img.shields.io/badge/Language-Kotlin-7F52FF)
 ![UI](https://img.shields.io/badge/UI-Compose%20%2B%20Material%203-4285F4)
 ![Player](https://img.shields.io/badge/Player-Media3-1DB954)
