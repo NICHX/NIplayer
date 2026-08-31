@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
@@ -105,6 +106,7 @@ import com.nichx.niplayer.feature.home.update.UpdateViewModel
 import com.nichx.niplayer.feature.player.AudioPlaybackManager
 import com.nichx.niplayer.feature.player.AudioPlayerScreen
 import com.nichx.niplayer.feature.player.MusicBar
+import com.nichx.niplayer.feature.player.PlayerActivity
 import com.nichx.niplayer.feature.player.PlayerScreen
 import com.nichx.niplayer.navigation.NiNavHost
 import com.nichx.niplayer.navigation.Routes
@@ -221,11 +223,14 @@ class MainActivity : ComponentActivity() {
                     insetsController?.isAppearanceLightNavigationBars = !darkTheme
                 }
                 val navController = rememberNavController()
-                // 守卫路由已移除：入口按 isAudio 直接分流到视频 / 音频播放页
+                // 视频播放器已迁移为独立 Activity（PlayerActivity），经 startActivity 窗口级滑入；
+                // 音频播放器保持导航内（AUDIO_PLAYER 路由 + 音乐条/均衡器整套 UX 不变）
                 val navigateToPlayer: (Boolean) -> Unit = { isAudio ->
-                    navController.navigate(
-                        if (isAudio) Routes.Player.AUDIO_PLAYER else Routes.Player.PLAYER
-                    )
+                    if (isAudio) {
+                        navController.navigate(Routes.Player.AUDIO_PLAYER)
+                    } else {
+                        startActivity(Intent(this, PlayerActivity::class.java))
+                    }
                 }
                 // 外部页（搜索/快速访问）请求在媒体库 tab 打开文件浏览的待办状态，
                 // 回到 Home 根路由后由 HomeScreen 消费（切入媒体库子栈）
@@ -233,7 +238,6 @@ class MainActivity : ComponentActivity() {
                 val currentBackStackEntry by navController.currentBackStackEntryAsState()
                 val isPlayerScreen =
                     currentBackStackEntry?.destination?.route == Routes.Player.AUDIO_PLAYER ||
-                            currentBackStackEntry?.destination?.route == Routes.Player.PLAYER ||
                             // 均衡器是播放器的子页：从全屏播放器进入时不显示 musicbar，
                             // 否则用户会误点 musicbar 再次进播放器，导致返回栈错乱
                             currentBackStackEntry?.destination?.route == Routes.User.EQUALIZER
@@ -358,22 +362,6 @@ class MainActivity : ComponentActivity() {
                                     navController.popBackStack(Routes.Home.ROOT, inclusive = false)
                                 },
                             )
-                        }
-                        composable(
-                            route = Routes.Player.PLAYER,
-                            // 播放器作为全屏沉浸场景，使用「内容放大进入 / 缩小退出」的缩放过渡，
-                            // 替代普通页面式的水平滑动，降低从竖屏列表切入横屏全屏的生硬感。
-                            // 进入/退出使用对称动画，避免之前退出瞬时消失（fadeOut tween 0）的卡切。
-                            enterTransition = {
-                                scaleIn(tween(350), initialScale = 0.92f) + fadeIn(tween(350))
-                            },
-                            exitTransition = {
-                                scaleOut(tween(220), targetScale = 0.92f) + fadeOut(tween(220))
-                            },
-                            popEnterTransition = { fadeIn(tween(200)) },
-                            popExitTransition = { fadeOut(tween(200)) },
-                        ) {
-                            PlayerScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.Player.AUDIO_PLAYER,

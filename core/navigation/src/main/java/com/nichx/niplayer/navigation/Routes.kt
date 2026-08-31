@@ -68,15 +68,15 @@ object Routes {
     /**
      * 旧 RouteTable.Player namespace。
      *
-     * 播放器已去除守卫路由（原 GUARD 按 isAudio 分流已改为各入口直接分流）：
-     * - [PLAYER]：视频播放页（PlayerScreen，SurfaceView 渲染）
-     * - [AUDIO_PLAYER]：音频播放页（AudioPlayerScreen，无 SurfaceView）
+     * 视频播放器已迁移为独立 Activity（PlayerActivity），不再占用导航路由；
+     * 导航内仅保留音频播放页。
      *
-     * 两个路由都由 [com.nichx.niplayer.feature.player.PlayerViewModel] 消费播放请求
-     * （音频场景委托 AudioPlaybackManager），入口仅按文件 isAudio 选择目标路由。
+     * - [AUDIO_PLAYER]：音频播放页（AudioPlayerScreen，无 SurfaceView，导航内 + 音乐条）
+     *
+     * 音频场景经 [com.nichx.niplayer.feature.player.AudioPlaybackManager] 全局共享播放态，
+     * 入口按文件 isAudio 选择进入独立 Activity（视频）或此路由（音频）。
      */
     object Player {
-        const val PLAYER = "player/player"
         const val AUDIO_PLAYER = "player/audio_player"
     }
 
