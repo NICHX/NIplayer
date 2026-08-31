@@ -151,11 +151,15 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /** 构建 PiP 参数：跟随视频宽高比 + 允许无缝尺寸调整，避免小窗宽高变化闪黑。 */
-    private fun buildPipParams(size: VideoSize): PictureInPictureParams =
-        PictureInPictureParams.Builder()
+    private fun buildPipParams(size: VideoSize): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational(size.width, size.height))
-            .setSeamlessResizeEnabled(true)
-            .build()
+        // setSeamlessResizeEnabled 仅 API 31+ 可用，低版本静默忽略
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setSeamlessResizeEnabled(true)
+        }
+        return builder.build()
+    }
 
     override fun finish() {
         super.finish()
