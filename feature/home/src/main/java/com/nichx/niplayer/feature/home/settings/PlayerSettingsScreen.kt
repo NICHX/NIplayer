@@ -2,19 +2,26 @@ package com.nichx.niplayer.feature.home.settings
 
 import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
@@ -22,6 +29,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -38,6 +48,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.nichx.niplayer.datastore.PlayerControlEntry
+import com.nichx.niplayer.datastore.PlayerControlLayout
+import com.nichx.niplayer.datastore.PlayerControlSurface
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.designsystem.components.NiDialogItem
@@ -72,6 +88,7 @@ fun PlayerSettingsScreen(
     var seekSensitivity by remember { mutableStateOf(PlayerSettings.seekSensitivity) }
     var doubleTapStepSeconds by remember { mutableStateOf(PlayerSettings.doubleTapStepSeconds) }
     var orientationMode by remember { mutableStateOf(PlayerSettings.orientationMode) }
+    var autoPip by remember { mutableStateOf(PlayerSettings.autoPip) }
     var showOrientationDialog by remember { mutableStateOf(false) }
     var showOrientationHintDialog by remember { mutableStateOf(false) }
     var showTokenDialog by remember { mutableStateOf(false) }
@@ -79,6 +96,13 @@ fun PlayerSettingsScreen(
     var showLongPressDialog by remember { mutableStateOf(false) }
     var showSeekDialog by remember { mutableStateOf(false) }
     var showDoubleTapDialog by remember { mutableStateOf(false) }
+    var showControlCustomize by remember { mutableStateOf(false) }
+
+    // 控制栏自定义为独立子页面（占满整屏、含返回栏），进入时整页替换设置页内容。
+    if (showControlCustomize) {
+        PlayerControlCustomizeScreen(onBack = { showControlCustomize = false })
+        return
+    }
 
     val longPressTimeoutLabel = when (longPressTimeoutMs) {
         250 -> stringResource(R.string.player_speed_fast)
@@ -139,6 +163,22 @@ fun PlayerSettingsScreen(
                     value = orientationModeLabel,
                     infoOnClick = { showOrientationHintDialog = true },
                     onClick = { showOrientationDialog = true },
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SettingSwitchRow(
+                    label = stringResource(R.string.player_auto_pip),
+                    description = stringResource(R.string.player_auto_pip_desc),
+                    checked = autoPip,
+                    onCheckedChange = {
+                        autoPip = it
+                        PlayerSettings.autoPip = it
+                    },
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SettingClickRow(
+                    label = stringResource(R.string.player_ctrl_customize),
+                    value = stringResource(R.string.player_ctrl_customize_desc),
+                    onClick = { showControlCustomize = true },
                 )
             }
 

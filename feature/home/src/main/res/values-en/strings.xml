@@ -619,6 +619,31 @@
 
     <!-- Player settings (PlayerSettingsScreen) -->
     <string name="player_settings_title">Player settings</string>
+    <string name="player_ctrl_customize">Customize controls</string>
+    <string name="player_ctrl_customize_desc">Show / order / left-right</string>
+    <string name="player_ctrl_customize_hint">Tap a location tag (Left/Right/More) below a control to move it there; the switch toggles visibility; the arrows reorder items in the same location.</string>
+    <string name="player_ctrl_customize_instruction">Landscape and portrait have separate layouts. Long-press a control and drag it to a new spot — you can drag across columns and drop it into the target column.</string>
+    <string name="player_ctrl_drag_hint">Long-press &amp; drag</string>
+    <string name="player_ctrl_show">Show</string>
+    <string name="player_ctrl_side_left">Left</string>
+    <string name="player_ctrl_side_right">Right</string>
+    <string name="player_ctrl_side_more">More</string>
+    <string name="player_ctrl_move_up">Move up</string>
+    <string name="player_ctrl_move_down">Move down</string>
+    <string name="player_ctrl_group_count">%d items</string>
+    <string name="player_ctrl_reset">Reset default</string>
+    <string name="player_ctrl_done">Done</string>
+    <string name="player_ctrl_name_rotate">Rotate</string>
+    <string name="player_ctrl_name_ab_loop">A-B loop</string>
+    <string name="player_ctrl_name_black_bar_crop">Crop black bars</string>
+    <string name="player_ctrl_name_lock">Lock</string>
+    <string name="player_ctrl_name_screenshot">Screenshot</string>
+    <string name="player_ctrl_name_long_press_speed">Long-press speed</string>
+    <string name="player_ctrl_name_pip">Picture-in-picture</string>
+    <string name="player_ctrl_name_sleep_timer">Sleep timer</string>
+    <string name="player_ctrl_name_media_info">Media info</string>
+    <string name="player_ctrl_name_bookmarks">Bookmarks</string>
+    <string name="player_ctrl_name_swipe_switch">Vertical swipe switch</string>
     <!-- 媒体库设置（MediaLibrarySettingsScreen） -->
     <string name="media_library_settings_title">Media library settings</string>
     <string name="player_kernel">Player kernel</string>
@@ -627,6 +652,8 @@
     <string name="player_pitch_preserve_desc">Keep the original pitch at faster speeds; turn off to change pitch with speed (for quick browsing)</string>
     <string name="player_orientation_mode">Player orientation</string>
     <string name="player_orientation_title">Default orientation</string>
+    <string name="player_auto_pip">Auto Picture-in-Picture</string>
+    <string name="player_auto_pip_desc">Enter Picture-in-Picture automatically when leaving the player</string>
     <string name="player_orientation_landscape">Landscape</string>
     <string name="player_orientation_portrait">Portrait</string>
     <string name="player_orientation_auto">Auto (by video ratio)</string>
@@ -734,7 +761,6 @@
 
     <!-- Download manager page (DownloadManagerScreen) -->
     <string name="download_manager_title">Download manager</string>
-    <string name="download_manager_dir_fallback">Download directory</string>
     <string name="download_manager_empty">No download tasks</string>
     <string name="download_manager_empty_hint">Long-press a file in the file browser to download it</string>
     <string name="download_manager_more">More</string>
@@ -746,6 +772,20 @@
     <string name="download_manager_no_dir_hint">Set a download directory before downloading</string>
     <string name="download_manager_clear">Clear</string>
     <string name="download_manager_set">Set</string>
+    <string name="download_manager_reset">Reset</string>
+    <string name="download_dir_picker_cancel">Cancel</string>
+    <string name="download_choose_target_title">Download to</string>
+    <string name="download_target_preset">Preset directory</string>
+    <string name="download_target_preset_subtitle">%1$s</string>
+    <string name="download_target_preset_not_set">No download directory set</string>
+    <string name="download_target_custom">Choose download directory</string>
+    <string name="download_dir_permission_title">Storage permission required</string>
+    <string name="download_dir_permission_message">The download directory needs to write to shared storage. Enable "All files access" for native read/write speed</string>
+    <string name="download_dir_permission_grant">Go enable</string>
+    <string name="download_dir_picker_choose_title">Choose download directory</string>
+    <string name="download_dir_picker_choose_here">Choose this directory</string>
+    <string name="download_dir_picker_parent">Go up</string>
+    <string name="download_dir_picker_empty">This folder is empty</string>
     <string name="download_manager_target_fallback">Cache</string>
     <string name="download_manager_saved_to">Saved to: %1$s</string>
     <string name="download_manager_unknown_size">Unknown size</string>

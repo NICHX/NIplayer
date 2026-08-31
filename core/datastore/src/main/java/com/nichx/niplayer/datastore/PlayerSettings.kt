@@ -24,6 +24,8 @@ object PlayerSettings {
     private const val KEY_AUDIO_PLAY_MODE_INDEX = "player_audio_play_mode_index"
     private const val KEY_AUDIO_SPEED_INDEX = "player_audio_speed_index"
     private const val KEY_ORIENTATION_MODE = "player_orientation_mode"
+    private const val KEY_AUTO_PIP = "player_auto_pip"
+    private const val KEY_SWIPE_SWITCH_VIDEO = "player_swipe_switch_video"
 
     /** 允许的长按倍速候选值（UI 选择用）。 */
     val LONG_PRESS_SPEED_OPTIONS: List<Float> = listOf(1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
@@ -107,6 +109,26 @@ object PlayerSettings {
     var orientationMode: Int
         get() = mmkv.decodeInt(KEY_ORIENTATION_MODE, 0)
         set(value) { mmkv.encode(KEY_ORIENTATION_MODE, value) }
+
+    /**
+     * 切出播放器（按 Home 键/切后台）时自动进入画中画。默认 false。
+     *
+     * 开启后，播放中按 Home 键不再暂停，而是转为小窗继续播放；
+     * 仅当关闭时才维持旧行为（退后台暂停）。暂停状态下不会自动进入 PiP。
+     */
+    var autoPip: Boolean
+        get() = mmkv.decodeBool(KEY_AUTO_PIP, false)
+        set(value) { mmkv.encode(KEY_AUTO_PIP, value) }
+
+    /**
+     * 竖屏抖音式竖滑切视频开关。默认 false。
+     *
+     * 开启后竖屏下竖直滑动用于切换上一集/下一集（上滑下一集、下滑上一集），
+     * 亮度/音量竖滑手势让位；水平拖动进度与长按倍速不冲突，仍保留。
+     */
+    var swipeSwitchVideo: Boolean
+        get() = mmkv.decodeBool(KEY_SWIPE_SWITCH_VIDEO, false)
+        set(value) { mmkv.encode(KEY_SWIPE_SWITCH_VIDEO, value) }
 
     // region 黑边检测结果缓存
 

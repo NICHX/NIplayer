@@ -43,6 +43,7 @@ import com.nichx.niplayer.player.kernel.SubtitleTrackInfo
 import com.nichx.niplayer.player.kernel.VideoSize
 import com.nichx.niplayer.common.coroutine.AppCoroutineScope
 import com.nichx.niplayer.storage.Storage
+import com.nichx.niplayer.storage.StorageAccess
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.subtitle.format.FormatASS
@@ -1359,11 +1360,15 @@ class PlayerViewModel @Inject constructor(
      * 下载当前播放文件。
      *
      * 若已设置下载目录，下载到该目录并使用实际文件大小；
-     * 若未设置，提示用户在下载管理中设置。
+     * 若未设置或缺少共享存储写入权限，提示用户配置。
      */
     fun downloadCurrentFile() {
         if (!DownloadSettings.isDownloadDirSet) {
             _downloadEvent.tryEmit(appContext.getString(R.string.player_download_dir_not_set))
+            return
+        }
+        if (!StorageAccess.canWriteSharedStorage(appContext)) {
+            _downloadEvent.tryEmit(appContext.getString(R.string.player_download_no_permission))
             return
         }
         val history = currentHistory ?: return
@@ -1377,7 +1382,7 @@ class PlayerViewModel @Inject constructor(
             fileName = fileName,
             uniqueKey = uniqueKey,
             totalBytes = history.fileSize,
-            targetStorageUrl = DownloadSettings.downloadDirUri,
+            targetStorageUrl = DownloadSettings.downloadDirTargetUrl,
             targetStorageName = DownloadSettings.downloadDirName,
         )
         _downloadEvent.tryEmit(appContext.getString(R.string.player_added_to_download_queue))

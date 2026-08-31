@@ -619,6 +619,31 @@
 
     <!-- 播放器设置（PlayerSettingsScreen） -->
     <string name="player_settings_title">播放器设置</string>
+    <string name="player_ctrl_customize">控制栏自定义</string>
+    <string name="player_ctrl_customize_desc">拖放调整顺序与位置</string>
+    <string name="player_ctrl_customize_hint">点功能下方的位置标签（左列/右列/更多）把它移到对应位置；开关控制是否显示；上下箭头调整同一位置的顺序。</string>
+    <string name="player_ctrl_customize_instruction">横屏与竖屏可分别设置布局。长按某个功能拖到想放的位置，可跨列拖拽，松开即插入到目标列。</string>
+    <string name="player_ctrl_drag_hint">长按拖动</string>
+    <string name="player_ctrl_show">显示</string>
+    <string name="player_ctrl_side_left">左列</string>
+    <string name="player_ctrl_side_right">右列</string>
+    <string name="player_ctrl_side_more">更多</string>
+    <string name="player_ctrl_move_up">上移</string>
+    <string name="player_ctrl_move_down">下移</string>
+    <string name="player_ctrl_group_count">%d 项</string>
+    <string name="player_ctrl_reset">恢复默认</string>
+    <string name="player_ctrl_done">完成</string>
+    <string name="player_ctrl_name_rotate">旋转</string>
+    <string name="player_ctrl_name_ab_loop">A-B 循环</string>
+    <string name="player_ctrl_name_black_bar_crop">智能去黑边</string>
+    <string name="player_ctrl_name_lock">锁定</string>
+    <string name="player_ctrl_name_screenshot">截图</string>
+    <string name="player_ctrl_name_long_press_speed">长按倍速</string>
+    <string name="player_ctrl_name_pip">画中画</string>
+    <string name="player_ctrl_name_sleep_timer">定时关闭</string>
+    <string name="player_ctrl_name_media_info">媒体信息</string>
+    <string name="player_ctrl_name_bookmarks">书签</string>
+    <string name="player_ctrl_name_swipe_switch">竖滑切视频</string>
     <!-- 媒体库设置（MediaLibrarySettingsScreen） -->
     <string name="media_library_settings_title">媒体库设置</string>
     <string name="player_kernel">播放器内核</string>
@@ -627,6 +652,8 @@
     <string name="player_pitch_preserve_desc">倍速播放时保持原音调，关闭则变速变调（适合快速浏览）</string>
     <string name="player_orientation_mode">进入播放器方向</string>
     <string name="player_orientation_title">默认播放方向</string>
+    <string name="player_auto_pip">自动进入画中画</string>
+    <string name="player_auto_pip_desc">切出播放页时自动转为小窗继续播放</string>
     <string name="player_orientation_landscape">横屏</string>
     <string name="player_orientation_portrait">竖屏</string>
     <string name="player_orientation_auto">自动（按视频比例）</string>
@@ -734,7 +761,6 @@
 
     <!-- 下载管理页面（DownloadManagerScreen） -->
     <string name="download_manager_title">下载管理</string>
-    <string name="download_manager_dir_fallback">下载目录</string>
     <string name="download_manager_empty">暂无下载任务</string>
     <string name="download_manager_empty_hint">在文件浏览页长按文件即可下载</string>
     <string name="download_manager_more">更多</string>
@@ -746,6 +772,20 @@
     <string name="download_manager_no_dir_hint">请先设置下载目录才可以下载</string>
     <string name="download_manager_clear">清除</string>
     <string name="download_manager_set">设置</string>
+    <string name="download_manager_reset">重设</string>
+    <string name="download_dir_picker_cancel">取消</string>
+    <string name="download_choose_target_title">下载到</string>
+    <string name="download_target_preset">预设目录</string>
+    <string name="download_target_preset_subtitle">%1$s</string>
+    <string name="download_target_preset_not_set">未设置下载目录</string>
+    <string name="download_target_custom">选择下载目录</string>
+    <string name="download_dir_permission_title">需要存储权限</string>
+    <string name="download_dir_permission_message">下载目录需写入共享存储，请开启「所有文件访问权限」以获得原生读写速度</string>
+    <string name="download_dir_permission_grant">前往开启</string>
+    <string name="download_dir_picker_choose_title">选择下载目录</string>
+    <string name="download_dir_picker_choose_here">选择此目录</string>
+    <string name="download_dir_picker_parent">返回上级目录</string>
+    <string name="download_dir_picker_empty">此目录为空</string>
     <string name="download_manager_target_fallback">缓存</string>
     <string name="download_manager_saved_to">保存至：%1$s</string>
     <string name="download_manager_unknown_size">未知大小</string>

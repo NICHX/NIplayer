@@ -3,7 +3,6 @@ package com.nichx.niplayer.feature.home.library
 import com.nichx.niplayer.feature.home.R
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,6 +60,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -113,6 +114,7 @@ import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiListItemDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -162,7 +164,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.documentfile.provider.DocumentFile
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -193,6 +194,8 @@ import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.MediaFileTypes.isImageFile
 import com.nichx.niplayer.storage.StorageFile
+import com.nichx.niplayer.storage.StorageAccess
+import com.nichx.niplayer.feature.home.settings.FolderPickerDialog
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -304,25 +307,50 @@ fun FileBrowserScreen(
     }
 
     val context = LocalContext.current
+    // 待下载文件与下载目标选择状态
     var pendingDownloadFiles by remember { mutableStateOf<List<StorageFile>>(emptyList()) }
-    val downloadTargetLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree(),
-    ) { treeUri ->
+    var showTargetChooser by remember { mutableStateOf(false) }
+    var showFolderPicker by remember { mutableStateOf(false) }
+    // true：目录选择器确认后写入预设目录；false：单次下载到所选目录（不改变预设）
+    var presetInitOnPick by remember { mutableStateOf(false) }
+    var showPermissionDialog by remember { mutableStateOf(false) }
+
+    /** 按给定目标下载（避免目录选择为单次时改动全局预设）。 */
+    fun downloadFilesTo(files: List<StorageFile>, targetUrl: String?, targetName: String?) {
+        if (files.size == 1) {
+            viewModel.downloadFile(files.first(), targetUrl, targetName)
+        } else {
+            viewModel.downloadFiles(files, targetUrl, targetName)
+        }
+    }
+
+    /** 应用内目录选择器确认回调：按 presetInitOnPick 决定写预设还是单次下载。 */
+    fun onDownloadDirPicked(path: String, dirName: String) {
         val files = pendingDownloadFiles
         pendingDownloadFiles = emptyList()
-        if (treeUri == null || files.isEmpty()) return@rememberLauncherForActivityResult
-        try {
-            context.contentResolver.takePersistableUriPermission(
-                treeUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-            )
-        } catch (_: SecurityException) { }
-        val dirName = DocumentFile.fromTreeUri(context, treeUri)?.name
-            ?: context.getString(R.string.download_dir_default_name)
-        if (files.size == 1) {
-            viewModel.setDownloadDirAndDownload(files.first(), treeUri.toString(), dirName)
+        val wantPreset = presetInitOnPick
+        presetInitOnPick = false
+        showFolderPicker = false
+        if (files.isEmpty()) return
+        if (wantPreset) {
+            if (files.size == 1) {
+                viewModel.setDownloadDirAndDownload(files.first(), path, dirName)
+            } else {
+                viewModel.setDownloadDirAndDownloadFiles(files, path, dirName)
+            }
         } else {
-            viewModel.setDownloadDirAndDownloadFiles(files, treeUri.toString(), dirName)
+            downloadFilesTo(files, "file://$path", dirName)
+        }
+    }
+
+    /** 下载入口：先保证存储权限，再弹出「预设 / 选择」目标选择器。 */
+    fun startDownload(files: List<StorageFile>) {
+        if (files.isEmpty()) return
+        pendingDownloadFiles = files
+        if (!StorageAccess.canWriteSharedStorage(context)) {
+            showPermissionDialog = true
+        } else {
+            showTargetChooser = true
         }
     }
 
@@ -877,18 +905,7 @@ fun FileBrowserScreen(
                     allSelected = selectedPaths.size >= uiState.files.count { !it.isDirectory } && uiState.files.any { !it.isDirectory },
                     downloadEnabled = selectedFiles.isNotEmpty(),
                     onSelectAll = viewModel::selectAllFiles,
-                    onDownload = {
-                        if (DownloadSettings.isDownloadDirSet) {
-                            viewModel.downloadFiles(
-                                selectedFiles,
-                                DownloadSettings.downloadDirUri,
-                                DownloadSettings.downloadDirName,
-                            )
-                        } else {
-                            pendingDownloadFiles = selectedFiles
-                            downloadTargetLauncher.launch(null)
-                        }
-                    },
+                    onDownload = { startDownload(selectedFiles) },
                     onDelete = { showBatchDeleteConfirm = true },
                     onClose = viewModel::exitMultiSelect,
                     modifier = Modifier
@@ -925,6 +942,116 @@ fun FileBrowserScreen(
         )
     }
 
+    if (showTargetChooser) {
+        val files = pendingDownloadFiles
+        val presetSet = DownloadSettings.isDownloadDirSet
+        AlertDialog(
+            onDismissRequest = { showTargetChooser = false },
+            title = { Text(stringResource(R.string.download_choose_target_title)) },
+            text = {
+                Column {
+                    // 预设目录
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .clickable {
+                                showTargetChooser = false
+                                if (presetSet) {
+                                    pendingDownloadFiles = emptyList()
+                                    downloadFilesTo(files, DownloadSettings.downloadDirTargetUrl, DownloadSettings.downloadDirName)
+                                } else {
+                                    presetInitOnPick = true
+                                    showFolderPicker = true
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.download_target_preset),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                text = if (presetSet) {
+                                    stringResource(R.string.download_target_preset_subtitle, DownloadSettings.downloadDirPath)
+                                } else {
+                                    stringResource(R.string.download_target_preset_not_set)
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // 选择下载目录（应用内目录浏览，不改变预设）
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .clickable {
+                                showTargetChooser = false
+                                presetInitOnPick = false
+                                showFolderPicker = true
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            text = stringResource(R.string.download_target_custom),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showTargetChooser = false }) {
+                    Text(stringResource(R.string.download_dir_picker_cancel))
+                }
+            },
+        )
+    }
+
+    if (showFolderPicker) {
+        FolderPickerDialog(
+            initialPath = DownloadSettings.downloadDirPath,
+            onDismiss = { showFolderPicker = false },
+            onConfirm = ::onDownloadDirPicked,
+        )
+    }
+
+    if (showPermissionDialog) {
+        NiConfirmDialog(
+            title = stringResource(R.string.download_dir_permission_title),
+            text = stringResource(R.string.download_dir_permission_message),
+            confirmText = stringResource(R.string.download_dir_permission_grant),
+            onConfirm = {
+                showPermissionDialog = false
+                StorageAccess.openAllFilesAccessSettings(context)
+            },
+            onDismiss = { showPermissionDialog = false },
+        )
+    }
+
     fileMenu?.let { (file, favorited) ->
         FileActionsSheet(
             file = file,
@@ -940,16 +1067,7 @@ fun FileBrowserScreen(
             },
             onDownload = {
                 fileMenu = null
-                if (DownloadSettings.isDownloadDirSet) {
-                    viewModel.downloadFile(
-                        file,
-                        DownloadSettings.downloadDirUri,
-                        DownloadSettings.downloadDirName,
-                    )
-                } else {
-                    pendingDownloadFiles = listOf(file)
-                    downloadTargetLauncher.launch(null)
-                }
+                startDownload(listOf(file))
             },
             onToggleQuickAccess = {
                 fileMenu = null

@@ -56,6 +56,13 @@
     <string name="player_crop_black_bar_off">Crop black bars: Off</string>
     <string name="player_black_bar_crop_on">Smart black bar crop: On</string>
     <string name="player_black_bar_crop_off">Smart black bar crop: Off</string>
+    <string name="player_swipe_switch">Vertical swipe to switch</string>
+    <string name="player_swipe_switch_on">Vertical swipe switch: On (swipe up next / down previous)</string>
+    <string name="player_swipe_switch_off">Vertical swipe switch: Off</string>
+    <string name="player_swipe_next">Switching to next</string>
+    <string name="player_swipe_previous">Switching to previous</string>
+    <string name="player_swipe_first">Already at first, cannot swipe down</string>
+    <string name="player_swipe_last">Already at last, cannot swipe up</string>
     <string name="player_long_press_speed">Long-press speed</string>
     <string name="player_sleep_timer">Sleep timer</string>
     <string name="player_sleep_timer_minutes">%1$d min</string>
@@ -76,6 +83,7 @@
     <string name="player_resume_text">You watched up to %1$s last time. Continue playing?</string>
     <string name="player_resume_continue">Continue</string>
     <string name="player_download_dir_not_set">Please set a download directory in the download manager page first</string>
+    <string name="player_download_no_permission">Please grant "All files access" first</string>
     <string name="player_added_to_download_queue">Added to download queue</string>
     <string name="player_lyrics_fetched">Lyrics fetched via API: %1$s</string>
     <string name="player_scale_fit">Fit</string>
@@ -110,6 +118,7 @@
     <!-- Subtitles -->
     <string name="player_subtitle">Subtitles</string>
     <string name="player_subtitle_off">Off</string>
+    <string name="player_subtitle_track">Track</string>
     <string name="player_subtitle_none">No subtitle</string>
     <string name="player_subtitle_auto">Auto</string>
     <string name="player_subtitle_auto_used">Using: %1$s</string>
@@ -168,6 +177,8 @@
 
     <!-- Subtitle style -->
     <string name="subtitle_style_title">Subtitle style</string>
+    <string name="subtitle_style_group_character">Text</string>
+    <string name="subtitle_style_group_layout">Layout</string>
     <string name="subtitle_font_label">Font</string>
     <string name="subtitle_size_label">Size</string>
     <string name="subtitle_color_label">Text color</string>

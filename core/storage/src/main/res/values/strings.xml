@@ -5,10 +5,7 @@
     <string name="download_error_storage_connect">无法创建存储连接</string>
     <string name="download_error_open_stream">打开输入流失败</string>
     <string name="download_error_failed">下载失败</string>
-    <string name="download_error_target_empty">目标存储路径为空</string>
-    <string name="download_error_target_access">无法访问目标存储</string>
-    <string name="download_error_create_file">无法在目标存储创建文件</string>
-    <string name="download_error_open_fd">无法打开文件描述符</string>
+    <string name="download_error_target_unsupported">目标存储已失效，请重新设置下载目录</string>
 
     <!-- WebDAV HTTP 错误 -->
     <string name="webdav_error_401">账号或密码错误，请编辑存储源重新输入凭据</string>

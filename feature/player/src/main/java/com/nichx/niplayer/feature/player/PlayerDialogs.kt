@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -29,7 +30,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
@@ -108,6 +112,56 @@ fun adaptiveDialogMaxWidth(requestedMaxWidth: Int): Int {
     )
 }
 
+// ===== 液态玻璃材质（统一弹窗设计语言） =====
+// 覆盖在播放画面上的弹窗用「液态玻璃」表达：垂向渐变营造底部更暗的光学聚焦，
+// 顶部一条高光细线呈现玻璃边缘反光，配合细描边与大圆角形成统一、有质感的暗色玻璃面板。
+// 透明度与主界面玻璃保持一致（约 91% 不透明），让底层画面隐约透出，避免生硬的不透明色块。
+private val LiquidGlassTop = Color(0xE82C2C30)
+private val LiquidGlassBottom = Color(0xE8141416)
+private val LiquidGlassEdgeHighlight = Color.White.copy(alpha = 0.10f)
+
+/**
+ * 播放器统一「液态玻璃」弹窗面板。
+ *
+ * 负责渲染暗色液态玻璃底（垂向渐变 + 顶部高光细线 + 圆角 + 细描边 + 阴影），
+ * 圆角裁剪，内容叠在其上。所有播放器弹窗（[PlayerDialog] 及独立的 AB/选集/书签等）
+ * 都通过它保证材质统一。
+ *
+ * @param modifier 额外修饰符
+ * @param shape 面板形状（默认 28dp 圆角）
+ * @param content 内容
+ */
+@Composable
+fun PlayerDialogSurface(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(28.dp),
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        shape = shape,
+        color = Color.Transparent,
+        shadowElevation = 16.dp,
+        border = BorderStroke(0.5.dp, PlayerBorder),
+        modifier = modifier,
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(LiquidGlassTop, LiquidGlassBottom))),
+        ) {
+            // 顶部高光细线（玻璃边缘反光）
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(LiquidGlassEdgeHighlight)
+                    .align(Alignment.TopCenter),
+            )
+            content()
+        }
+    }
+}
+
 @Composable
 fun PlayerDialog(
     onDismiss: () -> Unit,
@@ -123,11 +177,7 @@ fun PlayerDialog(
     ) {
         // 竖屏下按屏幕宽度动态收缩，横屏时仍用 maxWidth 上限
         val effectiveMaxWidth = adaptiveDialogMaxWidth(maxWidth)
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = PlayerDialogBg,
-            shadowElevation = 16.dp,
-            border = BorderStroke(0.5.dp, PlayerBorder),
+        PlayerDialogSurface(
             modifier = modifier
                 .widthIn(min = 280.dp, max = effectiveMaxWidth.dp)
                 .heightIn(max = maxHeight.dp),
