@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -72,6 +73,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import androidx.compose.runtime.Composable
@@ -209,10 +212,23 @@ fun HomeTabScreen(
         // 内容满铺全屏并延伸到顶栏背后，滚动内容可被顶栏真实模糊；
         // 顶栏高度由列表顶部 inset 让位，避免首项顶到状态栏
         val homeTopInset = padding.calculateTopPadding()
+        // 下拉刷新指示器避开顶栏：整页内容满铺全屏滚到玻璃顶栏之下，默认指示器定位在全屏顶部
+        // 会被透明顶栏盖住；用自定义 indicator 下移 homeTopInset，显现在顶栏之下。
+        val pullRefreshState = rememberPullToRefreshState()
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = { viewModel.refresh() },
+            state = pullRefreshState,
             modifier = Modifier.fillMaxSize(),
+            indicator = {
+                PullToRefreshDefaults.Indicator(
+                    isRefreshing = isRefreshing,
+                    state = pullRefreshState,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = homeTopInset),
+                )
+            },
         ) {
             if (!dataReady) {
                 HomeSkeletonLayout(
