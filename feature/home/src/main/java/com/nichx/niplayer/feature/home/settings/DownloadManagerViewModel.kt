@@ -5,14 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
-import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.DownloadTaskDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.DownloadState
 import com.nichx.niplayer.database.entity.DownloadTaskEntity
-import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.datastore.DownloadDirInfo
 import com.nichx.niplayer.datastore.DownloadSettings
@@ -177,26 +175,13 @@ class DownloadManagerViewModel @Inject constructor(
     // ---- 下载目录管理 ----
 
     /**
-     * 设置下载目录（SAF tree URI）。
-     * 自动将目录添加为 EXTERNAL_STORAGE 类型的存储源（如不存在）。
+     * 设置下载目录（共享存储绝对路径）。
+     *
+     * 原生直写共享存储（免 SAF），需已授予「所有文件访问权限」，
+     * 由 [com.nichx.niplayer.storage.StorageAccess] 校验与引导授权。
      */
-    fun setDownloadDir(treeUri: String, dirName: String) {
-        DownloadSettings.setDownloadDir(treeUri, dirName)
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                val existing = mediaLibraryDao.getByUrl(treeUri, MediaType.EXTERNAL_STORAGE)
-                if (existing == null) {
-                    mediaLibraryDao.insert(
-                        MediaLibraryEntity(
-                            displayName = dirName.ifBlank { context.getString(R.string.download_dir_default_name) },
-                            url = treeUri,
-                            mediaType = MediaType.EXTERNAL_STORAGE,
-                            describe = treeUri,
-                        )
-                    )
-                }
-            }
-        }
+    fun setDownloadDir(path: String, dirName: String) {
+        DownloadSettings.setDownloadDir(path, dirName)
     }
 
     /**
@@ -316,13 +301,7 @@ class DownloadManagerViewModel @Inject constructor(
                     file,
                 ) else null
             }
-            else -> {
-                try {
-                    val treeDoc = DocumentFile.fromTreeUri(context, Uri.parse(storageUrl))
-                    val targetDoc = treeDoc?.findFile(task.fileName)
-                    targetDoc?.uri
-                } catch (_: Exception) { null }
-            }
+            else -> null
         }
     }
 

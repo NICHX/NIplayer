@@ -1307,11 +1307,13 @@ class StorageFileViewModel @Inject constructor(
 
     /**
      * 设置下载目录并下载文件。
-     * 用于用户首次下载时选择目录后，自动保存为下载目录并添加到存储源。
+     * 用于用户首次下载时选择目录后，自动保存为下载目录。
+     *
+     * @param targetDirPath 下载目录绝对路径
      */
-    fun setDownloadDirAndDownload(file: StorageFile, treeUri: String, dirName: String) {
-        setDownloadDir(treeUri, dirName)
-        downloadFile(file, treeUri, dirName)
+    fun setDownloadDirAndDownload(file: StorageFile, targetDirPath: String, dirName: String) {
+        setDownloadDir(targetDirPath, dirName)
+        downloadFile(file, DownloadSettings.downloadDirTargetUrl, dirName)
     }
 
     /**
@@ -1346,31 +1348,18 @@ class StorageFileViewModel @Inject constructor(
 
     /**
      * 设置下载目录并批量下载文件（多选模式）。
-     * 用于用户首次批量下载时选择目录后，自动保存为下载目录并添加到存储源。
+     * 用于用户首次批量下载时选择目录后，自动保存为下载目录。
+     *
+     * @param targetDirPath 下载目录绝对路径
      */
-    fun setDownloadDirAndDownloadFiles(files: List<StorageFile>, treeUri: String, dirName: String) {
-        setDownloadDir(treeUri, dirName)
-        downloadFiles(files, treeUri, dirName)
+    fun setDownloadDirAndDownloadFiles(files: List<StorageFile>, targetDirPath: String, dirName: String) {
+        setDownloadDir(targetDirPath, dirName)
+        downloadFiles(files, DownloadSettings.downloadDirTargetUrl, dirName)
     }
 
-    /** 保存下载目录并注册为外部存储源（首次下载目录选择时调用）。 */
-    private fun setDownloadDir(treeUri: String, dirName: String) {
-        DownloadSettings.setDownloadDir(treeUri, dirName)
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                val existing = mediaLibraryDao.getByUrl(treeUri, MediaType.EXTERNAL_STORAGE)
-                if (existing == null) {
-                    mediaLibraryDao.insert(
-                        MediaLibraryEntity(
-                            displayName = dirName.ifBlank { context.getString(R.string.download_dir_default_name) },
-                            url = treeUri,
-                            mediaType = MediaType.EXTERNAL_STORAGE,
-                            describe = treeUri,
-                        )
-                    )
-                }
-            }
-        }
+    /** 保存下载目录（共享存储绝对路径，免 SAF）。 */
+    private fun setDownloadDir(path: String, dirName: String) {
+        DownloadSettings.setDownloadDir(path, dirName)
     }
 
     // ---- 单文件操作菜单（长按 / ⋮ 触发） ----

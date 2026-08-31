@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -74,27 +75,29 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Bookmark
-import androidx.compose.material.icons.rounded.BookmarkAdd
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.BrightnessHigh
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Repeat
-import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Replay10
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SkipNext
@@ -155,12 +158,17 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import com.nichx.niplayer.datastore.PlayerControlOrientation
+import com.nichx.niplayer.datastore.PlayerControlSurface
+import com.nichx.niplayer.datastore.PlayerControlLayout
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -272,10 +280,16 @@ fun PlayerScreen(
     // 仅保留视频画面与字幕，避免小窗内控件挤压遮挡（真机适配问题）
     var isInPip by remember { mutableStateOf(activity?.isInPictureInPictureMode ?: false) }
 
+    // 进入 PiP 前的方向锁定值，PiP 期间释放为 UNSPECIFIED（部分设备方向锁定会拒绝/卡顿 PiP），
+    // 退出小窗时恢复，避免影响用户手动旋转
+    var pipPrevOrientation by remember { mutableStateOf<Int?>(null) }
+
     var gestureMode by remember { mutableStateOf(GestureMode.None) }
     var brightnessOsd by remember { mutableStateOf<Float?>(null) }
     var volumeOsd by remember { mutableStateOf<Float?>(null) }
-    var previousMusicVolume by remember { mutableIntStateOf(-1) }
+    // 静音恢复值：初始取自进程级 VolumeState（跨 PlayerActivity 实例保留），
+    // 避免新视频 Activity 把 previousMusicVolume 重置为 -1，解除静音时回退到过高的默认音量
+    var previousMusicVolume by remember { mutableIntStateOf(VolumeState.restoreVolume) }
     var keyboardMuteVolume by remember { mutableIntStateOf(-1) }
     var scaleHint by remember { mutableStateOf<String?>(null) }
     var infoOsd by remember { mutableStateOf<String?>(null) }
@@ -291,6 +305,12 @@ fun PlayerScreen(
     var resumeDialogMs by remember { mutableStateOf<Long?>(null) }
 
     var autoBlackBarCrop by remember { mutableStateOf(PlayerSettings.autoDetectBlackBars) }
+
+    // 竖屏抖音式竖滑切视频：开关 + 拖拽滑动量（px，负 = 向上滑 = 下一集）。
+    // 开启后竖屏竖滑由「亮度/音量」让位为「切上一集/下一集」；水平进度与长按倍速保留。
+    var swipeSwitchOn by remember { mutableStateOf(PlayerSettings.swipeSwitchVideo) }
+    var swipeSwitchDragValue by remember { mutableFloatStateOf(0f) }
+    val isPortraitPlayer = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
 
     /**
      * 退出播放时截取最后一帧设为缩略图。
@@ -450,10 +470,18 @@ fun PlayerScreen(
     DisposableEffect(componentActivity) {
         val listener = Consumer<PictureInPictureModeChangedInfo> { info ->
             val pip = info.isInPictureInPictureMode
-            isInPip = pip
-            if (!pip) {
+            // 方向锁定兼容：PiP 期间释放方向锁定（部分设备方向锁定会拒绝进入 / 小窗卡顿），
+            // 退出小窗时恢复进入前的锁定值，避免影响用户后续手动旋转
+            if (pip) {
+                pipPrevOrientation = activity?.requestedOrientation
+                    ?.takeIf { it != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            } else {
+                pipPrevOrientation?.let { activity?.requestedOrientation = it }
+                pipPrevOrientation = null
                 controllerVisible = true
             }
+            isInPip = pip
         }
         componentActivity?.addOnPictureInPictureModeChangedListener(listener)
         onDispose {
@@ -843,15 +871,20 @@ fun PlayerScreen(
         val videoAspect = if (sourceTransition && frozenAspect > 0f) frozenAspect else targetAspect
 
         // PiP 尺寸适配：小窗期间视频尺寸变化（切源/黑边检测完成/首帧渲染）时，
-        // 同步更新系统 PiP 宽高比，避免小窗始终保持进入时的单一尺寸
+        // 同步更新系统 PiP 宽高比，避免小窗始终保持进入时的单一尺寸。
+        // 走 PlayerActivity 统一入口以保留播放控制按钮与无缝尺寸调整。
         LaunchedEffect(isInPip, activeVideoSize) {
             if (isInPip && activeVideoSize.isValid) {
-                runCatching {
-                    activity?.setPictureInPictureParams(
-                        PictureInPictureParams.Builder()
-                            .setAspectRatio(Rational(activeVideoSize.width, activeVideoSize.height))
-                            .build(),
-                    )
+                if (activity is PlayerActivity) {
+                    (activity as PlayerActivity).updatePipAspectRatio(activeVideoSize)
+                } else {
+                    runCatching {
+                        activity?.setPictureInPictureParams(
+                            PictureInPictureParams.Builder()
+                                .setAspectRatio(Rational(activeVideoSize.width, activeVideoSize.height))
+                                .build(),
+                        )
+                    }
                 }
             }
         }
@@ -1007,7 +1040,7 @@ fun PlayerScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(locked, isInPip) {
+                .pointerInput(locked, isInPip, swipeSwitchOn, isPortraitPlayer) {
                     val touchSlop = viewConfiguration.touchSlop
                     awaitEachGesture {
                         // PiP 小窗内禁用全部手势（控制栏/OSD 均隐藏，避免误触干扰小窗画面）
@@ -1078,6 +1111,30 @@ fun PlayerScreen(
                                         tapHandler.postDelayed(r, 280)
                                     }
                                 }
+                                // 竖滑切视频：松手时判定是否达到切换阈值（上滑=下一集，下滑=上一集）
+                                if (gestureMode == GestureMode.SwipeSwitch) {
+                                    val dragOffset = swipeSwitchDragValue
+                                    val threshold = size.height * 0.25f
+                                    val swipeUp = dragOffset < 0f
+                                    val committed = abs(dragOffset) > threshold
+                                    swipeSwitchDragValue = 0f
+                                    if (committed) {
+                                        val list = viewModel.playlist.value
+                                        val idx = viewModel.currentIndex.value
+                                        val targetIdx = if (swipeUp) idx + 1 else idx - 1
+                                        val target = list.getOrNull(targetIdx)
+                                        if (target == null) {
+                                            infoOsd = context.getString(
+                                                if (swipeUp) R.string.player_swipe_last else R.string.player_swipe_first,
+                                            )
+                                        } else {
+                                            if (swipeUp) viewModel.playNext() else viewModel.playPrevious()
+                                            infoOsd = context.getString(
+                                                if (swipeUp) R.string.player_swipe_next else R.string.player_swipe_previous,
+                                            )
+                                        }
+                                    }
+                                }
                                 gestureMode = GestureMode.None
                                 break
                             }
@@ -1105,6 +1162,9 @@ fun PlayerScreen(
                                     dragged = true
                                     gestureMode = if (abs(totalDx) > abs(totalDy)) {
                                         GestureMode.Seek
+                                    } else if (isPortraitPlayer && swipeSwitchOn) {
+                                        // 竖屏竖滑切视频开启：竖直滑动切换上一集/下一集，亮度/音量让位
+                                        GestureMode.SwipeSwitch
                                     } else if (startX < size.width / 2f) {
                                         initialBrightness = currentScreenBrightness()
                                         GestureMode.Brightness
@@ -1147,7 +1207,17 @@ fun PlayerScreen(
                                             value,
                                             0,
                                         )
+                                        // 记录用户手势选定的非零音量，作为后续解除静音时的恢复值
+                                        if (value > 0) VolumeState.restoreVolume = value
                                         volumeOsd = if (max > 0) value.toFloat() / max else 0f
+                                        change.consume()
+                                    }
+
+                                    GestureMode.SwipeSwitch -> {
+                                        swipeSwitchDragValue = totalDy.coerceIn(
+                                            -size.height.toFloat(),
+                                            size.height.toFloat(),
+                                        )
                                         change.consume()
                                     }
 
@@ -1229,6 +1299,141 @@ fun PlayerScreen(
             )
         }
 
+        // ---- 控制功能自定义：把 PlayerControlLayout 里保存的布局翻译成 HUD 按钮与更多菜单 ----
+        // 任意功能都可在 HUD 左列 / 右列 / 更多 之间自由移动；这里统一构建动作，HUD 与更多共用。
+        val ctrlOrientation = if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT)
+            PlayerControlOrientation.PORTRAIT else PlayerControlOrientation.LANDSCAPE
+        val enterPip: () -> Unit = {
+            val size = activeVideoSize
+            if (size.isValid) {
+                if (activity is PlayerActivity) (activity as PlayerActivity).enterPip(size)
+                else activity?.enterPictureInPictureMode(
+                    PictureInPictureParams.Builder()
+                        .setAspectRatio(Rational(size.width, size.height))
+                        .build(),
+                )
+            }
+        }
+        @Composable
+        fun ctrlButtonUnit(id: String): HudButtonConfig? = when (id) {
+            "rotate" -> HudButtonConfig(
+                id, Icons.Rounded.ScreenRotation,
+                stringResource(R.string.player_rotate_screen),
+                onClick = { toggleOrientation(activity) },
+            )
+            "ab_loop" -> {
+                val aa = abLoopA
+                val bb = abLoopB
+                HudButtonConfig(
+                    id, AbLoopIcon,
+                    stringResource(R.string.player_ab_loop_title),
+                    tint = if (aa != null && bb != null && bb > aa) Color(0xFFFFAB40)
+                    else if (aa != null) Color(0xFFFFAB40).copy(alpha = 0.6f)
+                    else Color.White.copy(alpha = 0.9f),
+                    iconSize = 32.dp,
+                    onClick = {
+                        when {
+                            aa == null -> viewModel.setAbLoopPointA()
+                            bb == null || bb <= aa -> viewModel.setAbLoopPointB()
+                            else -> viewModel.clearAbLoop()
+                        }
+                    },
+                    onLongClick = { showAbLoopDialog = true },
+                )
+            }
+            "black_bar_crop" -> HudButtonConfig(
+                id, Icons.Rounded.Crop,
+                stringResource(if (autoBlackBarCrop) R.string.player_crop_black_bar_on else R.string.player_crop_black_bar_off),
+                tint = if (autoBlackBarCrop) Color(0xFFFFAB40) else Color.White,
+                onClick = {
+                    autoBlackBarCrop = !autoBlackBarCrop
+                    PlayerSettings.autoDetectBlackBars = autoBlackBarCrop
+                    infoOsd = if (autoBlackBarCrop) context.getString(R.string.player_black_bar_crop_on)
+                    else context.getString(R.string.player_black_bar_crop_off)
+                    if (autoBlackBarCrop) triggerBlackBarDetection()
+                    else viewModel.resetBlackBarDetection()
+                },
+            )
+            "lock" -> HudButtonConfig(
+                id, Icons.Rounded.LockOpen,
+                stringResource(R.string.player_lock),
+                tint = Color.White.copy(alpha = 0.9f),
+                onClick = { locked = !locked },
+            )
+            "screenshot" -> HudButtonConfig(
+                id, Icons.Rounded.PhotoCamera,
+                stringResource(R.string.player_screenshot),
+                onClick = { takeScreenshot() },
+            )
+            "long_press_speed" -> HudButtonConfig(
+                id, Icons.Rounded.Speed,
+                stringResource(R.string.player_long_press_speed),
+                onClick = { showLongPressSpeedDialog = true },
+            )
+            "pip" -> HudButtonConfig(
+                id, Icons.Rounded.PictureInPictureAlt,
+                stringResource(R.string.player_picture_in_picture),
+                onClick = enterPip,
+            )
+            "sleep_timer" -> HudButtonConfig(
+                id, Icons.Rounded.Bedtime,
+                stringResource(R.string.player_sleep_timer),
+                onClick = { showSleepTimerDialog = true },
+            )
+            "media_info" -> HudButtonConfig(
+                id, Icons.Rounded.Info,
+                stringResource(R.string.player_media_info),
+                onClick = { showMediaInfoDrawer = true },
+            )
+            "bookmarks" -> HudButtonConfig(
+                id, Icons.Rounded.Bookmark,
+                stringResource(R.string.player_bookmark),
+                onClick = { showBookmarkDialog = true },
+            )
+            "swipe_switch" -> HudButtonConfig(
+                id, SwipeSwitchIcon,
+                stringResource(R.string.player_swipe_switch),
+                tint = if (swipeSwitchOn) Color(0xFFFFAB40) else Color.White.copy(alpha = 0.9f),
+                onClick = {
+                    swipeSwitchOn = !swipeSwitchOn
+                    PlayerSettings.swipeSwitchVideo = swipeSwitchOn
+                    infoOsd = context.getString(
+                        if (swipeSwitchOn) R.string.player_swipe_switch_on else R.string.player_swipe_switch_off,
+                    )
+                },
+            )
+            else -> null
+        }
+        val ctrlEntries = PlayerControlLayout.ALL_IDS.mapIndexed { i, id ->
+            PlayerControlLayout.loadEntry(id, i, ctrlOrientation)
+        }
+        // HUD 侧边按钮：配置为 左/右 列且可见的功能；竖滑切视频按钮仅竖屏显示
+        val hudButtons = ctrlEntries
+            .filter { it.visible && it.surface != PlayerControlSurface.MORE }
+            .filter { !(it.id == "swipe_switch" && !isPortraitPlayer) }
+            .sortedBy { it.order }
+            .mapNotNull { e ->
+                ctrlButtonUnit(e.id)?.copy(
+                    order = e.order,
+                    side = if (e.surface == PlayerControlSurface.LEFT) HudButtonSide.LEFT else HudButtonSide.RIGHT,
+                )
+            }
+        // 更多菜单项：配置为「更多」面且可见的功能（pip 需有效尺寸才可点）；竖滑切视频横屏亦不显示
+        val moreActions = ctrlEntries
+            .filter { it.visible && it.surface == PlayerControlSurface.MORE }
+            .filter { !(it.id == "swipe_switch" && !isPortraitPlayer) }
+            .sortedBy { it.order }
+            .mapNotNull { e ->
+                val b = ctrlButtonUnit(e.id) ?: return@mapNotNull null
+                MoreAction(
+                    id = e.id,
+                    icon = b.icon,
+                    label = b.contentDescription,
+                    onClick = b.onClick,
+                    enabled = e.id != "pip" || activeVideoSize.isValid,
+                )
+            }
+
         AnimatedVisibility(
             // PiP 小窗内隐藏控制栏，由系统 PiP 控件接管（画中画控件适配）
             visible = controllerVisible && !isInPip,
@@ -1306,11 +1511,16 @@ fun PlayerScreen(
                     onPlayAtIndex = { viewModel.playAtIndex(it) },
                     onTogglePlaylistDialog = { showPlaylistDialog = true },
                     bookmarkPositions = bookmarks.map { it.positionMs },
-                    onAddBookmark = {
-                        viewModel.addBookmark()
-                        infoOsd = context.getString(R.string.player_bookmark_added)
+                    blackBarCropActive = autoBlackBarCrop,
+                    onToggleBlackBarCrop = {
+                        autoBlackBarCrop = !autoBlackBarCrop
+                        PlayerSettings.autoDetectBlackBars = autoBlackBarCrop
+                        infoOsd = if (autoBlackBarCrop) context.getString(R.string.player_black_bar_crop_on) else context.getString(R.string.player_black_bar_crop_off)
+                        if (autoBlackBarCrop) triggerBlackBarDetection()
+                        else viewModel.resetBlackBarDetection()
                     },
                     onDownload = { viewModel.downloadCurrentFile() },
+                    hudButtons = hudButtons,
                 )
             }
         }
@@ -1443,6 +1653,35 @@ fun PlayerScreen(
             )
         }
 
+        // 竖屏竖滑切视频覆盖层：拖拽时目标集（下一集/上一集）从底部/顶部滑入，
+        // 顶层的半透明面板随手指位移，松手越过阈值后由手势层触发真实切换。
+        if (!isInPip && isPortraitPlayer && swipeSwitchOn && gestureMode == GestureMode.SwipeSwitch) {
+            val drag = swipeSwitchDragValue
+            val density = LocalDensity.current
+            val screenHdp = with(density) { LocalConfiguration.current.screenHeightDp.dp }
+            val dragDp = with(density) { drag.toDp() }
+            val nextTopPx = with(density) { (screenHdp + dragDp).toPx() }   // 初始在屏幕底，随上滑抬升
+            val prevTopPx = with(density) { (-screenHdp + dragDp).toPx() }  // 初始在屏幕顶上方，随下滑显现
+            playlist.getOrNull(currentIndex + 1)?.let { item ->
+                SwipeSwitchPanel(
+                    title = item.fileName,
+                    isNext = true,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset { IntOffset(0, nextTopPx.roundToInt()) },
+                )
+            }
+            playlist.getOrNull(currentIndex - 1)?.let { item ->
+                SwipeSwitchPanel(
+                    title = item.fileName,
+                    isNext = false,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .offset { IntOffset(0, prevTopPx.roundToInt()) },
+                )
+            }
+        }
+
         if (showSpeedMenu) {
             SpeedMenuDialog(
                 speedIndex = speedIndex,
@@ -1519,37 +1758,10 @@ fun PlayerScreen(
         }
 
         if (showMoreMenu) {
+            // 更多菜单由同一份自定义目录驱动（surface==MORE && 可见），与 HUD 设置实时同步
             MoreMenuDialog(
-                videoSize = activeVideoSize,
-                activity = activity,
-                blackBarCropActive = autoBlackBarCrop,
                 onDismiss = { showMoreMenu = false },
-                onPictureInPicture = {
-                    showMoreMenu = false
-                    // 使用黑边检测后的有效画面比例，PiP 小窗与当前显示内容一致
-                    val size = activeVideoSize
-                    if (size.isValid) {
-                        val params = PictureInPictureParams.Builder()
-                            .setAspectRatio(Rational(size.width, size.height))
-                            .build()
-                        activity?.enterPictureInPictureMode(params)
-                    }
-                },
-                onLongPressSpeed = { showMoreMenu = false; showLongPressSpeedDialog = true },
-                onSleepTimer = { showMoreMenu = false; showSleepTimerDialog = true },
-                onMediaInfo = { showMoreMenu = false; showMediaInfoDrawer = true },
-                onToggleBlackBarCrop = {
-                    showMoreMenu = false
-                    autoBlackBarCrop = !autoBlackBarCrop
-                    PlayerSettings.autoDetectBlackBars = autoBlackBarCrop
-                    infoOsd = if (autoBlackBarCrop) context.getString(R.string.player_black_bar_crop_on) else context.getString(R.string.player_black_bar_crop_off)
-                    if (autoBlackBarCrop) {
-                        triggerBlackBarDetection()
-                    } else {
-                        viewModel.resetBlackBarDetection()
-                    }
-                },
-                onShowBookmarks = { showMoreMenu = false; showBookmarkDialog = true },
+                actions = moreActions,
             )
         }
 
@@ -1689,30 +1901,11 @@ fun PlayerScreen(
 
 @Composable
 private fun MoreMenuDialog(
-    videoSize: com.nichx.niplayer.player.kernel.VideoSize,
-    activity: Activity?,
-    blackBarCropActive: Boolean,
     onDismiss: () -> Unit,
-    onPictureInPicture: () -> Unit,
-    onLongPressSpeed: () -> Unit,
-    onSleepTimer: () -> Unit,
-    onMediaInfo: () -> Unit,
-    onToggleBlackBarCrop: () -> Unit,
-    onShowBookmarks: () -> Unit = {},
+    /** 更多菜单中的动作列表（已按用户自定义过滤 + 排序，且与 HUD 配置同步）。 */
+    actions: List<MoreAction>,
 ) {
-    val pipEnabled = videoSize.isValid
-    val actions = listOf(
-        MoreAction(Icons.Rounded.Crop, if (blackBarCropActive) stringResource(R.string.player_crop_black_bar_on) else stringResource(R.string.player_crop_black_bar_off), onToggleBlackBarCrop, isActive = blackBarCropActive),
-        MoreAction(Icons.Rounded.Speed, stringResource(R.string.player_long_press_speed), onLongPressSpeed),
-        MoreAction(Icons.Rounded.PictureInPictureAlt, stringResource(R.string.player_picture_in_picture), onPictureInPicture, enabled = pipEnabled),
-        MoreAction(Icons.Rounded.Bedtime, stringResource(R.string.player_sleep_timer), onSleepTimer),
-        MoreAction(Icons.Rounded.Info, stringResource(R.string.player_media_info), onMediaInfo),
-        MoreAction(Icons.Rounded.Bookmark, stringResource(R.string.player_bookmark), onShowBookmarks),
-    )
-    val primary = MaterialTheme.colorScheme.primary
     val onSurface = PlayerDialogColors.textPrimary
-    val onSurfaceVariant = PlayerDialogColors.textSecondary
-    val outlineVariant = PlayerDialogColors.divider
     PlayerDialog(onDismiss = onDismiss, maxWidth = 320, scrollable = false) {
         Text(
             text = stringResource(R.string.player_more),
@@ -1747,7 +1940,7 @@ private fun MoreMenuDialog(
     }
 }
 
-private enum class GestureMode { None, Seek, Brightness, Volume }
+private enum class GestureMode { None, Seek, Brightness, Volume, SwipeSwitch }
 
 /**
  * 应用内嵌字幕（media3 cue）的垂直偏移（正=上移），统一改写 [Cue.line]。
@@ -1831,20 +2024,88 @@ private fun adjustVolume(audioManager: android.media.AudioManager?, delta: Int) 
     val current = audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
     val target = (current + delta).coerceIn(0, max)
     audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, target, 0)
+    if (target > 0) VolumeState.restoreVolume = target
 }
 
+/**
+ * 键盘 M 键静音切换。
+ *
+ * 修复 BUG：原实现分支写反（非静音时反而调大/静音时无动作）。现语义为：
+ * - 当前有声 → 静音，并把当前音量写入 [VolumeState] 作为恢复值
+ * - 当前静音 → 恢复到之前音量
+ *
+ * @return 供下次恢复使用的“静音前音量”
+ */
 private fun toggleMute(audioManager: android.media.AudioManager?, previousVolume: Int): Int {
     if (audioManager == null) return previousVolume
+    val max = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
     val current = audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
-    return if (current == 0) {
-        val restore = if (previousVolume > 0) previousVolume else 5
-        audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, restore, 0)
-        restore
-    } else {
+    return if (current > 0) {
+        VolumeState.restoreVolume = current
         audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, 0, 0)
         current
+    } else {
+        val restore = VolumeState.restoreVolume.takeIf { it > 0 }
+            ?: previousVolume.takeIf { it > 0 }
+            ?: (max * DEFAULT_RESTORE_VOLUME_RATIO).toInt().coerceAtLeast(1)
+        audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, restore, 0)
+        VolumeState.restoreVolume = restore
+        previousVolume
     }
 }
+
+/**
+ * 音量/静音按钮切换（横竖屏两处渲染共用）。
+ *
+ * 与键盘 [toggleMute] 语义一致，关键差异是恢复值优先取自进程级 [VolumeState.restoreVolume]。
+ *
+ * 修复 BUG：原实现在静音态下用 `max * 0.5f` 作为回退。由于 [previousMusicVolume] 是
+ * Composable 内 `remember`，每次打开新视频（独立 PlayerActivity）都重置为 -1，用户
+ * “调到最小 → 连播几个视频 → 点击音量键解除静音”时会直接跳到一半音量，表现为声音突然变大。
+ * 改为取跨 Activity 保留的恢复值，仍未知时才用保守默认（30%）。
+ *
+ * @return 本次点击后的静音状态（true=已静音，false=未静音）
+ */
+private fun toggleVolumeButton(
+    audioManager: android.media.AudioManager?,
+    onPreviousVolumeChange: (Int) -> Unit,
+): Boolean {
+    if (audioManager == null) return false
+    val vol = audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+    val max = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+    if (vol == 0) {
+        // 当前静音 → 恢复：优先用跨 Activity 保留的恢复值，避免跳到过高
+        val restore = VolumeState.restoreVolume.takeIf { it > 0 }
+            ?: (max * DEFAULT_RESTORE_VOLUME_RATIO).toInt().coerceAtLeast(1)
+        audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, restore, 0)
+        VolumeState.restoreVolume = restore
+        onPreviousVolumeChange(restore)
+        return false
+    } else {
+        // 当前有声 → 静音，记录当前音量作为恢复值
+        VolumeState.restoreVolume = vol
+        onPreviousVolumeChange(vol)
+        audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, 0, 0)
+        return true
+    }
+}
+
+/**
+ * 跨 PlayerActivity 实例保存“解除静音时的恢复音量”。
+ *
+ * 视频播放器是独立 Activity，每次进入新视频都会重建 PlayerScreen，原先用 Composable
+ * `remember` 保存 [PlayerScreen 的 previousMusicVolume] 会随之重置，导致解除静音时失去
+ * 用户此前设定的音量而回退到过高默认值（声音突然变大）。此处用进程级单例在多次进入
+ * Activity 间保留最近一次非零媒体音量。
+ */
+object VolumeState {
+    /** 用户最近一次非零媒体音量；-1 表示本进程内尚未主动调整过音量。 */
+    @Volatile
+    var restoreVolume: Int = -1
+}
+
+/** 恢复静音时的保守默认音量比例（相对最大音量）。仅在进程内从未调过音量时作为兜底。 */
+private const val DEFAULT_RESTORE_VOLUME_RATIO = 0.3f
 
 private fun toggleOrientation(activity: android.app.Activity?) {
     activity ?: return
@@ -1905,6 +2166,41 @@ private fun GestureOsd(
     }
 }
 
+/**
+ * 竖滑切视频的滑入面板：全屏半透明暗底 + 居中方向箭头与目标集标题。
+ * 由手势层按拖拽位移做 [Modifier.offset] 位移，形成「下一集从底部抬升/上一集从顶部下探」的抖音式观感。
+ */
+@Composable
+private fun SwipeSwitchPanel(
+    title: String,
+    isNext: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.background(Color.Black.copy(alpha = 0.45f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = if (isNext) Icons.Rounded.ArrowUpward
+                    else Icons.Rounded.ArrowDownward,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.size(48.dp),
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = title,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
+    }
+}
+
 private fun subtitleMimeForUri(uri: android.net.Uri): String? {
     val path = uri.pathSegments.lastOrNull()?.lowercase(Locale.ROOT) ?: return null
     return when {
@@ -1916,6 +2212,7 @@ private fun subtitleMimeForUri(uri: android.net.Uri): String? {
 }
 
 private data class MoreAction(
+    val id: String,
     val icon: ImageVector,
     val label: String,
     val onClick: () -> Unit,
@@ -2014,11 +2311,7 @@ private fun AbLoopDialog(
         val onSurfaceVariant = PlayerDialogColors.textSecondary
         val surfaceVariant = PlayerDialogColors.background
         val dialogMaxW = adaptiveDialogMaxWidth(340)
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = PlayerDialogColors.background,
-            shadowElevation = 16.dp,
-            border = androidx.compose.foundation.BorderStroke(0.5.dp, PlayerDialogColors.border),
+        PlayerDialogSurface(
             modifier = Modifier.widthIn(min = 280.dp, max = dialogMaxW.dp),
         ) {
             Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(vertical = 16.dp)) {
@@ -2029,7 +2322,7 @@ private fun AbLoopDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        imageVector = if (isActive) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                        imageVector = AbLoopIcon,
                         contentDescription = null,
                         tint = if (isActive) Color(0xFFFFAB40) else onSurfaceVariant,
                         modifier = Modifier.size(20.dp),
@@ -2055,54 +2348,29 @@ private fun AbLoopDialog(
                 HorizontalDivider(color = outlineVariant, modifier = Modifier.padding(horizontal = 16.dp))
                 Spacer(Modifier.height(16.dp))
 
-                // A/B 时间显示
+                // A/B 时间显示：两张等宽玻璃卡片
                 if (durationMs > 0) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column {
-                            Text(stringResource(R.string.player_ab_loop_point_a), fontSize = 11.sp, color = onSurfaceVariant)
-                            Spacer(Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(if (aSet) Color(0xFFFFAB40) else outlineVariant),
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = if (aSet) aFormatted else stringResource(R.string.player_ab_loop_not_set),
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = if (aSet) Color(0xFFFFAB40) else onSurfaceVariant,
-                                )
-                            }
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(stringResource(R.string.player_ab_loop_point_b), fontSize = 11.sp, color = onSurfaceVariant)
-                            Spacer(Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = if (abLoopB != null) bFormatted else stringResource(R.string.player_ab_loop_not_set),
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = if (abLoopB != null) Color(0xFFFF5252) else onSurfaceVariant,
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(if (abLoopB != null) Color(0xFFFF5252) else outlineVariant),
-                                )
-                            }
-                        }
+                        AbLoopPointCard(
+                            label = stringResource(R.string.player_ab_loop_point_a),
+                            time = if (aSet) aFormatted else stringResource(R.string.player_ab_loop_not_set),
+                            accent = Color(0xFFFFAB40),
+                            set = aSet,
+                            modifier = Modifier.weight(1f),
+                        )
+                        AbLoopPointCard(
+                            label = stringResource(R.string.player_ab_loop_point_b),
+                            time = if (abLoopB != null) bFormatted else stringResource(R.string.player_ab_loop_not_set),
+                            accent = Color(0xFFFF5252),
+                            set = abLoopB != null,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
+                }
 
                     Spacer(Modifier.height(12.dp))
 
@@ -2152,45 +2420,28 @@ private fun AbLoopDialog(
                             drawCircle(color = Color(0xFF2095F4), radius = 2.dp.toPx(), center = Offset(posFrac * w, h / 2f))
                         }
                     }
-                }
 
                 Spacer(Modifier.height(16.dp))
 
-                // 操作按钮 - 使用 Button 替代 TextButton，更大更醒目
+                // 操作按钮：统一药丸玻璃样式
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Button(
-                        onClick = onSetPointA,
-                        modifier = Modifier.weight(1f).height(48.dp),
+                    AbLoopActionPill(
+                        label = if (aSet) stringResource(R.string.player_ab_loop_a_value, aFormatted) else stringResource(R.string.player_ab_loop_set_a, posFormatted),
+                        accent = Color(0xFFFFAB40),
                         enabled = !aSet,
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Icon(
-                            imageVector = if (aSet) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = if (aSet) stringResource(R.string.player_ab_loop_a_value, aFormatted) else stringResource(R.string.player_ab_loop_set_a, posFormatted),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    Button(
-                        onClick = onSetPointB,
-                        modifier = Modifier.weight(1f).height(48.dp),
+                        modifier = Modifier.weight(1f),
+                        onClick = onSetPointA,
+                    )
+                    AbLoopActionPill(
+                        label = if (abLoopB != null) stringResource(R.string.player_ab_loop_b_value, bFormatted) else stringResource(R.string.player_ab_loop_set_b, posFormatted),
+                        accent = Color(0xFFFF5252),
                         enabled = aSet && abLoopB == null,
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Text(
-                            text = if (abLoopB != null) stringResource(R.string.player_ab_loop_b_value, bFormatted) else stringResource(R.string.player_ab_loop_set_b, posFormatted),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
+                        modifier = Modifier.weight(1f),
+                        onClick = onSetPointB,
+                    )
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -2266,6 +2517,86 @@ private fun AbLoopDialog(
     }
 }
 
+/** A-B 循环弹窗的端点卡片：A/B 起止时间的高亮玻璃卡片。 */
+@Composable
+private fun AbLoopPointCard(
+    label: String,
+    time: String,
+    accent: Color,
+    set: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (set) accent.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.05f))
+            .border(
+                0.5.dp,
+                if (set) accent.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.08f),
+                RoundedCornerShape(14.dp),
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (set) accent else Color.White.copy(alpha = 0.25f)),
+        )
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(
+                text = label,
+                color = PlayerDialogColors.textSecondary,
+                fontSize = 11.sp,
+            )
+            Text(
+                text = time,
+                color = if (set) accent else PlayerDialogColors.textSecondary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+    }
+}
+
+/** A-B 循环弹窗的操作按钮：统一药丸玻璃样式，未启用时置灰。 */
+@Composable
+private fun AbLoopActionPill(
+    label: String,
+    accent: Color,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    val textColor = if (enabled) accent else PlayerDialogColors.textSecondary.copy(alpha = 0.6f)
+    val bg = if (enabled) accent.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.05f)
+    val borderColor = if (enabled) accent.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.08f)
+    Row(
+        modifier = modifier
+            .height(44.dp)
+            .clip(shape)
+            .background(bg)
+            .border(0.5.dp, borderColor, shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = label,
+            color = textColor,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 @Composable
 private fun PlaylistDialog(
     playlist: List<PlaylistItem>,
@@ -2281,11 +2612,7 @@ private fun PlaylistDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         val dialogMaxW = adaptiveDialogMaxWidth(340)
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = PlayerDialogColors.background,
-            shadowElevation = 16.dp,
-            border = androidx.compose.foundation.BorderStroke(0.5.dp, PlayerDialogColors.border),
+        PlayerDialogSurface(
             modifier = Modifier.widthIn(min = 260.dp, max = dialogMaxW.dp),
         ) {
             Column(modifier = Modifier.padding(vertical = 8.dp)) {
@@ -2367,11 +2694,7 @@ private fun BookmarkListDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         val dialogMaxW = adaptiveDialogMaxWidth(340)
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = PlayerDialogColors.background,
-            shadowElevation = 16.dp,
-            border = androidx.compose.foundation.BorderStroke(0.5.dp, PlayerDialogColors.border),
+        PlayerDialogSurface(
             modifier = Modifier.widthIn(min = 260.dp, max = dialogMaxW.dp),
         ) {
             Column(modifier = Modifier.padding(vertical = 8.dp)) {
@@ -2598,6 +2921,13 @@ private fun PlayerProgressBar(
     }
 }
 
+/**
+ * 字幕管理（主菜单）。
+ *
+ * 布局优化：主菜单保持紧凑（仅 5 个功能入口行），把占面积最大的「轨道列表」和
+ * 「延迟调整」收进二级 Dialog（点对应行弹层），「外挂/搜索/样式」继续走原有回调跳转。
+ * 当前选项在行右侧以摘要回显，点击即进入对应二级弹层。
+ */
 @Composable
 private fun SubtitleManageDialog(
     subtitleTracks: List<SubtitleTrackInfo>,
@@ -2611,9 +2941,49 @@ private fun SubtitleManageDialog(
     onOpenStyle: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
     val onSurface = PlayerDialogColors.textPrimary
-    val outlineVariant = PlayerDialogColors.divider
+    // 二级弹层开关
+    var showTrackDialog by remember { mutableStateOf(false) }
+    var showDelayDialog by remember { mutableStateOf(false) }
+
+    // 当前字幕摘要（「轨道」行右侧回显）
+    val autoSelectedTrack = if (selectedIndex == -1) {
+        subtitleTracks.firstOrNull { it.isAutoSelected }
+    } else {
+        null
+    }
+    val trackSummary = when {
+        selectedIndex == -2 -> stringResource(R.string.player_subtitle_none)
+        selectedIndex == -1 -> autoSelectedTrack?.let {
+            stringResource(R.string.player_subtitle_auto_used, it.label)
+        } ?: stringResource(R.string.player_subtitle_auto_by_language)
+        else -> subtitleTracks.firstOrNull { it.index == selectedIndex }?.label
+            ?: stringResource(R.string.player_subtitle_none)
+    }
+    // 当前延迟摘要：正 → "+Xms"；负 → "-Xms"；0 → "0ms"
+    val delaySummary = when {
+        offsetMs < 0 -> "${offsetMs}ms"
+        offsetMs > 0 -> "+${offsetMs}ms"
+        else -> "0ms"
+    }
+
+    if (showTrackDialog) {
+        SubtitleTrackDialog(
+            subtitleTracks = subtitleTracks,
+            selectedIndex = selectedIndex,
+            onSelectTrack = onSelectTrack,
+            onDismiss = { showTrackDialog = false },
+        )
+    }
+    if (showDelayDialog) {
+        SubtitleDelayDialog(
+            offsetMs = offsetMs,
+            onAdjustOffset = onAdjustOffset,
+            onResetOffset = onResetOffset,
+            onDismiss = { showDelayDialog = false },
+        )
+    }
+
     PlayerDialog(onDismiss = onDismiss, maxWidth = 360, maxHeight = 560) {
         Text(
             text = stringResource(R.string.player_subtitle),
@@ -2625,232 +2995,282 @@ private fun SubtitleManageDialog(
 
         PlayerDialogDivider()
 
-                Spacer(Modifier.height(8.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+        ) {
+            SubtitleMenuItem(
+                icon = Icons.Rounded.Subtitles,
+                label = stringResource(R.string.player_subtitle_track),
+                summary = trackSummary,
+                onClick = { showTrackDialog = true },
+            )
+            SubtitleMenuItem(
+                icon = Icons.Rounded.Schedule,
+                label = stringResource(R.string.player_subtitle_delay),
+                summary = delaySummary,
+                onClick = { showDelayDialog = true },
+            )
+            SubtitleMenuItem(
+                icon = Icons.Rounded.FolderOpen,
+                label = stringResource(R.string.player_subtitle_external),
+                onClick = onAddExternal,
+            )
+            SubtitleMenuItem(
+                icon = Icons.Rounded.Search,
+                label = stringResource(R.string.player_subtitle_search),
+                onClick = onSearch,
+            )
+            SubtitleMenuItem(
+                icon = Icons.Rounded.Palette,
+                label = stringResource(R.string.player_subtitle_style),
+                onClick = onOpenStyle,
+            )
+        }
+    }
+}
 
-                // 字幕轨道列表
-                val autoSelectedTrack = if (selectedIndex == -1) {
-                    subtitleTracks.firstOrNull { it.isAutoSelected }
-                } else {
-                    null
-                }
-                val trackItems = buildList<TrackOption> {
-                    add(TrackOption(stringResource(R.string.player_subtitle_off), -2, stringResource(R.string.player_subtitle_none)))
-                    add(
-                        TrackOption(
-                            stringResource(R.string.player_subtitle_auto),
-                            -1,
-                            autoSelectedTrack?.let { stringResource(R.string.player_subtitle_auto_used, it.label) }
-                                ?: stringResource(R.string.player_subtitle_auto_by_language),
-                        )
-                    )
-                    subtitleTracks.forEach { track ->
-                        add(TrackOption(track.label, track.index, stringResource(R.string.player_subtitle_embedded)))
-                    }
-                }
+/** 字幕主菜单的紧凑功能行：图标 + 标题 + 可选摘要 + 右侧箭头。 */
+@Composable
+private fun SubtitleMenuItem(
+    icon: ImageVector,
+    label: String,
+    summary: String? = null,
+    onClick: () -> Unit,
+) {
+    val onSurface = PlayerDialogColors.textPrimary
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = onSurface.copy(alpha = 0.7f),
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = label,
+            color = onSurface,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f),
+        )
+        if (summary != null) {
+            Text(
+                text = summary,
+                color = onSurface.copy(alpha = 0.4f),
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(end = 4.dp),
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = onSurface.copy(alpha = 0.3f),
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 200.dp)
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    trackItems.forEach { option: TrackOption ->
-                        val isSelected = option.index == selectedIndex
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(
-                                    if (isSelected) primary.copy(alpha = 0.08f)
-                                    else Color.Transparent
-                                )
-                                .clickable { onSelectTrack(option.index) }
-                                .padding(horizontal = 16.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isSelected) primary
-                                        else outlineVariant
-                                    ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Close,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(12.dp),
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = option.label,
-                                    color = if (isSelected) primary else onSurface,
-                                    fontSize = 14.sp,
-                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                )
-                                Text(
-                                    text = option.description,
-                                    color = onSurface.copy(alpha = 0.4f),
-                                    fontSize = 11.sp,
-                                )
-                            }
-                        }
-                    }
-                }
+/** 字幕轨道选择二级 Dialog（关闭/自动/内嵌轨道列表，选中项高亮）。 */
+@Composable
+private fun SubtitleTrackDialog(
+    subtitleTracks: List<SubtitleTrackInfo>,
+    selectedIndex: Int,
+    onSelectTrack: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val onSurface = PlayerDialogColors.textPrimary
+    val outlineVariant = PlayerDialogColors.divider
+    val autoSelectedTrack = if (selectedIndex == -1) {
+        subtitleTracks.firstOrNull { it.isAutoSelected }
+    } else {
+        null
+    }
+    val trackItems = buildList<TrackOption> {
+        add(TrackOption(stringResource(R.string.player_subtitle_off), -2, stringResource(R.string.player_subtitle_none)))
+        add(
+            TrackOption(
+                stringResource(R.string.player_subtitle_auto),
+                -1,
+                autoSelectedTrack?.let { stringResource(R.string.player_subtitle_auto_used, it.label) }
+                    ?: stringResource(R.string.player_subtitle_auto_by_language),
+            )
+        )
+        subtitleTracks.forEach { track ->
+            add(TrackOption(track.label, track.index, stringResource(R.string.player_subtitle_embedded)))
+        }
+    }
 
-                // 字幕延迟调整
-                HorizontalDivider(
-                    color = outlineVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
+    PlayerDialog(onDismiss = onDismiss, maxWidth = 360, maxHeight = 460) {
+        Text(
+            text = stringResource(R.string.player_subtitle_track),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+            color = onSurface,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        PlayerDialogDivider()
 
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 320.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            trackItems.forEach { option: TrackOption ->
+                val isSelected = option.index == selectedIndex
                 Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Rounded.Search,
-                            contentDescription = null,
-                            tint = onSurface.copy(alpha = 0.5f),
-                            modifier = Modifier.size(16.dp),
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (isSelected) primary.copy(alpha = 0.08f)
+                            else Color.Transparent
                         )
-                        Spacer(Modifier.width(6.dp))
-                        Column {
-                            Text(
-                                text = stringResource(R.string.player_subtitle_delay),
-                                color = onSurface.copy(alpha = 0.7f),
-                                fontSize = 14.sp,
-                            )
-                            // 内嵌字幕偏移 STUB 提示：media3 暂无 setSubtitleOffsetMs API（issue #1976 Open）
-                            // 仅外挂字幕（SubtitleEngine）真实生效
-                            Text(
-                                text = stringResource(R.string.player_subtitle_external_only),
-                                color = onSurface.copy(alpha = 0.4f),
-                                fontSize = 10.sp,
-                            )
-                        }
-                    }
+                        .clickable { onSelectTrack(option.index) }
+                        .padding(horizontal = 16.dp),
+                ) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(primary.copy(alpha = 0.08f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isSelected) primary
+                                else outlineVariant
+                            ),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = "${offsetMs}ms",
-                            color = primary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val delayActions = listOf(
-                        -1000L to "-1s",
-                        -500L to "-0.5s",
-                        -100L to "-0.1s",
-                        0L to stringResource(R.string.player_subtitle_reset),
-                        100L to "+0.1s",
-                        500L to "+0.5s",
-                        1000L to "+1s",
-                    )
-                    delayActions.forEach { (delta, label) ->
-                        TextButton(
-                            onClick = {
-                                if (delta == 0L) onResetOffset()
-                                else onAdjustOffset(delta)
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(32.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                        ) {
-                            Text(
-                                text = label,
-                                fontSize = if (delta == 0L) 12.sp else 11.sp,
-                                fontWeight = if (delta == 0L) FontWeight.Bold else FontWeight.Medium,
-                                color = if (delta == 0L) onSurface.copy(alpha = 0.5f)
-                                    else primary,
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(12.dp),
                             )
                         }
                     }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = option.label,
+                            color = if (isSelected) primary else onSurface,
+                            fontSize = 14.sp,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                        Text(
+                            text = option.description,
+                            color = onSurface.copy(alpha = 0.4f),
+                            fontSize = 11.sp,
+                        )
+                    }
                 }
+            }
+        }
+    }
+}
 
-                HorizontalDivider(
-                    color = outlineVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+/** 字幕延迟调整二级 Dialog（-1s…+1s 步进 + 重置）。 */
+@Composable
+private fun SubtitleDelayDialog(
+    offsetMs: Long,
+    onAdjustOffset: (Long) -> Unit,
+    onResetOffset: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val onSurface = PlayerDialogColors.textPrimary
+    PlayerDialog(onDismiss = onDismiss, maxWidth = 360, maxHeight = 260) {
+        Text(
+            text = stringResource(R.string.player_subtitle_delay),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+            color = onSurface,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        PlayerDialogDivider()
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // 当前偏移值 + 内嵌字幕 STUB 提示（仅外挂字幕生效）
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.player_subtitle_external_only),
+                    color = onSurface.copy(alpha = 0.4f),
+                    fontSize = 11.sp,
                 )
-
-                Row(
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(primary.copy(alpha = 0.08f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
                 ) {
-                    OutlinedButton(
-                        onClick = onAddExternal,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.player_subtitle_external), fontSize = 13.sp)
-                    }
-                    OutlinedButton(
-                        onClick = onSearch,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Search,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.player_subtitle_search), fontSize = 13.sp)
-                    }
-                }
-
-                // 字幕样式：字体/字号/颜色/描边/位置/应用内嵌样式（二级 Dialog）
-                OutlinedButton(
-                    onClick = onOpenStyle,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Subtitles,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
+                    Text(
+                        text = if (offsetMs > 0) "+${offsetMs}ms" else "${offsetMs}ms",
+                        color = primary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.Monospace,
                     )
-                    Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.player_subtitle_style), fontSize = 13.sp)
                 }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val delayActions = listOf(
+                    -1000L to "-1s",
+                    -500L to "-0.5s",
+                    -100L to "-0.1s",
+                    0L to stringResource(R.string.player_subtitle_reset),
+                    100L to "+0.1s",
+                    500L to "+0.5s",
+                    1000L to "+1s",
+                )
+                delayActions.forEach { (delta, label) ->
+                    TextButton(
+                        onClick = {
+                            if (delta == 0L) onResetOffset()
+                            else onAdjustOffset(delta)
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(32.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = if (delta == 0L) 12.sp else 11.sp,
+                            fontWeight = if (delta == 0L) FontWeight.Bold else FontWeight.Medium,
+                            color = if (delta == 0L) onSurface.copy(alpha = 0.5f)
+                                else primary,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2961,6 +3381,150 @@ private fun LockedOverlay(onToggleLock: () -> Unit) {
     }
 }
 
+// ===== 配置化 HUD 按钮系统 =====
+// 中部侧边按钮由配置列表驱动，增删/排序/调样式只需改 [HudButtonConfig] 列表。
+// 后续用户自定义只需在设置页读写同一份配置列表，无需改动渲染逻辑。
+
+/** 单个 HUD 按钮的配置描述。 */
+private data class HudButtonConfig(
+    val id: String,
+    val icon: ImageVector,
+    val contentDescription: String,
+    val tint: Color = Color.White,
+    val iconSize: Dp = 24.dp,
+    val order: Int = 0,
+    val side: HudButtonSide = HudButtonSide.LEFT,
+    val onClick: () -> Unit = {},
+    val onLongClick: (() -> Unit)? = null,
+)
+
+private enum class HudButtonSide { LEFT, RIGHT }
+
+/** 垂直排列的 HUD 按钮列（左列/右列），由配置列表驱动渲染。
+ *
+ * 高度自适应用于防止「把全部按钮放到一侧」时溢出 / 错位：
+ * - 竖屏 ([portrait] = true)：按钮列在画面中下部区域垂直居中，区域下方预留底栏高度；
+ * - 横屏 ([portrait] = false)：整屏垂直居中；
+ * - 当某侧按钮太多而放不下时，先收缩按钮间距，仍放不下则限制该侧数量（截断到可容纳数），
+ *   保证任何排布都不超出屏幕。
+ */
+@Composable
+private fun HudButtonColumn(
+    configs: List<HudButtonConfig>,
+    side: HudButtonSide,
+    modifier: Modifier = Modifier,
+    portrait: Boolean = false,
+) {
+    val sideConfigs = configs.filter { it.side == side }.sortedBy { it.order }
+    val density = LocalDensity.current
+    // 列占满整屏（fillMaxSize），用 side 把按钮固定在左/右边缘并垂直居中，
+    // 保证约束高度可测（用于自适应间距/单边数量限制）。
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val fullH = with(density) { constraints.maxHeight.toDp() }
+        // 底部为进度条与控制区，需预留空间避免按钮被遮挡/顶出屏幕
+        val bottomReserve = if (portrait) 176.dp else 24.dp
+        // 竖屏中部区域底部起点（按钮集中在中下部分，避开顶部挖孔与画面中心）
+        val bandTop = if (portrait) fullH * 0.40f else 0.dp
+        val avail = (fullH - bottomReserve - bandTop).coerceAtLeast(0.dp)
+
+        val btn = 48.dp
+        val minGap = 8.dp
+        val idealGap = 12.dp
+        val n = sideConfigs.size
+        // 横屏每侧最多 3 个（竖屏由可用高度自适应决定数量）
+        val maxPerSide = if (portrait) Int.MAX_VALUE else 3
+        // 间距自适应：优先 12dp，拥挤则收缩，下限 8dp
+        val gap = when {
+            n <= 1 -> 0.dp
+            else -> maxOf(minGap, minOf((avail - btn * n) / (n - 1), idealGap))
+        }
+        // 单边数量限制：横屏固定上限 3；竖屏仍放不下时收缩到可容纳数
+        val canFitAll = n <= 1 || (n <= maxPerSide && btn * n + minGap * (n - 1) <= avail)
+        val shown = if (canFitAll) sideConfigs
+        else sideConfigs.take(
+            minOf(maxPerSide, ((avail + minGap).value / (btn + minGap).value).toInt().coerceAtLeast(1)),
+        )
+
+        val colHeight = btn * shown.size + gap * (shown.size - 1)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = bandTop, bottom = bottomReserve)
+                .padding(horizontal = if (side == HudButtonSide.LEFT) 16.dp else 16.dp),
+            contentAlignment = if (side == HudButtonSide.LEFT) Alignment.CenterStart else Alignment.CenterEnd,
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(48.dp)
+                    .height(colHeight),
+                verticalArrangement = Arrangement.spacedBy(gap),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                shown.forEachIndexed { _, cfg ->
+                    if (cfg.onLongClick != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .playerHudGlass()
+                                .combinedClickable(
+                                    onClick = cfg.onClick,
+                                    onLongClick = cfg.onLongClick,
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = cfg.icon,
+                                contentDescription = cfg.contentDescription,
+                                tint = cfg.tint,
+                                modifier = Modifier.size(cfg.iconSize),
+                            )
+                        }
+                    } else {
+                        PlayerHudButton(onClick = cfg.onClick) {
+                            Icon(
+                                imageVector = cfg.icon,
+                                contentDescription = cfg.contentDescription,
+                                tint = cfg.tint,
+                                modifier = Modifier.size(cfg.iconSize),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ===== 控件 HUD 按钮材质 =====
+// 按用户要求回退按钮材质（仅保留弹窗材质修改）：中部侧边按钮恢复为原始生硬的半透明黑色
+// 圆底（alpha=0.35），不使用玻璃描边，保持与改动前一致的视觉。
+private val HudButtonBg = Color.Black.copy(alpha = 0.35f)
+
+/** 统一 HUD 圆形按钮外框：圆角裁剪 + 半透明黑色圆底。 */
+private fun Modifier.playerHudGlass(): Modifier = this
+    .clip(CircleShape)
+    .background(HudButtonBg)
+
+/**
+ * 统一 HUD 圆形按钮（单次点击）。用于旋转/去黑边/截图等功能按钮。
+ * 图标颜色、尺寸、内容由调用方通过 [content] 提供，保证所有 HUD 按钮视觉一致。
+ */
+@Composable
+private fun PlayerHudButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .size(48.dp)
+            .playerHudGlass()
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+        content = content,
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PlayerControllerLayer(
@@ -3002,22 +3566,23 @@ private fun PlayerControllerLayer(
     onLongPressSpeed: () -> Unit,
     onShowAbLoopDialog: () -> Unit,
     onQuickToggleAbLoop: () -> Unit,
+    blackBarCropActive: Boolean = false,
+    onToggleBlackBarCrop: () -> Unit = {},
     onPlayAtIndex: (Int) -> Unit,
     onTogglePlaylistDialog: () -> Unit,
     bookmarkPositions: List<Long> = emptyList(),
-    onAddBookmark: () -> Unit = {},
+    pipEnabled: Boolean = false,
+    onPictureInPicture: () -> Unit = {},
+    onShowBookmarks: () -> Unit = {},
     onDownload: () -> Unit = {},
+    /** 已按用户自定义好的 HUD 按钮配置（含所在侧与序），用于渲染左右列。 */
+    hudButtons: List<HudButtonConfig> = emptyList(),
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
     val audioManager = remember { context.getSystemService(AudioManager::class.java) }
-    var localPreviousVolume by remember { mutableIntStateOf(previousMusicVolume) }
 
     val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
-
-    LaunchedEffect(previousMusicVolume) {
-        localPreviousVolume = previousMusicVolume
-    }
 
     var clockText by remember { mutableStateOf(formatClock()) }
     var batteryLevel by remember { mutableIntStateOf(getBatteryLevel(context)) }
@@ -3092,7 +3657,7 @@ private fun PlayerControllerLayer(
             // A-B 循环指示（竖屏空间紧张时隐藏）
             if (abLoopA != null && abLoopB != null && abLoopB > abLoopA && !isPortrait) {
                 Icon(
-                    imageVector = Icons.Rounded.RepeatOne,
+                    imageVector = AbLoopIcon,
                     contentDescription = null,
                     tint = Color(0xFFFFAB40),
                     modifier = Modifier.size(20.dp),
@@ -3158,125 +3723,25 @@ private fun PlayerControllerLayer(
             }
         }
 
-        // 中部 A-B 循环 / 锁定按钮（竖屏大幅下移避开挖孔；横屏垂直居中）
-        // A-B 按钮：单击快速切换状态（设A→设B并循环→清除），长按打开详细对话框
-        val middleButtonsTop = if (isPortrait) {
-            // 竖屏：避开顶部挖孔/状态栏区域
-            140.dp
-        } else {
-            // 横屏：垂直居中（按钮组高 = 3×48 + 2×12 = 168dp）
-            ((LocalConfiguration.current.screenHeightDp - 168) / 2).coerceAtLeast(56).dp
-        }
-        Row(
+        // 中部 HUD 侧边按钮（拱形左右列）：由配置驱动的按钮自由分布在左右列，
+        // 每列自适应高度 + 单边数量限制，即使把全部按钮放到一侧也不会溢出 / 错位。
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .padding(top = middleButtonsTop),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+                .fillMaxSize()
+                .align(Alignment.TopCenter),
         ) {
-            Column(
-                modifier = Modifier
-                    .padding(start = 16.dp)
-                    // Row 垂直居中：左列(3钮,168dp)比右列(2钮,108dp)只低出高度差的一半(30dp)，
-                    // 上移 30dp 使 A-B、书签与右侧锁定、截图对齐
-                    .offset(y = (-30).dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.35f))
-                        .clickable(onClick = { toggleOrientation(activity) }),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.ScreenRotation,
-                        contentDescription = stringResource(R.string.player_rotate_screen),
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.35f))
-                        .combinedClickable(
-                            onClick = onQuickToggleAbLoop,
-                            onLongClick = onShowAbLoopDialog,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = when {
-                            abLoopA != null && abLoopB != null && abLoopB > abLoopA -> Icons.Rounded.RepeatOne
-                            abLoopA != null -> Icons.Rounded.RepeatOne
-                            else -> Icons.Rounded.Repeat
-                        },
-                        contentDescription = stringResource(R.string.player_ab_loop_title),
-                        tint = when {
-                            abLoopA != null && abLoopB != null && abLoopB > abLoopA -> Color(0xFFFFAB40)
-                            abLoopA != null -> Color(0xFFFFAB40).copy(alpha = 0.6f)
-                            else -> Color.White.copy(alpha = 0.9f)
-                        },
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.35f))
-                        .clickable(onClick = onAddBookmark),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.BookmarkAdd,
-                        contentDescription = stringResource(R.string.player_add_bookmark),
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            }
-            Column(
-                modifier = Modifier.padding(end = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                IconButton(
-                    onClick = onToggleLock,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.35f)),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.LockOpen,
-                        contentDescription = stringResource(R.string.player_lock),
-                        tint = Color.White.copy(alpha = 0.9f),
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.35f))
-                        .clickable(onClick = onScreenshot),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PhotoCamera,
-                        contentDescription = stringResource(R.string.player_screenshot),
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            }
+            HudButtonColumn(
+                configs = hudButtons,
+                side = HudButtonSide.LEFT,
+                modifier = Modifier.align(Alignment.CenterStart),
+                portrait = isPortrait,
+            )
+            HudButtonColumn(
+                configs = hudButtons,
+                side = HudButtonSide.RIGHT,
+                modifier = Modifier.align(Alignment.CenterEnd),
+                portrait = isPortrait,
+            )
         }
 
         Column(
@@ -3356,19 +3821,7 @@ private fun PlayerControllerLayer(
                         }
                         IconButton(
                             onClick = {
-                                val vol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-                                val max = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
-                                if (vol == 0) {
-                                    val restore = if (localPreviousVolume > 0) localPreviousVolume
-                                        else (max * 0.5f).toInt().coerceAtLeast(1)
-                                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, restore, 0)
-                                    onPreviousMusicVolumeChange(restore)
-                                    muted = false
-                                } else {
-                                    onPreviousMusicVolumeChange(vol)
-                                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
-                                    muted = true
-                                }
+                                muted = toggleVolumeButton(audioManager, onPreviousMusicVolumeChange)
                             },
                             modifier = Modifier.size(44.dp),
                         ) {
@@ -3521,19 +3974,7 @@ private fun PlayerControllerLayer(
                         }
                         IconButton(
                             onClick = {
-                                val vol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-                                val max = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
-                                if (vol == 0) {
-                                    val restore = if (localPreviousVolume > 0) localPreviousVolume
-                                        else (max * 0.5f).toInt().coerceAtLeast(1)
-                                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, restore, 0)
-                                    onPreviousMusicVolumeChange(restore)
-                                    muted = false
-                                } else {
-                                    onPreviousMusicVolumeChange(vol)
-                                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
-                                    muted = true
-                                }
+                                muted = toggleVolumeButton(audioManager, onPreviousMusicVolumeChange)
                             },
                             modifier = Modifier.size(44.dp),
                         ) {

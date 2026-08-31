@@ -56,6 +56,13 @@
     <string name="player_crop_black_bar_off">去黑边：关</string>
     <string name="player_black_bar_crop_on">智能去黑边：已开启</string>
     <string name="player_black_bar_crop_off">智能去黑边：已关闭</string>
+    <string name="player_swipe_switch">竖滑切视频</string>
+    <string name="player_swipe_switch_on">竖滑切视频：已开启（上滑下一集/下滑上一集）</string>
+    <string name="player_swipe_switch_off">竖滑切视频：已关闭</string>
+    <string name="player_swipe_next">切换下一集</string>
+    <string name="player_swipe_previous">切换上一集</string>
+    <string name="player_swipe_first">已是第一集，无法下滑</string>
+    <string name="player_swipe_last">已是最后一集，无法上滑</string>
     <string name="player_long_press_speed">长按倍速</string>
     <string name="player_sleep_timer">睡眠定时</string>
     <string name="player_sleep_timer_minutes">%1$d 分钟</string>
@@ -76,6 +83,7 @@
     <string name="player_resume_text">检测到上次观看到 %1$s，是否继续播放？</string>
     <string name="player_resume_continue">继续播放</string>
     <string name="player_download_dir_not_set">请先在下载管理页面设置下载目录</string>
+    <string name="player_download_no_permission">请先授予「所有文件访问权限」</string>
     <string name="player_added_to_download_queue">已添加到下载队列</string>
     <string name="player_lyrics_fetched">已通过 API 获取歌词：%1$s</string>
     <string name="player_scale_fit">适应</string>
@@ -110,6 +118,7 @@
     <!-- 字幕 -->
     <string name="player_subtitle">字幕</string>
     <string name="player_subtitle_off">关闭</string>
+    <string name="player_subtitle_track">字幕轨道</string>
     <string name="player_subtitle_none">无字幕显示</string>
     <string name="player_subtitle_auto">自动</string>
     <string name="player_subtitle_auto_used">已使用：%1$s</string>
@@ -121,6 +130,8 @@
     <string name="player_subtitle_external">外挂字幕</string>
     <string name="player_subtitle_search">搜索字幕</string>
     <string name="player_subtitle_style">字幕样式</string>
+    <string name="subtitle_style_group_character">字幕文字</string>
+    <string name="subtitle_style_group_layout">布局</string>
     <string name="player_audio_track">音轨</string>
     <string name="player_audio_track_auto">自动</string>
 

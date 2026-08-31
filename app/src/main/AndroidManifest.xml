@@ -12,6 +12,14 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
+    <!-- 传输管理下载目录：原生直写共享存储所需的权限。
+         走「所有文件访问权限」（Android 11+）或旧版 WRITE_EXTERNAL_STORAGE（Android 10-），
+         替代 SAF，避免 ContentProvider 虚拟层写入的性能损耗。 -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <!-- Android 13+ 通知权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -48,6 +56,7 @@
             android:name="com.nichx.niplayer.feature.player.PlayerActivity"
             android:exported="false"
             android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard"
             android:theme="@style/Theme.NIplayer" />
 

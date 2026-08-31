@@ -1,8 +1,6 @@
 package com.nichx.niplayer.storage.download
 
 import android.content.Context
-import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
 import com.nichx.niplayer.database.dao.DownloadTaskDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.DownloadState
@@ -300,7 +298,8 @@ class DownloadManager @Inject constructor(
             when {
                 storageUrl == null -> processToCache(task, inputStream, actualOffset, totalBytes)
                 storageUrl.startsWith("file://") -> processToDirectPath(task, inputStream, actualOffset, totalBytes)
-                else -> processToSaf(task, inputStream, actualOffset, totalBytes)
+                // 下载目录已统一为 file:// 绝对路径（原生直写），遗留的 content:// 目标不受支持
+                else -> throw Exception(context.getString(R.string.download_error_target_unsupported))
             }
         } catch (e: CancellationException) {
             if (cancellingTasks.remove(task.id) != null) {
@@ -344,7 +343,7 @@ class DownloadManager @Inject constructor(
         }
     }
 
-    /** 下载到直 path（targetStorageUrl 以 file:// 开头）。 */
+    /** 下载到直 path（targetStorageUrl 以 file:// 开头，原生直写共享存储）。 */
     private suspend fun processToDirectPath(
         task: DownloadTaskEntity,
         inputStream: InputStream,
@@ -369,43 +368,6 @@ class DownloadManager @Inject constructor(
         } catch (e: Exception) {
             if (e !is CancellationException && targetFile.exists()) targetFile.delete()
             throw e
-        }
-    }
-
-    /** 下载到 SAF 目录（targetStorageUrl 为 content:// tree URI）。 */
-    private suspend fun processToSaf(
-        task: DownloadTaskEntity,
-        inputStream: InputStream,
-        offset: Long,
-        totalBytes: Long,
-    ) {
-        val storageUrl = task.targetStorageUrl ?: throw Exception(context.getString(R.string.download_error_target_empty))
-        val treeDoc = DocumentFile.fromTreeUri(context, Uri.parse(storageUrl))
-            ?: throw Exception(context.getString(R.string.download_error_target_access))
-        val existingDoc = treeDoc.findFile(task.fileName)
-        val targetDoc = if (existingDoc != null) {
-            if (offset <= 0) {
-                existingDoc.delete()
-                treeDoc.createFile("application/octet-stream", task.fileName)
-                    ?: throw Exception(context.getString(R.string.download_error_create_file))
-            } else {
-                existingDoc
-            }
-        } else {
-            treeDoc.createFile("application/octet-stream", task.fileName)
-                ?: throw Exception(context.getString(R.string.download_error_create_file))
-        }
-
-        val pfd = context.contentResolver.openFileDescriptor(targetDoc.uri, "wa")
-            ?: throw Exception(context.getString(R.string.download_error_open_fd))
-        pfd.use {
-            FileOutputStream(it.fileDescriptor).use { fos ->
-                if (offset > 0) fos.channel.position(offset)
-                // 用 BufferedOutputStream 包装，减少 ContentResolver per-write 开销
-                BufferedOutputStream(fos, BUFFER_SIZE).use { bos ->
-                    pipelinedWriteLoop(task.id, bos, inputStream, offset, totalBytes)
-                }
-            }
         }
     }
 
@@ -473,7 +435,6 @@ class DownloadManager @Inject constructor(
      * 按目标模式分发：
      * - null（缓存）：删 `<cache>/download/<fileName>`
      * - file://：删直 path 文件
-     * - content://：通过 DocumentFile 删 SAF 文件
      */
     private fun deleteTaskFile(task: DownloadTaskEntity) {
         val storageUrl = task.targetStorageUrl
@@ -481,15 +442,9 @@ class DownloadManager @Inject constructor(
             storageUrl == null -> {
                 File(context.cacheDir, "download/${task.fileName}").delete()
             }
-            storageUrl.startsWith("file://") -> {
+            else -> {
                 val dirPath = storageUrl.removePrefix("file://")
                 File(dirPath, task.fileName).takeIf { it.exists() }?.delete()
-            }
-            else -> {
-                try {
-                    val treeDoc = DocumentFile.fromTreeUri(context, Uri.parse(storageUrl))
-                    treeDoc?.findFile(task.fileName)?.delete()
-                } catch (_: Exception) { }
             }
         }
     }

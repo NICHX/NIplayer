@@ -2,9 +2,6 @@ package com.nichx.niplayer.feature.home.settings
 
 import com.nichx.niplayer.feature.home.R
 import android.annotation.SuppressLint
-import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -58,7 +55,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.documentfile.provider.DocumentFile
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.entity.DownloadState
@@ -71,6 +67,7 @@ import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
 import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
 import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import com.nichx.niplayer.storage.StorageAccess
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -173,33 +170,45 @@ internal fun DownloadManagerTab(
     }
 
     val context = LocalContext.current
-    var pendingSetDownloadDir by remember { mutableStateOf(false) }
-    val downloadDirLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree(),
-    ) { treeUri ->
-        pendingSetDownloadDir = false
-        if (treeUri == null) return@rememberLauncherForActivityResult
-        try {
-            context.contentResolver.takePersistableUriPermission(
-                treeUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-            )
-        } catch (_: SecurityException) { }
-        val dirName = DocumentFile.fromTreeUri(context, treeUri)?.name
-            ?: context.getString(R.string.download_manager_dir_fallback)
-        viewModel.setDownloadDir(treeUri.toString(), dirName)
-    }
+    var showFolderPicker by remember { mutableStateOf(false) }
+    var showPermissionDialog by remember { mutableStateOf(false) }
 
-    if (displayItems.isEmpty() && downloadDirInfo.uri.isNotBlank()) {
-        Box(
+    if (displayItems.isEmpty() && downloadDirInfo.path.isNotBlank()) {
+        // 下载目录卡片始终显示（含空态时提供重设/清除），任务区用空态占位
+        LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
+            contentPadding = PaddingValues(
+                start = 16.dp, end = 16.dp,
+                top = topPadding + 8.dp,
+                bottom = 8.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            NiEmptyState(
-                icon = Icons.Filled.ArrowDownward,
-                text = stringResource(R.string.download_manager_empty),
-                hint = stringResource(R.string.download_manager_empty_hint),
-            )
+            item(key = "download_dir_section") {
+                DownloadDirCard(
+                    dirInfo = downloadDirInfo,
+                    onSetDownloadDir = {
+                        if (StorageAccess.canWriteSharedStorage(context)) {
+                            showFolderPicker = true
+                        } else {
+                            showPermissionDialog = true
+                        }
+                    },
+                    onClearDownloadDir = { viewModel.clearDownloadDir() },
+                )
+            }
+            item(key = "empty") {
+                Box(
+                    modifier = Modifier.fillParentMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    NiEmptyState(
+                        icon = Icons.Filled.ArrowDownward,
+                        text = stringResource(R.string.download_manager_empty),
+                        hint = stringResource(R.string.download_manager_empty_hint),
+                    )
+                }
+            }
         }
     } else {
         LazyColumn(
@@ -211,13 +220,16 @@ internal fun DownloadManagerTab(
             ),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            // 下载目录设置卡片
+            // 下载目录设置卡片（已设置时仍可点击重设）
             item(key = "download_dir_section") {
                 DownloadDirCard(
                     dirInfo = downloadDirInfo,
                     onSetDownloadDir = {
-                        pendingSetDownloadDir = true
-                        downloadDirLauncher.launch(null)
+                        if (StorageAccess.canWriteSharedStorage(context)) {
+                            showFolderPicker = true
+                        } else {
+                            showPermissionDialog = true
+                        }
                     },
                     onClearDownloadDir = { viewModel.clearDownloadDir() },
                 )
@@ -291,6 +303,30 @@ internal fun DownloadManagerTab(
             }
         }
     }
+
+    if (showFolderPicker) {
+        FolderPickerDialog(
+            initialPath = downloadDirInfo.path,
+            onDismiss = { showFolderPicker = false },
+            onConfirm = { path, dirName ->
+                viewModel.setDownloadDir(path, dirName)
+                showFolderPicker = false
+            },
+        )
+    }
+
+    if (showPermissionDialog) {
+        NiConfirmDialog(
+            title = stringResource(R.string.download_dir_permission_title),
+            text = stringResource(R.string.download_dir_permission_message),
+            confirmText = stringResource(R.string.download_dir_permission_grant),
+            onConfirm = {
+                showPermissionDialog = false
+                StorageAccess.openAllFilesAccessSettings(context)
+            },
+            onDismiss = { showPermissionDialog = false },
+        )
+    }
 }
 
 @Composable
@@ -299,7 +335,7 @@ private fun DownloadDirCard(
     onSetDownloadDir: () -> Unit,
     onClearDownloadDir: () -> Unit,
 ) {
-    val hasDir = dirInfo.uri.isNotBlank()
+    val hasDir = dirInfo.path.isNotBlank()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -308,7 +344,7 @@ private fun DownloadDirCard(
                 if (hasDir) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
                 else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
             )
-            .clickable { if (!hasDir) onSetDownloadDir() }
+            .clickable { onSetDownloadDir() }
             .padding(12.dp),
     ) {
         Row(
@@ -331,7 +367,7 @@ private fun DownloadDirCard(
                 )
                 if (hasDir) {
                     Text(
-                        text = dirInfo.name,
+                        text = dirInfo.path,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                         maxLines = 1,
@@ -346,6 +382,9 @@ private fun DownloadDirCard(
                 }
             }
             if (hasDir) {
+                TextButton(onClick = onSetDownloadDir) {
+                    Text(stringResource(R.string.download_manager_reset), style = MaterialTheme.typography.labelMedium)
+                }
                 TextButton(onClick = onClearDownloadDir) {
                     Text(stringResource(R.string.download_manager_clear), style = MaterialTheme.typography.labelMedium)
                 }

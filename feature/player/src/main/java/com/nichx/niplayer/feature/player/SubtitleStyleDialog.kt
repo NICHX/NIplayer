@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -97,6 +99,8 @@ fun SubtitleStyleDialog(
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
         ) {
+            // 分区：字幕文字
+            StyleSectionHeader(text = stringResource(R.string.subtitle_style_group_character))
             StyleClickRow(
                 label = stringResource(R.string.subtitle_font_label),
                 value = stringResource(SubtitleSettings.FONT_FAMILY_OPTIONS.find { it.second == fontFamilyKey }?.first ?: R.string.subtitle_font_default),
@@ -124,12 +128,18 @@ fun SubtitleStyleDialog(
                 colorDot = outlineColor,
                 onClick = { showOutlineColorPicker = true },
             )
+
+            Spacer(Modifier.height(4.dp))
+            // 分区：布局
+            StyleSectionHeader(text = stringResource(R.string.subtitle_style_group_layout))
             StyleClickRow(
                 label = stringResource(R.string.subtitle_bottom_padding_label),
                 // 底部边距用滑条精确控制，直接显示数值（dp）
                 value = "${bottomPaddingDp} dp",
                 onClick = { showBottomPaddingPicker = true },
             )
+
+            Spacer(Modifier.height(4.dp))
             StyleSwitchRow(
                 label = stringResource(R.string.subtitle_apply_embedded),
                 description = stringResource(R.string.subtitle_apply_embedded_desc),
@@ -383,6 +393,18 @@ private fun BottomPaddingSliderDialog(
     }
 }
 
+/** 分区标题：字幕样式弹窗的分组小标题（如「字幕文字」「布局」）。 */
+@Composable
+private fun StyleSectionHeader(text: String) {
+    Text(
+        text = text,
+        color = PlayerDialogColors.textSecondary.copy(alpha = 0.8f),
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+    )
+}
+
 @Composable
 private fun StyleClickRow(
     label: String,
@@ -393,8 +415,11 @@ private fun StyleClickRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White.copy(alpha = 0.05f))
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 8.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -417,6 +442,13 @@ private fun StyleClickRow(
             color = PlayerDialogColors.textSecondary,
             fontSize = 14.sp,
         )
+        Spacer(Modifier.width(4.dp))
+        Icon(
+            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = PlayerDialogColors.textSecondary.copy(alpha = 0.5f),
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
@@ -430,12 +462,15 @@ private fun StyleSwitchRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White.copy(alpha = 0.05f))
             // 带按钮的设置项：整行点击仅委托开关，移除涟漪（反馈由 Switch 承担）
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
             ) { onCheckedChange(!checked) }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 8.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {

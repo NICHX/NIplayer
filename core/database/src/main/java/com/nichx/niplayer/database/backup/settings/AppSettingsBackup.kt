@@ -87,8 +87,8 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             fileViewMode = FileBrowserSettings.viewMode.value,
             // 视频扩展名白名单
             videoExtensions = VideoExtensionSettings.supportText,
-            // 下载目录（SAF URI 跨设备可能失效，仍随备份导出便于同设备恢复）
-            downloadDirUri = DownloadSettings.downloadDirUri.ifBlank { null },
+            // 下载目录（绝对路径，随备份导出便于恢复）
+            downloadDirPath = DownloadSettings.downloadDirPath.ifBlank { null },
             downloadDirName = DownloadSettings.downloadDirName.ifBlank { null },
             // 播放历史云同步（deviceId 不备份：跨设备恢复后重新生成，避免设备冲突）
             historySyncEnabled = PlayHistorySyncSettings.enabled,
@@ -161,7 +161,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         // 视频扩展名
         s.videoExtensions?.let { VideoExtensionSettings.supportText = it }
         // 下载目录
-        s.downloadDirUri?.let { DownloadSettings.downloadDirUri = it }
+        s.downloadDirPath?.let { DownloadSettings.downloadDirPath = it }
         s.downloadDirName?.let { DownloadSettings.downloadDirName = it }
         // 播放历史云同步：恢复开关与所选服务器，并重新生成设备标识
         s.historySyncEnabled?.let { PlayHistorySyncSettings.enabled = it }
@@ -234,8 +234,8 @@ data class AppSettingsData(
     val fileViewMode: Int? = null,
     // 视频扩展名白名单
     val videoExtensions: String? = null,
-    // 下载目录（SAF URI 跨设备可能失效，仍随备份导出便于同设备恢复）
-    val downloadDirUri: String? = null,
+    // 下载目录（绝对路径，随备份导出便于恢复跨设备设定）
+    val downloadDirPath: String? = null,
     val downloadDirName: String? = null,
     // 播放历史云同步（deviceId 不备份：跨设备恢复后重新生成，避免设备冲突）
     val historySyncEnabled: Boolean? = null,
