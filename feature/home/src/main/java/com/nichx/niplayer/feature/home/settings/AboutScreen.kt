@@ -237,7 +237,7 @@ data class LicenseDependency(
  * 列表随 libs.versions.toml 同步更新。v2 相比旧仓库：移除 Arouter / DanmakuFlameMaster /
  * ImmersionBar / PanelSwitchHelper / banner / nanohttpd / sardine-android / 7-Zip-JBinding /
  * glide / smbj（不再使用），SMB 协议改用 jcifs + BouncyCastle；新增 media3 / Coil 3 /
- * Hilt / OkHttp / MMKV / ComposeReorderable。
+ * Hilt / OkHttp / MMKV / ComposeReorderable / Haze / Backdrop / Capsule / ProfileInstaller。
  */
 enum class LicenseGroup(
     val dependencies: List<LicenseDependency>,
@@ -260,7 +260,7 @@ enum class LicenseGroup(
             ),
             LicenseDependency(
                 name = "AndroidX Navigation Compose",
-                version = "2.9.8",
+                version = "2.10.0",
                 license = "Apache 2.0",
                 url = "https://developer.android.com/guide/navigation",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
@@ -305,6 +305,13 @@ enum class LicenseGroup(
                 version = "1.1.0",
                 license = "Apache 2.0",
                 url = "https://developer.android.com/reference/androidx/documentfile/provider/DocumentFile",
+                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
+            ),
+            LicenseDependency(
+                name = "AndroidX ProfileInstaller",
+                version = "1.4.1",
+                license = "Apache 2.0",
+                url = "https://developer.android.com/studio/profile/baseline-profiles",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
             ),
         ),
@@ -402,6 +409,27 @@ enum class LicenseGroup(
                 version = "0.9.6",
                 license = "Apache 2.0",
                 url = "https://github.com/yannickpulver/ComposeReorderable",
+                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
+            ),
+            LicenseDependency(
+                name = "Haze",
+                version = "1.7.2",
+                license = "Apache 2.0",
+                url = "https://github.com/chrisbanes/haze",
+                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
+            ),
+            LicenseDependency(
+                name = "Backdrop",
+                version = "2.0.0",
+                license = "Apache 2.0",
+                url = "https://github.com/Kyant0/AndroidLiquidGlass",
+                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
+            ),
+            LicenseDependency(
+                name = "Capsule",
+                version = "2.1.3",
+                license = "Apache 2.0",
+                url = "https://github.com/Kyant0/Capsule",
                 licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
             ),
         ),
