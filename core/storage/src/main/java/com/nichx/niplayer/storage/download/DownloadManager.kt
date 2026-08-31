@@ -5,8 +5,10 @@ import com.nichx.niplayer.database.dao.DownloadTaskDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.DownloadState
 import com.nichx.niplayer.database.entity.DownloadTaskEntity
+import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.R
+import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFactory
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -301,6 +303,8 @@ class DownloadManager @Inject constructor(
                 // 下载目录已统一为 file:// 绝对路径（原生直写），遗留的 content:// 目标不受支持
                 else -> throw Exception(context.getString(R.string.download_error_target_unsupported))
             }
+            // 音频下载完成后，顺带下载同目录同名 .lrc 歌词（受开关控制，best-effort）
+            downloadSiblingLrc(task, storage)
         } catch (e: CancellationException) {
             if (cancellingTasks.remove(task.id) != null) {
                 downloadTaskDao.updateState(task.id, DownloadState.CANCELLED)
@@ -368,6 +372,63 @@ class DownloadManager @Inject constructor(
         } catch (e: Exception) {
             if (e !is CancellationException && targetFile.exists()) targetFile.delete()
             throw e
+        }
+    }
+
+    /**
+     * 音频下载完成后，顺带下载远程同目录同名 `.lrc` 歌词到目标目录（best-effort）。
+     *
+     * 受 [DownloadSettings.downloadLrcWithAudio] 开关控制；远程无 `.lrc`、非音频文件
+     * 或任意失败均静默忽略，不影响主文件下载结果。
+     */
+    private suspend fun downloadSiblingLrc(task: DownloadTaskEntity, storage: Storage) {
+        if (!DownloadSettings.downloadLrcWithAudio) return
+        if (!isAudioFile(task.fileName)) return
+        val baseName = task.fileName.substringBeforeLast('.')
+        if (baseName.isBlank() || baseName == task.fileName) return
+
+        val dirPath = task.filePath.substringBeforeLast('/')
+        val remoteLrcPath = if (dirPath == task.filePath) "$baseName.lrc" else "$dirPath/$baseName.lrc"
+        val lrcName = "$baseName.lrc"
+        val remoteLrc = object : AbstractStorageFile(
+            path = remoteLrcPath,
+            name = lrcName,
+            isDirectory = false,
+            length = 0,
+        ) {}
+
+        try {
+            if (!storage.fileExists(remoteLrcPath)) return
+            storage.openInputStream(remoteLrc)?.use { input ->
+                val targetDir = when {
+                    task.targetStorageUrl == null -> File(context.cacheDir, "download")
+                    task.targetStorageUrl!!.startsWith("file://") -> File(task.targetStorageUrl!!.removePrefix("file://"))
+                    else -> return
+                }
+                targetDir.mkdirs()
+                FileOutputStream(File(targetDir, lrcName)).use { fos ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    while (true) {
+                        val len = input.read(buffer)
+                        if (len == -1) break
+                        fos.write(buffer, 0, len)
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // 歌词下载失败不影响主文件结果
+        }
+    }
+
+    /** 音频文件扩展名判断（:core:storage 不依赖 :player:kernel，本地维护一份）。 */
+    private fun isAudioFile(name: String): Boolean {
+        val dot = name.lastIndexOf('.')
+        return if (dot > 0 && dot < name.length - 1) {
+            name.substring(dot + 1).lowercase() in AUDIO_EXTENSIONS
+        } else {
+            false
         }
     }
 
@@ -457,5 +518,11 @@ class DownloadManager @Inject constructor(
         const val FLUSH_BYTE_THRESHOLD = 8 * 1024 * 1024L
         // 流 flush 字节阈值：每 32MB 才触发一次 fsync，降低停顿频率提升吞吐
         const val STREAM_FLUSH_BYTE_THRESHOLD = 32 * 1024 * 1024L
+
+        /** 音频文件扩展名集合（与 :player:kernel MediaFileTypes 保持一致）。 */
+        val AUDIO_EXTENSIONS: Set<String> = setOf(
+            "mp3", "wav", "flac", "ogg", "aac", "ape", "wma", "ac3",
+            "m4a", "opus", "amr", "pcm",
+        )
     }
 }

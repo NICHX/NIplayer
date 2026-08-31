@@ -17,6 +17,7 @@ import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequest
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequestHolder
+import com.nichx.niplayer.player.kernel.HistoryDescriptor
 import com.nichx.niplayer.player.kernel.NxMediaSource
 import com.nichx.niplayer.player.kernel.PlaybackRequest
 import com.nichx.niplayer.player.kernel.PlaybackRequestHolder
@@ -83,6 +84,14 @@ class DownloadManagerViewModel @Inject constructor(
 
     /** 下载目录信息。 */
     val downloadDirInfo: StateFlow<DownloadDirInfo> = DownloadSettings.downloadDirFlow
+
+    /** 音频下载时是否顺带下载同目录 .lrc 歌词。 */
+    val downloadLrcWithAudio: StateFlow<Boolean> = DownloadSettings.downloadLrcWithAudioFlow
+
+    /** 更新「音频下载时顺带下载同目录 .lrc」开关。 */
+    fun setDownloadLrcWithAudio(enabled: Boolean) {
+        DownloadSettings.downloadLrcWithAudio = enabled
+    }
 
     /** 下载目录是否已设置。 */
     val isDownloadDirSet: Boolean get() = DownloadSettings.isDownloadDirSet
@@ -231,11 +240,25 @@ class DownloadManagerViewModel @Inject constructor(
     private fun openAudioInApp(task: DownloadTaskEntity) {
         val uri = resolveFileUri(task) ?: return
         val source = NxMediaSource.Local(uri = uri, mediaId = task.fileName)
+        val localPath = resolveLocalFilePath(task)
         playbackRequestHolder.set(
             PlaybackRequest(
                 source = source,
                 title = task.fileName,
                 isAudio = true,
+                // 携带本地文件路径作为 history.storagePath：AudioPlaybackManager 据此
+                // 加载同目录 .lrc 歌词，并通过 content URI 提取内嵌封面。storageId=null，
+                // recordPlayStart/进度保存内部跳过落库，不影响播放历史。
+                history = localPath?.let { path ->
+                    HistoryDescriptor(
+                        uniqueKey = "local_download:$path",
+                        url = path,
+                        mediaTypeValue = MediaType.LOCAL_STORAGE.value,
+                        storageId = null,
+                        storagePath = path,
+                        fileSize = task.totalBytes,
+                    )
+                },
             )
         )
         viewModelScope.launch {
@@ -300,6 +323,25 @@ class DownloadManagerViewModel @Inject constructor(
                     "${context.packageName}.fileprovider",
                     file,
                 ) else null
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * 解析已下载文件的真实本地路径（供歌词同目录查找等使用），不存在返回 null。
+     * 与 [resolveFileUri] 的路径推导保持一致：优先下载目录，回退应用缓存。
+     */
+    private fun resolveLocalFilePath(task: DownloadTaskEntity): String? {
+        val storageUrl = task.targetStorageUrl
+        return when {
+            storageUrl == null -> {
+                val file = File(context.cacheDir, "download/${task.fileName}")
+                if (file.exists()) file.absolutePath else null
+            }
+            storageUrl.startsWith("file://") -> {
+                val file = File(storageUrl.removePrefix("file://"), task.fileName)
+                if (file.exists()) file.absolutePath else null
             }
             else -> null
         }

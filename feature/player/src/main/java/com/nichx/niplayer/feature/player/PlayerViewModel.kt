@@ -183,6 +183,10 @@ class PlayerViewModel @Inject constructor(
     @Volatile
     private var isAudioPlayback: Boolean = false
 
+    /** 当前是否为本地文件（已下载/缓存直链）来源，UI 据此隐藏下载按钮。 */
+    private val _isLocalSource = MutableStateFlow(false)
+    val isLocalSource: StateFlow<Boolean> = _isLocalSource.asStateFlow()
+
     /**
      * onCleared 跳过 player.release 标志位。
      *
@@ -820,6 +824,7 @@ class PlayerViewModel @Inject constructor(
             // 保存请求副本，错误后重试使用
             lastPlaybackRequest = request
             isAudioPlayback = request.isAudio
+            _isLocalSource.value = request.source is NxMediaSource.Local
 
             // 按请求类型过滤播放列表，避免上一会话残留的异构列表混入本次播放
             if (_playlist.value.isNotEmpty()) {
@@ -1237,6 +1242,7 @@ class PlayerViewModel @Inject constructor(
                     }
 
                     isAudioPlayback = false
+                    _isLocalSource.value = false
                     // 视频：使用 NxPlayer
                     swapStorage(extractStorageFromSource(source))
                     // 同 init 路径，startPositionMs 直接传给 setSource。

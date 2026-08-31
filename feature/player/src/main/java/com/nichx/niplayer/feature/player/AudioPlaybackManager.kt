@@ -250,6 +250,10 @@ class AudioPlaybackManager @Inject constructor(
 
     private var _currentSource: NxMediaSource? = null
     val currentSource: NxMediaSource? get() = _currentSource
+
+    /** 当前是否为本地文件（已下载/缓存直链）来源，UI 据此隐藏下载按钮。 */
+    private val _isLocalSource = MutableStateFlow(false)
+    val isLocalSource: StateFlow<Boolean> = _isLocalSource.asStateFlow()
     private var _currentPositionMs: Long = 0L
 
     /**
@@ -552,6 +556,9 @@ class AudioPlaybackManager @Inject constructor(
         _currentIndex.value = startIndex
         // 同步当前曲目的历史描述符（切歌/首播均在此更新，供进度保存使用）
         currentHistory = history
+        // 先落 _currentSource：loadLocalAudioCover() 在 refreshAudioCover 内同步读取它，
+        // 若此时仍是上一曲/首播的 null，本地封面提取会直接 return（本地音频无封面 bug）
+        _currentSource = source
         // 异步提取新曲目封面（缓存命中立即替换，未命中则 Storage/API 提取；
         // 提取期间保留上一曲封面，避免切歌瞬间闪烁空白）
         if (history != null) {
@@ -597,7 +604,7 @@ class AudioPlaybackManager @Inject constructor(
             }
         }
 
-        _currentSource = source
+        _isLocalSource.value = source is NxMediaSource.Local
 
         closeStorageAsync()
         currentStorage = (source as? NxMediaSource.DataSource)?.storage
@@ -1035,6 +1042,7 @@ class AudioPlaybackManager @Inject constructor(
         _durationMs.value = 0L
         _isPlaying.value = false
         _currentSource = null
+        _isLocalSource.value = false
         _currentTitle.value = ""
         _currentArtist.value = ""
         _audioCoverPath.value = null
