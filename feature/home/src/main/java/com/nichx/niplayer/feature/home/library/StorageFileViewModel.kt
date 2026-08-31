@@ -1681,7 +1681,8 @@ class StorageFileViewModel @Inject constructor(
      * 再按 [FileBrowserSettings.mediaFilter] 过滤媒体类型，最后按 [FileBrowserSettings] 排序。
      *
      * 排序规则：目录始终在前；同类型内按 [SortConfig.sortBy] 排序，
-     * [SortConfig.ascending] 控制升降序。名称排序不区分大小写。
+     * [SortConfig.ascending] 控制升降序。名称排序用自然排序（不区分大小写，
+     * 连续数字按数值比较，如 "2" < "10"）。
      */
     private fun applyFilterAndSort(files: List<StorageFile>): List<StorageFile> {
         val config = FileBrowserSettings.sortFlow.value
@@ -1706,7 +1707,10 @@ class StorageFileViewModel @Inject constructor(
         }
 
         val comparator = when (config.sortBy) {
-            FileBrowserSettings.SortBy.NAME -> compareBy<StorageFile> { it.name.lowercase() }
+            // 名称用自然排序：连续数字按数值比较，避免 "10.mp4" 排在 "2.mp4" 前
+            FileBrowserSettings.SortBy.NAME -> Comparator<StorageFile> { a, b ->
+                naturalOrderCompare(a.name, b.name)
+            }
             FileBrowserSettings.SortBy.MODIFIED -> compareBy<StorageFile> { it.lastModified }
             FileBrowserSettings.SortBy.SIZE -> compareBy<StorageFile> { it.length }
             FileBrowserSettings.SortBy.TYPE -> compareBy<StorageFile> {
@@ -1820,4 +1824,48 @@ sealed class StorageFileEvent {
 
     /** 简短提示（添加/移除成功）。 */
     data class ShowToast(val message: String) : StorageFileEvent()
+}
+
+/**
+ * 自然排序比较：连续数字按数值比较（如 "2" < "10"），非数字部分不区分大小写按字符比较。
+ * 修复纯字符串比较导致 "10.mp4" 排在 "2.mp4" 前的问题。
+ */
+private fun naturalOrderCompare(a: String, b: String): Int {
+    var i = 0
+    var j = 0
+    val al = a.length
+    val bl = b.length
+    while (i < al && j < bl) {
+        val ca = a[i]
+        val cb = b[j]
+        if (ca.isDigit() && cb.isDigit()) {
+            // 去掉前导 0 后再按位数（数值大小）比较
+            var x = i
+            var y = j
+            while (x < al && a[x] == '0') x++
+            while (y < bl && b[y] == '0') y++
+            val nx = x
+            val ny = y
+            while (x < al && a[x].isDigit()) x++
+            while (y < bl && b[y].isDigit()) y++
+            val lenA = x - nx
+            val lenB = y - ny
+            // 位数不同则位数多者数值大（已去前导 0，如 "10" 2 位 > "2" 1 位）
+            if (lenA != lenB) return lenA.compareTo(lenB)
+            for (k in 0 until lenA) {
+                val da = a[nx + k]
+                val db = b[ny + k]
+                if (da != db) return da.compareTo(db)
+            }
+            i = x
+            j = y
+        } else {
+            val la = ca.lowercaseChar()
+            val lb = cb.lowercaseChar()
+            if (la != lb) return la.compareTo(lb)
+            i++
+            j++
+        }
+    }
+    return (al - i).compareTo(bl - j)
 }
