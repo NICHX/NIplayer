@@ -365,7 +365,7 @@ class MainActivity : ComponentActivity() {
                             // 替代普通页面式的水平滑动，降低从竖屏列表切入横屏全屏的生硬感。
                             // 进入/退出使用对称动画，避免之前退出瞬时消失（fadeOut tween 0）的卡切。
                             enterTransition = {
-                                scaleIn(tween(260), initialScale = 0.92f) + fadeIn(tween(260))
+                                scaleIn(tween(350), initialScale = 0.92f) + fadeIn(tween(350))
                             },
                             exitTransition = {
                                 scaleOut(tween(220), targetScale = 0.92f) + fadeOut(tween(220))

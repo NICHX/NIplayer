@@ -361,6 +361,15 @@ fun PlayerScreen(
     val capturedBack: () -> Unit = {
         // 1.5s 冷却内不响应返回（应用内返回按钮），避免首帧未到就退出导致闪白
         if (backReady) {
+            // 立即恢复系统亮度：一触发返回亮度马上回到系统值（不等待抓帧/动画），
+            // 让退出过渡全程以系统亮度呈现。写回进入前亮度值：BRIGHTNESS_OVERRIDE_NONE
+            // 在本设备不生效（保持播放器内亮度），必须显式写回具体亮度值。
+            // PixelCopy 读的是 surface 像素、不受窗口亮度设置影响，提前恢复不影响退出贴图。
+            window?.let { w ->
+                val attrs = w.attributes
+                attrs.screenBrightness = preEntryBrightness
+                w.attributes = attrs
+            }
             captureThumbnailOnExit()
 
             val doExit: () -> Unit = {
@@ -376,16 +385,8 @@ fun PlayerScreen(
                     WindowCompat.getInsetsController(w, w.decorView)
                         .show(WindowInsetsCompat.Type.systemBars())
                 }
-                // 提前恢复系统亮度：在 onBack() 之前恢复（与方向/系统栏同一时机）。若等 onDispose
-                // （pop 动画结束、黑色蒙层已完全揭开）才恢复，亮度会在首页上"啪"地一跳。此处恢复后
-                // onBack() 立即触发退出，黑色蒙层 snap 到全黑盖住亮度跳变，全程无感知。
-                // 显式写回进入前亮度值：BRIGHTNESS_OVERRIDE_NONE 在部分设备上不生效，具体值才可靠。
+                // 亮度已在 capturedBack 入口提前恢复（见上），此处不再重复；
                 // onDispose 仍保留兜底恢复（系统返回/异常路径未走 capturedBack 时）。
-                window?.let { w ->
-                    val attrs = w.attributes
-                    attrs.screenBrightness = preEntryBrightness
-                    w.attributes = attrs
-                }
                 onBack()
             }
             val sv = surfaceViewRef
@@ -694,9 +695,8 @@ fun PlayerScreen(
             // capturedBack 已提前还原方向，此处幂等兜底（系统返回/异常路径仍会走到这里）
             activity?.requestedOrientation = originalOrientation
 
-            // 兜底恢复系统亮度：主恢复已提前到 capturedBack 的 doExit()（onBack 前，黑色蒙层盖住跳变）；
-            // 此处兜底覆盖未走 capturedBack 的异常路径。显式写回进入前亮度值（BRIGHTNESS_OVERRIDE_NONE
-            // 在部分设备上不生效）。亮度仅本次播放生效，不做跨次持久化。
+            // 兜底恢复系统亮度：主恢复已提前到 capturedBack 入口；
+            // 此处兜底覆盖未走 capturedBack 的异常路径。写回进入前亮度值（NONE 在本设备不生效）。
             window?.let { w ->
                 val attrs = w.attributes
                 attrs.screenBrightness = preEntryBrightness

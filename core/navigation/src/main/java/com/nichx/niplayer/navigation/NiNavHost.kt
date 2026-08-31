@@ -34,6 +34,9 @@ private const val FromPlayerTransitionMs = 750
 // 蒙层缓动：ease-in 型（起点慢），开头多保持暗色、缓缓揭示，比 tween 默认的
 // 快速启动缓动观感更舒缓，不会"唰"地一下变亮
 private val ExitMaskEasing = CubicBezierEasing(0.45f, 0f, 0.8f, 1f)
+// 视频播放器退出黑色蒙层的起始不透明度：不从纯黑(1)起步，降到中等深度(0.5)起步，
+// 既保留"播放器黑 -> 首页浅白"的缓冲，又让系统亮度更快显现、退出更干脆
+private const val ExitMaskStartAlpha = 0.5f
 // 返回页(首页)淡入起点：从很暗透明度起步，配合播放器黑底淡出形成连续的亮度渐变；
 // 若取 0 会在播放器淡出末期先暴露白色 window 底
 private const val ReturnFadeInInitialAlpha = 0.25f
@@ -66,7 +69,7 @@ fun NiNavHost(
     LaunchedEffect(route, currentEntry?.id) {
         // 仅视频播放器退出时施加黑色亮度蒙层；音频播放器退出保留画面原样淡出，不遮罩
         if (lastRoute == Routes.Player.PLAYER && !isPlayerRoute(route)) {
-            exitMask.snapTo(1f)
+            exitMask.snapTo(ExitMaskStartAlpha)
             // 慢启动缓动：蒙层在开头几乎仍是不透明黑，只缓缓揭开，避免一上来就"唰"地变亮
             exitMask.animateTo(
                 0f,
