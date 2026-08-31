@@ -14,6 +14,12 @@
     <string name="history_filter_video">Video</string>
     <string name="history_filter_audio">Audio</string>
 
+    <!-- Play history grouping -->
+    <string name="history_group_label">Group by</string>
+    <string name="history_group_by_date">Date</string>
+    <string name="history_group_by_folder">Folder</string>
+    <string name="play_history_root_folder">Root</string>
+
     <!-- Library filters (LibraryFilter.labelRes) -->
     <string name="library_filter_all">All</string>
     <string name="library_filter_local">Local</string>
