@@ -126,6 +126,8 @@ import com.nichx.niplayer.designsystem.components.NiTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -673,10 +675,23 @@ fun FileBrowserScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             // 内容层：仅列表/状态，满铺全屏延伸到顶栏下可被模糊；标记为玻璃模糊的背景源
             Column(modifier = Modifier.fillMaxSize().layerBackdrop(multiSelectBarBackdrop)) {
+                // 下拉刷新指示器要避开顶栏：整页内容满铺全屏滚到玻璃顶栏之下，默认指示器定位在
+                // 全屏顶部会被透明顶栏盖住；故用自定义 indicator 下移 topInset，显现在顶栏之下。
+                val pullRefreshState = rememberPullToRefreshState()
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
                     onRefresh = { viewModel.refresh() },
+                    state = pullRefreshState,
                     modifier = Modifier.fillMaxSize(),
+                    indicator = {
+                        PullToRefreshDefaults.Indicator(
+                            isRefreshing = isRefreshing,
+                            state = pullRefreshState,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .offset(y = topInset),
+                        )
+                    },
                 ) {
                     when {
                         uiState.isLoading && uiState.rawFiles.isEmpty() -> LoadingState()
