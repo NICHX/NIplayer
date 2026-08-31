@@ -28,8 +28,9 @@ import androidx.navigation.compose.rememberNavController
 private const val PAGE_TRANSITION_MS = 300
 
 // 从播放器返回的过渡时长：即"黑色平滑蒙层"从全黑渐隐揭开的时长（也控制双侧 fade）。
-// 时长拉长 + 慢启动缓动，让蒙层在开头多保持暗色，再缓缓揭开，避免"唰"地一闪而过。
-private const val FromPlayerTransitionMs = 900
+// 亮度已在退出瞬间（capturedBack doExit）恢复并被蒙层盖住，蒙层仅需抹平"播放器黑 -> 首页浅白"
+// 的观感过渡。600ms 偏短、蒙层观感不明显，取 750ms 平衡干脆与平滑。
+private const val FromPlayerTransitionMs = 750
 // 蒙层缓动：ease-in 型（起点慢），开头多保持暗色、缓缓揭示，比 tween 默认的
 // 快速启动缓动观感更舒缓，不会"唰"地一下变亮
 private val ExitMaskEasing = CubicBezierEasing(0.45f, 0f, 0.8f, 1f)
