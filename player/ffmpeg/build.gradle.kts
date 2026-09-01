@@ -19,7 +19,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    ndkVersion = "26.1.10909125"
+    ndkVersion = "28.2.13676358"
 
     externalNativeBuild {
         cmake {

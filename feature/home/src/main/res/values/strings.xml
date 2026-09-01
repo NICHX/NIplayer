@@ -31,7 +31,6 @@
     <string name="thumbnail_default">默认</string>
     <string name="thumbnail_wb_on"> · 回写</string>
     <string name="thumbnail_wb_off"> · 不回写</string>
-    <string name="thumbnail_custom_suffix">（%1$ss）</string>
 
     <!-- 网络错误 -->
     <string name="error_network_host">无法连接到服务器，请检查网络或地址</string>
@@ -299,13 +298,9 @@
     <string name="settings_entry_theme_sub">外观与配色</string>
     <string name="settings_entry_language">语言</string>
     <string name="settings_entry_language_sub">应用界面语言</string>
-    <string name="settings_entry_glass">玻璃不透明度</string>
-    <string name="settings_entry_glass_sub">调节玻璃浮层的通透程度</string>
-    <string name="settings_glass_title">玻璃</string>
-    <string name="settings_glass_opacity">不透明度</string>
-    <string name="settings_glass_desc">导航栏、顶栏等薄浮层与对话框、菜单的底色不透明度分开调节。</string>
-    <string name="settings_glass_helper">数值越高玻璃越实，复杂或深色内容下的文字对比越清晰。</string>
-    <string name="settings_glass_overlay_opacity">导航栏等浮层</string>
+    <string name="settings_glass_title">玻璃不透明度</string>
+    <string name="settings_glass_overlay_opacity">导航栏</string>
+    <string name="settings_glass_top_bar_opacity">顶栏</string>
     <string name="settings_glass_panel_opacity">弹窗与菜单</string>
     <string name="settings_entry_update">检查更新</string>
     <string name="settings_entry_update_sub">检查并下载新版本</string>
@@ -336,8 +331,16 @@
     <string name="storage_file_cancel_multi_select">取消多选</string>
     <string name="storage_file_selected_count">已选 %1$d 项</string>
     <string name="storage_file_enter_multi_select">进入多选</string>
-    <string name="storage_file_mixed_add_title">添加到歌单</string>
-    <string name="storage_file_mixed_add_body">歌单仅支持音频，将添加 %1$d 个音频、跳过 %2$d 个其他文件，继续？</string>
+    <string name="more">更多</string>
+    <string name="move_to">移动到</string>
+    <string name="copy_to">复制到</string>
+    <string name="storage_file_qa_added_batch">已添加 %1$d 项到快速访问</string>
+    <string name="storage_file_moved_count">已移动 %1$d 项</string>
+    <string name="storage_file_move_partial">移动部分完成（%1$d/%2$d）</string>
+    <string name="storage_file_copied_count">已复制 %1$d 项</string>
+    <string name="storage_file_copy_partial">复制部分完成（%1$d/%2$d）</string>
+    <string name="storage_file_batch_move_title">移动 %1$d 项到</string>
+    <string name="storage_file_batch_copy_title">复制 %1$d 项到</string>
     <string name="storage_file_sort">排序</string>
     <string name="storage_file_sort_name">名称</string>
     <string name="storage_file_sort_type">类型</string>
@@ -365,6 +368,9 @@
     <string name="storage_file_rename_new_name">新名称</string>
     <string name="storage_file_move_title">移动「%1$s」到</string>
     <string name="storage_file_move_no_target">没有可移动的目标文件夹</string>
+    <string name="storage_file_move_root">根目录</string>
+    <string name="move_here">移动到此处</string>
+    <string name="copy_here">复制到此处</string>
     <string name="storage_file_properties_title">属性</string>
     <string name="storage_file_info_name">名称</string>
     <string name="storage_file_info_type">类型</string>
@@ -698,9 +704,6 @@
     <string name="player_show_hidden">显示隐藏文件/文件夹</string>
     <string name="player_show_hidden_desc">显示以 . 开头的隐藏文件和文件夹，如 .thumb/、.DS_Store 等</string>
     <string name="player_frame_position_title">取帧位置</string>
-    <string name="player_custom_seconds_title">自定义秒数</string>
-    <string name="player_custom_seconds_hint">输入从第几秒取帧。</string>
-    <string name="player_seconds_label">秒</string>
     <string name="player_assrt_token_title">设置 ASSRT Token</string>
     <string name="player_assrt_token_hint">在 assrt.net 注册获取 API Token，用于字幕搜索。</string>
     <string name="player_assrt_token_placeholder">输入 ASSRT Token</string>

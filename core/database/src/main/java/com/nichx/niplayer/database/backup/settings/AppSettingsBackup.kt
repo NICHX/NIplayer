@@ -82,7 +82,6 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             thumbnailSaveInSameDir = ThumbnailSettings.saveInSameDir,
             thumbnailUpdateOnExit = ThumbnailSettings.updateOnExit,
             thumbnailFramePositionKey = ThumbnailSettings.framePositionKey,
-            thumbnailCustomPositionSeconds = ThumbnailSettings.customPositionSeconds,
             thumbnailGenerationModeKey = ThumbnailSettings.generationMode.key,
             thumbnailLibraryModes = ThumbnailSettings.snapshotAllLibraryModes().ifEmpty { null },
             thumbnailLibraryWriteBacks = ThumbnailSettings.snapshotAllLibraryWriteBacks().ifEmpty { null },
@@ -160,7 +159,6 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.thumbnailSaveInSameDir?.let { ThumbnailSettings.saveInSameDir = it }
         s.thumbnailUpdateOnExit?.let { ThumbnailSettings.updateOnExit = it }
         s.thumbnailFramePositionKey?.let { ThumbnailSettings.framePositionKey = it }
-        s.thumbnailCustomPositionSeconds?.let { ThumbnailSettings.customPositionSeconds = it }
         s.thumbnailGenerationModeKey?.let { key ->
             ThumbnailSettings.generationMode = ThumbnailGenerationMode.fromKey(key)
         }
@@ -252,7 +250,6 @@ data class AppSettingsData(
     val thumbnailSaveInSameDir: Boolean? = null,
     val thumbnailUpdateOnExit: Boolean? = null,
     val thumbnailFramePositionKey: String? = null,
-    val thumbnailCustomPositionSeconds: Int? = null,
     val thumbnailGenerationModeKey: String? = null,
     val thumbnailLibraryModes: Map<Int, String>? = null,
     val thumbnailLibraryWriteBacks: Map<Int, Boolean>? = null,

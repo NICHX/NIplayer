@@ -344,6 +344,135 @@ class StorageFileViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 批量添加选中文件到快速访问（多选模式）。
+     *
+     * 仅非目录文件可入快速访问；已收藏的跳过去重。sortIndex 从当前最大值连续递增。
+     * 完成后退出多选模式。
+     *
+     * @param files 待添加文件列表
+     */
+    fun addFilesToQuickAccess(files: List<StorageFile>) {
+        val library = currentLibrary ?: return
+        val toAdd = files.filter { !it.isDirectory }
+        if (toAdd.isEmpty()) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                var nextIndex = (quickAccessDao.getMaxSortIndex() ?: -1) + 1
+                toAdd.forEach { file ->
+                    if (quickAccessDao.get(library.id, file.path) == null) {
+                        quickAccessDao.insert(
+                            QuickAccessEntity(
+                                name = file.name,
+                                storagePath = file.path,
+                                isDirectory = false,
+                                libraryId = library.id,
+                                sortIndex = nextIndex++,
+                            )
+                        )
+                    }
+                }
+            }
+            exitMultiSelect()
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_qa_added_batch, toAdd.size)))
+        }
+    }
+
+    /**
+     * 批量移动选中文件/目录到指定目标目录（多选模式）。
+     *
+     * 逐个调用 [Storage.move]，目录移动时同步更新加密配置前缀。
+     * 完成后退出多选模式并刷新当前目录。
+     *
+     * @param files 待移动文件列表
+     * @param targetDirectory 目标目录（必须已存在）
+     */
+    fun moveFiles(files: List<StorageFile>, targetDirectory: StorageFile) {
+        val s = storage ?: return
+        if (files.isEmpty()) return
+        viewModelScope.launch {
+            var okCount = 0
+            withContext(Dispatchers.IO) {
+                files.forEach { file ->
+                    if (runCatching { s.move(file, targetDirectory) }.getOrDefault(false)) {
+                        okCount++
+                        if (file.isDirectory) {
+                            val oldPath = file.path.trimEnd('/')
+                            val newPath = if (targetDirectory.path.isEmpty()) file.name
+                            else "${targetDirectory.path.trimEnd('/')}/${file.name}"
+                            if (oldPath != newPath) {
+                                encryptedFolderManager.renameFolderPrefix(storageId, oldPath, newPath)
+                            }
+                        }
+                    }
+                }
+            }
+            exitMultiSelect()
+            if (okCount == files.size) {
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_moved_count, okCount)))
+            } else {
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_move_partial, okCount, files.size)))
+            }
+            refreshCurrentDirectory()
+        }
+    }
+
+    /**
+     * 批量复制选中文件/目录到指定目标目录（多选模式）。
+     *
+     * 逐个调用 [Storage.copy]（默认实现为流式递归复制）。
+     * 完成后退出多选模式并刷新当前目录。
+     *
+     * @param files 待复制文件列表
+     * @param targetDirectory 目标目录（必须已存在）
+     */
+    fun copyFiles(files: List<StorageFile>, targetDirectory: StorageFile) {
+        val s = storage ?: return
+        if (files.isEmpty()) return
+        viewModelScope.launch {
+            var okCount = 0
+            withContext(Dispatchers.IO) {
+                files.forEach { file ->
+                    if (runCatching { s.copy(file, targetDirectory) }.getOrDefault(false)) {
+                        okCount++
+                    }
+                }
+            }
+            exitMultiSelect()
+            if (okCount == files.size) {
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_copied_count, okCount)))
+            } else {
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_copy_partial, okCount, files.size)))
+            }
+            refreshCurrentDirectory()
+        }
+    }
+
+    /**
+     * 列出指定目录下的直接子目录（供目录选择器的层级浏览）。
+     *
+     * 不依赖当前浏览位置，可对任意绝对路径（如父目录）递归下钻。
+     *
+     * @param dirPath 目录相对路径，根目录为空字符串
+     */
+    suspend fun listSubfolders(dirPath: String): List<StorageFile> {
+        val s = storage ?: return emptyList()
+        val dir = makeDirectory(dirPath)
+        return withContext(Dispatchers.IO) {
+            runCatching { s.listFiles(dir).filter { it.isDirectory } }.getOrDefault(emptyList())
+        }
+    }
+
+    /** 由路径构造目录 [StorageFile]，供目录选择器确定当前位置 / 目标。 */
+    fun makeDirectory(path: String): StorageFile = object : AbstractStorageFile(
+        path = path,
+        name = path.substringAfterLast('/').ifEmpty { "/" },
+        isDirectory = true,
+        length = 0L,
+        lastModified = 0L,
+        isHidden = false,
+    ) {}
+
     /** 取消解锁（对话框取消按钮）：清除待解锁文件夹与错误提示。 */
     fun cancelUnlock() {
         _pendingUnlockFolder.value = null
@@ -1074,7 +1203,6 @@ class StorageFileViewModel @Inject constructor(
                                             when (val result = thumbnailManager.generateThumbnail(
                                             s, libId, file,
                                             positionKey = ThumbnailSettings.framePositionKey,
-                                            customSeconds = ThumbnailSettings.customPositionSeconds,
                                         )) {
                                                 is ThumbnailResult.Success -> {
                                                     synchronized(batchLock) {
@@ -1579,38 +1707,6 @@ class StorageFileViewModel @Inject constructor(
             } else {
                 _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_delete_failed)))
             }
-        }
-    }
-
-    /**
-     * 列出可作为移动目标的候选目录（当前存储源下的子目录，排除待移动文件自身及其子目录）。
-     *
-     * 用于"移动到"选择器。为避免复杂递归，仅列出当前目录的子目录 + 返回上级目录。
-     *
-     * @param file 待移动的文件（用于排除自身）
-     */
-    suspend fun listMoveTargets(file: StorageFile): List<StorageFile> {
-        val s = storage ?: return emptyList()
-        return withContext(Dispatchers.IO) {
-            val targets = mutableListOf<StorageFile>()
-            // 当前目录的子目录
-            val current = directoryStack.lastOrNull() ?: return@withContext emptyList()
-            runCatching {
-                s.listFiles(current).filter { it.isDirectory && it.name != file.name }
-            }.getOrDefault(emptyList()).let { targets.addAll(it) }
-            // 上级目录（若非根）
-            if (directoryStack.size > 1) {
-                val parent = directoryStack[directoryStack.size - 2]
-                targets.add(0, object : AbstractStorageFile(
-                    path = parent.path,
-                    name = "..",
-                    isDirectory = true,
-                    length = 0L,
-                    lastModified = 0L,
-                    isHidden = false,
-                ) {})
-            }
-            targets
         }
     }
 

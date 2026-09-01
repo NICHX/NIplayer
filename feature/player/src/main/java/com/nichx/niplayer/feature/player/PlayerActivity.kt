@@ -24,6 +24,7 @@ import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
+import com.nichx.niplayer.designsystem.components.LocalNiGlassTopBarOpacity
 import com.nichx.niplayer.designsystem.theme.NiTheme
 import com.nichx.niplayer.player.kernel.PlaybackState
 import com.nichx.niplayer.player.kernel.VideoSize
@@ -71,6 +72,7 @@ class PlayerActivity : ComponentActivity() {
             // 与 MainActivity 一致的主题注入：读取主题设置 + 玻璃浮层不透明度，经 NiTheme 下发
             val themeConfig by ThemeSettings.themeFlow.collectAsStateWithLifecycle()
             val glassOpacity by GlassSettings.opacityFlow.collectAsStateWithLifecycle()
+            val glassTopBarOpacity by GlassSettings.topBarOpacityFlow.collectAsStateWithLifecycle()
             val glassPanelOpacity by GlassSettings.panelOpacityFlow.collectAsStateWithLifecycle()
             val darkTheme = when (themeConfig.mode) {
                 ThemeSettings.Mode.LIGHT -> false
@@ -80,6 +82,7 @@ class PlayerActivity : ComponentActivity() {
             NiTheme(darkTheme = darkTheme, scheme = themeConfig.scheme) {
                 CompositionLocalProvider(
                     LocalNiGlassOpacity provides glassOpacity,
+                    LocalNiGlassTopBarOpacity provides glassTopBarOpacity,
                     LocalNiGlassPanelOpacity provides glassPanelOpacity,
                 ) {
                     PlayerScreen(onBack = { finish() })

@@ -8,7 +8,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
@@ -39,8 +38,16 @@ val LocalNiBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 /** 是否启用液态玻璃效果（默认开启）。 */
 val LocalNiGlassEnabled = staticCompositionLocalOf { true }
 
-/** 液态玻璃浮层底色不透明度（0..1），由根布局读取 GlassSettings 后下发，统一控制各玻璃浮层。 */
+/** 液态玻璃**底部薄浮层**（导航栏/多选操作栏）底色不透明度（0..1），由根布局读取 GlassSettings 后下发。 */
 val LocalNiGlassOpacity = staticCompositionLocalOf { 0.62f }
+
+/**
+ * 液态玻璃**顶栏**底色不透明度（0..1）。
+ *
+ * 与 [LocalNiGlassOpacity]（导航栏/多选操作栏等底部薄浮层）分开设置：顶栏透明度可独立调节。
+ * 由根布局读取 [com.nichx.niplayer.datastore.GlassSettings.topBarOpacityFlow] 下发。
+ */
+val LocalNiGlassTopBarOpacity = staticCompositionLocalOf { 0.62f }
 
 /**
  * 液态玻璃**面板**（对话框/菜单）底色不透明度（0..1）。
@@ -92,28 +99,29 @@ fun niGlassBorderColor(): Color =
     if (NiExtraColors.current.isDark) Color.White.copy(alpha = 0.28f) else Color.Black.copy(alpha = 0.22f)
 
 /**
- * 构建液态玻璃 HazeStyle：以页面背景为基底，通过 [Color.luminance] 判断明暗主题
- * 微调 tint 透明度，模拟玻璃通透折射。可配置模糊半径。
+ * 构建液态玻璃 HazeStyle：以页面背景为基底，按不透明度设置渲染色调。可配置模糊半径。
  *
  * 注意：[HazeStyle.backgroundColor] 设为页面背景色（主题 background）而非透明——当背后内容
  * 空白/透明时，透明背景会让 haze 模糊纹理按默认白色处理导致顶栏发白；改用页面背景色后空白区域
- * 与页面融为一体。tint 刻意调低（亮色 0.10 / 暗色 0.15），避免多层半透明 surface 叠加
- * 使顶栏在浅色主题下整体发白。
+ * 与页面融为一体。tint 透明度跟随 [opacity]，100% 时完全不透明，模糊叠层被表面色完全覆盖。
+ *
+ * @param opacity 玻璃色调透明度，默认跟随顶栏不透明度；预览等场景可显式传各自滑条值
+ * @param tintColor 玻璃色调色，默认当前主题 surface；预览可传所选方案的 surface 保持一致
  */
 @OptIn(ExperimentalHazeApi::class)
 @Composable
 @ReadOnlyComposable
-fun niGlassStyle(blurRadius: Dp = NiGlassDefaults.BlurRadius): HazeStyle {
+fun niGlassStyle(
+    blurRadius: Dp = NiGlassDefaults.BlurRadius,
+    opacity: Float = LocalNiGlassTopBarOpacity.current,
+    tintColor: Color = MaterialTheme.colorScheme.surface,
+): HazeStyle {
     val background = MaterialTheme.colorScheme.background
-    val surface = MaterialTheme.colorScheme.surface
-    // 玻璃色调刻意调低：亮色主题 0.10、暗色 0.15，再乘以统一玻璃不透明度（LocalNiGlassOpacity）
-    val baseAlpha = if (surface.luminance() >= 0.5f) 0.10f else 0.15f
-    val opacity = LocalNiGlassOpacity.current
     return HazeStyle(
         blurRadius = blurRadius,
         backgroundColor = background,
         tint = HazeTint(
-            surface.copy(alpha = baseAlpha * opacity),
+            tintColor.copy(alpha = opacity),
         ),
     )
 }
@@ -125,6 +133,8 @@ fun niGlassStyle(blurRadius: Dp = NiGlassDefaults.BlurRadius): HazeStyle {
  * @param state 共享的 Haze 状态
  * @param glassEnabled 是否启用玻璃
  * @param progressive 渐进渐变模糊（顶栏用），null 表示均匀模糊（底栏用）
+ * @param opacity 玻璃色调透明度，默认跟随顶栏不透明度；预览等场景可显式传各自滑条值
+ * @param tintColor 玻璃色调色，默认当前主题 surface；预览可传所选方案的 surface 保持一致
  */
 @OptIn(ExperimentalHazeApi::class)
 @Composable
@@ -132,11 +142,13 @@ fun Modifier.niHazeEffect(
     state: HazeState?,
     glassEnabled: Boolean = LocalNiGlassEnabled.current,
     progressive: HazeProgressive? = null,
+    opacity: Float = LocalNiGlassTopBarOpacity.current,
+    tintColor: Color = MaterialTheme.colorScheme.surface,
 ): Modifier = this.then(
     if (state != null && glassEnabled) {
         Modifier.hazeEffect(
             state = state,
-            style = niGlassStyle(),
+            style = niGlassStyle(opacity = opacity, tintColor = tintColor),
         ) {
             this.progressive = progressive
         }

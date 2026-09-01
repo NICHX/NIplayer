@@ -3,10 +3,12 @@ package com.nichx.niplayer.designsystem.components
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,10 +32,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -229,12 +230,15 @@ private fun DropdownGlassOverlay(
                 onClick = request.onDismiss,
             ),
     ) {
-        // 展开动画：淡入 + 从顶点（左上角）缩放展开，仿 M3 DropdownMenu
+        // 展开动画：从顶部向下垂直展开 + 淡入，仿 M3 DropdownMenu 的下拉效果
         AnimatedVisibility(
             visible = active,
-            enter = fadeIn(tween(120)) + scaleIn(
-                initialScale = 0.9f,
-                transformOrigin = TransformOrigin(0f, 0f),
+            enter = fadeIn(tween(160, easing = FastOutSlowInEasing)) + expandVertically(
+                expandFrom = Alignment.Top,
+                animationSpec = tween(200, easing = FastOutSlowInEasing),
+            ),
+            exit = fadeOut(tween(100, easing = FastOutSlowInEasing)) + shrinkVertically(
+                shrinkTowards = Alignment.Top,
                 animationSpec = tween(160, easing = FastOutSlowInEasing),
             ),
         ) {
@@ -243,13 +247,20 @@ private fun DropdownGlassOverlay(
                 modifier = Modifier
                     .offset { position }
                     .onGloballyPositioned { coords ->
-                        val pos = coords.localToRoot(Offset.Zero)
-                        val maxX = screenSize.width - coords.size.width
-                        val maxY = screenSize.height - coords.size.height
-                        val corrected = IntOffset(
-                            pos.x.toInt().coerceIn(0, maxOf(0, maxX)),
-                            pos.y.toInt().coerceIn(0, maxOf(0, maxY)),
-                        )
+                        val menuW = coords.size.width
+                        val menuH = coords.size.height
+                        val maxX = screenSize.width - menuW
+                        val maxY = screenSize.height - menuH
+                        // 水平贴合锚点并限制在屏内
+                        val x = request.anchor.x.coerceIn(0, maxOf(0, maxX))
+                        // 默认从锚点下方展开
+                        var y = request.anchor.y + anchorGapPx
+                        // 紧贴屏幕底部（下方放不下）时改为向上展开，
+                        // 避免菜单被压制到屏幕底、叠压底部操作栏之上
+                        if (y + menuH > screenSize.height) {
+                            y = request.anchor.y - menuH - anchorGapPx
+                        }
+                        val corrected = IntOffset(x, y.coerceIn(0, maxOf(0, maxY)))
                         if (corrected != position) position = corrected
                     }
                     .width(IntrinsicSize.Max)

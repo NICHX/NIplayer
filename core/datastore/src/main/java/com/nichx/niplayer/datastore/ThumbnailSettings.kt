@@ -15,7 +15,6 @@ import com.tencent.mmkv.MMKV
  * - [generationMode]：生成策略（全部生成 / 仅播放后生成 / 关闭）
  * - [saveInSameDir]：远端存储时是否将缩略图回写到服务器同目录（.thumb/ 下）
  * - [framePosition]：取帧位置策略
- * - [customPositionSeconds]：自定义取帧秒数（framePosition=CUSTOM 时生效）
  *
  * 存储源级生成策略覆盖见 [getLibraryGenerationMode]（旧版布尔开关自动迁移，
  * 见 [getLibraryGenerationMode] 注释）。
@@ -30,7 +29,6 @@ object ThumbnailSettings {
     private const val KEY_GENERATE_FOR_AUDIO = "generate_for_audio"
     private const val KEY_SAVE_IN_SAME_DIR = "save_in_same_dir"
     private const val KEY_FRAME_POSITION = "thumbnail_frame_position"
-    private const val KEY_CUSTOM_POSITION_SECONDS = "thumbnail_custom_position_seconds"
     private const val KEY_UPDATE_ON_EXIT = "thumbnail_update_on_exit"
 
     /** 总开关：是否生成缩略图。默认 true。 */
@@ -62,11 +60,6 @@ object ThumbnailSettings {
     var framePositionKey: String
         get() = mmkv.decodeString(KEY_FRAME_POSITION, "5s") ?: "5s"
         set(value) { mmkv.encode(KEY_FRAME_POSITION, value) }
-
-    /** 自定义取帧秒数（仅 framePositionKey="custom" 时生效）。默认 10。 */
-    var customPositionSeconds: Int
-        get() = mmkv.decodeInt(KEY_CUSTOM_POSITION_SECONDS, 10)
-        set(value) { mmkv.encode(KEY_CUSTOM_POSITION_SECONDS, value) }
 
     /**
      * 退出播放后是否用最后一帧更新列表缩略图。默认 false（保持默认缩略图）。
@@ -237,8 +230,7 @@ enum class ThumbnailGenerationMode(val key: String, @StringRes val labelRes: Int
 enum class ThumbnailFramePosition(val key: String, @StringRes val labelRes: Int) {
     POS_5S("5s", R.string.thumbnail_frame_5s),
     POS_10_PCT("10pct", R.string.thumbnail_frame_10pct),
-    POS_50_PCT("50pct", R.string.thumbnail_frame_50pct),
-    POS_CUSTOM("custom", R.string.thumbnail_frame_custom);
+    POS_50_PCT("50pct", R.string.thumbnail_frame_50pct);
 
     companion object {
         fun fromKey(key: String): ThumbnailFramePosition =

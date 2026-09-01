@@ -190,6 +190,50 @@ interface Storage {
     suspend fun move(file: StorageFile, targetDirectory: StorageFile): Boolean = false
 
     /**
+     * 复制文件或目录（含子目录）到另一目录。
+     *
+     * 用于文件浏览页批量"复制"操作。默认实现基于流式原语（[listFiles]/[createDirectory]/
+     * [openInputStream]/[uploadFile]）递归复制：
+     * - 文件：读取源文件输入流并 [uploadFile] 到目标路径
+     * - 目录：先 [createDirectory] 建目标目录，再递归复制每个子项
+     *
+     * 因此任何实现了上述原语的存储都能获得复制能力；对支持服务端 COPY 的协议
+     * （如 WebDAV）可覆盖为更高效的实现。
+     *
+     * @param file 待复制的文件/目录
+     * @param targetDirectory 目标目录（必须已存在）
+     * @return 是否复制成功（含递归子项全部成功）
+     */
+    suspend fun copy(file: StorageFile, targetDirectory: StorageFile): Boolean {
+        if (file.path == targetDirectory.path) return false
+        val destPath = if (targetDirectory.path.isEmpty()) file.name
+        else "${targetDirectory.path}/${file.name}"
+        return copyRecursive(file, destPath)
+    }
+
+    /** [copy] 递归内部实现：按源结构复制到 destPath。 */
+    private suspend fun copyRecursive(source: StorageFile, destPath: String): Boolean {
+        return try {
+            if (source.isDirectory) {
+                if (!createDirectory(destPath)) return false
+                val children = listFiles(source)
+                for (child in children) {
+                    if (child.path == source.path) continue
+                    if (!copyRecursive(child, "$destPath/${child.name}")) return false
+                }
+                true
+            } else {
+                val input = openInputStream(source)
+                uploadFile(destPath, input)
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
      * 流式上传文件到远程存储。
      *
      * 用于文件浏览页"上传文件"功能。读取 [inputStream] 的全部数据写入远程路径。

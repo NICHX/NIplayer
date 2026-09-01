@@ -1,6 +1,7 @@
 package com.nichx.niplayer.designsystem.components
 
 import android.os.Environment
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -59,84 +60,24 @@ import com.nichx.niplayer.designsystem.R
 import java.io.File
 
 /**
- * 下载目标对话框的通用面板外壳（各 feature 共享）。
+ * 宽面板对话框的通用外壳（各 feature 共享）。
  *
- * - 宽面板（显式控制宽度，非平台默认窄宽）
- * - [forceDark] 为 true（视频播放器等固定深色场景）时强制深色配色；否则跟随应用主题
- * - 外部点击不关闭（dismissOnClickOutside=false），标题右侧为「返回」按钮（关闭当前层）
+ * **液态玻璃材质**：面板采用项目玻璃设计令牌——磨砂表面 [niFrostSurfaceColor] +
+ * 玻璃细描边 [niGlassBorderColor]，宽面板显式控制宽度（min=320, max=480，非平台默认窄宽）。
+ * [forceDark] = true（视频播放器等）时强制深色配色。
+ *
+ * 保持独立 Dialog（而非全局玻璃浮层）：这些选择器内含需实时更新的交互状态（如目录导航），
+ * 浮层宿主按 id 去重、内容仅组合一次无法响应状态变化。外部点击不关闭
+ * （dismissOnClickOutside=false），标题右侧为「关闭」按钮。
  */
 @Composable
-internal fun DownloadDialogShell(
+fun DownloadDialogShell(
     forceDark: Boolean,
     title: String,
     onClose: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    val panel: @Composable () -> Unit = {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            // 系统样式压暗遮罩（不拦截点击，外部点击不关闭）
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f)),
-            )
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 16.dp,
-                modifier = Modifier
-                    .widthIn(min = 320.dp, max = 480.dp)
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-            ) {
-                Column {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 20.dp, top = 12.dp, end = 8.dp, bottom = 4.dp),
-                    ) {
-                        Text(
-                            text = title,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        IconButton(onClick = onClose) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = stringResource(R.string.action_close),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                    )
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    ) {
-                        content()
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        actions()
-                    }
-                }
-            }
-        }
-    }
     Dialog(
         onDismissRequest = { /* 外部点击不关闭，仅返回/按钮可关 */ },
         properties = DialogProperties(
@@ -146,9 +87,87 @@ internal fun DownloadDialogShell(
         ),
     ) {
         if (forceDark) {
-            MaterialTheme(colorScheme = darkColorScheme()) { panel() }
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                WideGlassPanel(title = title, onClose = onClose, content = content, actions = actions)
+            }
         } else {
-            panel()
+            WideGlassPanel(title = title, onClose = onClose, content = content, actions = actions)
+        }
+    }
+}
+
+/** 液态玻璃宽面板主体：压暗遮罩 + 磨砂玻璃面板（标题行/分隔线/内容区/底部操作行）。 */
+@Composable
+private fun WideGlassPanel(
+    title: String,
+    onClose: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(24.dp)
+    // 项目玻璃设计令牌：磨砂表面 + 玻璃细描边（独立 Dialog 窗口，不依赖 backdrop 真模糊）
+    val panelSurface = niFrostSurfaceColor()
+    val borderColor = niGlassBorderColor()
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        // 系统样式压暗遮罩（不拦截点击，外部点击不关闭）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f)),
+        )
+        Surface(
+            shape = shape,
+            color = panelSurface,
+            border = BorderStroke(NiGlassHairWidth, borderColor),
+            modifier = Modifier
+                .widthIn(min = 320.dp, max = 480.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, top = 12.dp, end = 8.dp, bottom = 4.dp),
+                ) {
+                    Text(
+                        text = title,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    IconButton(onClick = onClose) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.action_close),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                )
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                ) {
+                    content()
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    actions()
+                }
+            }
         }
     }
 }

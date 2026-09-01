@@ -23,7 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,7 +45,6 @@ import com.nichx.niplayer.designsystem.components.NiDialogItemRow
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiListItemDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
-import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTopBar
 
 /**
@@ -72,12 +70,10 @@ fun MediaLibrarySettingsScreen(
     var saveInSameDir by remember { mutableStateOf(ThumbnailSettings.saveInSameDir) }
     var updateOnExit by remember { mutableStateOf(ThumbnailSettings.updateOnExit) }
     var framePositionKey by remember { mutableStateOf(ThumbnailSettings.framePositionKey) }
-    var customPositionSeconds by remember { mutableStateOf(ThumbnailSettings.customPositionSeconds) }
     var generationMode by remember { mutableStateOf(ThumbnailSettings.generationMode) }
     var showOnlyMediaFiles by remember { mutableStateOf(FileBrowserSettings.showOnlyMediaFiles) }
     var showHiddenFiles by remember { mutableStateOf(FileBrowserSettings.showHiddenFiles) }
     var showFramePositionDialog by remember { mutableStateOf(false) }
-    var showCustomPositionDialog by remember { mutableStateOf(false) }
     var showStorageHelpDialog by remember { mutableStateOf(false) }
     var showGenerationModeDialog by remember { mutableStateOf(false) }
     var configDialogLibId by remember { mutableStateOf<Int?>(null) }
@@ -174,8 +170,7 @@ fun MediaLibrarySettingsScreen(
                     HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     SettingClickRow(
                         label = stringResource(R.string.player_thumbnail_frame),
-                        value = stringResource(ThumbnailFramePosition.fromKey(framePositionKey).labelRes) +
-                            if (framePositionKey == "custom") stringResource(R.string.thumbnail_custom_suffix, customPositionSeconds) else "",
+                        value = stringResource(ThumbnailFramePosition.fromKey(framePositionKey).labelRes),
                         onClick = { showFramePositionDialog = true },
                     )
                 }
@@ -280,57 +275,16 @@ fun MediaLibrarySettingsScreen(
             onDismiss = { showFramePositionDialog = false },
             items = ThumbnailFramePosition.entries.map { option ->
                 NiDialogItem(
-                    label = stringResource(option.labelRes) +
-                        if (option.key == "custom") stringResource(R.string.thumbnail_custom_suffix, customPositionSeconds) else "",
+                    label = stringResource(option.labelRes),
                     isSelected = framePositionKey == option.key,
                     onClick = {
-                        if (option.key == "custom") {
-                            showFramePositionDialog = false
-                            showCustomPositionDialog = true
-                        } else {
-                            framePositionKey = option.key
-                            ThumbnailSettings.framePositionKey = option.key
-                            showFramePositionDialog = false
-                        }
+                        framePositionKey = option.key
+                        ThumbnailSettings.framePositionKey = option.key
+                        showFramePositionDialog = false
                     },
                 )
             },
         )
-    }
-
-    if (showCustomPositionDialog) {
-        var seconds by rememberSaveable { mutableStateOf(customPositionSeconds.toString()) }
-        NiInfoDialog(
-            title = stringResource(R.string.player_custom_seconds_title),
-            onDismiss = { showCustomPositionDialog = false },
-            actions = {
-                TextButton(onClick = { showCustomPositionDialog = false }) { Text(stringResource(R.string.cancel)) }
-                TextButton(onClick = {
-                    val s = seconds.toIntOrNull() ?: 10
-                    if (s > 0) {
-                        customPositionSeconds = s
-                        ThumbnailSettings.customPositionSeconds = s
-                        framePositionKey = "custom"
-                        ThumbnailSettings.framePositionKey = "custom"
-                    }
-                    showCustomPositionDialog = false
-                }) { Text(stringResource(R.string.save)) }
-            },
-        ) {
-            Text(
-                stringResource(R.string.player_custom_seconds_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-            )
-            Spacer(Modifier.size(8.dp))
-            NiTextField(
-                value = seconds,
-                onValueChange = { seconds = it.filter { c -> c.isDigit() } },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = "10",
-                label = stringResource(R.string.player_seconds_label),
-            )
-        }
     }
 
     if (showGenerationModeDialog) {

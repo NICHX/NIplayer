@@ -49,7 +49,8 @@ import okhttp3.Request
 sealed class ThumbnailResult {
     /** 生成成功，path 为本地 JPEG 文件绝对路径。 */
     data class Success(val path: String) : ThumbnailResult()
-    /** 视频时长过短（< [ThumbnailManager.MIN_DURATION_MS]），不生成缩略图。 */
+    /** 历史遗留结果类型，当前业务不再生产：短视频（< [ThumbnailManager.MIN_DURATION_MS]）
+     *  改为取第一个关键帧生成缩略图，仅保留以兼容旧调用方对 when 的穷尽性检查。 */
     data object TooShort : ThumbnailResult()
     /** 生成失败（IO 错误、解码失败等）。 */
     data object Failed : ThumbnailResult()
@@ -96,7 +97,7 @@ data class RemoteThumbnailRequest(
  *     [MediaDataSource] → [MediaMetadataRetriever.setDataSource] 通过随机读取取帧
  * - **帧位置策略**：优先取第 5 秒（避开片头 logo，短视频友好），
  *   fallback 到 duration*0.1 / duration*0.5（ms → us，OPTION_CLOSEST_SYNC），
- *   durationMs < 15s 视为过短返回 [ThumbnailResult.TooShort]。
+ *   短视频（durationMs < 15s）改为取第一个关键帧。本地视频跳过时长检查，始终取帧。
  * - **缩放**：按 maxWidth=480px 等比缩放，JPEG quality=90 落盘。
  * - **HDR 色调映射**：Dolby Vision / HDR10 / HLG 等 HDR 视频在 API < 34 上
  *   [MediaMetadataRetriever.getFrameAtTime] 不做 tone mapping，返回的 Bitmap 像素值
@@ -170,9 +171,7 @@ class ThumbnailManager @Inject constructor(
      * @param storageId 媒体库 id，参与本地缓存 key
      * @param file 目标视频文件
      * @param positionKey 取帧位置策略 key，对应 [com.nichx.niplayer.datastore.ThumbnailSettings.framePositionKey]。
-     *   取值 "5s"（默认）、"10pct"、"50pct"、"custom"。
-     * @param customSeconds 自定义秒数（仅 positionKey="custom" 时生效）。
-     *   对应 [com.nichx.niplayer.datastore.ThumbnailSettings.customPositionSeconds]。
+     *   取值 "5s"（默认）、"10pct"、"50pct"。
      * @return [ThumbnailResult]，UI 层据此区分"成功显示图"/"太短显示 <15s"/"失败显示占位图标"
      */
     suspend fun generateThumbnail(
@@ -180,7 +179,6 @@ class ThumbnailManager @Inject constructor(
         storageId: Int,
         file: StorageFile,
         positionKey: String = DEFAULT_POSITION_KEY,
-        customSeconds: Int = 10,
     ): ThumbnailResult = withContext(Dispatchers.IO) {
             // ARCH-3 修复：fail-fast 防止误传音频/图片文件（getFrameAtTime 对音频静默返回 null）
             require(MediaFileTypes.isVideoFile(file.name)) {
@@ -209,7 +207,7 @@ class ThumbnailManager @Inject constructor(
                 if (url != null && (url.startsWith("file") || url.startsWith("content"))
                 ) {
                     // Local / DocumentFile：通过 URL 取帧
-                    generateFromUrl(url, cacheFile, positionKey, customSeconds, skipDurationCheck)
+                    generateFromUrl(url, cacheFile, positionKey, skipDurationCheck)
                 } else if (url != null && url.startsWith("http", ignoreCase = true)) {
                     // WebDAV / HTTP URL：优先使用 URL + Headers 取帧（Android 内建 HTTP 栈
                     // 比自定义 MediaDataSource 更稳定），回退到 MediaDataSource
@@ -222,15 +220,15 @@ class ThumbnailManager @Inject constructor(
                     if (!storage.trustAllCertificates) {
                         val headers = storage.getPlayHeaders()
                         if (headers.isNotEmpty()) {
-                            val r = generateFromUrl(url, headers, cacheFile, positionKey, customSeconds, skipDurationCheck)
+                            val r = generateFromUrl(url, headers, cacheFile, positionKey, skipDurationCheck)
                             if (r is ThumbnailResult.Success) return@withLock r
                         }
                     }
                     val dataSource = storage.openMediaDataSource(file)
                     if (dataSource != null) {
-                        generateFromDataSource(dataSource, cacheFile, positionKey, customSeconds, skipDurationCheck)
+                        generateFromDataSource(dataSource, cacheFile, positionKey, skipDurationCheck)
                     } else {
-                        generateFromUrl(url, cacheFile, positionKey, customSeconds, skipDurationCheck)
+                        generateFromUrl(url, cacheFile, positionKey, skipDurationCheck)
                     }
                 } else {
                     // SMB：通过 MediaDataSource 随机读取取帧
@@ -240,7 +238,7 @@ class ThumbnailManager @Inject constructor(
                         Log.w(TAG, "openMediaDataSource returned null for ${file.path}")
                         return@withLock ThumbnailResult.Failed
                     }
-                    generateFromDataSource(dataSource, cacheFile, positionKey, customSeconds, skipDurationCheck)
+                    generateFromDataSource(dataSource, cacheFile, positionKey, skipDurationCheck)
                 }
             }
             // BUG-T7 修复：生成后检查缓存目录大小，超出阈值时淘汰最旧文件
@@ -913,11 +911,11 @@ class ThumbnailManager @Inject constructor(
         return mapped
     }
 
-    private fun generateFromUrl(url: String, cacheFile: File, positionKey: String, customSeconds: Int, skipDurationCheck: Boolean = false): ThumbnailResult {
+    private fun generateFromUrl(url: String, cacheFile: File, positionKey: String, skipDurationCheck: Boolean = false): ThumbnailResult {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, Uri.parse(url))
-            extractAndSaveFrame(retriever, cacheFile, positionKey, customSeconds, skipDurationCheck)
+            extractAndSaveFrame(retriever, cacheFile, positionKey, skipDurationCheck)
         } catch (e: Exception) {
             Log.w(TAG, "generateFromUrl failed: ${e.message}")
             ThumbnailResult.Failed
@@ -926,11 +924,11 @@ class ThumbnailManager @Inject constructor(
         }
     }
 
-    private fun generateFromUrl(url: String, headers: Map<String, String>, cacheFile: File, positionKey: String, customSeconds: Int, skipDurationCheck: Boolean = false): ThumbnailResult {
+    private fun generateFromUrl(url: String, headers: Map<String, String>, cacheFile: File, positionKey: String, skipDurationCheck: Boolean = false): ThumbnailResult {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(url, headers)
-            extractAndSaveFrame(retriever, cacheFile, positionKey, customSeconds, skipDurationCheck)
+            extractAndSaveFrame(retriever, cacheFile, positionKey, skipDurationCheck)
         } catch (e: Exception) {
             Log.w(TAG, "generateFromUrl with headers failed: ${e.message}")
             ThumbnailResult.Failed
@@ -939,13 +937,13 @@ class ThumbnailManager @Inject constructor(
         }
     }
 
-    private fun generateFromDataSource(dataSource: MediaDataSource, cacheFile: File, positionKey: String, customSeconds: Int, skipDurationCheck: Boolean = false): ThumbnailResult {
+    private fun generateFromDataSource(dataSource: MediaDataSource, cacheFile: File, positionKey: String, skipDurationCheck: Boolean = false): ThumbnailResult {
         val retriever = MediaMetadataRetriever()
         var success = false
         var result: ThumbnailResult = ThumbnailResult.Failed
         try {
             retriever.setDataSource(dataSource)
-            result = extractAndSaveFrame(retriever, cacheFile, positionKey, customSeconds, skipDurationCheck)
+            result = extractAndSaveFrame(retriever, cacheFile, positionKey, skipDurationCheck)
             success = result is ThumbnailResult.Success
             when (result) {
                 is ThumbnailResult.Success -> Log.d(TAG, "Thumbnail generated: ${cacheFile.name}")
@@ -1028,7 +1026,8 @@ class ThumbnailManager @Inject constructor(
      * 从已 setDataSource 的 [MediaMetadataRetriever] 提取帧并保存到 [cacheFile]，
      * 直接使用 [positionMs] 作为取帧位置，取帧失败时 fallback 到 10%/50% 位置。
      *
-     * durationMs < 15s 视为过短返回 [ThumbnailResult.TooShort]。
+     * 短视频（durationMs < 15s）改为取第一个关键帧（0ms）生成缩略图；
+     * 本地视频（skipDurationCheck）仍按传入位置取帧。
      *
      * HDR 补偿：Dolby Vision / HDR10 / HLG 视频在 API < 34 上 getFrameAtTime 不做
      * tone mapping，调用 [applyHdrCompensationIfNeeded] 做线性增益补偿。
@@ -1041,15 +1040,20 @@ class ThumbnailManager @Inject constructor(
     ): ThumbnailResult {
         val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             ?.toLongOrNull()
-        // 仅当能确定时长且确实<15s时才判定为过短；本地视频不跳过（始终生成缩略图）
-        if (!skipDurationCheck && durationMs != null && durationMs < MIN_DURATION_MS) return ThumbnailResult.TooShort
-
-        val fallbackPositions = mutableListOf(positionMs)
-        if (durationMs != null) {
-            val tenPct = (durationMs * 0.1).toLong()
-            val fiftyPct = (durationMs * 0.5).toLong()
-            if (tenPct !in fallbackPositions) fallbackPositions.add(tenPct)
-            if (fiftyPct !in fallbackPositions) fallbackPositions.add(fiftyPct)
+        // 短视频（<15s）不再返回 TooShort，改为取第一个关键帧（0ms）生成缩略图；
+        // 本地视频（skipDurationCheck）不受此规则影响，始终按正常位置取帧
+        val isShort = !skipDurationCheck && durationMs != null && durationMs < MIN_DURATION_MS
+        val fallbackPositions = if (isShort) {
+            mutableListOf(0L)
+        } else {
+            mutableListOf(positionMs).also {
+                if (durationMs != null) {
+                    val tenPct = (durationMs * 0.1).toLong()
+                    val fiftyPct = (durationMs * 0.5).toLong()
+                    if (tenPct !in it) it.add(tenPct)
+                    if (fiftyPct !in it) it.add(fiftyPct)
+                }
+            }
         }
 
         // HDR 检测一次性完成，避免 fallback 循环内重复调用 extractMetadata
@@ -1080,9 +1084,10 @@ class ThumbnailManager @Inject constructor(
     /**
      * 从已 setDataSource 的 [MediaMetadataRetriever] 提取帧并保存到 [cacheFile]。
      *
-     * 帧位置策略：根据 [positionKey] 和 [customSeconds] 通过 [calculateFramePositionMs] 计算，
+     * 帧位置策略：根据 [positionKey] 通过 [calculateFramePositionMs] 计算，
      * fallback 到 duration*0.1 / duration*0.5（ms → us，OPTION_CLOSEST_SYNC）。
-     * durationMs < 15s 视为过短返回 [ThumbnailResult.TooShort]。
+     * 短视频（durationMs < 15s）改为取第一个关键帧（0ms）生成缩略图；
+     * 本地视频（skipDurationCheck）仍按用户配置位置取帧。
      *
      * HDR 补偿：Dolby Vision / HDR10 / HLG 视频在 API < 34 上 getFrameAtTime 不做
      * tone mapping，调用 [applyHdrCompensationIfNeeded] 做线性增益补偿。
@@ -1091,21 +1096,19 @@ class ThumbnailManager @Inject constructor(
         retriever: MediaMetadataRetriever,
         cacheFile: File,
         positionKey: String,
-        customSeconds: Int,
         skipDurationCheck: Boolean = false,
     ): ThumbnailResult {
         val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             ?.toLongOrNull()
-        // 仅当能确定时长且确实<15s时才判定为过短；本地视频不跳过（始终生成缩略图）
-        if (!skipDurationCheck && durationMs != null && durationMs < MIN_DURATION_MS) return ThumbnailResult.TooShort
-
-        val framePositionMs = if (durationMs != null) {
-            calculateFramePositionMs(durationMs, positionKey, customSeconds)
-        } else {
-            // duration 不可用时（如某些远程协议），对绝对位置仍遵循用户设置
-            when (positionKey) {
-                "custom" -> (customSeconds * 1000L).coerceAtLeast(0)
-                else -> DEFAULT_FRAME_MS
+        // 短视频（<15s）不再返回 TooShort，改为取第一个关键帧（0ms）生成缩略图；
+        // 本地视频（skipDurationCheck）不受此规则影响，始终按用户配置位置取帧
+        val isShort = !skipDurationCheck && durationMs != null && durationMs < MIN_DURATION_MS
+        val framePositionMs = when {
+            isShort -> 0L // 短视频取第一个关键帧
+            durationMs != null -> calculateFramePositionMs(durationMs, positionKey)
+            else -> {
+                // duration 不可用时（如某些远程协议），对绝对位置仍遵循用户设置
+                DEFAULT_FRAME_MS
             }
         }
         // 优先用户配置的取帧位置，失败则 fallback 到 10%/50% 位置
@@ -1657,7 +1660,6 @@ class ThumbnailManager @Inject constructor(
                                         when (val result = generateThumbnail(
                                             storage, storageId, file,
                                             positionKey = ThumbnailSettings.framePositionKey,
-                                            customSeconds = ThumbnailSettings.customPositionSeconds,
                                         )) {
                                             is ThumbnailResult.Success -> {
                                                 onLoaded(req.url, result.path)
@@ -2171,19 +2173,16 @@ class ThumbnailManager @Inject constructor(
  *
  * @param durationMs 视频时长（毫秒）
  * @param positionKey [ThumbnailSettings.framePositionKey]
- * @param customSeconds [ThumbnailSettings.customPositionSeconds]
  * @return 取帧位置（毫秒），始终在 [0, durationMs] 范围内
  */
 fun calculateFramePositionMs(
     durationMs: Long,
     positionKey: String,
-    customSeconds: Int = 10,
 ): Long {
     val frameMs = when (positionKey) {
         "5s" -> 5000L
         "10pct" -> (durationMs * 0.1).toLong()
         "50pct" -> (durationMs * 0.5).toLong()
-        "custom" -> (customSeconds * 1000L).toLong()
         else -> 5000L
     }
     return frameMs.coerceIn(0, durationMs)

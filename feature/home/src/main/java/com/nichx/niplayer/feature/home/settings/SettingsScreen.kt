@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircleOutline
@@ -272,7 +271,7 @@ enum class SettingsGroup(
     ),
     APPEARANCE(
         labelRes = R.string.settings_group_appearance,
-        entries = listOf(SettingsEntry.THEME, SettingsEntry.LANGUAGE, SettingsEntry.GLASS),
+        entries = listOf(SettingsEntry.THEME, SettingsEntry.LANGUAGE),
     ),
     ABOUT(
         labelRes = R.string.settings_group_about,
@@ -356,13 +355,6 @@ enum class SettingsEntry(
         subtitleRes = R.string.settings_entry_language_sub,
         icon = Icons.Filled.Language,
         iconBg = Color(0xFF6A1B9A),
-    ),
-    GLASS(
-        route = Routes.User.GLASS,
-        titleRes = R.string.settings_entry_glass,
-        subtitleRes = R.string.settings_entry_glass_sub,
-        icon = Icons.Filled.BlurOn,
-        iconBg = Color(0xFF7E57C2),
     ),
     UPDATE(
         route = null,

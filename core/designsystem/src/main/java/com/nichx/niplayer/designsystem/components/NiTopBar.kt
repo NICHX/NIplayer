@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.ExperimentalHazeApi
@@ -53,27 +52,26 @@ fun NiTopBar(
     fadeFromRatio: Float = 0f,
 ) {
     val hazeState = LocalHazeState.current
-    // 与底栏（NiGlassBottomBar）统一的「薄浮层不透明度」，设置内可同步调节
-    val glassOpacity = LocalNiGlassOpacity.current
-    // 半透明 scrim：保证顶栏文字在任何内容上方都清晰可读。
-    // 透明度由薄浮层不透明度驱动，明暗主题仅微调基底比例（亮色 0.18 / 暗色 0.25）。
+    // 顶栏透明度独立于底栏（NiGlassBottomBar），由 LocalNiGlassTopBarOpacity 驱动，设置内可单独调节
+    val glassOpacity = LocalNiGlassTopBarOpacity.current
+    // 100%：完全不透明，跳过渐进模糊叠层，避免任何半透明段
+    val solid = glassOpacity >= 1f
+    // 半透明 scrim：透明度直接由设置值驱动，100% 时完全不透明
     val scrimColor = remember(topBackground, glassOpacity) {
-        topBackground.copy(
-            alpha = (if (topBackground.luminance() >= 0.5f) 0.18f else 0.25f) * glassOpacity,
-        )
+        topBackground.copy(alpha = glassOpacity)
     }
-    // 渐显遮罩 Brush：顶部透明 -> 底部表面色（无 LocalHazeState 的渐变回退）
-    val fadeBrush = remember(topBackground, fadeFromRatio) {
+    // 渐显遮罩 Brush：顶部透明 -> 底部表面色（无 LocalHazeState 的渐变回退，透明度跟随设置）
+    val fadeBrush = remember(topBackground, fadeFromRatio, glassOpacity) {
         Brush.verticalGradient(
             0f to Color.Transparent,
             fadeFromRatio to Color.Transparent,
-            1f to topBackground,
+            1f to topBackground.copy(alpha = glassOpacity),
         )
     }
 
-    if (hazeState != null) {
-        // ===== 真实渐进模糊路径（NiScaffold 作用域）=====
-        Column(
+    when {
+        // ===== 真实渐进模糊路径（NiScaffold 作用域，且未到 100%）=====
+        hazeState != null && !solid -> Column(
             modifier = modifier
                 .fillMaxWidth()
                 // 先铺一层半透明 scrim 保证可读性
@@ -87,86 +85,70 @@ fun NiTopBar(
                     ),
                 ),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .height(52.dp)
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                navigationIcon()
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        // 显式用 onSurface：容器为 Transparent 时 contentColorFor(Transparent)
-                        // 会得出错误的明暗前景色，导致深色模式下标题不可见
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (subtitle != null) {
-                        Text(
-                            text = "  $subtitle",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Row { actions() }
-            }
+            TopBarRow(title = title, subtitle = subtitle, navigationIcon = navigationIcon, actions = actions)
         }
-    } else {
-        // ===== 光栅渐变回退路径（无 LocalHazeState，保持原视觉）=====
-        Row(
+        // ===== 100% 完全不透明路径：整条实心 surface，无模糊 =====
+        solid -> Column(
             modifier = modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
-                .height(52.dp)
-                .padding(horizontal = 4.dp)
-                .drawBehind {
-                    drawRect(
-                        brush = fadeBrush,
-                        size = size,
-                    )
-                },
+                .background(scrimColor),
+        ) {
+            TopBarRow(title = title, subtitle = subtitle, navigationIcon = navigationIcon, actions = actions)
+        }
+        // ===== 光栅渐变回退路径（无 LocalHazeState，保持原视觉）=====
+        else -> TopBarRow(
+            modifier = modifier.drawBehind { drawRect(brush = fadeBrush, size = size) },
+            title = title,
+            subtitle = subtitle,
+            navigationIcon = navigationIcon,
+            actions = actions,
+        )
+    }
+}
+
+/** 顶栏内容行：状态栏避让 + 标题区 + 操作区。 */
+@Composable
+private fun TopBarRow(
+    modifier: Modifier = Modifier,
+    title: String,
+    subtitle: String?,
+    navigationIcon: @Composable () -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .height(52.dp)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        navigationIcon()
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            navigationIcon()
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                // 显式用 onSurface：容器为 Transparent 时 contentColorFor(Transparent)
+                // 会得出错误的明暗前景色，导致深色模式下标题不可见
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) {
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    // 显式用 onSurface：容器为 Transparent 时 contentColorFor(Transparent)
-                    // 会得出错误的明暗前景色，导致深色模式下标题不可见
-                    color = MaterialTheme.colorScheme.onSurface,
+                    text = "  $subtitle",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (subtitle != null) {
-                    Text(
-                        text = "  $subtitle",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
-            Row { actions() }
         }
+        Row { actions() }
     }
 }

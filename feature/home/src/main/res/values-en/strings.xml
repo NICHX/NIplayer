@@ -31,7 +31,6 @@
     <string name="thumbnail_default">Default</string>
     <string name="thumbnail_wb_on"> · write back</string>
     <string name="thumbnail_wb_off"> · no write back</string>
-    <string name="thumbnail_custom_suffix"> (%1$ss)</string>
 
     <!-- Network errors -->
     <string name="error_network_host">Unable to connect to the server. Please check your network or address</string>
@@ -299,13 +298,9 @@
     <string name="settings_entry_theme_sub">Appearance and color scheme</string>
     <string name="settings_entry_language">Language</string>
     <string name="settings_entry_language_sub">App interface language</string>
-    <string name="settings_entry_glass">Glass opacity</string>
-    <string name="settings_entry_glass_sub">Adjust glass transparency</string>
-    <string name="settings_glass_title">Glass</string>
-    <string name="settings_glass_opacity">Opacity</string>
-    <string name="settings_glass_desc">Adjust overlay and panel glass opacity separately.</string>
-    <string name="settings_glass_helper">Higher values make glass more solid for clearer contrast over complex or dark content.</string>
-    <string name="settings_glass_overlay_opacity">Overlay (nav bar etc.)</string>
+    <string name="settings_glass_title">Glass opacity</string>
+    <string name="settings_glass_overlay_opacity">Nav bar</string>
+    <string name="settings_glass_top_bar_opacity">Top bar</string>
     <string name="settings_glass_panel_opacity">Dialogs &amp; menus</string>
     <string name="settings_entry_update">Check for updates</string>
     <string name="settings_entry_update_sub">Check and download new versions</string>
@@ -336,8 +331,16 @@
     <string name="storage_file_cancel_multi_select">Cancel multi-select</string>
     <string name="storage_file_selected_count">%1$d selected</string>
     <string name="storage_file_enter_multi_select">Multi-select</string>
-    <string name="storage_file_mixed_add_title">Add to playlist</string>
-    <string name="storage_file_mixed_add_body">Playlists only support audio. Will add %1$d audio files and skip %2$d other files. Continue?</string>
+    <string name="more">More</string>
+    <string name="move_to">Move to</string>
+    <string name="copy_to">Copy to</string>
+    <string name="storage_file_qa_added_batch">Added %1$d items to Quick Access</string>
+    <string name="storage_file_moved_count">Moved %1$d items</string>
+    <string name="storage_file_move_partial">Move partially complete (%1$d/%2$d)</string>
+    <string name="storage_file_copied_count">Copied %1$d items</string>
+    <string name="storage_file_copy_partial">Copy partially complete (%1$d/%2$d)</string>
+    <string name="storage_file_batch_move_title">Move %1$d items to</string>
+    <string name="storage_file_batch_copy_title">Copy %1$d items to</string>
     <string name="storage_file_sort">Sort</string>
     <string name="storage_file_sort_name">Name</string>
     <string name="storage_file_sort_type">Type</string>
@@ -365,6 +368,9 @@
     <string name="storage_file_rename_new_name">New name</string>
     <string name="storage_file_move_title">Move “%1$s” to</string>
     <string name="storage_file_move_no_target">No target folder to move to</string>
+    <string name="storage_file_move_root">Root</string>
+    <string name="move_here">Move here</string>
+    <string name="copy_here">Copy here</string>
     <string name="storage_file_properties_title">Properties</string>
     <string name="storage_file_info_name">Name</string>
     <string name="storage_file_info_type">Type</string>
@@ -698,9 +704,6 @@
     <string name="player_show_hidden">Show hidden files/folders</string>
     <string name="player_show_hidden_desc">Show hidden files and folders starting with a dot, such as .thumb/, .DS_Store, etc.</string>
     <string name="player_frame_position_title">Frame position</string>
-    <string name="player_custom_seconds_title">Custom seconds</string>
-    <string name="player_custom_seconds_hint">Enter the second from which to grab the frame.</string>
-    <string name="player_seconds_label">s</string>
     <string name="player_assrt_token_title">Set ASSRT token</string>
     <string name="player_assrt_token_hint">Register on assrt.net to get an API token for subtitle search.</string>
     <string name="player_assrt_token_placeholder">Enter ASSRT token</string>

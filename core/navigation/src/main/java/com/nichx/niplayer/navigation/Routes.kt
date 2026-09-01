@@ -62,7 +62,6 @@ object Routes {
         const val EQUALIZER = "user/equalizer"
         const val PLAYBACK_STATS = "user/playback_stats"
         const val BACKUP = "user/backup"
-        const val GLASS = "user/glass"
     }
 
     /**
