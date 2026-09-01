@@ -46,11 +46,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -65,6 +67,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -80,6 +83,7 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Movie
@@ -105,13 +109,12 @@ import androidx.compose.material.icons.rounded.SwapVerticalCircle
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import com.nichx.niplayer.designsystem.components.NiDialogItem
+import com.nichx.niplayer.designsystem.components.DownloadDialogShell
 import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
 import com.nichx.niplayer.designsystem.components.NiGlassOverlay
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayKind
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayRequest
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
-import com.nichx.niplayer.designsystem.components.NiListItemDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -152,10 +155,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -255,10 +256,13 @@ fun FileBrowserScreen(
     // 文件管理对话框状态
     var renameTarget by remember { mutableStateOf<StorageFile?>(null) }
     var moveTarget by remember { mutableStateOf<StorageFile?>(null) }
-    var moveTargets by remember { mutableStateOf<List<StorageFile>>(emptyList()) }
     var deleteTarget by remember { mutableStateOf<StorageFile?>(null) }
     var showCreateFolder by remember { mutableStateOf(false) }
     var fabExpanded by remember { mutableStateOf(false) }
+    // 多选"更多"菜单展开态
+    var showMultiMoreMenu by remember { mutableStateOf(false) }
+    // 批量移动/复制：非空时弹出目标目录选择对话框；值是移动还是复制
+    var batchTransfer by remember { mutableStateOf<BatchTransferOp?>(null) }
 
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
@@ -692,15 +696,28 @@ fun FileBrowserScreen(
         },
         ) { padding ->
         // 内容满铺全屏并延伸到顶栏之下，可滚入顶栏模糊区。
-        // 顶栏高度用 topInset 让位；浮动面包屑叠加其上，列表从面包屑下方开始滚动、仍能滚到顶栏下被模糊。
+        // 顶栏高度用 topInset 让位；面包屑/缩略图进度条作为列表首个 item 融入滚动流，随页面滚动。
         val topInset = padding.calculateTopPadding()
-        var breadcrumbHeight by remember { mutableStateOf(0.dp) }
-        val density = LocalDensity.current
         // 多选操作栏的液态玻璃背景：捕获页面内容层（列表等），供 drawBackdrop 做真实模糊 + 高光
         val contentBackdropSurface = MaterialTheme.colorScheme.background
         val multiSelectBarBackdrop = rememberLayerBackdrop {
             drawRect(contentBackdropSurface)
             drawContent()
+        }
+        // 列表头部：面包屑（非根目录）+ 缩略图生成进度条，随列表滚动
+        val listHeader: @Composable () -> Unit = {
+            Column {
+                if (uiState.currentPath.isNotEmpty()) {
+                    BreadcrumbBar(
+                        path = uiState.currentPath,
+                        onGoToRoot = { viewModel.goToRoot() },
+                        onJumpToDepth = { depth -> captureCurrentScroll(); viewModel.jumpToDepth(depth) },
+                    )
+                }
+                if (thumbnailProgress >= 0) {
+                    ThumbnailProgressBar(progress = thumbnailProgress)
+                }
+            }
         }
         Box(modifier = Modifier.fillMaxSize()) {
             // 内容层：仅列表/状态，满铺全屏延伸到顶栏下可被模糊；标记为玻璃模糊的背景源
@@ -746,7 +763,8 @@ fun FileBrowserScreen(
                                     onShowFileActions = viewModel::openFileActions,
                                     onToggleSelection = viewModel::toggleSelection,
                                     galleryState = galleryState,
-                                    contentTopInset = topInset + breadcrumbHeight,
+                                    header = listHeader,
+                                    contentTopInset = topInset,
                                 )
                             } else if (isGridView) {
                                 FileGrid(
@@ -763,7 +781,8 @@ fun FileBrowserScreen(
                                     onShowFileActions = viewModel::openFileActions,
                                     onToggleSelection = viewModel::toggleSelection,
                                     gridState = gridState,
-                                    contentTopInset = topInset + breadcrumbHeight,
+                                    header = listHeader,
+                                    contentTopInset = topInset,
                                 )
                             } else {
                                 FileList(
@@ -782,43 +801,13 @@ fun FileBrowserScreen(
                                     onShowFileActions = viewModel::openFileActions,
                                     onToggleSelection = viewModel::toggleSelection,
                                     listState = listState,
-                                    contentTopInset = topInset + breadcrumbHeight,
+                                    header = listHeader,
+                                    contentTopInset = topInset,
                                 )
                             }
                         }
-                    }
                 }
             }
-
-            // 缩略图生成进度条：浮动在面包屑下方，不占布局流（否则会与列表 contentTopInset 叠加造成下方大片空白）
-            if (thumbnailProgress >= 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(top = topInset + breadcrumbHeight),
-                ) {
-                    ThumbnailProgressBar(progress = thumbnailProgress)
-                }
-            }
-
-            // 浮动面包屑：固定于顶栏下方、悬浮在内容之上；不占布局流，不挡内容滚到顶栏下被模糊
-            if (uiState.currentPath.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = topInset)
-                        .onSizeChanged {
-                            breadcrumbHeight = with(density) { it.height.toDp() }
-                        },
-                ) {
-                    BreadcrumbBar(
-                        path = uiState.currentPath,
-                        onGoToRoot = { viewModel.goToRoot() },
-                        onJumpToDepth = { depth -> captureCurrentScroll(); viewModel.jumpToDepth(depth) },
-                    )
-                }
             }
 
             BackHandler(enabled = fabExpanded) {
@@ -898,7 +887,7 @@ fun FileBrowserScreen(
                 }
             }
 
-            // 多选模式底部操作栏：固定三操作位（全选/下载/删除），条件不满足时置灰而非显隐
+            // 多选模式底部操作栏：固定操作位（全选/下载/更多），更多内收起移动/复制/快速访问/删除
             if (isMultiSelect) {
                 val selectedFiles = uiState.files.filter { it.path in selectedPaths && !it.isDirectory }
                 MultiSelectActionBar(
@@ -906,8 +895,25 @@ fun FileBrowserScreen(
                     selectedCount = selectedPaths.size,
                     allSelected = selectedPaths.size >= uiState.files.count { !it.isDirectory } && uiState.files.any { !it.isDirectory },
                     downloadEnabled = selectedFiles.isNotEmpty(),
+                    fileManagementEnabled = viewModel.supportsFileManagement,
+                    moreMenuExpanded = showMultiMoreMenu,
+                    onMoreMenuOpenChange = { showMultiMoreMenu = it },
                     onSelectAll = viewModel::selectAllFiles,
                     onDownload = { startDownload(selectedFiles) },
+                    onAddToQuickAccess = {
+                        val selected = uiState.files.filter { it.path in selectedPaths }
+                        viewModel.addFilesToQuickAccess(selected)
+                    },
+                    onMove = {
+                        showMultiMoreMenu = false
+                        val selected = uiState.files.filter { it.path in selectedPaths }
+                        if (selected.isNotEmpty()) batchTransfer = BatchTransferOp.MOVE
+                    },
+                    onCopy = {
+                        showMultiMoreMenu = false
+                        val selected = uiState.files.filter { it.path in selectedPaths }
+                        if (selected.isNotEmpty()) batchTransfer = BatchTransferOp.COPY
+                    },
                     onDelete = { showBatchDeleteConfirm = true },
                     onClose = viewModel::exitMultiSelect,
                     modifier = Modifier
@@ -941,6 +947,32 @@ fun FileBrowserScreen(
                 viewModel.deleteSelected()
             },
             onDismiss = { showBatchDeleteConfirm = false },
+        )
+    }
+
+    // 批量移动/复制的目标目录选择对话框
+    batchTransfer?.let { op ->
+        val selected = uiState.files.filter { it.path in selectedPaths }
+        FolderTargetDialog(
+            title = stringResource(
+                if (op == BatchTransferOp.MOVE) R.string.storage_file_batch_move_title
+                else R.string.storage_file_batch_copy_title,
+                selected.size,
+            ),
+            confirmText = stringResource(
+                if (op == BatchTransferOp.MOVE) R.string.move_here else R.string.copy_here,
+            ),
+            startPath = uiState.currentPath,
+            listSubfolders = viewModel::listSubfolders,
+            toDirectory = viewModel::makeDirectory,
+            onDismiss = { batchTransfer = null },
+            onConfirm = { target ->
+                batchTransfer = null
+                when (op) {
+                    BatchTransferOp.MOVE -> viewModel.moveFiles(selected, target)
+                    BatchTransferOp.COPY -> viewModel.copyFiles(selected, target)
+                }
+            },
         )
     }
 
@@ -999,9 +1031,6 @@ fun FileBrowserScreen(
             onMove = {
                 fileMenu = null
                 moveTarget = file
-                scope.launch {
-                    moveTargets = viewModel.listMoveTargets(file)
-                }
             },
             onDelete = {
                 fileMenu = null
@@ -1039,17 +1068,16 @@ fun FileBrowserScreen(
     }
 
     moveTarget?.let { file ->
-        MoveTargetDialog(
-            fileName = file.name,
-            targets = moveTargets,
-            onDismiss = {
-                moveTarget = null
-                moveTargets = emptyList()
-            },
-            onSelect = { target ->
+        FolderTargetDialog(
+            title = stringResource(R.string.storage_file_move_title, file.name),
+            confirmText = stringResource(R.string.move_here),
+            startPath = uiState.currentPath,
+            listSubfolders = viewModel::listSubfolders,
+            toDirectory = viewModel::makeDirectory,
+            onDismiss = { moveTarget = null },
+            onConfirm = { target ->
                 viewModel.moveFile(file, target)
                 moveTarget = null
-                moveTargets = emptyList()
             },
         )
     }
@@ -1308,10 +1336,11 @@ private fun BreadcrumbBar(
     onGoToRoot: () -> Unit,
 ) {
     val segments = path.split("/").filter { it.isNotEmpty() }
+    // 面包屑作为列表首个 item 随页面滚动，保持全透明观感（透明底 + 不透明胶囊）
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 根目录入口：点击直接回到存储根，深层目录无需逐级返回
@@ -1458,6 +1487,7 @@ private fun FileList(
     onToggleSelection: (StorageFile) -> Unit,
     listState: LazyListState = rememberLazyListState(),
     contentTopInset: Dp = 0.dp,
+    header: (@Composable () -> Unit)? = null,
 ) {
     LazyColumn(
         state = listState,
@@ -1469,6 +1499,11 @@ private fun FileList(
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        if (header != null) {
+            item(key = "list-header") {
+                header()
+            }
+        }
         if (uploads.isNotEmpty()) {
             item(key = "upload-strip") {
                 UploadPendingStrip(uploads = uploads, onCancel = onCancelUpload)
@@ -1854,6 +1889,7 @@ private fun FileGrid(
     onToggleSelection: (StorageFile) -> Unit,
     gridState: LazyGridState = rememberLazyGridState(),
     contentTopInset: Dp = 0.dp,
+    header: (@Composable () -> Unit)? = null,
 ) {
     LazyVerticalGrid(
         state = gridState,
@@ -1867,6 +1903,11 @@ private fun FileGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (header != null) {
+            item(key = "list-header", span = { GridItemSpan(maxLineSpan) }) {
+                header()
+            }
+        }
         items(
             items = files,
             key = { it.path },
@@ -2210,23 +2251,31 @@ private fun FileGallery(
     onToggleSelection: (StorageFile) -> Unit,
     galleryState: LazyGridState,
     contentTopInset: Dp = 0.dp,
+    header: (@Composable () -> Unit)? = null,
 ) {
     // 仅保留：文件夹（继续导航）+ 图片 / 视频（相册媒体），隐藏音频与其他文件
     val galleryItems = files.filter {
         it.isDirectory || MediaFileTypes.isImageFile(it.name) || MediaFileTypes.isVideoFile(it.name)
     }
     if (galleryItems.isEmpty()) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
-            contentAlignment = Alignment.Center,
         ) {
-            NiEmptyState(
-                icon = Icons.Rounded.Image,
-                text = stringResource(R.string.storage_file_gallery_empty),
-                hint = stringResource(R.string.storage_file_gallery_empty_hint),
-            )
+            if (header != null) header()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                NiEmptyState(
+                    icon = Icons.Rounded.Image,
+                    text = stringResource(R.string.storage_file_gallery_empty),
+                    hint = stringResource(R.string.storage_file_gallery_empty_hint),
+                )
+            }
         }
         return
     }
@@ -2242,6 +2291,11 @@ private fun FileGallery(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        if (header != null) {
+            item(key = "list-header", span = { GridItemSpan(maxLineSpan) }) {
+                header()
+            }
+        }
         items(
             items = galleryItems,
             key = { it.path },
@@ -2778,37 +2832,160 @@ fun RenameFileDialog(
     }
 }
 
-/** 移动目标选择对话框。列出候选目录供用户选择。 */
+/** 多选批量传输操作类型：移动到 / 复制到。 */
+private enum class BatchTransferOp { MOVE, COPY }
+
+/**
+ * 目录浏览式目标选择对话框（用于"移动到"/"复制到"）。
+ *
+ * 复用下载管理器文件选择弹窗样式（[DownloadDialogShell] 宽面板）。
+ * **点击子目录仅进入该目录浏览**，点击底部「确定」才把当前所在目录作为移动/复制目标，
+ * 避免误触即执行。
+ *
+ * @param title 标题文案
+ * @param confirmText 底部确认按钮文案（如"移动到此处"/"复制到此处"）
+ * @param startPath 初始浏览目录（当前所在目录路径）
+ * @param listSubfolders 列出指定路径下直接子目录的挂起回调
+ * @param toDirectory 由路径构造目录 [StorageFile]（确认时的目标）
+ * @param onDismiss 关闭
+ * @param onConfirm 点确认：以当前目录为目标执行
+ */
 @Composable
-fun MoveTargetDialog(
-    fileName: String,
-    targets: List<StorageFile>,
+private fun FolderTargetDialog(
+    title: String,
+    confirmText: String,
+    startPath: String,
+    listSubfolders: suspend (String) -> List<StorageFile>,
+    toDirectory: (String) -> StorageFile,
     onDismiss: () -> Unit,
-    onSelect: (StorageFile) -> Unit,
+    onConfirm: (StorageFile) -> Unit,
 ) {
-    val title = stringResource(R.string.storage_file_move_title, fileName)
-    if (targets.isEmpty()) {
-        NiInfoDialog(
-            title = title,
-            onDismiss = onDismiss,
-        ) {
-            Text(
-                text = stringResource(R.string.storage_file_move_no_target),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-    } else {
-        NiListItemDialog(
-            title = title,
-            onDismiss = onDismiss,
-            items = targets.map { target ->
-                NiDialogItem(
-                    label = target.name,
-                    icon = Icons.Rounded.Folder,
-                    iconTint = MaterialTheme.colorScheme.primary,
-                    onClick = { onSelect(target) },
+    // 当前浏览目录路径：进入子目录则更新，返回上级则回溯
+    var currentPath by remember { mutableStateOf(startPath) }
+    val subfolders = remember { mutableStateOf<List<StorageFile>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentPath) {
+        loading = true
+        subfolders.value = listSubfolders(currentPath)
+        loading = false
+    }
+
+    DownloadDialogShell(
+        forceDark = false,
+        title = title,
+        onClose = onDismiss,
+        content = {
+            // 当前位置指示：可点击返回上级目录
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .then(
+                        if (currentPath.isNotEmpty()) {
+                            Modifier.clickable { currentPath = currentPath.substringBeforeLast('/') }
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .padding(horizontal = 12.dp),
+            ) {
+                Icon(
+                    imageVector = if (currentPath.isNotEmpty()) Icons.AutoMirrored.Rounded.ArrowBack
+                    else Icons.Rounded.FolderOpen,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
                 )
-            },
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = if (currentPath.isEmpty()) stringResource(R.string.storage_file_move_root)
+                    else currentPath,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            when {
+                loading -> TargetListLoading()
+                subfolders.value.isEmpty() -> TargetListEmpty(stringResource(R.string.storage_file_move_no_target))
+                else -> LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp),
+                ) {
+                    itemsIndexed(subfolders.value, key = { _, child -> child.path }) { _, child ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                // 点击仅进入该子目录浏览，不直接执行移动/复制
+                                .clickable { currentPath = child.path }
+                                .padding(horizontal = 12.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = child.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Icon(
+                                imageVector = Icons.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        actions = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = { onConfirm(toDirectory(currentPath)) }) { Text(confirmText) }
+        },
+    )
+}
+
+/** 候选目录加载占位：避免异步加载期间短暂显示"空"造成的闪烁。 */
+@Composable
+private fun TargetListLoading() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(140.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator()
+    }
+}
+
+/** 无可选目录提示。 */
+@Composable
+private fun TargetListEmpty(text: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(140.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -3081,8 +3258,14 @@ private fun MultiSelectActionBar(
     selectedCount: Int,
     allSelected: Boolean,
     downloadEnabled: Boolean,
+    fileManagementEnabled: Boolean,
+    moreMenuExpanded: Boolean,
+    onMoreMenuOpenChange: (Boolean) -> Unit,
     onSelectAll: () -> Unit,
     onDownload: () -> Unit,
+    onAddToQuickAccess: () -> Unit,
+    onMove: () -> Unit,
+    onCopy: () -> Unit,
     onDelete: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -3091,6 +3274,8 @@ private fun MultiSelectActionBar(
     // 与悬浮底栏一致的液态玻璃容器：vibrancy + blur + lens + 高光边 + 柔和阴影，
     // 背景由 [backdrop] 捕获页面内容，实现真实背景模糊；不透明度由 LocalNiGlassOpacity 统一控制
     val containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = LocalNiGlassOpacity.current)
+    // "更多"菜单锚点：取按钮右下角，从按钮下方展开（近屏底时自动上抬）
+    var moreAnchor by remember { mutableStateOf(Offset.Zero) }
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -3135,7 +3320,8 @@ private fun MultiSelectActionBar(
                 }
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
-            // 固定三操作位：不按选中内容显隐，仅置灰，保证布局稳定不抖动
+            // 固定操作位（全选/下载）+ 更多：不按选中内容显隐，仅置灰，保证布局稳定不抖动；
+            // 低频/破坏性操作收进「更多」展开菜单，避免固定位过多
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -3161,16 +3347,93 @@ private fun MultiSelectActionBar(
                     modifier = Modifier.weight(1f),
                 )
                 ActionBarItem(
-                    icon = Icons.Rounded.Delete,
-                    label = stringResource(R.string.delete),
+                    icon = Icons.Rounded.MoreVert,
+                    label = stringResource(R.string.more),
                     enabled = selectedCount > 0,
-                    onClick = onDelete,
-                    isDanger = true,
-                    modifier = Modifier.weight(1f),
+                    onClick = { onMoreMenuOpenChange(true) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .onGloballyPositioned { coords ->
+                            val topLeft = coords.localToRoot(Offset.Zero)
+                            moreAnchor = topLeft + Offset(coords.size.width.toFloat(), coords.size.height.toFloat())
+                        },
                 )
             }
         }
+        // 「更多」展开菜单：移动/复制（需文件管理能力）/快速访问/删除
+        NiGlassDropdownMenu(
+            expanded = moreMenuExpanded,
+            onDismissRequest = { onMoreMenuOpenChange(false) },
+            anchor = IntOffset(moreAnchor.x.toInt(), moreAnchor.y.toInt()),
+        ) {
+            val hasSelection = selectedCount > 0
+            BatchActionMenuItem(
+                icon = Icons.AutoMirrored.Rounded.DriveFileMove,
+                text = stringResource(R.string.move_to),
+                enabled = fileManagementEnabled && hasSelection,
+                onClick = onMove,
+            )
+            BatchActionMenuItem(
+                icon = Icons.Rounded.ContentCopy,
+                text = stringResource(R.string.copy_to),
+                enabled = fileManagementEnabled && hasSelection,
+                onClick = onCopy,
+            )
+            BatchActionMenuItem(
+                icon = Icons.Rounded.Star,
+                text = stringResource(R.string.storage_file_action_add_to_quick_access),
+                enabled = hasSelection,
+                onClick = onAddToQuickAccess,
+            )
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            BatchActionMenuItem(
+                icon = Icons.Rounded.Delete,
+                text = stringResource(R.string.delete),
+                enabled = hasSelection,
+                onClick = onDelete,
+                isDanger = true,
+            )
+        }
     }
+}
+
+/** 「更多」菜单内的批量操作项（图标 + 文案）。 */
+@Composable
+private fun BatchActionMenuItem(
+    icon: ImageVector,
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    isDanger: Boolean = false,
+) {
+    DropdownMenuItem(
+        modifier = Modifier.height(40.dp),
+        enabled = enabled,
+        text = {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = when {
+                    !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    isDanger -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = when {
+                    !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    isDanger -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+                modifier = Modifier.size(20.dp),
+            )
+        },
+        onClick = onClick,
+    )
 }
 
 @Composable

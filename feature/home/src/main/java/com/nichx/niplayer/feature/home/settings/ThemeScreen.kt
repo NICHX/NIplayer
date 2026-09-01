@@ -27,13 +27,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,12 +43,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nichx.niplayer.datastore.GlassSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
@@ -58,6 +56,7 @@ import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiScheme
 import com.nichx.niplayer.designsystem.theme.NiSchemes
 import com.nichx.niplayer.feature.home.R
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +71,10 @@ fun ThemeScreen(
         ThemeSettings.Mode.DARK -> true
         ThemeSettings.Mode.SYSTEM -> systemDark
     }
+    // 玻璃不透明度并入主题设置，实时驱动组合预览
+    val glassOpacity by GlassSettings.opacityFlow.collectAsStateWithLifecycle()
+    val glassTopBarOpacity by GlassSettings.topBarOpacityFlow.collectAsStateWithLifecycle()
+    val glassPanelOpacity by GlassSettings.panelOpacityFlow.collectAsStateWithLifecycle()
 
     // 选中的配色分类：默认定位到当前方案所属分类
     var selectedCategoryRes by remember {
@@ -159,11 +162,76 @@ fun ThemeScreen(
                     .padding(16.dp),
             )
 
-            // ── 主题示意图预览 ──
-            ThemePreviewCard(scheme = themeConfig.scheme, dark = effectiveDark)
+            // ── 玻璃不透明度（顶栏/导航栏/面板分开调节） ──
+            SectionLabel(text = stringResource(R.string.settings_glass_title))
+            GlassOpacitySlider(
+                label = stringResource(R.string.settings_glass_overlay_opacity),
+                value = glassOpacity,
+                min = GlassSettings.MIN_OPACITY,
+                max = GlassSettings.MAX_OPACITY,
+                onValueChange = { GlassSettings.opacity = it },
+            )
+            GlassOpacitySlider(
+                label = stringResource(R.string.settings_glass_top_bar_opacity),
+                value = glassTopBarOpacity,
+                min = GlassSettings.MIN_OPACITY,
+                max = GlassSettings.MAX_OPACITY,
+                onValueChange = { GlassSettings.topBarOpacity = it },
+            )
+            GlassOpacitySlider(
+                label = stringResource(R.string.settings_glass_panel_opacity),
+                value = glassPanelOpacity,
+                min = GlassSettings.MIN_PANEL_OPACITY,
+                max = GlassSettings.MAX_PANEL_OPACITY,
+                onValueChange = { GlassSettings.panelOpacity = it },
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            // ── 组合预览：主题配色 + 玻璃不透明度（置于底部，紧跟滑条便于实时查看） ──
+            ThemePreviewCard(
+                scheme = themeConfig.scheme,
+                dark = effectiveDark,
+                opacity = glassOpacity,
+                topBarOpacity = glassTopBarOpacity,
+                panelOpacity = glassPanelOpacity,
+            )
 
             Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
+    }
+}
+
+/** 单条透明度滑条：标题 + 百分比 + Slider。 */
+@Composable
+private fun GlassOpacitySlider(
+    label: String,
+    value: Float,
+    min: Float,
+    max: Float,
+    onValueChange: (Float) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = "${(value * 100).roundToInt()}%",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = min..max,
+        )
     }
 }
 
@@ -375,24 +443,21 @@ private fun SchemeCard(
 }
 
 /**
- * 主题示意图预览：用所选方案的真实配色绘制一台精致的手机界面示意，
- * 状态栏 / 顶栏 / 英雄卡 / 列表 / 底部导航都取自方案色，直观呈现组合效果。
+ * 组合预览：用所选方案的配色绘制实际骨架，并按顶栏/面板/导航栏不透明度渲染玻璃层
+ * （顶栏模糊、中央对话框、底部导航胶囊），随下方滑条实时联动。
  */
 @Composable
 private fun ThemePreviewCard(
     scheme: NiScheme,
     dark: Boolean,
+    opacity: Float,
+    topBarOpacity: Float,
+    panelOpacity: Float,
     modifier: Modifier = Modifier,
 ) {
     val cs = remember(scheme, dark) {
         if (dark) NiSchemes.buildDark(scheme) else NiSchemes.buildLight(scheme)
     }
-    val onPrimContainer = if (cs.primaryContainer.luminance() > 0.5f) Color.Black else Color.White
-
-    val barColor = cs.onSurface
-    val barStrong = barColor.copy(alpha = 0.50f)
-    val barMid = barColor.copy(alpha = 0.28f)
-    val barSoft = barColor.copy(alpha = 0.14f)
 
     Column(
         modifier = modifier
@@ -417,176 +482,16 @@ private fun ThemePreviewCard(
             )
         }
 
-        // ── 手机界面 ──
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(238.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(cs.background)
-                .border(1.dp, cs.outline.copy(alpha = 0.30f), RoundedCornerShape(18.dp)),
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // 状态栏：左侧时间点，右侧信号/电池
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(18.dp)
-                        .padding(horizontal = 14.dp),
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Box(Modifier.size(3.dp).clip(CircleShape).background(barMid))
-                        Box(Modifier.size(3.dp).clip(CircleShape).background(barMid))
-                        Box(Modifier.size(3.dp).clip(CircleShape).background(barStrong))
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(Modifier.size(6.dp).clip(RoundedCornerShape(2.dp)).background(barMid))
-                        Box(Modifier.width(12.dp).height(5.dp).clip(RoundedCornerShape(2.dp)).border(0.5.dp, barMid, RoundedCornerShape(2.dp)))
-                    }
-                }
-                // 顶栏：返回 + 标题 + 收藏
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(34.dp)
-                        .padding(horizontal = 6.dp),
-                ) {
-                    Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = null,
-                            tint = cs.primary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    Box(Modifier.width(74.dp).height(7.dp).clip(RoundedCornerShape(4.dp)).background(barStrong))
-                    Spacer(Modifier.weight(1f))
-                    Icon(
-                        imageVector = Icons.Filled.Star,
-                        contentDescription = null,
-                        tint = cs.tertiary,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                }
-                // 英雄卡
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 10.dp)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(cs.primaryContainer)
-                        .padding(10.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(11.dp))
-                                .background(cs.primary),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = null,
-                                tint = if (cs.primary.luminance() > 0.5f) Color.Black else Color.White,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
-                            Box(Modifier.fillMaxWidth(0.6f).height(7.dp).clip(RoundedCornerShape(4.dp)).background(onPrimContainer.copy(alpha = 0.30f)))
-                            Box(Modifier.fillMaxWidth(0.45f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(onPrimContainer.copy(alpha = 0.18f)))
-                            Spacer(Modifier.height(1.dp))
-                            // 进度条
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(onPrimContainer.copy(alpha = 0.12f)),
-                            ) {
-                                Box(Modifier.fillMaxWidth(0.62f).fillMaxHeight().background(cs.primary))
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                // 列表项
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .padding(horizontal = 10.dp)
-                        .fillMaxWidth(),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(cs.secondaryContainer),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.MusicNote,
-                            contentDescription = null,
-                            tint = cs.secondary,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
-                        Box(Modifier.fillMaxWidth(0.5f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(barStrong))
-                        Box(Modifier.fillMaxWidth(0.32f).height(5.dp).clip(RoundedCornerShape(3.dp)).background(barSoft))
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(cs.tertiary))
-                }
-                Spacer(Modifier.weight(1f))
-                // 底部导航
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 10.dp, vertical = 10.dp)
-                        .fillMaxWidth()
-                        .height(40.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(cs.surface)
-                        .border(0.5.dp, cs.outline.copy(alpha = 0.20f), RoundedCornerShape(14.dp)),
-                ) {
-                    Row(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp)) {
-                        NavPill(active = false, dotColor = cs.outline)
-                        NavPill(active = false, dotColor = cs.secondary)
-                        NavPill(active = true, backgroundColor = cs.primary, dotColor = Color.White)
-                        NavPill(active = false, dotColor = cs.outline)
-                    }
-                }
-            }
-        }
+        // ── 软件实际骨架（主题配色 + 玻璃不透明度） ──
+        AppSkeletonPreview(
+            cs = cs,
+            glassTopBarOpacity = topBarOpacity,
+            glassPanelOpacity = panelOpacity,
+            glassNavOpacity = opacity,
+        )
 
         // 调色条：主 / 次 / 三 / 容器
         PreviewStrip(listOf(cs.primary, cs.secondary, cs.tertiary, cs.primaryContainer))
-    }
-}
-
-/** 底部导航胶囊项：active 显示填充胶囊 + 圆点。 */
-@Composable
-private fun androidx.compose.foundation.layout.RowScope.NavPill(
-    active: Boolean,
-    backgroundColor: Color = Color.Transparent,
-    dotColor: Color,
-) {
-    Box(
-        modifier = Modifier
-            .weight(1f)
-            .fillMaxHeight()
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (active) backgroundColor else Color.Transparent),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(Modifier.size(7.dp).clip(CircleShape).background(dotColor))
     }
 }
 

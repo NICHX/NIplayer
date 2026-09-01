@@ -39,5 +39,4 @@
     <string name="thumbnail_frame_5s">第 5 秒</string>
     <string name="thumbnail_frame_10pct">10% 位置</string>
     <string name="thumbnail_frame_50pct">50% 位置</string>
-    <string name="thumbnail_frame_custom">自定义秒数</string>
 </resources>

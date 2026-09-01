@@ -75,6 +75,7 @@ import com.nichx.niplayer.designsystem.components.AppMessageHost
 import com.nichx.niplayer.designsystem.components.LocalNiBackdrop
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
+import com.nichx.niplayer.designsystem.components.LocalNiGlassTopBarOpacity
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayHost
 import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
@@ -95,7 +96,6 @@ import com.nichx.niplayer.feature.home.settings.TransferScreen
 import com.nichx.niplayer.feature.home.settings.EqualizerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.LrcApiSettingsScreen
 import com.nichx.niplayer.feature.home.settings.LanguageScreen
-import com.nichx.niplayer.feature.home.settings.GlassSettingsScreen
 import com.nichx.niplayer.feature.home.settings.MediaLibrarySettingsScreen
 import com.nichx.niplayer.feature.home.settings.PlaybackStatsScreen
 import com.nichx.niplayer.feature.home.settings.PlayerSettingsScreen
@@ -135,8 +135,10 @@ class MainActivity : ComponentActivity() {
         requestLocalNetworkPermission()
         setContent {
             val themeConfig by ThemeSettings.themeFlow.collectAsStateWithLifecycle()
-            // 液态玻璃不透明度：收集设置改动，经 LocalNiGlassOpacity 下发到全部玻璃浮层
+            // 液态玻璃不透明度：收集设置改动，经 LocalNiGlassOpacity 下发到全部底部玻璃浮层（导航栏等）
             val glassOpacity by GlassSettings.opacityFlow.collectAsStateWithLifecycle()
+            // 顶栏不透明度：与导航栏分开设置，经 LocalNiGlassTopBarOpacity 下发
+            val glassTopBarOpacity by GlassSettings.topBarOpacityFlow.collectAsStateWithLifecycle()
             // 面板（对话框/菜单）不透明度：与薄浮层分开设置，经 LocalNiGlassPanelOpacity 下发
             val glassPanelOpacity by GlassSettings.panelOpacityFlow.collectAsStateWithLifecycle()
             val darkTheme = when (themeConfig.mode) {
@@ -247,6 +249,7 @@ class MainActivity : ComponentActivity() {
 
                 CompositionLocalProvider(
                     LocalNiGlassOpacity provides glassOpacity,
+                    LocalNiGlassTopBarOpacity provides glassTopBarOpacity,
                     LocalNiGlassPanelOpacity provides glassPanelOpacity,
                     LocalAppMessageController provides appMessageController,
                 ) {
@@ -389,11 +392,6 @@ class MainActivity : ComponentActivity() {
                             route = Routes.User.LANGUAGE,
                             ) {
                             LanguageScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.GLASS,
-                            ) {
-                            GlassSettingsScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.SETTING_PLAYER,

@@ -97,6 +97,8 @@ import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
 import com.nichx.niplayer.designsystem.components.NiGlassOverlay
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayKind
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayRequest
+import com.nichx.niplayer.designsystem.components.glassOnSurface
+import com.nichx.niplayer.designsystem.components.glassOnSurfaceMuted
 import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
 import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
@@ -655,11 +657,12 @@ private fun StorageTypePickerSheet(
                                 Text(
                                     text = label,
                                     style = MaterialTheme.typography.titleSmall,
+                                    color = glassOnSurface(),
                                 )
                                 Text(
                                     text = desc,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline,
+                                    color = glassOnSurfaceMuted(),
                                 )
                             }
                         }

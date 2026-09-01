@@ -70,6 +70,8 @@ import com.nichx.niplayer.designsystem.components.NiProgressTrack
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
+import com.nichx.niplayer.designsystem.components.glassOnSurface
+import com.nichx.niplayer.designsystem.components.glassOnSurfaceMuted
 import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
 import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
@@ -429,12 +431,13 @@ private fun DownloadSettingsDialog(
                         text = stringResource(R.string.download_manager_has_dir),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
+                        color = glassOnSurface(),
                     )
                     if (hasDir) {
                         Text(
                             text = dirInfo.path,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline,
+                            color = glassOnSurfaceMuted(),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -477,11 +480,12 @@ private fun DownloadSettingsDialog(
                     Text(
                         text = stringResource(R.string.download_lrc_with_audio),
                         style = MaterialTheme.typography.bodyLarge,
+                        color = glassOnSurface(),
                     )
                     Text(
                         text = stringResource(R.string.download_lrc_with_audio_desc),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = glassOnSurfaceMuted(),
                         modifier = Modifier.padding(top = 2.dp),
                     )
                 }

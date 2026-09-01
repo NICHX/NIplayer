@@ -39,5 +39,4 @@
     <string name="thumbnail_frame_5s">5th second</string>
     <string name="thumbnail_frame_10pct">10% position</string>
     <string name="thumbnail_frame_50pct">50% position</string>
-    <string name="thumbnail_frame_custom">Custom seconds</string>
 </resources>
