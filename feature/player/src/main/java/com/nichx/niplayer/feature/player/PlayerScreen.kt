@@ -356,9 +356,16 @@ fun PlayerScreen(
     // PixelCopy 抓取会损坏（白屏+品红），检测到 HDR 时跳过贴图直接退出
     var exitFrame by remember { mutableStateOf<Bitmap?>(null) }
 
-    // 进入播放器前的原始方向（通常为竖屏）。退出时先还原再 pop，避免返回页"下降"顿挫
+    // 进入播放器前的原始方向（通常为竖屏）。退出时先还原再 pop，避免返回页"下降"顿挫。
+    // 不能读 PlayerActivity 自身的 requestedOrientation（它创建时恒为 UNSPECIFIED，非进入前
+    // MainActivity 的方向）；要按进入时的物理朝向映射为"硬方向"，大屏(Android16 兼容声明生效)
+    // 下才能确定性地转回原方向，否则只设置 UNSPECIFIED 会停留在大屏上旋转后的方向。
     val originalOrientation = remember {
-        activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        if (activity?.resources?.configuration?.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
     }
     // 进入播放器前的系统亮度（0~1）。退出时显式写回该值恢复原亮度：
     // 部分设备/ROM 对 BRIGHTNESS_OVERRIDE_NONE 不会真正清除窗口覆盖（退出后仍停留在播放器

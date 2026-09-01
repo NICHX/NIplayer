@@ -52,13 +52,21 @@
         </activity>
 
         <!-- 视频播放器独立 Activity：由 MainActivity 经 startActivity 启动（非 Launcher 入口） -->
+        <!-- Android 16+：屏幕宽度 >=600dp 的大屏（平板）默认忽略 Activity 的方向/可调整尺寸/宽高比限制，
+             包括 setRequestedOrientation()，导致播放器"自动方向/HUD旋转"被系统无视。
+             此处声明 PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY 重新放开方向限制，让播放器恢复横竖屏自控。
+             注意：该豁免仅存在于 Android 16 设备，Android 17 已移除，届时需改用画面旋转方案。 -->
         <activity
             android:name="com.nichx.niplayer.feature.player.PlayerActivity"
             android:exported="false"
             android:launchMode="singleTask"
             android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard"
-            android:theme="@style/Theme.NIplayer" />
+            android:theme="@style/Theme.NIplayer">
+            <property
+                android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
+                android:value="true" />
+        </activity>
 
         <service
             android:name="com.nichx.niplayer.feature.player.AudioPlaybackService"
