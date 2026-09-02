@@ -1,5 +1,6 @@
 package com.nichx.niplayer.player.mpv
 
+import android.content.Context
 import android.view.Surface
 import androidx.media3.common.text.Cue
 import com.nichx.niplayer.player.kernel.AudioTrackInfo
@@ -13,6 +14,11 @@ import com.nichx.niplayer.player.kernel.PlaybackState
 import com.nichx.niplayer.player.kernel.SubtitleTrackInfo
 import com.nichx.niplayer.player.kernel.VideoSize
 import com.nichx.niplayer.player.kernel.audio.NiEqualizer
+import dagger.hilt.android.qualifiers.ApplicationContext
+import `is`.xyz.mpv.MPVLib
+import `is`.xyz.mpv.MPVLib.MpvEvent
+import `is`.xyz.mpv.MPVLib.MpvFormat
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -22,115 +28,333 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 
 /**
- * 基于 mpv 的播放内核后端（多内核接入骨架，`backendId = "mpv"`）。
+ * 基于 mpv（libmpv + `is.xyz.mpv.MPVLib` JNI 封装）的播放内核后端，`backendId = "mpv"`。
  *
- * **当前状态：仅供接入脚手架，未接通 native（libmpv）**：
- * - [supports] 当前恒返回 false，[backendPriority] 低于 media3（兜底），
- *   因此默认能力解析总会选中 media3，本后端不会被真正用于播放。
- * - 各 [NxPlayer] 成员为占位默认值，具体桥接（MPVLib 命令 / 状态属性观察 →
- *   StateFlow / 事件）待后续按方案接入 `is.xyz.mpv` 封装与自编译产物 `libmpv.so`。
+ * **职责**：把 mpv 属性观测 / 事件与 [NxPlayer] 的状态流做桥接，并驱动播放命令。
+ * mpv 为单进程单实例（[MPVLib] 为 object），本实现采用 lazy 惰性初始化（首次 [setSource]
+ * 时 [ensureInitialized]），多个播放器实例共享同一 handle，各自作为 [MPVLib.EventObserver]。
  *
- * 作用：让 mpv 成为「可配置注册、当前休眠」的第二内核预留位，验证 @IntoSet 多绑定链路。
+ * **重要：当前 `supports()` 恒 false、`backendPriority` 低于 media3，media3 仍是生效内核。**
+ * 原因：NxPlayer 的状态机是 media3 风格（Idle→Buffering→Ready→Playing/Paused→Ended），mpv
+ * 是无状态模型，下方 [deriveState] 为近似映射；且 mpv 渲染宿主（BaseMPVView / GL 表面）尚未
+ * 接入 PlayerScreen，且未经真机验证。待渲染接入 + 真机校准 [deriveState] 后才可开启 supports()。
  */
-class NxMpvPlayer @Inject constructor() : NxPlayerBackend {
+class NxMpvPlayer @Inject constructor(
+    @ApplicationContext private val context: Context,
+) : NxPlayerBackend, MPVLib.EventObserver {
 
     // region 多内核能力声明
 
     override val backendId: String = "mpv"
 
-    /** 骨架阶段不参与能力解析，恒返回 false（media3 兜底选中）。 */
+    /** 待渲染接入与真机验证后改为按 [NxMediaSource] 实判。 */
     override fun supports(source: NxMediaSource): Boolean = false
 
-    /** 仅低于 media3（Int.MAX_VALUE），为后续真实 mpv 预留优先级位。 */
     override val backendPriority: Int = Int.MAX_VALUE - 1
 
-    /** 独立内核，不属于任何变体。 */
     override val backendVariantOf: String? = null
 
     // endregion
 
-    // region 播放状态（占位默认值，待桥接 mpv 属性观测）
+    // region 惰性命周期
 
-    override val state: StateFlow<PlaybackState> =
-        MutableStateFlow<PlaybackState>(PlaybackState.Idle).asStateFlow()
+    @Volatile
+    private var initialized = false
 
-    override val positionMs: StateFlow<Long> = MutableStateFlow(0L).asStateFlow()
+    /** 是否已收到首次文件加载成功事件，用于状态推导。 */
+    @Volatile
+    private var fileLoaded = false
 
-    override val bufferedMs: StateFlow<Long> = MutableStateFlow(0L).asStateFlow()
+    private val ensureInitLock = Any()
 
-    override val durationMs: StateFlow<Long> = MutableStateFlow(0L).asStateFlow()
-
-    override val videoSize: StateFlow<VideoSize> =
-        MutableStateFlow(VideoSize(0, 0)).asStateFlow()
-
-    override val mediaInfo: StateFlow<MediaInfo?> = MutableStateFlow<MediaInfo?>(null).asStateFlow()
-
-    override val cues: StateFlow<List<Cue>> = MutableStateFlow<List<Cue>>(emptyList()).asStateFlow()
-
-    private val _events = MutableSharedFlow<PlaybackEvent>()
-    override val events: SharedFlow<PlaybackEvent> = _events.asSharedFlow()
-
-    override val playbackSpeed: StateFlow<Float> = MutableStateFlow(1f).asStateFlow()
-
-    override val networkSpeed: StateFlow<Long> = MutableStateFlow(0L).asStateFlow()
-
-    override val pitchPreservation: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
-
-    override val equalizer: NiEqualizer = NiEqualizer()
-
-    override val videoScaleMode: StateFlow<NxVideoScaleMode> =
-        MutableStateFlow(NxVideoScaleMode.Fit).asStateFlow()
-
-    override val audioTracks: StateFlow<List<AudioTrackInfo>> =
-        MutableStateFlow<List<AudioTrackInfo>>(emptyList()).asStateFlow()
-
-    override val selectedAudioTrackIndex: StateFlow<Int> = MutableStateFlow(-1).asStateFlow()
-
-    override val subtitleTracks: StateFlow<List<SubtitleTrackInfo>> =
-        MutableStateFlow<List<SubtitleTrackInfo>>(emptyList()).asStateFlow()
-
-    override val selectedSubtitleTrackIndex: StateFlow<Int> = MutableStateFlow(-1).asStateFlow()
-
-    override val activeSubtitleTrackIndex: StateFlow<Int> = MutableStateFlow(-1).asStateFlow()
-
-    override val subtitleOffsetMs: StateFlow<Long> = MutableStateFlow(0L).asStateFlow()
+    private fun ensureInitialized() {
+        if (initialized) return
+        synchronized(ensureInitLock) {
+            if (initialized) return
+            MPVLib.create(context)
+            // 观测驱动状态流的核心属性（格式与 JNI event.cpp 中的分派对应）
+            MPVLib.observeProperty("pause", MpvFormat.MPV_FORMAT_FLAG)
+            MPVLib.observeProperty("eof-reached", MpvFormat.MPV_FORMAT_FLAG)
+            MPVLib.observeProperty("idle-active", MpvFormat.MPV_FORMAT_FLAG)
+            MPVLib.observeProperty("time-pos", MpvFormat.MPV_FORMAT_DOUBLE)
+            MPVLib.observeProperty("duration", MpvFormat.MPV_FORMAT_DOUBLE)
+            MPVLib.observeProperty("speed", MpvFormat.MPV_FORMAT_DOUBLE)
+            MPVLib.observeProperty("width", MpvFormat.MPV_FORMAT_INT64)
+            MPVLib.observeProperty("height", MpvFormat.MPV_FORMAT_INT64)
+            MPVLib.observeProperty("aid", MpvFormat.MPV_FORMAT_INT64)
+            MPVLib.observeProperty("sid", MpvFormat.MPV_FORMAT_INT64)
+            MPVLib.addObserver(this)
+            initialized = true
+        }
+    }
 
     // endregion
 
-    // region 控制命令（占位空实现，待桥接 mpv 命令）
+    // region 状态流
 
-    override fun setSource(source: NxMediaSource, startPositionMs: Long) = Unit
+    private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
+    override val state: StateFlow<PlaybackState> = _state.asStateFlow()
 
-    override fun prepare() = Unit
+    private val _positionMs = MutableStateFlow(0L)
+    override val positionMs: StateFlow<Long> = _positionMs.asStateFlow()
 
-    override fun play() = Unit
+    private val _bufferedMs = MutableStateFlow(0L)
+    override val bufferedMs: StateFlow<Long> = _bufferedMs.asStateFlow()
 
-    override fun pause() = Unit
+    private val _durationMs = MutableStateFlow(0L)
+    override val durationMs: StateFlow<Long> = _durationMs.asStateFlow()
 
-    override fun seekTo(positionMs: Long) = Unit
+    private val _videoSize = MutableStateFlow(VideoSize(0, 0))
+    override val videoSize: StateFlow<VideoSize> = _videoSize.asStateFlow()
 
-    override fun setSpeed(speed: Float) = Unit
+    private val _mediaInfo = MutableStateFlow<MediaInfo?>(null)
+    override val mediaInfo: StateFlow<MediaInfo?> = _mediaInfo.asStateFlow()
 
-    override fun setPitchPreservationEnabled(enabled: Boolean) = Unit
+    private val _cues = MutableStateFlow<List<Cue>>(emptyList())
+    override val cues: StateFlow<List<Cue>> = _cues.asStateFlow()
 
-    override fun setVideoScaleMode(mode: NxVideoScaleMode) = Unit
+    private val _events = MutableSharedFlow<PlaybackEvent>(
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    override val events: SharedFlow<PlaybackEvent> = _events.asSharedFlow()
+
+    private val _playbackSpeed = MutableStateFlow(1f)
+    override val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
+
+    private val _networkSpeed = MutableStateFlow(0L)
+    override val networkSpeed: StateFlow<Long> = _networkSpeed.asStateFlow()
+
+    private val _pitchPreservation = MutableStateFlow(true)
+    override val pitchPreservation: StateFlow<Boolean> = _pitchPreservation.asStateFlow()
+
+    private val _equalizer = NiEqualizer()
+    override val equalizer: NiEqualizer = _equalizer
+
+    private val _videoScaleMode = MutableStateFlow(NxVideoScaleMode.Fit)
+    override val videoScaleMode: StateFlow<NxVideoScaleMode> = _videoScaleMode.asStateFlow()
+
+    private val _audioTracks = MutableStateFlow<List<AudioTrackInfo>>(emptyList())
+    override val audioTracks: StateFlow<List<AudioTrackInfo>> = _audioTracks.asStateFlow()
+
+    private val _selectedAudioTrackIndex = MutableStateFlow(-1)
+    override val selectedAudioTrackIndex: StateFlow<Int> = _selectedAudioTrackIndex.asStateFlow()
+
+    private val _subtitleTracks = MutableStateFlow<List<SubtitleTrackInfo>>(emptyList())
+    override val subtitleTracks: StateFlow<List<SubtitleTrackInfo>> = _subtitleTracks.asStateFlow()
+
+    private val _selectedSubtitleTrackIndex = MutableStateFlow(-1)
+    override val selectedSubtitleTrackIndex: StateFlow<Int> =
+        _selectedSubtitleTrackIndex.asStateFlow()
+
+    private val _activeSubtitleTrackIndex = MutableStateFlow(-1)
+    override val activeSubtitleTrackIndex: StateFlow<Int> = _activeSubtitleTrackIndex.asStateFlow()
+
+    private val _subtitleOffsetMs = MutableStateFlow(0L)
+    override val subtitleOffsetMs: StateFlow<Long> = _subtitleOffsetMs.asStateFlow()
+
+    // endregion
+
+    // region 状态推导（mpv 无状态模型 → NxPlayer 状态机 的近似映射，待真机校准）
+
+    private val mpvPaused = MutableStateFlow(true)
+    private val mpvEof = MutableStateFlow(false)
+    private val mpvIdle = MutableStateFlow(true)
+
+    private fun deriveState() {
+        _state.value = when {
+            mpvEof.value -> PlaybackState.Ended
+            mpvPaused.value -> PlaybackState.Paused
+            fileLoaded && !mpvIdle.value -> PlaybackState.Playing
+            fileLoaded -> PlaybackState.Ready
+            else -> PlaybackState.Buffering
+        }
+    }
+
+    // endregion
+
+    // region MPVLib.EventObserver
+
+    override fun eventProperty(property: String) = Unit
+
+    override fun eventProperty(property: String, value: Long) {
+        when (property) {
+            "width" -> _videoSize.value = _videoSize.value.copy(width = value.toInt())
+            "height" -> _videoSize.value = _videoSize.value.copy(height = value.toInt())
+            "aid" -> _selectedAudioTrackIndex.value = (value - 1).toInt()
+            "sid" -> {
+                _selectedSubtitleTrackIndex.value = (value - 1).toInt()
+                _activeSubtitleTrackIndex.value = _selectedSubtitleTrackIndex.value
+            }
+        }
+    }
+
+    override fun eventProperty(property: String, value: Boolean) {
+        when (property) {
+            "pause" -> { mpvPaused.value = value; deriveState() }
+            "eof-reached" -> { mpvEof.value = value; deriveState() }
+            "idle-active" -> { mpvIdle.value = value; deriveState() }
+        }
+    }
+
+    override fun eventProperty(property: String, value: String) = Unit
+
+    override fun eventProperty(property: String, value: Double) {
+        when (property) {
+            "time-pos" -> if (value >= 0) _positionMs.value = (value * 1000).toLong()
+            "duration" -> _durationMs.value = (value * 1000).toLong()
+            "speed" -> _playbackSpeed.value = value.toFloat()
+        }
+    }
+
+    override fun event(eventId: Int) {
+        when (eventId) {
+            MpvEvent.MPV_EVENT_START_FILE -> {
+                fileLoaded = false
+                _state.value = PlaybackState.Buffering
+            }
+            MpvEvent.MPV_EVENT_FILE_LOADED -> {
+                fileLoaded = true
+                _mediaInfo.value = readMediaInfo()
+                deriveState()
+            }
+            MpvEvent.MPV_EVENT_VIDEO_RECONFIG -> {
+                _events.tryEmit(PlaybackEvent.RenderingStart)
+                _events.tryEmit(PlaybackEvent.VideoSizeChanged(_videoSize.value))
+            }
+            MpvEvent.MPV_EVENT_END_FILE -> if (mpvEof.value) _state.value = PlaybackState.Ended
+        }
+    }
+
+    // endregion
+
+    // region 命令
+
+    override fun setSource(source: NxMediaSource, startPositionMs: Long) {
+        ensureInitialized()
+        fileLoaded = false
+        val opts = buildString {
+            append("start=").append(startPositionMs / 1000.0)
+            if (source is NxMediaSource.Http && source.headers.isNotEmpty()) {
+                // mpv 的 http-header-fields 以 "Key: Value" 分号分隔
+                append(",http-header-fields=").append(
+                    source.headers.entries.joinToString(";") { (k, v) -> "$k: $v" }
+                )
+            }
+        }
+        MPVLib.command(arrayOf("loadfile", source.uri.toString(), "replace", opts))
+    }
+
+    override fun prepare() {
+        ensureInitialized()
+        // mpv loadfile 后即处于待播放态；此处无额外动作（状态由事件驱动）
+    }
+
+    override fun play() {
+        ensureInitialized()
+        MPVLib.setPropertyBoolean("pause", false)
+    }
+
+    override fun pause() {
+        ensureInitialized()
+        MPVLib.setPropertyBoolean("pause", true)
+    }
+
+    override fun seekTo(positionMs: Long) {
+        ensureInitialized()
+        MPVLib.setPropertyDouble("time-pos", positionMs / 1000.0)
+    }
+
+    override fun setSpeed(speed: Float) {
+        ensureInitialized()
+        MPVLib.setPropertyDouble("speed", speed.toDouble())
+        _playbackSpeed.value = speed
+    }
+
+    override fun setPitchPreservationEnabled(enabled: Boolean) {
+        // mpv 默认恒音调（scaletempo）；此开关暂不映射，保持记录
+        _pitchPreservation.value = enabled
+    }
+
+    override fun setVideoScaleMode(mode: NxVideoScaleMode) {
+        _videoScaleMode.value = mode
+        ensureInitialized()
+        // mpv 拉伸/裁剪近似：Stretch 时禁用保持比例（video-unscaled），其余复位
+        if (mode == NxVideoScaleMode.Stretch) {
+            MPVLib.setPropertyBoolean("video-unscaled", true)
+        } else {
+            MPVLib.setPropertyBoolean("video-unscaled", false)
+        }
+    }
 
     override fun setBlackBarCropEnabled(enabled: Boolean) = Unit
 
-    override fun selectAudioTrack(index: Int) = Unit
+    override fun selectAudioTrack(index: Int) {
+        ensureInitialized()
+        MPVLib.setPropertyInt("aid", index + 1)
+    }
 
-    override fun selectSubtitleTrack(index: Int) = Unit
+    override fun selectSubtitleTrack(index: Int) {
+        ensureInitialized()
+        when (index) {
+            -2 -> MPVLib.setPropertyString("sid", "no") // 关闭
+            -1 -> MPVLib.setPropertyString("sid", "auto") // 自动
+            else -> MPVLib.setPropertyInt("sid", index + 1)
+        }
+    }
 
-    override fun setSubtitleOffsetMs(offsetMs: Long) = Unit
+    override fun setSubtitleOffsetMs(offsetMs: Long) {
+        ensureInitialized()
+        MPVLib.setPropertyDouble("sub-delay", offsetMs / 1000.0)
+        _subtitleOffsetMs.value = offsetMs
+    }
 
-    override fun setVolume(volume: Float) = Unit
+    override fun setVolume(volume: Float) {
+        ensureInitialized()
+        MPVLib.setPropertyDouble("volume", volume * 100.0)
+    }
 
-    override fun setLooping(looping: Boolean) = Unit
+    override fun setLooping(looping: Boolean) {
+        ensureInitialized()
+        MPVLib.setPropertyBoolean("loop-file", looping)
+    }
 
-    override fun attachSurface(surface: Surface?) = Unit
+    override fun attachSurface(surface: Surface?) {
+        if (surface != null) {
+            ensureInitialized()
+            MPVLib.attachSurface(surface)
+            MPVLib.init()
+        } else {
+            MPVLib.detachSurface()
+        }
+    }
 
     override fun release() {
-        equalizer.release()
+        _equalizer.release()
+        if (initialized) {
+            MPVLib.removeObserver(this)
+            MPVLib.destroy()
+            initialized = false
+        }
+    }
+
+    // endregion
+
+    // region 媒体信息读取
+
+    private fun readMediaInfo(): MediaInfo {
+        val videoCodec = MPVLib.getPropertyString("video-codec")
+        val audioCodec = MPVLib.getPropertyString("audio-codec")
+        val w = _videoSize.value.width
+        val h = _videoSize.value.height
+        return MediaInfo(
+            videoCodec = videoCodec?.takeIf { it.isNotBlank() },
+            audioCodec = audioCodec?.takeIf { it.isNotBlank() },
+            resolution = if (w > 0 && h > 0) "${w}×${h}" else null,
+            bitrate = null,
+            frameRate = MPVLib.getPropertyDouble("estimated-vf-fps")?.toFloat(),
+            hdrType = null,
+        )
     }
 
     // endregion
