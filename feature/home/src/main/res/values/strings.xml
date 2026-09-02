@@ -165,17 +165,14 @@
 
     <!-- 媒体库（LibraryScreen / LibraryViewModel） -->
     <string name="library_title">媒体库</string>
+    <string name="library_view_grid">网格视图</string>
+    <string name="library_view_list">列表视图</string>
     <string name="library_tab_storage">存储源</string>
     <string name="library_tab_playlists">歌单</string>
     <string name="library_add_storage">添加存储</string>
-    <string name="library_search">搜索</string>
-    <string name="library_close_search">关闭搜索</string>
-    <string name="library_search_placeholder">搜索存储源名称</string>
     <string name="library_empty_title">暂无存储源</string>
     <string name="library_empty_hint">添加存储源后即可浏览媒体文件</string>
-    <string name="library_no_result">未找到匹配的存储源</string>
     <string name="library_no_type">该类型下暂无存储源</string>
-    <string name="library_try_keywords">换个关键词试试</string>
     <string name="library_switch_filter">切换筛选条件查看其他类型</string>
     <string name="library_storage_count">共 %1$d 个存储</string>
     <string name="library_delete_storage_title">删除存储源</string>

@@ -36,10 +36,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import javax.inject.Inject
 
 /**
@@ -441,45 +441,57 @@ class HomeTabViewModel @Inject constructor(
     }
 
     /**
-     * 验证存储源可达性：检查库存在性（DB）和远程连接（testConnection）。
+     * 验证存储源可达性：远程连接（testConnection）并发探测，结果写入 [_storageReachability]。
      *
-     * 并发验证所有不同的 storageId，每个 storageId 只测一次连接。
-     * 验证结果写入 [_storageReachability]，UI 据此显示视觉提示。
+     * 有界等待：总超时 [REACHABILITY_TIMEOUT_MS] 到期即放弃本轮等待，
+     * 未完成探测的源视为不可达，避免底层几十秒超时时让首页下拉刷新一直转圈。
+     * 各源探测在 viewModelScope 后台执行，其底层连接（okhttp/smbj）无法被协程打断，
+     * 超时后仍在后台完成后自会写入，下次刷新即体现最新结果。
      * 首页加载与下拉刷新共用（suspend，调用方持协程）。
      */
     private suspend fun validateStorageConnections() {
         val plays = recentPlays.value
         val quickItems = quickAccessItems.value
-        coroutineScope {
-            val storageIds = mutableSetOf<Int>()
-            plays.filter { it.storageId != null }.forEach { storageIds.add(it.storageId!!) }
-            quickItems.filter { it.libraryValid }.forEach { storageIds.add(it.entity.libraryId) }
+        val storageIds = mutableSetOf<Int>()
+        plays.filter { it.storageId != null }.forEach { storageIds.add(it.storageId!!) }
+        quickItems.filter { it.libraryValid }.forEach { storageIds.add(it.entity.libraryId) }
+        if (storageIds.isEmpty()) return
 
-            val results = storageIds.map { sid ->
-                async(Dispatchers.IO) {
-                    try {
-                        val library = mediaLibraryDao.getById(sid) ?: return@async sid to false
-                        // 本地存储始终可达；其他类型（SAF/SMB/WebDAV）均需验证
-                        if (library.mediaType == MediaType.LOCAL_STORAGE) {
-                            return@async sid to true
-                        }
-                        val storage = storageFactory.create(library) ?: return@async sid to false
+        val resultMap = java.util.Collections.synchronizedMap(mutableMapOf<Int, Boolean>())
+        storageIds.forEach { sid ->
+            viewModelScope.launch(Dispatchers.IO) {
+                val tested = try {
+                    val library = mediaLibraryDao.getById(sid) ?: return@launch
+                    // 本地存储始终可达；其他类型（SAF/SMB/WebDAV）均需验证
+                    if (library.mediaType == MediaType.LOCAL_STORAGE) {
+                        true
+                    } else {
+                        val storage = storageFactory.create(library) ?: return@launch
                         try {
-                            val reachable = storage.testConnection()
-                            sid to reachable
+                            storage.testConnection()
                         } finally {
                             storage.close()
                         }
-                    } catch (_: Exception) {
-                        sid to false
                     }
+                } catch (_: Exception) {
+                    false
                 }
-            }.awaitAll().toMap()
-            // 值相等则跳过 set（StateFlow 值语义），避免下拉刷新/重复验证时
-            // 即使连接状态未变也触发整页重组（每个不可达卡片都读此 Map）
-            if (_storageReachability.value != results) {
-                _storageReachability.value = results
+                resultMap[sid] = tested
             }
+        }
+
+        try {
+            withTimeout(REACHABILITY_TIMEOUT_MS) {
+                while (resultMap.size < storageIds.size) delay(REACHABILITY_POLL_MS)
+            }
+        } catch (_: TimeoutCancellationException) {
+            // 部分源探测超时仍未返回：本轮先按未完成视为不可达，后台完成后下次刷新更新
+        }
+
+        val results = storageIds.associateWith { resultMap[it] ?: false }
+        // 值相等则跳过 set（StateFlow 值语义），避免重复验证时即使连接状态未变也触发整页重组
+        if (_storageReachability.value != results) {
+            _storageReachability.value = results
         }
     }
 
@@ -582,6 +594,10 @@ class HomeTabViewModel @Inject constructor(
         const val FLUSH_INTERVAL_MS = 250L
         /** 首次存储源可达性验证的延迟（ms）。避开首屏渲染与缩略图生成网络风暴。 */
         const val INITIAL_REACHABILITY_DELAY_MS = 800L
+        /** 存储源可达性探测的总超时（ms）。到期未完成的源视为不可达，保证下拉刷新有界响应。 */
+        const val REACHABILITY_TIMEOUT_MS = 8_000L
+        /** 可达性探测轮询结果的间隔（ms）。 */
+        const val REACHABILITY_POLL_MS = 50L
     }
 }
 

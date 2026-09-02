@@ -66,8 +66,13 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.Collections
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
+
+/** 文件目录加载的总超时（ms）。不可达存储底层 listFiles 可能阻塞数十秒，此值兜底停止转圈。 */
+private const val DIRECTORY_LOAD_TIMEOUT_MS = 10_000L
 
 /**
  * 文件浏览页 ViewModel。
@@ -1017,7 +1022,33 @@ class StorageFileViewModel @Inject constructor(
             _thumbnailUrls.value = emptyMap()
             _tooShortPaths.value = emptySet()
             try {
-                val fs = withContext(Dispatchers.IO) { s.listFiles(directory) }
+                // 有界加载：不可达存储（SMB/WebDAV）底层 listFiles 是阻塞调用（含多次重试），
+                // 协程 withTimeout 会一直等待后台阻塞完成、无法按时返回，因此改用
+                // Future.get(timeout)：超时立即抛 TimeoutException，不停转圈。
+                // 后台线程随后被 cancel(true) 尝试打断；smbj 若不响应中断，则自行阻塞到底层
+                // 超时后结束，其结果一并丢弃。
+                val resultFuture = CompletableFuture<List<StorageFile>>()
+                val loadJob = viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        resultFuture.complete(s.listFiles(directory))
+                    } catch (e: Exception) {
+                        resultFuture.completeExceptionally(e)
+                    }
+                }
+                // 阻塞式 get(timeout) 必须放到 IO 线程：listDirectory 运行在 Main 协程，
+                // 若直接在主线程调用会阻塞到超时，导致重试时 UI 卡死/ANR。
+                val fs = withContext(Dispatchers.IO) {
+                    try {
+                        resultFuture.get(DIRECTORY_LOAD_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                    } catch (e: java.util.concurrent.ExecutionException) {
+                        // 解包底层异常（如 SMB/WebDAV 错误），让错误提示走对应文案
+                        throw (e.cause ?: e)
+                    } catch (e: java.util.concurrent.TimeoutException) {
+                        // 超时立即返回（不等待后台协程到底层阻塞结束），并尝试取消；后台阻塞线程残留自行结束
+                        loadJob.cancel()
+                        throw java.net.SocketTimeoutException()
+                    }
+                }
                 // 栈变更在列目录成功后执行，失败时保持原栈不变
                 stackOp()
                 _uiState.update {
