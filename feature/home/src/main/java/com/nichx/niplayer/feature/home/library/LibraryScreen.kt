@@ -83,8 +83,7 @@ import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
-import com.nichx.niplayer.designsystem.components.NiFAB
-import com.nichx.niplayer.designsystem.components.NiFabVariant
+import com.nichx.niplayer.designsystem.components.NiGlassCircleIcon
 import com.nichx.niplayer.designsystem.components.NiSkeletonBox
 import com.nichx.niplayer.designsystem.components.NiSkeletonLine
 import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
@@ -311,11 +310,14 @@ fun LibraryScreen(
             }
 
             if (dataReady && libraries.isNotEmpty()) {
-                NiFAB(
+                // 与导航栏 pill 同款灰色圆钮 + tertiary 图标，跟随底栏不透明度，保证视觉统一
+                // （此页位于 HomeScreen 捕获层内，无本地 backdrop，用纯灰底而非液态玻璃模糊）
+                NiGlassCircleIcon(
                     icon = Icons.Filled.Add,
-                    onClick = { showTypeSheet = true },
                     contentDescription = stringResource(R.string.library_add_storage),
-                    variant = NiFabVariant.PRIMARY,
+                    onClick = { showTypeSheet = true },
+                    size = 56.dp,
+                    iconSize = 26.dp,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(end = 16.dp, bottom = 104.dp),

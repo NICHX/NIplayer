@@ -29,6 +29,7 @@ object FileBrowserSettings {
     private const val KEY_SORT_ASCENDING = "file_sort_ascending"
     private const val KEY_SHOW_ONLY_MEDIA = "show_only_media_files"
     private const val KEY_SHOW_HIDDEN_FILES = "show_hidden_files"
+    private const val KEY_HIDE_THUMB_FOLDER = "hide_thumb_folder"
     private const val KEY_MEDIA_FILTER = "file_media_filter"
     private const val KEY_VIEW_MODE = "file_browser_view_mode"
     // 旧版布尔视图模式 key（true=网格, false=列表），首次读取新枚举时做一次迁移
@@ -102,6 +103,14 @@ object FileBrowserSettings {
             _sortFlow.value = _sortFlow.value.copy(showHiddenFiles = value)
         }
 
+    /** 是否隐藏应用生成的 .thumb 缩略图文件夹，默认隐藏（即便开启了显示隐藏文件也不展示）。 */
+    var hideThumbFolder: Boolean
+        get() = mmkv.decodeBool(KEY_HIDE_THUMB_FOLDER, true)
+        set(value) {
+            mmkv.encode(KEY_HIDE_THUMB_FOLDER, value)
+            _sortFlow.value = _sortFlow.value.copy(hideThumbFolder = value)
+        }
+
     /** 文件浏览视图模式，默认列表。 */
     var viewMode: ViewMode
         get() {
@@ -142,8 +151,9 @@ object FileBrowserSettings {
         val ascending = mmkv.decodeBool(KEY_SORT_ASCENDING, true)
         val showOnlyMediaFiles = mmkv.decodeBool(KEY_SHOW_ONLY_MEDIA, false)
         val showHiddenFiles = mmkv.decodeBool(KEY_SHOW_HIDDEN_FILES, false)
+        val hideThumbFolder = mmkv.decodeBool(KEY_HIDE_THUMB_FOLDER, true)
         val mediaFilter = MediaFilter.fromValue(mmkv.decodeInt(KEY_MEDIA_FILTER, MediaFilter.ALL.value))
-        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, mediaFilter, viewMode)
+        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, hideThumbFolder, mediaFilter, viewMode)
     }
 }
 
@@ -155,6 +165,8 @@ data class SortConfig(
     val showOnlyMediaFiles: Boolean = false,
     /** 显示隐藏文件（以 . 开头的文件/文件夹），默认为 false。 */
     val showHiddenFiles: Boolean = false,
+    /** 隐藏应用生成的 .thumb 缩略图文件夹，默认为 true。 */
+    val hideThumbFolder: Boolean = true,
     /** 文件类型过滤，默认为全部。 */
     val mediaFilter: FileBrowserSettings.MediaFilter = FileBrowserSettings.MediaFilter.ALL,
     /** 文件浏览视图模式：列表/网格/画廊，默认列表。 */

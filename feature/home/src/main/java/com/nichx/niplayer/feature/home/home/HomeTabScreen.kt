@@ -47,8 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.nichx.niplayer.designsystem.components.NiAutoSizeText
-import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
-import com.nichx.niplayer.designsystem.iconstyle.NiStyleIcon
+import com.nichx.niplayer.designsystem.components.NiGlassCircleIcon
 import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
@@ -68,7 +67,6 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -177,33 +175,24 @@ fun HomeTabScreen(
                     title = "NIplayer",
                     modifier = Modifier.widthIn(max = contentMaxWidth),
                     actions = {
-                        IconButton(onClick = onNavigateToSearch) {
-                            NiStyleIcon(
-                                icon = Icons.Rounded.Search,
-                                style = NiAppIconStyle,
-                                containerSize = 40.dp,
-                                iconSize = 22.dp,
-                                contentDescription = stringResource(R.string.search),
-                            )
-                        }
-                        IconButton(onClick = { onNavigateToPlayHistory(0) }) {
-                            NiStyleIcon(
-                                icon = Icons.Rounded.History,
-                                style = NiAppIconStyle,
-                                containerSize = 40.dp,
-                                iconSize = 22.dp,
-                                contentDescription = stringResource(R.string.play_history_title),
-                            )
-                        }
-                        IconButton(onClick = onNavigateToTheme) {
-                            NiStyleIcon(
-                                icon = Icons.Rounded.Palette,
-                                style = NiAppIconStyle,
-                                containerSize = 40.dp,
-                                iconSize = 22.dp,
-                                contentDescription = stringResource(R.string.theme_title),
-                            )
-                        }
+                        NiGlassCircleIcon(
+                            icon = Icons.Rounded.Search,
+                            contentDescription = stringResource(R.string.search),
+                            onClick = onNavigateToSearch,
+                            modifier = Modifier.padding(horizontal = 2.dp),
+                        )
+                        NiGlassCircleIcon(
+                            icon = Icons.Rounded.History,
+                            contentDescription = stringResource(R.string.play_history_title),
+                            onClick = { onNavigateToPlayHistory(0) },
+                            modifier = Modifier.padding(horizontal = 2.dp),
+                        )
+                        NiGlassCircleIcon(
+                            icon = Icons.Rounded.Palette,
+                            contentDescription = stringResource(R.string.theme_title),
+                            onClick = onNavigateToTheme,
+                            modifier = Modifier.padding(horizontal = 2.dp),
+                        )
                     },
                 )
             }

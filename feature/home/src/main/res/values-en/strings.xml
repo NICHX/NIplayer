@@ -319,8 +319,6 @@
     <string name="storage_file_back_to_top">Back to top</string>
     <string name="storage_file_more">More</string>
     <string name="storage_file_collapse_menu">Collapse menu</string>
-    <string name="storage_file_download_tasks">Download tasks</string>
-    <string name="storage_file_upload_tasks">Upload tasks</string>
     <string name="upload_task_created">Upload task created: %1$s</string>
     <string name="upload_task_create_failed">Failed to create upload task</string>
     <string name="storage_file_select">Select</string>
@@ -330,7 +328,6 @@
     <string name="storage_file_deselect_all">Deselect all</string>
     <string name="storage_file_cancel_multi_select">Cancel multi-select</string>
     <string name="storage_file_selected_count">%1$d selected</string>
-    <string name="storage_file_enter_multi_select">Multi-select</string>
     <string name="more">More</string>
     <string name="move_to">Move to</string>
     <string name="copy_to">Copy to</string>
@@ -339,6 +336,17 @@
     <string name="storage_file_move_partial">Move partially complete (%1$d/%2$d)</string>
     <string name="storage_file_copied_count">Copied %1$d items</string>
     <string name="storage_file_copy_partial">Copy partially complete (%1$d/%2$d)</string>
+    <string name="storage_file_moved_skipped">Moved %1$d items, skipped %2$d duplicates</string>
+    <string name="storage_file_copied_skipped">Copied %1$d items, skipped %2$d duplicates</string>
+    <string name="storage_file_conflict_title">Files with same name exist</string>
+    <string name="storage_file_conflict_body">%1$d items share a name with files in the target. How to proceed?</string>
+    <string name="storage_file_conflict_skip">Skip duplicates</string>
+    <string name="storage_file_conflict_overwrite">Overwrite</string>
+    <string name="storage_file_op_moving">Moving</string>
+    <string name="storage_file_op_copying">Copying</string>
+    <string name="storage_file_op_deleting">Deleting</string>
+    <string name="storage_file_op_progress">%1$d/%2$d</string>
+    <string name="storage_file_op_busy">A file operation is in progress. Please try again later.</string>
     <string name="storage_file_batch_move_title">Move %1$d items to</string>
     <string name="storage_file_batch_copy_title">Copy %1$d items to</string>
     <string name="storage_file_sort">Sort</string>
@@ -449,7 +457,6 @@
     <string name="storage_file_preparing_playback">Detecting orientation…</string>
     <string name="storage_file_password_changed">Password changed for “%1$s”</string>
     <string name="storage_file_renamed">Renamed to “%1$s”</string>
-    <string name="storage_file_moved">Moved to “%1$s”</string>
     <string name="storage_file_folder_created">Created folder “%1$s”</string>
     <string name="storage_file_uploading">Uploading “%1$s”</string>
     <string name="storage_file_uploaded">Uploaded “%1$s”</string>
@@ -461,7 +468,6 @@
     <string name="storage_file_qa_added">Added to quick access</string>
     <string name="storage_file_qa_removed">Removed from quick access</string>
     <string name="storage_file_rename_failed">Failed to rename</string>
-    <string name="storage_file_move_failed">Failed to move</string>
     <string name="storage_file_folder_create_failed">Failed to create folder</string>
     <string name="storage_file_upload_failed">Upload failed</string>
     <string name="storage_file_delete_failed">Failed to delete</string>
@@ -703,6 +709,8 @@
     <string name="player_media_only_desc">Show only video, audio and images in the file browser and hide other file types</string>
     <string name="player_show_hidden">Show hidden files/folders</string>
     <string name="player_show_hidden_desc">Show hidden files and folders starting with a dot, such as .thumb/, .DS_Store, etc.</string>
+    <string name="player_hide_thumb_folder">Hide .thumb folders</string>
+    <string name="player_hide_thumb_folder_desc">Hide the .thumb thumbnail folder in the file browser by default, even when showing hidden files</string>
     <string name="player_frame_position_title">Frame position</string>
     <string name="player_assrt_token_title">Set ASSRT token</string>
     <string name="player_assrt_token_hint">Register on assrt.net to get an API token for subtitle search.</string>

@@ -287,13 +287,13 @@ class StorageFileViewModel @Inject constructor(
     val preparingPlaybackPath: StateFlow<String?> = _preparingPlaybackPath.asStateFlow()
 
     /**
-     * 进入多选模式（顶栏「选择」按钮触发），初始不选中任何项。
+     * 长按文件进入多选模式，并选中当前长按的文件。
      *
-     * 原实现由长按触发并选中当前项；长按已改为打开单文件操作菜单，
-     * 多选改由顶栏「选择」按钮显式进入，故不再需要 [StorageFile] 参数。
+     * 多选仅由长按进入（长按不再打开单文件菜单，单文件菜单改由文件项 ⋮ 按钮进入），
+     * 故初始即选中 [file]。
      */
-    fun enterMultiSelect() {
-        _selectedPaths.value = emptySet()
+    fun enterMultiSelect(file: StorageFile) {
+        _selectedPaths.value = setOf(file.path)
         _isMultiSelect.value = true
     }
 
@@ -322,22 +322,40 @@ class StorageFileViewModel @Inject constructor(
         val s = storage ?: return
         val selected = _uiState.value.files.filter { it.path in _selectedPaths.value }
         if (selected.isEmpty()) return
+        // 互斥：已有文件操作在进行时拒绝删除，避免删除正在处理的文件
+        if (!beginExclusiveFileOp()) return
+        // 操作开始即退出多选，避免底部多选菜单与进度浮层同时显示
+        exitMultiSelect()
+        // 兜底：先清掉可能残留的进度，再发起本次删除
+        _fileOpProgress.value = null
+        if (selected.isNotEmpty()) _fileOpProgress.value = FileOpProgress(selected.size, 0, "", FileOpType.DELETE)
         viewModelScope.launch {
             var okCount = 0
-            withContext(Dispatchers.IO) {
-                selected.forEach { file ->
-                    if (runCatching { s.deleteFile(file) }.getOrDefault(false)) {
-                        okCount++
-                        if (file.isDirectory) {
-                            encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
-                        } else {
-                            // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
-                            runCatching {
-                                thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
+            var done = 0
+            val type = FileOpType.DELETE
+            try {
+                withContext(Dispatchers.IO) {
+                    selected.forEach { file ->
+                        _fileOpProgress.value = FileOpProgress(selected.size, done, file.name, type)
+                        if (runCatching { s.deleteFile(file) }.getOrDefault(false)) {
+                            okCount++
+                            if (file.isDirectory) {
+                                encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
+                            } else {
+                                // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
+                                runCatching {
+                                    thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
+                                }
                             }
                         }
+                        done++
+                        _fileOpProgress.value = FileOpProgress(selected.size, done, "", type)
                     }
                 }
+            } finally {
+                endExclusiveFileOp()
+                // 无论成功/失败/协程取消，都清理进度浮层，保证它能自动消失
+                _fileOpProgress.value = null
             }
             exitMultiSelect()
             if (okCount == selected.size) {
@@ -393,33 +411,7 @@ class StorageFileViewModel @Inject constructor(
      * @param targetDirectory 目标目录（必须已存在）
      */
     fun moveFiles(files: List<StorageFile>, targetDirectory: StorageFile) {
-        val s = storage ?: return
-        if (files.isEmpty()) return
-        viewModelScope.launch {
-            var okCount = 0
-            withContext(Dispatchers.IO) {
-                files.forEach { file ->
-                    if (runCatching { s.move(file, targetDirectory) }.getOrDefault(false)) {
-                        okCount++
-                        if (file.isDirectory) {
-                            val oldPath = file.path.trimEnd('/')
-                            val newPath = if (targetDirectory.path.isEmpty()) file.name
-                            else "${targetDirectory.path.trimEnd('/')}/${file.name}"
-                            if (oldPath != newPath) {
-                                encryptedFolderManager.renameFolderPrefix(storageId, oldPath, newPath)
-                            }
-                        }
-                    }
-                }
-            }
-            exitMultiSelect()
-            if (okCount == files.size) {
-                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_moved_count, okCount)))
-            } else {
-                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_move_partial, okCount, files.size)))
-            }
-            refreshCurrentDirectory()
-        }
+        beginTransfer(files, targetDirectory, isCopy = false, isBatch = true)
     }
 
     /**
@@ -432,25 +424,263 @@ class StorageFileViewModel @Inject constructor(
      * @param targetDirectory 目标目录（必须已存在）
      */
     fun copyFiles(files: List<StorageFile>, targetDirectory: StorageFile) {
+        beginTransfer(files, targetDirectory, isCopy = true, isBatch = true)
+    }
+
+    /**
+     * 移动/复制前统一入口。
+     *
+     * 先检测目标目录是否存在同名文件：
+     * - 无同名文件：直接执行传输
+     * - 存在同名文件：挂起 [_transferConflict]，由 UI 弹窗让用户选择「跳过重复 / 覆盖 / 取消」
+     */
+    private fun beginTransfer(
+        files: List<StorageFile>,
+        targetDirectory: StorageFile,
+        isCopy: Boolean,
+        isBatch: Boolean,
+    ) {
         val s = storage ?: return
         if (files.isEmpty()) return
+        // 互斥：已有文件操作在进行时，拒绝再发起移动/复制，避免触及正在被处理的文件
+        if (!beginExclusiveFileOp()) return
+        // 操作开始即退出多选，避免底部多选菜单与进度浮层同时显示（操作完成后不再重复退出）
+        exitMultiSelect()
         viewModelScope.launch {
-            var okCount = 0
-            withContext(Dispatchers.IO) {
-                files.forEach { file ->
-                    if (runCatching { s.copy(file, targetDirectory) }.getOrDefault(false)) {
-                        okCount++
+            try {
+                // 移动时过滤"目标即源位置"的原地操作（无实际效果）
+                val effective = if (isCopy) files else files.filter {
+                    val dest = if (targetDirectory.path.isEmpty()) it.name
+                    else "${targetDirectory.path}/${it.name}"
+                    dest != it.path
+                }
+                if (effective.isEmpty()) return@launch
+                val duplicates = withContext(Dispatchers.IO) {
+                    detectNameConflicts(s, effective, targetDirectory)
+                }
+                if (duplicates.isNotEmpty()) {
+                    _transferConflict.value = TransferConflict(
+                        files = effective,
+                        target = targetDirectory,
+                        isCopy = isCopy,
+                        isBatch = isBatch,
+                        duplicateFiles = duplicates,
+                    )
+                } else {
+                    val ok = withContext(Dispatchers.IO) {
+                        executeTransfer(s, effective, targetDirectory, isCopy, emptySet(), emptySet())
+                    }
+                    reportTransferResult(isCopy, ok, effective.size, skipped = 0)
+                }
+            } finally {
+                endExclusiveFileOp()
+            }
+        }
+    }
+
+    /** 检测 source 中哪些文件/目录在目标目录已有同名项。 */
+    private suspend fun detectNameConflicts(
+        s: Storage,
+        files: List<StorageFile>,
+        target: StorageFile,
+    ): List<StorageFile> {
+        if (files.isEmpty()) return emptyList()
+        return try {
+            val targetFiles = s.listFiles(if (target.path.isEmpty()) StorageFactory.ROOT else target)
+            val targetNames = targetFiles.map { it.name }.toHashSet()
+            files.filter { it.name in targetNames }
+        } catch (e: Exception) {
+            // 目标目录列不出来交给传输本身决定成败，不因检测失败阻断
+            emptyList()
+        }
+    }
+
+    /**
+     * 逐个执行移动/复制，返回成功项数。
+     *
+     * [skipPaths]：跳过的源文件（用户选「跳过重复」）。
+     * [overwritePaths]：需覆盖重名项的源文件 —— 采用**安全覆盖**，全程不预先删除目标，
+     * 避免传输失败导致用户文件丢失：
+     * 1. 先把目标同名项重命名为临时备份名（原数据仍在盘上）
+     * 2. 再执行移动/复制
+     * 3. 成功 → 删除旧备份；失败 → 把备份还原为原目标名
+     */
+    private suspend fun executeTransfer(
+        s: Storage,
+        files: List<StorageFile>,
+        target: StorageFile,
+        isCopy: Boolean,
+        skipPaths: Set<String>,
+        overwritePaths: Set<String>,
+    ): Int {
+        val total = files.size - skipPaths.size
+        var okCount = 0
+        var done = 0
+        val type = if (isCopy) FileOpType.COPY else FileOpType.MOVE
+        if (total > 0) _fileOpProgress.value = FileOpProgress(total, 0, "", type)
+        try {
+            for (file in files) {
+                if (file.path in skipPaths) continue
+                _fileOpProgress.value = FileOpProgress(total, done, file.name, type)
+                val needOverwrite = file.path in overwritePaths
+                // 安全覆盖：先备份目标（重命名），失败则跳过该项以避免数据丢失
+                val backupName = if (needOverwrite) backupTarget(s, file, target) ?: continue else null
+                val success = runCatching {
+                    if (isCopy) s.copy(file, target) else s.move(file, target)
+                }.getOrDefault(false)
+                if (success) {
+                    okCount++
+                    if (backupName != null) {
+                        // 传输成功，删除旧备份（尽力而为，失败不阻断）
+                        runCatching { deleteBackup(s, target, backupName, file.isDirectory) }
+                    }
+                    // 移动目录后同步加密配置前缀
+                    if (!isCopy && file.isDirectory) {
+                        val oldPath = file.path.trimEnd('/')
+                        val newPath = if (target.path.isEmpty()) file.name
+                        else "${target.path.trimEnd('/')}/${file.name}"
+                        if (oldPath != newPath) {
+                            encryptedFolderManager.renameFolderPrefix(storageId, oldPath, newPath)
+                        }
+                    }
+                } else if (backupName != null) {
+                    // 传输失败：还原备份，保证用户原目标文件不丢失
+                    runCatching {
+                        val backupPath = if (target.path.isEmpty()) backupName
+                        else "${target.path}/${backupName}"
+                        val backupFile = object : AbstractStorageFile(backupPath, backupName, file.isDirectory) {}
+                        s.rename(backupFile, file.name)
                     }
                 }
+                done++
+                _fileOpProgress.value = FileOpProgress(total, done, "", type)
             }
-            exitMultiSelect()
-            if (okCount == files.size) {
-                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_copied_count, okCount)))
-            } else {
-                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_copy_partial, okCount, files.size)))
-            }
-            refreshCurrentDirectory()
+        } finally {
+            if (total > 0) _fileOpProgress.value = null
         }
+        return okCount
+    }
+
+    /** 安全覆盖第一步：把目标同名项重命名为临时备份名，返回备份名；不支持重命名/失败时返回 null。 */
+    private suspend fun backupTarget(s: Storage, file: StorageFile, target: StorageFile): String? {
+        return try {
+            val targetPath = if (target.path.isEmpty()) file.name
+            else "${target.path}/${file.name}"
+            // 目标已不存在（可能刚被删）则无需备份，返回 null 表示直接覆盖式传输、无备份可清理
+            if (!s.fileExists(targetPath)) return null
+            val backupName = uniqueBackupName(s, target, file)
+            val targetFile = object : AbstractStorageFile(targetPath, file.name, file.isDirectory) {}
+            if (s.rename(targetFile, backupName)) backupName else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** 生成目标目录不冲突的备份名：`{name}.niplayer_old`、`{name}.niplayer_old2`… */
+    private suspend fun uniqueBackupName(s: Storage, target: StorageFile, file: StorageFile): String {
+        var index = 1
+        while (true) {
+            val candidate = if (index == 1) "${file.name}.niplayer_old"
+            else "${file.name}.niplayer_old$index"
+            val path = if (target.path.isEmpty()) candidate else "${target.path}/${candidate}"
+            if (!s.fileExists(path)) return candidate
+            index++
+        }
+    }
+
+    /** 安全覆盖收尾：删除传输成功后遗留的旧备份。 */
+    private suspend fun deleteBackup(s: Storage, target: StorageFile, backupName: String, isDirectory: Boolean) {
+        val backupPath = if (target.path.isEmpty()) backupName else "${target.path}/${backupName}"
+        if (s.fileExists(backupPath)) {
+            s.deleteFile(
+                object : AbstractStorageFile(backupPath, backupName, isDirectory) {}
+            )
+        }
+    }
+
+    /** 按用户在冲突弹窗中的选择继续传输。 */
+    fun resolveTransfer(mode: TransferConflictMode) {
+        val pending = _transferConflict.value ?: return
+        val s = storage ?: return
+        // 互斥：冲突弹窗期间锁已释放，真正执行传输前需重新获取独占权
+        if (!beginExclusiveFileOp()) {
+            _transferConflict.value = null
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val skipPaths = if (mode == TransferConflictMode.SKIP_DUPLICATES) {
+                    pending.duplicateFiles.map { it.path }.toSet()
+                } else emptySet()
+                val overwritePaths = if (mode == TransferConflictMode.OVERWRITE) {
+                    pending.duplicateFiles.map { it.path }.toSet()
+                } else emptySet()
+                val ok = withContext(Dispatchers.IO) {
+                    executeTransfer(
+                        s, pending.files, pending.target, pending.isCopy,
+                        skipPaths, overwritePaths,
+                    )
+                }
+                _transferConflict.value = null
+                reportTransferResult(
+                    isCopy = pending.isCopy,
+                    ok = ok,
+                    total = pending.files.size - skipPaths.size,
+                    skipped = skipPaths.size,
+                )
+            } finally {
+                endExclusiveFileOp()
+            }
+        }
+    }
+
+    /** 取消传输（冲突弹窗关闭），保持现状。 */
+    fun cancelTransfer() {
+        _transferConflict.value = null
+    }
+
+    /** 汇总传输结果并展示提示（全部成功后退多选、刷新当前目录）。 */
+    private fun reportTransferResult(
+        isCopy: Boolean,
+        ok: Int,
+        total: Int,
+        skipped: Int,
+    ) {
+        exitMultiSelect()
+        if (ok == total) {
+            if (skipped > 0) {
+                _events.tryEmit(
+                    StorageFileEvent.ShowToast(
+                        context.getString(
+                            if (isCopy) R.string.storage_file_copied_skipped
+                            else R.string.storage_file_moved_skipped,
+                            ok, skipped,
+                        )
+                    )
+                )
+            } else {
+                _events.tryEmit(
+                    StorageFileEvent.ShowToast(
+                        context.getString(
+                            if (isCopy) R.string.storage_file_copied_count
+                            else R.string.storage_file_moved_count,
+                            ok,
+                        )
+                    )
+                )
+            }
+        } else {
+            _events.tryEmit(
+                StorageFileEvent.ShowError(
+                    context.getString(
+                        if (isCopy) R.string.storage_file_copy_partial
+                        else R.string.storage_file_move_partial,
+                        ok, total,
+                    )
+                )
+            )
+        }
+        refreshCurrentDirectory()
     }
 
     /**
@@ -486,6 +716,33 @@ class StorageFileViewModel @Inject constructor(
 
     private val _events = MutableSharedFlow<StorageFileEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<StorageFileEvent> = _events.asSharedFlow()
+
+    /** 移动/复制冲突（目标已有同名文件）挂起状态；非空时 UI 弹窗让用户选择处理方式。 */
+    private val _transferConflict = MutableStateFlow<TransferConflict?>(null)
+    val transferConflict: StateFlow<TransferConflict?> = _transferConflict.asStateFlow()
+
+    /** 批量文件操作进度（移动/复制/删除）；null 表示无进行中的操作。 */
+    private val _fileOpProgress = MutableStateFlow<FileOpProgress?>(null)
+    val fileOpProgress: StateFlow<FileOpProgress?> = _fileOpProgress.asStateFlow()
+
+    /** 是否有文件操作（移动/复制/删除）正在进行，用于互斥：期间禁止再发起可能冲突的文件操作。 */
+    @Volatile
+    private var fileOpRunning = false
+
+    /** 尝试获取文件操作独占权；已有操作进行中则提示繁忙并返回 false。 */
+    private fun beginExclusiveFileOp(): Boolean {
+        if (fileOpRunning) {
+            _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_op_busy)))
+            return false
+        }
+        fileOpRunning = true
+        return true
+    }
+
+    /** 释放文件操作独占权。 */
+    private fun endExclusiveFileOp() {
+        fileOpRunning = false
+    }
 
     init {
         if (storageId > 0) initialize(storageId)
@@ -1592,19 +1849,8 @@ class StorageFileViewModel @Inject constructor(
      * @param targetDirectory 目标目录（必须已存在）
      */
     fun moveFile(file: StorageFile, targetDirectory: StorageFile) {
-        val s = storage ?: return
         if (file.path == targetDirectory.path) return
-        viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching { s.move(file, targetDirectory) }.getOrDefault(false)
-            }
-            if (ok) {
-                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_moved, targetDirectory.name)))
-                refreshCurrentDirectory()
-            } else {
-                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_move_failed)))
-            }
-        }
+        beginTransfer(listOf(file), targetDirectory, isCopy = false, isBatch = false)
     }
 
     /**
@@ -1698,24 +1944,30 @@ class StorageFileViewModel @Inject constructor(
      */
     fun deleteFile(file: StorageFile) {
         val s = storage ?: return
+        // 互斥：已有文件操作在进行时拒绝删除，避免删除正在处理的文件
+        if (!beginExclusiveFileOp()) return
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching { s.deleteFile(file) }.getOrDefault(false)
-            }
-            if (ok) {
-                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_deleted, file.name)))
-                // 文件夹访问加密联动：目录删除时清理其前缀下的加密配置
-                if (file.isDirectory) {
-                    encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
-                } else {
-                    // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
-                    runCatching {
-                        thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
-                    }
+            try {
+                val ok = withContext(Dispatchers.IO) {
+                    runCatching { s.deleteFile(file) }.getOrDefault(false)
                 }
-                refreshCurrentDirectory()
-            } else {
-                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_delete_failed)))
+                if (ok) {
+                    _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_deleted, file.name)))
+                    // 文件夹访问加密联动：目录删除时清理其前缀下的加密配置
+                    if (file.isDirectory) {
+                        encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
+                    } else {
+                        // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
+                        runCatching {
+                            thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
+                        }
+                    }
+                    refreshCurrentDirectory()
+                } else {
+                    _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_delete_failed)))
+                }
+            } finally {
+                endExclusiveFileOp()
             }
         }
     }
@@ -1762,6 +2014,15 @@ class StorageFileViewModel @Inject constructor(
         }
     }
 
+    /** 切换是否隐藏 .thumb 缩略图文件夹，持久化并立即刷新当前目录列表。 */
+    fun toggleHideThumbFolder() {
+        val newValue = !FileBrowserSettings.hideThumbFolder
+        FileBrowserSettings.hideThumbFolder = newValue
+        _uiState.update {
+            it.copy(files = applyFilterAndSort(it.rawFiles))
+        }
+    }
+
     /** 设置文件类型过滤，持久化并立即刷新当前目录列表。 */
     fun setMediaFilter(filter: FileBrowserSettings.MediaFilter) {
         FileBrowserSettings.mediaFilter = filter
@@ -1781,10 +2042,16 @@ class StorageFileViewModel @Inject constructor(
      */
     private fun applyFilterAndSort(files: List<StorageFile>): List<StorageFile> {
         val config = FileBrowserSettings.sortFlow.value
-        val hiddenFiltered = if (config.showHiddenFiles) {
-            files
+        // 始终过滤应用生成的 .thumb 缩略图文件夹（即便开启显示隐藏文件也不展示，可通过开关放行）
+        val thumbFiltered = if (config.hideThumbFolder) {
+            files.filter { it.name != ".thumb" }
         } else {
-            files.filter { !it.name.startsWith('.') && !it.isHidden }
+            files
+        }
+        val hiddenFiltered = if (config.showHiddenFiles) {
+            thumbFiltered
+        } else {
+            thumbFiltered.filter { !it.name.startsWith('.') && !it.isHidden }
         }
         val mediaFiltered = if (config.showOnlyMediaFiles) {
             hiddenFiltered.filter { it.isDirectory || isMediaFile(it) }
@@ -1881,6 +2148,37 @@ data class ActiveUpload(
     val fraction: Float,
     /** 实时上传速度（bytes/sec，0 = 未知）。 */
     val speedBytesPerSec: Long,
+)
+
+/** 批量文件操作类型（用于进度条文案）。 */
+enum class FileOpType {
+    MOVE, COPY, DELETE,
+}
+
+/** 批量文件操作进度（移动/复制/删除）。[done]/[total] 为已处理项数/总项数，[currentName] 为当前处理项名。 */
+data class FileOpProgress(
+    val total: Int,
+    val done: Int,
+    val currentName: String,
+    val type: FileOpType,
+)
+
+/** 移动/复制冲突的解决方式（由冲突弹窗让用户选择）。 */
+enum class TransferConflictMode {
+    /** 跳过目标已有同名项的源文件。 */
+    SKIP_DUPLICATES,
+    /** 覆盖目标同名项。采用安全覆盖：先把目标重命名为备份、迁移成功后删备份，失败则还原，不预删目标。 */
+    OVERWRITE,
+}
+
+/** 移动/复制冲突挂起数据：目标目录已存在同名文件/目录。 */
+data class TransferConflict(
+    val files: List<StorageFile>,
+    val target: StorageFile,
+    val isCopy: Boolean,
+    val isBatch: Boolean,
+    /** 源文件中与目标目录同名、构成冲突的子集。 */
+    val duplicateFiles: List<StorageFile>,
 )
 
 data class StorageFileUiState(

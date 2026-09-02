@@ -407,12 +407,32 @@ class SmbStorage(
     override suspend fun deleteFile(file: StorageFile): Boolean {
         return try {
             ensureShare()
-            val url = buildSmbUrl(file.path)
-            SmbFile(url, smbContext).delete()
+            deleteRecursively(file)
             true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
+            Log.w(TAG, "SMB deleteFile failed: ${e.message}")
             false
         }
+    }
+
+    /**
+     * 递归删除文件/目录。
+     *
+     * SMB 的 `SmbFile.delete()` 仅能删除空目录，非空目录删除会抛异常。
+     * 目录需先删除全部子项（含嵌套子目录）再删自身，才能删除非空文件夹。
+     */
+    private suspend fun deleteRecursively(file: StorageFile) {
+        if (file.isDirectory) {
+            listFilesInternal(file).forEach { child ->
+                deleteRecursively(child)
+            }
+        }
+        // 长目录删除过程中支持协程取消
+        currentCoroutineContext().ensureActive()
+        val url = buildSmbUrl(file.path)
+        SmbFile(url, smbContext).delete()
     }
 
     override suspend fun saveFile(path: String, data: ByteArray): Boolean {
