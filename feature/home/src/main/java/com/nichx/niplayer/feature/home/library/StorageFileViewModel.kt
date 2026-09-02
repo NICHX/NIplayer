@@ -330,6 +330,11 @@ class StorageFileViewModel @Inject constructor(
                         okCount++
                         if (file.isDirectory) {
                             encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
+                        } else {
+                            // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
+                            runCatching {
+                                thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
+                            }
                         }
                     }
                 }
@@ -1702,6 +1707,11 @@ class StorageFileViewModel @Inject constructor(
                 // 文件夹访问加密联动：目录删除时清理其前缀下的加密配置
                 if (file.isDirectory) {
                     encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
+                } else {
+                    // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
+                    runCatching {
+                        thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
+                    }
                 }
                 refreshCurrentDirectory()
             } else {

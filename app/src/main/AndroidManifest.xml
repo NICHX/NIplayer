@@ -44,6 +44,7 @@
             android:exported="true"
             android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.NIplayer">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
