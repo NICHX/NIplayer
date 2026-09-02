@@ -11,6 +11,10 @@ android {
     defaultConfig {
         minSdk = 26
         consumerProguardFiles("consumer-rules.pro")
+        // 自编译产物仅 arm64-v8a（libmpv + ffmpeg 共享库），后续如有 v7 需求再补
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     compileOptions {
