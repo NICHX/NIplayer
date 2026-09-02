@@ -808,6 +808,44 @@ class ThumbnailManager @Inject constructor(
     }
 
     /**
+     * 删除视频文件对应的"软件生成"缩略图残留。
+     *
+     * 用户删除视频文件后调用，清理两处由本应用生成的缩略图：
+     * 1. 本地缓存（`video_cover/` 下的 MD5 缓存文件）
+     * 2. 服务端 `.thumb/` 子目录下由 [uploadThumbnail] 上传的 `{视频去扩展名}-thumb.jpg`
+     *
+     * 注意：不会删除视频同目录下由刮削工具（Kodi/Emby/tinyMediaManager 等）生成的
+     * `{name}-thumb.jpg` —— 那颗属于用户原有资源，删除视频不应连带删除。
+     *
+     * @param storage 存储协议实现
+     * @param storageId 媒体库 id，参与本地缓存 key
+     * @param file 被删除的视频文件
+     */
+    suspend fun deleteThumbnailsForVideo(storage: Storage, storageId: Int, file: StorageFile) {
+        withContext(Dispatchers.IO) {
+            // 1. 清本地缓存（video_cover + no_cover 标记）
+            clearCache(storageId, listOf(file))
+            // 2. 删除服务端 .thumb/ 下由本应用上传的缩略图（仅限 .thumb/，不动同目录用户原图）
+            try {
+                if (!file.isDirectory && MediaFileTypes.isVideoFile(file.name)) {
+                    val thumbPath = "${buildThumbDirPath(file.path)}/${file.name.substringBeforeLast('.')}-thumb.jpg"
+                    if (storage.fileExists(thumbPath)) {
+                        storage.deleteFile(
+                            object : AbstractStorageFile(
+                                path = thumbPath,
+                                name = thumbPath.substringAfterLast('/'),
+                                isDirectory = false,
+                            ) {}
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "deleteThumbnailsForVideo failed: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * 缓存目录大小限制（BUG-T7 修复）。
      *
      * 单目录上限 [MAX_CACHE_BYTES]（200MB），超出时按 lastModified 淘汰最旧文件。

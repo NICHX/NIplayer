@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,7 +75,7 @@ fun NiGlassDialog(
         exit = fadeOut(tween(140)) + scaleOut(targetScale = 0.94f, animationSpec = tween(180)),
     ) {
         Box(modifier = modifier.fillMaxSize()) {
-            // 全屏压暗层：点击关闭
+            // 全屏压暗层：点击关闭（保持铺满，含键盘区域）
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -85,10 +86,16 @@ fun NiGlassDialog(
                         onClick = onDismissRequest,
                     ),
             )
-            // 居中玻璃卡片
+            // 居中玻璃卡片：外层用 imePadding 把可布局区收窄到键盘上方，
+            // 键盘展开时卡片自动上移居中，避免被键盘遮挡、按钮不可点
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .imePadding(),
+                contentAlignment = Alignment.Center,
+            ) {
             Column(
                 modifier = Modifier
-                    .align(Alignment.Center)
                     .widthIn(min = 260.dp, max = 340.dp)
                     .then(
                         if (glassEnabled) {
@@ -125,6 +132,7 @@ fun NiGlassDialog(
                     )
                 }
                 content()
+            }
             }
         }
     }

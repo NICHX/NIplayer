@@ -109,6 +109,7 @@ import androidx.compose.material.icons.rounded.SwapVerticalCircle
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedTextField
 import com.nichx.niplayer.designsystem.components.DownloadDialogShell
 import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
 import com.nichx.niplayer.designsystem.components.NiGlassOverlay
@@ -127,6 +128,7 @@ import androidx.compose.material3.Surface
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.NiTextField
+import com.nichx.niplayer.designsystem.components.NiTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -148,6 +150,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -160,7 +163,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -2802,7 +2807,16 @@ fun RenameFileDialog(
     val isDirectory = !fileName.contains('.')
     val extension = fileName.substringAfterLast('.')
     val initial = if (isDirectory) fileName else fileName.substringBeforeLast('.')
-    var newName by remember { mutableStateOf(initial) }
+    // 用 TextFieldValue 控制光标：初始即定位到文本末尾，长文件名默认光标在最后
+    var nameState by remember { mutableStateOf(TextFieldValue(initial, selection = TextRange(initial.length))) }
+    val newName = nameState.text
+    // 弹窗显示即自动聚焦输入框并拉起输入法
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
 
     NiInfoDialog(
         title = stringResource(R.string.storage_file_rename_title),
@@ -2823,11 +2837,21 @@ fun RenameFileDialog(
             ) { Text(stringResource(R.string.confirm)) }
         },
     ) {
-        NiTextField(
-            value = newName,
-            onValueChange = { newName = it },
-            label = stringResource(R.string.storage_file_rename_new_name),
-            modifier = Modifier.fillMaxWidth(),
+        OutlinedTextField(
+            value = nameState,
+            onValueChange = { nameState = it },
+            label = { Text(stringResource(R.string.storage_file_rename_new_name)) },
+            // 长文件名支持换行显示；上限 5 行防止弹窗过高，超出内部滚动
+            singleLine = false,
+            maxLines = 5,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester),
+            shape = NiTextFieldDefaults.Shape,
+            colors = NiTextFieldDefaults.colors(),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 0.9f,
+            ),
         )
     }
 }
