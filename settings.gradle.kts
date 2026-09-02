@@ -34,6 +34,7 @@ include(":core:thumbnail")
 include(":core:sync")
 include(":player:kernel")
 include(":player:ffmpeg")
+include(":player:mpv")
 include(":feature:player")
 include(":feature:home")
 

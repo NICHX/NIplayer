@@ -121,6 +121,7 @@ dependencies {
     implementation(project(":core:thumbnail"))
     implementation(project(":core:sync"))
     implementation(project(":player:kernel"))
+    implementation(project(":player:mpv"))
     implementation(project(":feature:player"))
     implementation(project(":feature:home"))
 
