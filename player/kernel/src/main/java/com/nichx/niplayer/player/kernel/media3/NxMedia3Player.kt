@@ -34,6 +34,7 @@ import com.nichx.niplayer.player.kernel.AudioTrackInfo
 import com.nichx.niplayer.player.kernel.MediaInfo
 import com.nichx.niplayer.player.kernel.NxMediaSource
 import com.nichx.niplayer.player.kernel.NxPlayer
+import com.nichx.niplayer.player.kernel.NxPlayerBackend
 import com.nichx.niplayer.player.kernel.NxVideoScaleMode
 import com.nichx.niplayer.player.kernel.PlaybackEvent
 import com.nichx.niplayer.player.kernel.PlaybackState
@@ -84,7 +85,22 @@ class NxMedia3Player @Inject constructor(
     @ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient,
     private val mediaCache: SimpleCache,
-) : NxPlayer, Player.Listener {
+) : NxPlayerBackend, Player.Listener {
+
+    // region 多内核能力声明（默认兜底内核）
+
+    override val backendId: String = "media3"
+
+    /** 默认兜底内核恒支持一切媒体源。 */
+    override fun supports(source: NxMediaSource): Boolean = true
+
+    /** 默认优先级，后续能力解析器以此为基准。 */
+    override val backendPriority: Int = Int.MAX_VALUE
+
+    /** 独立内核，不属于任何变体。 */
+    override val backendVariantOf: String? = null
+
+    // endregion
 
     // region 数据源与渲染：headers 通过 OkHttpDataSource 注入
 
