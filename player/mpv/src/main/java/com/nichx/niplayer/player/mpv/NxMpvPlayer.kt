@@ -47,7 +47,13 @@ class NxMpvPlayer @Inject constructor(
 
     override val backendId: String = "mpv"
 
-    /** 待渲染接入与真机验证后改为按 [NxMediaSource] 实判。 */
+    /**
+     * 能力声明。
+     *
+     * 当前恒 false：auto 模式下 media3（优先级 Int.MAX_VALUE）恒优先，mpv 仅作为实验性内核，
+     * 通过设置显式指定 `playerBackend = "mpv"` 才启用（解析器对该强制选择跳过能力过滤）。
+     * 待渲染宿主接入 + 真机校准状态机后，可按 [NxMediaSource] 实判并放开 auto 选择。
+     */
     override fun supports(source: NxMediaSource): Boolean = false
 
     override val backendPriority: Int = Int.MAX_VALUE - 1
