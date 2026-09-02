@@ -225,6 +225,7 @@ fun PlayerScreen(
     val selectedAudioTrackIndex by viewModel.selectedAudioTrackIndex.collectAsStateWithLifecycle()
     val subtitleTracks by viewModel.subtitleTracks.collectAsStateWithLifecycle()
     val selectedSubtitleTrackIndex by viewModel.selectedSubtitleTrackIndex.collectAsStateWithLifecycle()
+    val activeSubtitleTrackIndex by viewModel.activeSubtitleTrackIndex.collectAsStateWithLifecycle()
     val subtitleOffsetMs by viewModel.subtitleOffsetMs.collectAsStateWithLifecycle()
     val playlistInfo by viewModel.playlistInfo.collectAsStateWithLifecycle()
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
@@ -1670,6 +1671,7 @@ fun PlayerScreen(
             SubtitleManageDialog(
                 subtitleTracks = subtitleTracks,
                 selectedIndex = selectedSubtitleTrackIndex,
+                activeSubtitleTrackIndex = activeSubtitleTrackIndex,
                 offsetMs = subtitleOffsetMs,
                 onSelectTrack = { viewModel.selectSubtitleTrack(it) },
                 onAdjustOffset = { viewModel.adjustSubtitleOffset(it) },
@@ -2843,6 +2845,7 @@ private fun PlayerProgressBar(
 private fun SubtitleManageDialog(
     subtitleTracks: List<SubtitleTrackInfo>,
     selectedIndex: Int,
+    activeSubtitleTrackIndex: Int,
     offsetMs: Long,
     onSelectTrack: (Int) -> Unit,
     onAdjustOffset: (Long) -> Unit,
@@ -2859,7 +2862,7 @@ private fun SubtitleManageDialog(
 
     // 当前字幕摘要（「轨道」行右侧回显）
     val autoSelectedTrack = if (selectedIndex == -1) {
-        subtitleTracks.firstOrNull { it.isAutoSelected }
+        subtitleTracks.firstOrNull { it.index == activeSubtitleTrackIndex }
     } else {
         null
     }
@@ -2882,6 +2885,7 @@ private fun SubtitleManageDialog(
         SubtitleTrackDialog(
             subtitleTracks = subtitleTracks,
             selectedIndex = selectedIndex,
+            activeSubtitleTrackIndex = activeSubtitleTrackIndex,
             onSelectTrack = onSelectTrack,
             onDismiss = { showTrackDialog = false },
         )
@@ -2998,6 +3002,7 @@ private fun SubtitleMenuItem(
 private fun SubtitleTrackDialog(
     subtitleTracks: List<SubtitleTrackInfo>,
     selectedIndex: Int,
+    activeSubtitleTrackIndex: Int,
     onSelectTrack: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -3005,7 +3010,7 @@ private fun SubtitleTrackDialog(
     val onSurface = PlayerDialogColors.textPrimary
     val outlineVariant = PlayerDialogColors.divider
     val autoSelectedTrack = if (selectedIndex == -1) {
-        subtitleTracks.firstOrNull { it.isAutoSelected }
+        subtitleTracks.firstOrNull { it.index == activeSubtitleTrackIndex }
     } else {
         null
     }

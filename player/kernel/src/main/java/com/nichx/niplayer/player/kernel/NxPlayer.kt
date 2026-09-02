@@ -22,16 +22,12 @@ data class AudioTrackInfo(
  * @param isExternal 是否外挂字幕（保留字段，外挂字幕统一由
  *   [com.nichx.niplayer.subtitle.renderer.SubtitleEngine] 渲染，不进入此列表；
  *   此字段当前始终为 false，仅作向后兼容保留）
- * @param isAutoSelected 当用户选择「自动」模式（[NxPlayer.selectedSubtitleTrackIndex] == -1）时，
- *   media3 根据语言偏好自动选中的轨道此字段为 true。UI 层据此在「自动」行下方显示
- *   实际加载的字幕名称。仅一条字幕可能为 true；无字幕时全部为 false。
  */
 data class SubtitleTrackInfo(
     val index: Int,
     val label: String,
     val language: String?,
     val isExternal: Boolean = false,
-    val isAutoSelected: Boolean = false,
 )
 
 /**
@@ -203,6 +199,15 @@ interface NxPlayer {
      * @param index `>= 0` 选中指定轨道；`-1` 自动；`-2` 关闭字幕
      */
     fun selectSubtitleTrack(index: Int)
+
+    /**
+     * 当前实际生效的字幕轨道索引（传输无关，替代 media3 的轨道自动选择语义）。
+     *
+     * - 用户手动选择时（[selectedSubtitleTrackIndex] `>= -2`）等于该值
+     * - 处于「自动」模式（[selectedSubtitleTrackIndex] == -1）时，反映内核按语言偏好
+     *   自动选中的轨道索引，UI 据此在「自动」选项下方显示实际加载的字幕；无则 -1
+     */
+    val activeSubtitleTrackIndex: StateFlow<Int>
 
     /** 当前字幕延迟（ms）。正数延后，负数提前。 */
     val subtitleOffsetMs: StateFlow<Long>

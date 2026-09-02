@@ -272,6 +272,9 @@ class NxMedia3Player @Inject constructor(
     private val _selectedSubtitleTrackIndex = MutableStateFlow(-1)
     override val selectedSubtitleTrackIndex: StateFlow<Int> = _selectedSubtitleTrackIndex.asStateFlow()
 
+    private val _activeSubtitleTrackIndex = MutableStateFlow(-1)
+    override val activeSubtitleTrackIndex: StateFlow<Int> = _activeSubtitleTrackIndex.asStateFlow()
+
     private val _subtitleOffsetMs = MutableStateFlow(0L)
     override val subtitleOffsetMs: StateFlow<Long> = _subtitleOffsetMs.asStateFlow()
 
@@ -859,14 +862,14 @@ class NxMedia3Player @Inject constructor(
                 label = label,
                 language = lang,
                 isExternal = false,
-                // 标记 media3 自动选中的轨道，供 UI 在「自动」模式下显示实际加载的字幕
-                isAutoSelected = group.isSelected,
             )
         }
+        // 同步当前实际生效的字幕轨道（传输无关，供 UI 在「自动」模式下显示实际加载的字幕）
+        val activeIndex = subtitleGroups.indexOfFirst { it.isSelected }
+        _activeSubtitleTrackIndex.value = activeIndex
         // 若用户未手动选择，同步当前自动选中的轨道索引
         if (_selectedSubtitleTrackIndex.value !in -2..-1 && _selectedSubtitleTrackIndex.value !in subtitleGroups.indices) {
-            val autoSelected = subtitleGroups.indexOfFirst { it.isSelected }
-            _selectedSubtitleTrackIndex.value = if (autoSelected >= 0) autoSelected else -1
+            _selectedSubtitleTrackIndex.value = if (activeIndex >= 0) activeIndex else -1
         }
     }
 

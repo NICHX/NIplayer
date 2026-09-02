@@ -311,6 +311,10 @@ class PlayerViewModel @Inject constructor(
     val selectedSubtitleTrackIndex: StateFlow<Int> = player.selectedSubtitleTrackIndex
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), -1)
 
+    /** 当前实际生效的字幕轨道索引（自动模式下反映内核自动选中的轨道）。 */
+    val activeSubtitleTrackIndex: StateFlow<Int> = player.activeSubtitleTrackIndex
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), -1)
+
     /** 当前字幕延迟（ms），正数延后，负数提前。 */
     val subtitleOffsetMs: StateFlow<Long> = player.subtitleOffsetMs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
