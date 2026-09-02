@@ -62,21 +62,30 @@ class NxMpvPlayer @Inject constructor(
 
     // endregion
 
-    // region 惰性命周期
+    // region 惰性命周期（mpv 顺序：create → attachSurface(wid) → init → 命令）
 
     @Volatile
-    private var initialized = false
+    private var created = false
+
+    /** mpv_initialize 是否已完成（此后才可发命令，且 wid 须在此前设好）。 */
+    @Volatile
+    private var activated = false
 
     /** 是否已收到首次文件加载成功事件，用于状态推导。 */
     @Volatile
     private var fileLoaded = false
 
-    private val ensureInitLock = Any()
+    // init 之前到达的播放请求暂时缓存，待 attachSurface→init 后补发
+    private var pendingSource: NxMediaSource? = null
+    private var pendingStartMs = 0L
+    private var pendingPlay = false
 
-    private fun ensureInitialized() {
-        if (initialized) return
-        synchronized(ensureInitLock) {
-            if (initialized) return
+    private val createLock = Any()
+
+    private fun ensureCreated() {
+        if (created) return
+        synchronized(createLock) {
+            if (created) return
             MPVLib.create(context)
             // 观测驱动状态流的核心属性（格式与 JNI event.cpp 中的分派对应）
             MPVLib.observeProperty("pause", MpvFormat.MPV_FORMAT_FLAG)
@@ -90,8 +99,27 @@ class NxMpvPlayer @Inject constructor(
             MPVLib.observeProperty("aid", MpvFormat.MPV_FORMAT_INT64)
             MPVLib.observeProperty("sid", MpvFormat.MPV_FORMAT_INT64)
             MPVLib.addObserver(this)
-            initialized = true
+            created = true
         }
+    }
+
+    /** 在 wid 已设好后初始化 mpv 并补发缓存的播放请求。 */
+    private fun activateAfterSurface() {
+        if (activated) return
+        MPVLib.init()
+        activated = true
+        pendingSource?.let { src ->
+            pendingSource = null
+            loadFile(src, pendingStartMs)
+            if (pendingPlay) MPVLib.setPropertyBoolean("pause", false)
+        }
+    }
+
+    /** 仅当 mpv 已初始化（可安全发命令）时执行 [action]，否则返回 false 供调用方缓存。 */
+    private inline fun ifActivated(action: () -> Unit): Boolean {
+        if (!activated) return false
+        action()
+        return true
     }
 
     // endregion
@@ -237,7 +265,16 @@ class NxMpvPlayer @Inject constructor(
     // region 命令
 
     override fun setSource(source: NxMediaSource, startPositionMs: Long) {
-        ensureInitialized()
+        ensureCreated()
+        fileLoaded = false
+        if (!ifActivated { loadFile(source, startPositionMs) }) {
+            // mpv 尚未 init（surface 未就绪）：缓存待命，attachSurface→init 后补发
+            pendingSource = source
+            pendingStartMs = startPositionMs
+        }
+    }
+
+    private fun loadFile(source: NxMediaSource, startPositionMs: Long) {
         fileLoaded = false
         val opts = buildString {
             append("start=").append(startPositionMs / 1000.0)
@@ -252,29 +289,29 @@ class NxMpvPlayer @Inject constructor(
     }
 
     override fun prepare() {
-        ensureInitialized()
+        ensureCreated()
         // mpv loadfile 后即处于待播放态；此处无额外动作（状态由事件驱动）
     }
 
     override fun play() {
-        ensureInitialized()
-        MPVLib.setPropertyBoolean("pause", false)
+        ensureCreated()
+        if (!ifActivated { MPVLib.setPropertyBoolean("pause", false) }) {
+            pendingPlay = true
+        }
     }
 
     override fun pause() {
-        ensureInitialized()
-        MPVLib.setPropertyBoolean("pause", true)
+        ensureCreated()
+        ifActivated { MPVLib.setPropertyBoolean("pause", true) }
     }
 
     override fun seekTo(positionMs: Long) {
-        ensureInitialized()
-        MPVLib.setPropertyDouble("time-pos", positionMs / 1000.0)
+        ifActivated { MPVLib.setPropertyDouble("time-pos", positionMs / 1000.0) }
     }
 
     override fun setSpeed(speed: Float) {
-        ensureInitialized()
-        MPVLib.setPropertyDouble("speed", speed.toDouble())
         _playbackSpeed.value = speed
+        ifActivated { MPVLib.setPropertyDouble("speed", speed.toDouble()) }
     }
 
     override fun setPitchPreservationEnabled(enabled: Boolean) {
@@ -284,63 +321,63 @@ class NxMpvPlayer @Inject constructor(
 
     override fun setVideoScaleMode(mode: NxVideoScaleMode) {
         _videoScaleMode.value = mode
-        ensureInitialized()
         // mpv 拉伸/裁剪近似：Stretch 时禁用保持比例（video-unscaled），其余复位
-        if (mode == NxVideoScaleMode.Stretch) {
-            MPVLib.setPropertyBoolean("video-unscaled", true)
-        } else {
-            MPVLib.setPropertyBoolean("video-unscaled", false)
+        ifActivated {
+            if (mode == NxVideoScaleMode.Stretch) {
+                MPVLib.setPropertyBoolean("video-unscaled", true)
+            } else {
+                MPVLib.setPropertyBoolean("video-unscaled", false)
+            }
         }
     }
 
     override fun setBlackBarCropEnabled(enabled: Boolean) = Unit
 
     override fun selectAudioTrack(index: Int) {
-        ensureInitialized()
-        MPVLib.setPropertyInt("aid", index + 1)
+        ifActivated { MPVLib.setPropertyInt("aid", index + 1) }
     }
 
     override fun selectSubtitleTrack(index: Int) {
-        ensureInitialized()
-        when (index) {
-            -2 -> MPVLib.setPropertyString("sid", "no") // 关闭
-            -1 -> MPVLib.setPropertyString("sid", "auto") // 自动
-            else -> MPVLib.setPropertyInt("sid", index + 1)
+        ifActivated {
+            when (index) {
+                -2 -> MPVLib.setPropertyString("sid", "no") // 关闭
+                -1 -> MPVLib.setPropertyString("sid", "auto") // 自动
+                else -> MPVLib.setPropertyInt("sid", index + 1)
+            }
         }
     }
 
     override fun setSubtitleOffsetMs(offsetMs: Long) {
-        ensureInitialized()
-        MPVLib.setPropertyDouble("sub-delay", offsetMs / 1000.0)
         _subtitleOffsetMs.value = offsetMs
+        ifActivated { MPVLib.setPropertyDouble("sub-delay", offsetMs / 1000.0) }
     }
 
     override fun setVolume(volume: Float) {
-        ensureInitialized()
-        MPVLib.setPropertyDouble("volume", volume * 100.0)
+        ifActivated { MPVLib.setPropertyDouble("volume", volume * 100.0) }
     }
 
     override fun setLooping(looping: Boolean) {
-        ensureInitialized()
-        MPVLib.setPropertyBoolean("loop-file", looping)
+        ifActivated { MPVLib.setPropertyBoolean("loop-file", looping) }
     }
 
     override fun attachSurface(surface: Surface?) {
         if (surface != null) {
-            ensureInitialized()
+            ensureCreated()
+            // wid 必须设在 mpv_initialize 之前；此处先 attach（设 wid）再 init
             MPVLib.attachSurface(surface)
-            MPVLib.init()
+            activateAfterSurface()
         } else {
-            MPVLib.detachSurface()
+            if (created) MPVLib.detachSurface()
         }
     }
 
     override fun release() {
         _equalizer.release()
-        if (initialized) {
+        if (created) {
             MPVLib.removeObserver(this)
             MPVLib.destroy()
-            initialized = false
+            created = false
+            activated = false
         }
     }
 
