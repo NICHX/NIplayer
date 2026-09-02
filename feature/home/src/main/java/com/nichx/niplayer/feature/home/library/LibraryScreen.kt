@@ -3,11 +3,8 @@ package com.nichx.niplayer.feature.home.library
 import com.nichx.niplayer.feature.home.R
 import android.annotation.SuppressLint
 import android.content.Context
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -27,12 +24,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Delete
@@ -42,7 +42,8 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.SdCard
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,7 +51,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
@@ -81,6 +81,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.datastore.MediaLibrarySettings
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiGlassCircleIcon
@@ -88,8 +89,6 @@ import com.nichx.niplayer.designsystem.components.NiSkeletonBox
 import com.nichx.niplayer.designsystem.components.NiSkeletonLine
 import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
 import com.nichx.niplayer.designsystem.components.NiSnackbarHost
-import com.nichx.niplayer.designsystem.components.NiTextField
-import com.nichx.niplayer.designsystem.components.NiTextFieldDefaults
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
@@ -101,7 +100,6 @@ import com.nichx.niplayer.designsystem.components.glassOnSurfaceMuted
 import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
 import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
-import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.designsystem.theme.NiSpacings
 import kotlinx.coroutines.launch
 
@@ -137,12 +135,13 @@ fun LibraryScreen(
 ) {
     val libraries by viewModel.libraries.collectAsStateWithLifecycle()
     val filteredLibraries by viewModel.filteredLibraries.collectAsStateWithLifecycle()
-    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val dataReady by viewModel.dataReady.collectAsStateWithLifecycle()
     var showTypeSheet by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<MediaLibraryEntity?>(null) }
     var selectedFilter by remember { mutableStateOf(LibraryFilter.ALL) }
-    var isSearchVisible by remember { mutableStateOf(false) }
+    // 视图模式（分组列表 / 双列网格），持久化于 MediaLibrarySettings；点击顶栏按钮切换
+    var viewMode by remember { mutableStateOf(MediaLibrarySettings.viewMode) }
+    val isGridView = viewMode == MediaLibrarySettings.ViewMode.GRID
     // 删除存储源使用"软删除 + 撤销"动作型 snackbar，需直连 SnackbarHostState（撤销型属全局总线的合理例外）。
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -158,17 +157,21 @@ fun LibraryScreen(
             NiTopBar(
                 title = stringResource(R.string.library_title),
                 actions = {
-                    IconButton(onClick = {
-                        if (isSearchVisible) viewModel.setSearchQuery("")
-                        isSearchVisible = !isSearchVisible
-                    }) {
-                        Icon(
-                            imageVector = Icons.Filled.Search,
-                            contentDescription = stringResource(
-                                if (isSearchVisible) R.string.library_close_search else R.string.library_search,
-                            ),
-                        )
-                    }
+                    // 视图切换：图标显示当前模式，点击在「分组列表 / 双列网格」间切换并持久化
+                    NiGlassCircleIcon(
+                        icon = if (isGridView) Icons.Rounded.GridView
+                        else Icons.AutoMirrored.Rounded.ViewList,
+                        contentDescription = stringResource(
+                            if (isGridView) R.string.library_view_grid
+                            else R.string.library_view_list,
+                        ),
+                        onClick = {
+                            val next = if (isGridView) MediaLibrarySettings.ViewMode.LIST
+                            else MediaLibrarySettings.ViewMode.GRID
+                            viewMode = next
+                            MediaLibrarySettings.viewMode = next
+                        },
+                    )
                 },
             )
         },
@@ -181,43 +184,6 @@ fun LibraryScreen(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-                AnimatedVisibility(
-                    visible = isSearchVisible,
-                    enter = fadeIn(animationSpec = tween(NiMotion.DURATION_SWITCH)),
-                    exit = fadeOut(animationSpec = tween(NiMotion.DURATION_SWITCH)),
-                ) {
-                    NiTextField(
-                    value = searchQuery,
-                    onValueChange = viewModel::setSearchQuery,
-                    placeholder = stringResource(R.string.library_search_placeholder),
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Search,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Close,
-                                    contentDescription = stringResource(R.string.clear),
-                                    tint = MaterialTheme.colorScheme.outline,
-                                )
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = NiSpacings.screenOuter)
-                        .padding(bottom = 8.dp),
-                    colors = NiTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    ),
-                )
-            }
 
             if (dataReady && libraries.isNotEmpty()) {
                 FilterChipRow(
@@ -232,7 +198,10 @@ fun LibraryScreen(
             }
 
             if (!dataReady) {
-                LibrarySkeleton(modifier = Modifier.weight(1f))
+                LibrarySkeleton(
+                    isGridView = isGridView,
+                    modifier = Modifier.weight(1f),
+                )
             } else if (libraries.isEmpty()) {
                 Box(
                     modifier = Modifier.weight(1f),
@@ -252,13 +221,20 @@ fun LibraryScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     NiEmptyState(
-                        icon = if (searchQuery.isNotEmpty()) Icons.Filled.Search else Icons.Filled.Folder,
-                        text = if (searchQuery.isNotEmpty()) stringResource(R.string.library_no_result)
-                        else stringResource(R.string.library_no_type),
-                        hint = if (searchQuery.isNotEmpty()) stringResource(R.string.library_try_keywords)
-                        else stringResource(R.string.library_switch_filter),
+                        icon = Icons.Filled.Folder,
+                        text = stringResource(R.string.library_no_type),
+                        hint = stringResource(R.string.library_switch_filter),
                     )
                 }
+            } else if (isGridView) {
+                LibrarySourceGrid(
+                    libraries = currentFiltered,
+                    count = currentFiltered.size,
+                    onOpen = { onNavigateToStorageFile(it, "") },
+                    onEdit = { onNavigateToStoragePlus(null, it) },
+                    onDelete = { deleteTarget = it },
+                    modifier = Modifier.weight(1f),
+                )
             } else {
                 val grouped = currentFiltered.groupBy { it.mediaType }
                 LazyColumn(
@@ -536,55 +512,220 @@ private fun LibrarySourceCard(
         }
 
         if (showMenu && canModify) {
-            Box {
-                DropdownMenu(
-                    expanded = true,
-                    onDismissRequest = { showMenu = false },
-                    shape = menuShape,
-                    containerColor = niFrostSurfaceColor(),
-                    border = androidx.compose.foundation.BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
+            LibrarySourceDropdownMenu(
+                expanded = showMenu,
+                onDismiss = { showMenu = false },
+                onEdit = { showMenu = false; onEdit() },
+                onDelete = { showMenu = false; onDelete() },
+            )
+        }
+    }
+}
+
+/** 存储源卡片的长按编辑/删除菜单（列表卡片与网格卡片共用）。 */
+@Composable
+private fun LibrarySourceDropdownMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Box {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = onDismiss,
+            shape = menuShape,
+            containerColor = niFrostSurfaceColor(),
+            border = androidx.compose.foundation.BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
+        ) {
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        stringResource(R.string.edit),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                },
+                onClick = onEdit,
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 12.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+            )
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        stringResource(R.string.delete),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                },
+                onClick = onDelete,
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+        }
+    }
+}
+
+/** 网格视图：双列存储源卡片，含类型色图标 + 类型徽章 + 名称 + 描述。 */
+@Composable
+private fun LibrarySourceGrid(
+    libraries: List<MediaLibraryEntity>,
+    count: Int,
+    onOpen: (Int) -> Unit,
+    onEdit: (Int) -> Unit,
+    onDelete: (MediaLibraryEntity) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = modifier,
+        contentPadding = PaddingValues(
+            start = NiSpacings.screenOuter,
+            end = NiSpacings.screenOuter,
+            top = 0.dp,
+            bottom = 88.dp,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item(key = "section_count", span = { GridItemSpan(maxLineSpan) }) {
+            Text(
+                text = stringResource(R.string.library_storage_count, count),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+            )
+        }
+        itemsIndexed(
+            items = libraries,
+            key = { _, item -> "library_${item.id}" },
+        ) { _, library ->
+            LibrarySourceGridCard(
+                library = library,
+                onClick = { onOpen(library.id) },
+                onEdit = { onEdit(library.id) },
+                onDelete = { onDelete(library) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LibrarySourceGridCard(
+    library: MediaLibraryEntity,
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val extraColors = NiExtraColors.current
+    val context = LocalContext.current
+    val typeInfo = remember(library.mediaType, extraColors) {
+        storageTypeInfo(library.mediaType, extraColors, context)
+    }
+    val canModify by remember(library.mediaType) {
+        derivedStateOf { library.mediaType != MediaType.LOCAL_STORAGE }
+    }
+    var showMenu by remember { mutableStateOf(false) }
+
+    val brandColor = typeInfo.color
+    val colorAlpha10 = remember(brandColor) { brandColor.copy(alpha = 0.1f) }
+    // 网格卡片边界：surfaceLevel2 与页面背景接近，需 1dp 描边使其边界清晰
+    val cardBorder = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+
+    Box {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                // 语义合并：图标/徽章/名称/描述合并为单一节点，降低语义树节点数
+                .semantics(mergeDescendants = true) {}
+                .clip(cardShape)
+                .background(extraColors.surfaceLevel2)
+                .border(NiGlassHairWidth, cardBorder, cardShape)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = if (canModify) { { showMenu = true } } else null,
+                )
+                .padding(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colorAlpha10),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                stringResource(R.string.edit),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        },
-                        onClick = { showMenu = false; onEdit() },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Edit,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                stringResource(R.string.delete),
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        },
-                        onClick = { showMenu = false; onDelete() },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Delete,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
+                    Icon(
+                        imageVector = typeInfo.icon,
+                        contentDescription = null,
+                        tint = brandColor,
+                        modifier = Modifier.size(22.dp),
                     )
                 }
+                Text(
+                    text = typeInfo.shortName,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = brandColor,
+                    modifier = Modifier
+                        .background(colorAlpha10, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                )
             }
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                text = library.displayName,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            val describeLine = library.describe
+                ?: if (library.url.isNotBlank()) library.url else typeInfo.shortName
+            // minLines=2 保留固定描述高度，保证所有网格卡片等高、边界对齐
+            Text(
+                text = describeLine,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+                minLines = 2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        if (showMenu && canModify) {
+            LibrarySourceDropdownMenu(
+                expanded = showMenu,
+                onDismiss = { showMenu = false },
+                onEdit = { showMenu = false; onEdit() },
+                onDelete = { showMenu = false; onDelete() },
+            )
         }
     }
 }
@@ -676,9 +817,21 @@ private fun StorageTypePickerSheet(
 }
 
 @Composable
-private fun LibrarySkeleton(modifier: Modifier = Modifier) {
-    // 骨架与真实列表同构（同为 LazyColumn，item key 命名一致），
-    // 数据就绪切换时 LazyColumn 结构与滚动位置保持，仅替换 item 内容，避免整树重建
+private fun LibrarySkeleton(
+    isGridView: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    // 骨架与真实列表同构（key 命名一致），数据就绪切换时结构与滚动位置保持，
+    // 仅替换 item 内容，避免整树重建。
+    if (isGridView) {
+        LibraryGridSkeleton(modifier = modifier)
+    } else {
+        LibraryListSkeleton(modifier = modifier)
+    }
+}
+
+@Composable
+private fun LibraryListSkeleton(modifier: Modifier = Modifier) {
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(
@@ -720,6 +873,71 @@ private fun LibrarySkeleton(modifier: Modifier = Modifier) {
             item(key = "library_loading_$it") {
                 SkeletonCard()
             }
+        }
+    }
+}
+
+@Composable
+private fun LibraryGridSkeleton(modifier: Modifier = Modifier) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = modifier,
+        contentPadding = PaddingValues(
+            start = NiSpacings.screenOuter,
+            end = NiSpacings.screenOuter,
+            top = 4.dp,
+            bottom = 88.dp,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        userScrollEnabled = false,
+    ) {
+        item(key = "skeleton_chips", span = { GridItemSpan(maxLineSpan) }) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(5) {
+                    NiSkeletonBox(
+                        width = 60.dp,
+                        height = 32.dp,
+                        shape = pillShape,
+                    )
+                }
+            }
+        }
+        item(key = "section_count", span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(16.dp))
+            NiSkeletonLine(widthFraction = 0.15f)
+        }
+        items(count = 8, key = { "library_loading_$it" }) {
+            SkeletonGridCard()
+        }
+    }
+}
+
+@Composable
+private fun SkeletonGridCard() {
+    val extraColors = NiExtraColors.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(extraColors.surfaceLevel2)
+            .padding(16.dp),
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                NiSkeletonBox(width = 40.dp, height = 40.dp, shape = RoundedCornerShape(12.dp))
+                NiSkeletonBox(width = 48.dp, height = 22.dp, shape = RoundedCornerShape(6.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+            NiSkeletonLine(widthFraction = 0.7f)
+            Spacer(Modifier.height(8.dp))
+            NiSkeletonLine(widthFraction = 0.5f)
+            Spacer(Modifier.height(6.dp))
+            NiSkeletonLine(widthFraction = 0.4f)
         }
     }
 }

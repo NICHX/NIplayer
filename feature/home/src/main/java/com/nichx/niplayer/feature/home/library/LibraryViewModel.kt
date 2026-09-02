@@ -10,11 +10,8 @@ import com.nichx.niplayer.database.security.EncryptedFolderManager
 import com.nichx.niplayer.database.sync.PlayHistorySyncDeleter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -57,31 +54,18 @@ class LibraryViewModel @Inject constructor(
             initialValue = false,
         )
 
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
-    /** 按名称/URL 过滤后按媒体类型分组排序的存储源列表。 */
-    val filteredLibraries: StateFlow<List<MediaLibraryEntity>> = combine(
-        librariesFlow,
-        _searchQuery,
-    ) { libs, query ->
-        val filtered = if (query.isBlank()) libs
-        else libs.filter {
-            it.displayName.contains(query, ignoreCase = true) ||
-                it.url.contains(query, ignoreCase = true)
+    /** 按媒体类型分组排序的存储源列表。 */
+    val filteredLibraries: StateFlow<List<MediaLibraryEntity>> = librariesFlow
+        .map { libs ->
+            libs.sortedWith(
+                compareBy({ it.mediaType.sortOrder }, { it.displayName.lowercase() })
+            )
         }
-        filtered.sortedWith(
-            compareBy({ it.mediaType.sortOrder }, { it.displayName.lowercase() })
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList(),
         )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList(),
-    )
-
-    fun setSearchQuery(query: String) {
-        _searchQuery.value = query
-    }
 
     /** 刚删除的实体（用于撤销恢复）。 */
     private var lastDeleted: MediaLibraryEntity? = null

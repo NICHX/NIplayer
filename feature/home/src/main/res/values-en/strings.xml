@@ -165,17 +165,14 @@
 
     <!-- Library (LibraryScreen / LibraryViewModel) -->
     <string name="library_title">Library</string>
+    <string name="library_view_grid">Grid view</string>
+    <string name="library_view_list">List view</string>
     <string name="library_tab_storage">Storage</string>
     <string name="library_tab_playlists">Playlists</string>
     <string name="library_add_storage">Add storage</string>
-    <string name="library_search">Search</string>
-    <string name="library_close_search">Close search</string>
-    <string name="library_search_placeholder">Search storage names</string>
     <string name="library_empty_title">No storages yet</string>
     <string name="library_empty_hint">Add a storage source to browse media files</string>
-    <string name="library_no_result">No matching storage found</string>
     <string name="library_no_type">No storages of this type</string>
-    <string name="library_try_keywords">Try different keywords</string>
     <string name="library_switch_filter">Switch filters to view other types</string>
     <string name="library_storage_count">%1$d storages</string>
     <string name="library_delete_storage_title">Delete storage source</string>
