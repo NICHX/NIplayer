@@ -173,6 +173,3 @@ val NiDarkColorScheme = darkColorScheme(
     inversePrimary = DarkInversePrimary,
     scrim = DarkScrim,
 )
-
-
-

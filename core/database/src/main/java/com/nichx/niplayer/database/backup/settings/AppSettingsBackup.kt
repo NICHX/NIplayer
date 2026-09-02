@@ -90,6 +90,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             fileSortAscending = FileBrowserSettings.sortAscending,
             fileShowOnlyMedia = FileBrowserSettings.showOnlyMediaFiles,
             fileShowHiddenFiles = FileBrowserSettings.showHiddenFiles,
+            fileHideThumbFolder = FileBrowserSettings.hideThumbFolder,
             fileViewMode = FileBrowserSettings.viewMode.value,
             fileMediaFilter = FileBrowserSettings.mediaFilter.value,
             // 玻璃不透明度
@@ -173,6 +174,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.fileSortAscending?.let { FileBrowserSettings.setSortAscending(it) }
         s.fileShowOnlyMedia?.let { FileBrowserSettings.showOnlyMediaFiles = it }
         s.fileShowHiddenFiles?.let { FileBrowserSettings.showHiddenFiles = it }
+        s.fileHideThumbFolder?.let { FileBrowserSettings.hideThumbFolder = it }
         s.fileViewMode?.let { FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.fromValue(it) }
         s.fileMediaFilter?.let { FileBrowserSettings.mediaFilter = FileBrowserSettings.MediaFilter.fromValue(it) }
         // 玻璃不透明度
@@ -258,6 +260,7 @@ data class AppSettingsData(
     val fileSortAscending: Boolean? = null,
     val fileShowOnlyMedia: Boolean? = null,
     val fileShowHiddenFiles: Boolean? = null,
+    val fileHideThumbFolder: Boolean? = null,
     val fileViewMode: Int? = null,
     val fileMediaFilter: Int? = null,
     // 玻璃不透明度

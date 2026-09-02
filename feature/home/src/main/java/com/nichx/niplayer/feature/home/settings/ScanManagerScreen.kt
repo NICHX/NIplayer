@@ -151,6 +151,8 @@ fun ScanManagerScreen(
             FloatingActionButton(
                 onClick = { showAddDialog = true },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.scan_manager_add_dir))
             }

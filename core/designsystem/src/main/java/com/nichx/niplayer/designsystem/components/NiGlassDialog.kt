@@ -22,7 +22,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,6 +119,11 @@ fun NiGlassDialog(
                     .border(NiGlassHairWidth, niGlassBorderColor(), shape)
                     .padding(vertical = 8.dp),
             ) {
+                // 玻璃宿主位于任何 Surface 之外，LocalContentColor 默认黑色；
+                // 显式提供主题 onSurface，避免深色主题下裸 Text 在深色玻璃上不可见
+                CompositionLocalProvider(
+                    LocalContentColor provides MaterialTheme.colorScheme.onSurface,
+                ) {
                 if (title != null) {
                     Text(
                         text = title,
@@ -132,6 +139,7 @@ fun NiGlassDialog(
                     )
                 }
                 content()
+                }
             }
             }
         }

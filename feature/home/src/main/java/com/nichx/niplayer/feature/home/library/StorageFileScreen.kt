@@ -7,16 +7,19 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.activity.compose.BackHandler
@@ -65,6 +68,7 @@ import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -144,6 +148,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -180,16 +185,12 @@ import com.nichx.niplayer.datastore.FileBrowserSettings
 import com.nichx.niplayer.designsystem.components.NiAutoSizeText
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
-import com.nichx.niplayer.designsystem.components.NiExtendedFAB
-import com.nichx.niplayer.designsystem.components.NiFAB
-import com.nichx.niplayer.designsystem.components.NiFabVariant
 import com.nichx.niplayer.designsystem.components.NiProgressTrack
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
-import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
 import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
-import com.nichx.niplayer.designsystem.components.niGlassBorderColor
+import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
 import com.nichx.niplayer.designsystem.components.glassOnSurface
 import com.nichx.niplayer.designsystem.components.glassOnSurfaceMuted
 import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
@@ -214,6 +215,82 @@ import com.kyant.backdrop.shadow.Shadow
 // 主 FAB 底部偏移，与媒体库页"新增媒体库"按钮位置保持一致
 // （该值已包含对应用底部导航栏 NiBottomBar 的避让）
 private val FabBottomOffset = 104.dp
+
+/** 顶栏按钮的液态玻璃模糊/折射参数（AndroidLiquidGlass backdrop 配方）。 */
+private object TopBarGlassDefaults {
+    const val BlurRadius = 6f
+    const val LensRadius = 6f
+}
+
+/**
+ * 顶栏按钮的**液态玻璃材质**（AndroidLiquidGlass / com.kyant.backdrop）。
+ *
+ * 复用页面内容层的本地 backdrop（与多选操作栏同款捕获层）做真实液态玻璃：
+ * vibrancy + blur + lens + highlight + shadow，底色与底部导航栏 pill 同款灰色
+ * （surfaceContainer 按底栏不透明度半透明），保证视觉统一。
+ *
+ * @param backdrop 页面内容层的本地捕获 backdrop（[rememberLayerBackdrop]），
+ *                 null 时（无捕获层）退化为无材质。
+ * @param bg 玻璃底色，默认与导航栏 pill 同款灰色
+ */
+@Composable
+private fun Modifier.niLiquidGlass(
+    backdrop: Backdrop?,
+    bg: Color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = LocalNiGlassOpacity.current),
+): Modifier {
+    if (backdrop == null) return this
+    return this.drawBackdrop(
+        backdrop = backdrop,
+        shape = { CircleShape },
+        effects = {
+            vibrancy()
+            blur(TopBarGlassDefaults.BlurRadius.dp.toPx())
+            lens(TopBarGlassDefaults.LensRadius.dp.toPx(), TopBarGlassDefaults.LensRadius.dp.toPx())
+        },
+        highlight = { Highlight.Default.copy(alpha = 0f) },
+        shadow = { Shadow.Default.copy(alpha = 0f) },
+        onDrawSurface = { drawRect(bg) },
+    )
+}
+
+/**
+ * 圆形玻璃按钮：液态玻璃灰圆底 + tertiary 图标（与底部导航栏 pill 视觉统一）。
+ * 默认顶栏尺寸 40dp；FAB 等场景通过 [size]/[iconSize] 调整。
+ */
+@Composable
+private fun GlassIconCircle(
+    icon: ImageVector,
+    contentDescription: String?,
+    onClick: () -> Unit,
+    backdrop: Backdrop?,
+    modifier: Modifier = Modifier,
+    size: Dp = 40.dp,
+    iconSize: Dp = 22.dp,
+    onLongClick: (() -> Unit)? = null,
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            // 先裁剪成圆，让涟漪与玻璃底都跟随圆形按钮形状
+            .clip(CircleShape)
+            .niLiquidGlass(backdrop)
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -249,6 +326,9 @@ fun FileBrowserScreen(
     // 排序/过滤下拉菜单锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
     var sortMenuAnchor by remember { mutableStateOf(Offset.Zero) }
     var filterMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    // 新建/上传 合并按钮的子菜单
+    var showActionMenu by remember { mutableStateOf(false) }
+    var actionMenuAnchor by remember { mutableStateOf(Offset.Zero) }
     var showFileInfo by remember { mutableStateOf<StorageFile?>(null) }
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
     // 文件夹访问加密对话框状态
@@ -258,12 +338,15 @@ fun FileBrowserScreen(
     // 解锁弹窗由 pendingUnlockFolder state 直接驱动：ViewModel 置 null 时立即关闭
     val pendingUnlock by viewModel.pendingUnlockFolder.collectAsStateWithLifecycle()
     val unlockError by viewModel.unlockError.collectAsStateWithLifecycle()
+    // 移动/复制冲突挂起状态：非空时弹窗让用户选择「跳过重复 / 覆盖 / 取消」
+    val transferConflict by viewModel.transferConflict.collectAsStateWithLifecycle()
+    // 批量文件操作进度（移动/复制/删除）：非空时显示进度条浮层
+    val fileOpProgress by viewModel.fileOpProgress.collectAsStateWithLifecycle()
     // 文件管理对话框状态
     var renameTarget by remember { mutableStateOf<StorageFile?>(null) }
     var moveTarget by remember { mutableStateOf<StorageFile?>(null) }
     var deleteTarget by remember { mutableStateOf<StorageFile?>(null) }
     var showCreateFolder by remember { mutableStateOf(false) }
-    var fabExpanded by remember { mutableStateOf(false) }
     // 多选"更多"菜单展开态
     var showMultiMoreMenu by remember { mutableStateOf(false) }
     // 批量移动/复制：非空时弹出目标目录选择对话框；值是移动还是复制
@@ -291,9 +374,14 @@ fun FileBrowserScreen(
         }
     }
 
+    // 已恢复过滚动位置的目录。仅当"目录发生变化"时才恢复缓存位置；
+    // 原地刷新/删除等 isLoading 翻转不应回拽到旧缓存位置（否则删完文件列表会跳回顶部）
+    var lastRestoredPath by remember { mutableStateOf<String?>(null) }
+
     // 目录加载完成后：恢复该目录上次离开时的滚动位置
     LaunchedEffect(uiState.currentPath, uiState.isLoading) {
-        if (!uiState.isLoading) {
+        if (!uiState.isLoading && lastRestoredPath != uiState.currentPath) {
+            lastRestoredPath = uiState.currentPath
             pathScrollCache[uiState.currentPath]?.let { (index, offset) ->
                 when {
                     isGridView -> gridState.scrollToItem(index, offset)
@@ -421,6 +509,13 @@ fun FileBrowserScreen(
         }
     }
 
+    // 页面内容层的本地液态玻璃捕获：多选操作栏与顶栏按钮共用，供 drawBackdrop 做真实模糊 + 高光
+    val contentBackdropSurface = MaterialTheme.colorScheme.background
+    val multiSelectBarBackdrop = rememberLayerBackdrop {
+        drawRect(contentBackdropSurface)
+        drawContent()
+    }
+
     NiScaffold(
         // 独立全屏目的地，用不透明底色承载页面内容
         containerColor = MaterialTheme.colorScheme.background,
@@ -445,43 +540,48 @@ fun FileBrowserScreen(
                 title = uiState.storageName.ifEmpty { stringResource(R.string.storage_file_browser_title) },
                 navigationIcon = {
                     // 点击逐级返回；长按直接回到存储根目录（深层目录快速返回）
-                    Box(
-                        modifier = Modifier
-                            // 先按圆形裁剪，让 combinedClickable 的涟漪跟随圆形按钮形状
-                            .clip(CircleShape)
-                            .combinedClickable(
-                                onClick = {
-                                    if (uiState.canGoUp) { captureCurrentScroll(); viewModel.goUp() } else onBack()
-                                },
-                                onLongClick = {
-                                    if (uiState.canGoUp) viewModel.goToRoot()
-                                },
-                            )
-                            .padding(4.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        NiStyleIcon(
-                            icon = Icons.AutoMirrored.Rounded.ArrowBack,
-                            style = NiAppIconStyle,
-                            containerSize = 40.dp,
-                            iconSize = 22.dp,
-                            contentDescription = stringResource(
-                                if (uiState.canGoUp) R.string.storage_file_go_up else R.string.back,
-                            ),
-                        )
-                    }
+                    GlassIconCircle(
+                        icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = stringResource(
+                            if (uiState.canGoUp) R.string.storage_file_go_up else R.string.back,
+                        ),
+                        onClick = {
+                            if (uiState.canGoUp) { captureCurrentScroll(); viewModel.goUp() } else onBack()
+                        },
+                        onLongClick = {
+                            if (uiState.canGoUp) viewModel.goToRoot()
+                        },
+                        backdrop = multiSelectBarBackdrop,
+                    )
                 },
                 actions = {
-                    // 显式多选入口（长按已改为打开单文件菜单，多选由此按钮进入）
-                    IconButton(onClick = viewModel::enterMultiSelect) {
-                        NiStyleIcon(
-                            icon = Icons.Rounded.SelectAll,
-                            style = NiAppIconStyle,
-                            containerSize = 40.dp,
-                            iconSize = 22.dp,
-                            contentDescription = stringResource(R.string.storage_file_enter_multi_select),
-                        )
+                    // 常驻：视图切换（图标显示当前模式，点击三态循环并持久化）
+                    val nextMode = when (viewMode) {
+                        FileBrowserSettings.ViewMode.LIST -> FileBrowserSettings.ViewMode.GRID
+                        FileBrowserSettings.ViewMode.GRID -> FileBrowserSettings.ViewMode.GALLERY
+                        FileBrowserSettings.ViewMode.GALLERY -> FileBrowserSettings.ViewMode.LIST
                     }
+                    GlassIconCircle(
+                        icon = when (viewMode) {
+                            FileBrowserSettings.ViewMode.LIST -> Icons.AutoMirrored.Rounded.ViewList
+                            FileBrowserSettings.ViewMode.GRID -> Icons.Rounded.GridView
+                            FileBrowserSettings.ViewMode.GALLERY -> Icons.Rounded.PhotoLibrary
+                        },
+                        contentDescription = stringResource(
+                            when (viewMode) {
+                                FileBrowserSettings.ViewMode.LIST -> R.string.storage_file_view_list
+                                FileBrowserSettings.ViewMode.GRID -> R.string.storage_file_view_grid
+                                FileBrowserSettings.ViewMode.GALLERY -> R.string.storage_file_view_gallery
+                            },
+                        ),
+                        onClick = {
+                            viewMode = nextMode
+                            FileBrowserSettings.viewMode = nextMode
+                        },
+                        backdrop = multiSelectBarBackdrop,
+                        modifier = Modifier.padding(horizontal = 2.dp),
+                    )
+                    // 常驻：排序
                     Box(
                         modifier = Modifier.onGloballyPositioned { coords ->
                             // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
@@ -489,15 +589,13 @@ fun FileBrowserScreen(
                             sortMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
                         },
                     ) {
-                        IconButton(onClick = { showSortMenu = true }) {
-                            NiStyleIcon(
-                                icon = Icons.Rounded.SwapVert,
-                                style = NiAppIconStyle,
-                                containerSize = 40.dp,
-                                iconSize = 22.dp,
-                                contentDescription = stringResource(R.string.storage_file_sort),
-                            )
-                        }
+                        GlassIconCircle(
+                            icon = Icons.Rounded.SwapVert,
+                            contentDescription = stringResource(R.string.storage_file_sort),
+                            onClick = { showSortMenu = true },
+                            backdrop = multiSelectBarBackdrop,
+                            modifier = Modifier.padding(horizontal = 2.dp),
+                        )
                         NiGlassDropdownMenu(
                             expanded = showSortMenu,
                             onDismissRequest = { showSortMenu = false },
@@ -568,132 +666,149 @@ fun FileBrowserScreen(
                             )
                         }
                     }
-                    // 文件类型过滤：全部/视频/音频/图片
-                    Box(
-                        modifier = Modifier.onGloballyPositioned { coords ->
-                            val topLeft = coords.localToRoot(Offset.Zero)
-                            filterMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
-                        },
-                    ) {
-                        IconButton(onClick = { showFilterMenu = true }) {
-                            NiStyleIcon(
-                                icon = Icons.Rounded.FilterAlt,
-                                style = NiAppIconStyle,
-                                containerSize = 40.dp,
-                                iconSize = 22.dp,
-                                contentDescription = stringResource(R.string.storage_file_filter_title),
-                            )
-                        }
-                        NiGlassDropdownMenu(
-                            expanded = showFilterMenu,
-                            onDismissRequest = { showFilterMenu = false },
-                            anchor = IntOffset(filterMenuAnchor.x.toInt(), filterMenuAnchor.y.toInt()),
+                    // 可展开收起 ⋮：默认折叠成单个 ⋮，点击展开更多按钮；再点 ✕ 收起
+                    var topBarExpanded by rememberSaveable { mutableStateOf(false) }
+                    val totalActiveTasks = activeDownloadCount + activeUploadCount
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // 展开态中间按钮组：淡入 + 从右向左横向展开（右侧 ⋮/✕ 位置不动）
+                        AnimatedVisibility(
+                            visible = topBarExpanded,
+                            enter = fadeIn() + expandHorizontally(expandFrom = Alignment.End),
+                            exit = fadeOut() + shrinkHorizontally(shrinkTowards = Alignment.End),
                         ) {
-                            FilterMenuItem(
-                                label = stringResource(R.string.storage_file_filter_all),
-                                value = FileBrowserSettings.MediaFilter.ALL,
-                                current = sortConfig.mediaFilter,
-                            ) {
-                                viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.ALL)
-                                showFilterMenu = false
-                            }
-                            FilterMenuItem(
-                                label = stringResource(R.string.storage_file_filter_video),
-                                value = FileBrowserSettings.MediaFilter.VIDEO,
-                                current = sortConfig.mediaFilter,
-                            ) {
-                                viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.VIDEO)
-                                showFilterMenu = false
-                            }
-                            FilterMenuItem(
-                                label = stringResource(R.string.storage_file_filter_audio),
-                                value = FileBrowserSettings.MediaFilter.AUDIO,
-                                current = sortConfig.mediaFilter,
-                            ) {
-                                viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.AUDIO)
-                                showFilterMenu = false
-                            }
-                            FilterMenuItem(
-                                label = stringResource(R.string.storage_file_filter_image),
-                                value = FileBrowserSettings.MediaFilter.IMAGE,
-                                current = sortConfig.mediaFilter,
-                            ) {
-                                viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.IMAGE)
-                                showFilterMenu = false
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // 文件类型过滤：全部/视频/音频/图片
+                                Box(
+                                    modifier = Modifier.onGloballyPositioned { coords ->
+                                        val topLeft = coords.localToRoot(Offset.Zero)
+                                        filterMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                                    },
+                                ) {
+                                    GlassIconCircle(
+                                        icon = Icons.Rounded.FilterAlt,
+                                        contentDescription = stringResource(R.string.storage_file_filter_title),
+                                        onClick = { showFilterMenu = true },
+                                        backdrop = multiSelectBarBackdrop,
+                                        modifier = Modifier.padding(horizontal = 2.dp),
+                                    )
+                                    NiGlassDropdownMenu(
+                                        expanded = showFilterMenu,
+                                        onDismissRequest = { showFilterMenu = false },
+                                        anchor = IntOffset(filterMenuAnchor.x.toInt(), filterMenuAnchor.y.toInt()),
+                                    ) {
+                                        FilterMenuItem(
+                                            label = stringResource(R.string.storage_file_filter_all),
+                                            icon = Icons.Rounded.Apps,
+                                            value = FileBrowserSettings.MediaFilter.ALL,
+                                            current = sortConfig.mediaFilter,
+                                        ) {
+                                            viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.ALL)
+                                            showFilterMenu = false
+                                        }
+                                        FilterMenuItem(
+                                            label = stringResource(R.string.storage_file_filter_video),
+                                            icon = Icons.Rounded.Movie,
+                                            value = FileBrowserSettings.MediaFilter.VIDEO,
+                                            current = sortConfig.mediaFilter,
+                                        ) {
+                                            viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.VIDEO)
+                                            showFilterMenu = false
+                                        }
+                                        FilterMenuItem(
+                                            label = stringResource(R.string.storage_file_filter_audio),
+                                            icon = Icons.Rounded.MusicNote,
+                                            value = FileBrowserSettings.MediaFilter.AUDIO,
+                                            current = sortConfig.mediaFilter,
+                                        ) {
+                                            viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.AUDIO)
+                                            showFilterMenu = false
+                                        }
+                                        FilterMenuItem(
+                                            label = stringResource(R.string.storage_file_filter_image),
+                                            icon = Icons.Rounded.Image,
+                                            value = FileBrowserSettings.MediaFilter.IMAGE,
+                                            current = sortConfig.mediaFilter,
+                                        ) {
+                                            viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.IMAGE)
+                                            showFilterMenu = false
+                                        }
+                                    }
+                                }
+                                // 新建/上传：合并为一个按钮，点击弹出子菜单二选一
+                                Box(
+                                    modifier = Modifier.onGloballyPositioned { coords ->
+                                        val topLeft = coords.localToRoot(Offset.Zero)
+                                        actionMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                                    },
+                                ) {
+                                    GlassIconCircle(
+                                        icon = Icons.Rounded.Add,
+                                        contentDescription = stringResource(R.string.storage_file_new),
+                                        onClick = { showActionMenu = !showActionMenu },
+                                        backdrop = multiSelectBarBackdrop,
+                                        modifier = Modifier.padding(horizontal = 2.dp),
+                                    )
+                                    NiGlassDropdownMenu(
+                                        expanded = showActionMenu,
+                                        onDismissRequest = { showActionMenu = false },
+                                        anchor = IntOffset(actionMenuAnchor.x.toInt(), actionMenuAnchor.y.toInt()),
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.storage_file_upload)) },
+                                            leadingIcon = { Icon(Icons.Rounded.Upload, contentDescription = null) },
+                                            onClick = {
+                                                showActionMenu = false
+                                                uploadLauncher.launch(arrayOf("*/*"))
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.storage_file_new_folder)) },
+                                            leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, contentDescription = null) },
+                                            onClick = {
+                                                showActionMenu = false
+                                                showCreateFolder = true
+                                            },
+                                        )
+                                    }
+                                }
+                                // 传输管理：合并下载/上传任务入口，有活动任务时带徽标
+                                Box {
+                                    GlassIconCircle(
+                                        icon = Icons.Rounded.SwapVerticalCircle,
+                                        contentDescription = stringResource(R.string.transfer_manager_title),
+                                        onClick = onNavigateToDownloadManager,
+                                        backdrop = multiSelectBarBackdrop,
+                                        modifier = Modifier.padding(horizontal = 2.dp),
+                                    )
+                                    if (totalActiveTasks > 0) {
+                                        TransferCountBadge(count = totalActiveTasks)
+                                    }
+                                }
                             }
                         }
-                    }
-                    IconButton(onClick = {
-                        // 三态循环切换：列表 → 网格 → 画廊 → 列表，并持久化
-                        val next = when (viewMode) {
-                            FileBrowserSettings.ViewMode.LIST -> FileBrowserSettings.ViewMode.GRID
-                            FileBrowserSettings.ViewMode.GRID -> FileBrowserSettings.ViewMode.GALLERY
-                            FileBrowserSettings.ViewMode.GALLERY -> FileBrowserSettings.ViewMode.LIST
-                        }
-                        viewMode = next
-                        FileBrowserSettings.viewMode = next
-                    }) {
-                        // 图标表示"点击后将进入的下一个视图"
-                        val nextMode = when (viewMode) {
-                            FileBrowserSettings.ViewMode.LIST -> FileBrowserSettings.ViewMode.GRID
-                            FileBrowserSettings.ViewMode.GRID -> FileBrowserSettings.ViewMode.GALLERY
-                            FileBrowserSettings.ViewMode.GALLERY -> FileBrowserSettings.ViewMode.LIST
-                        }
-                        NiStyleIcon(
-                            icon = when (nextMode) {
-                                FileBrowserSettings.ViewMode.LIST -> Icons.AutoMirrored.Rounded.ViewList
-                                FileBrowserSettings.ViewMode.GRID -> Icons.Rounded.GridView
-                                FileBrowserSettings.ViewMode.GALLERY -> Icons.Rounded.PhotoLibrary
-                            },
-                            style = NiAppIconStyle,
-                            containerSize = 40.dp,
-                            iconSize = 22.dp,
-                            contentDescription = stringResource(
-                                when (nextMode) {
-                                    FileBrowserSettings.ViewMode.LIST -> R.string.storage_file_view_list
-                                    FileBrowserSettings.ViewMode.GRID -> R.string.storage_file_view_grid
-                                    FileBrowserSettings.ViewMode.GALLERY -> R.string.storage_file_view_gallery
-                                },
-                            ),
-                        )
-                    }
-                    if (activeDownloadCount > 0) {
-                        Box {
-                            IconButton(onClick = onNavigateToDownloadManager) {
-                                NiStyleIcon(
-                                    icon = Icons.Rounded.Download,
-                                    style = NiAppIconStyle,
-                                    containerSize = 40.dp,
-                                    iconSize = 22.dp,
-                                    contentDescription = stringResource(R.string.storage_file_download_tasks),
+                        // 最右固定位：⋮ / ✕ 共用同一槽位原地交叉淡化，避免过渡期双占位导致位移
+                        Crossfade(
+                            targetState = topBarExpanded,
+                            animationSpec = tween(200),
+                        ) { expanded ->
+                            if (expanded) {
+                                GlassIconCircle(
+                                    icon = Icons.Rounded.Close,
+                                    contentDescription = stringResource(R.string.storage_file_collapse_menu),
+                                    onClick = { topBarExpanded = false },
+                                    backdrop = multiSelectBarBackdrop,
+                                    modifier = Modifier.padding(horizontal = 2.dp),
+                                )
+                            } else {
+                                GlassIconCircle(
+                                    icon = Icons.Rounded.MoreVert,
+                                    contentDescription = stringResource(R.string.storage_file_more),
+                                    onClick = { topBarExpanded = true },
+                                    backdrop = multiSelectBarBackdrop,
+                                    modifier = Modifier.padding(horizontal = 2.dp),
                                 )
                             }
-                            TransferCountBadge(count = activeDownloadCount)
                         }
-                    }
-                    if (activeUploadCount > 0) {
-                        Box {
-                            IconButton(onClick = onNavigateToDownloadManager) {
-                                NiStyleIcon(
-                                    icon = Icons.Rounded.Upload,
-                                    style = NiAppIconStyle,
-                                    containerSize = 40.dp,
-                                    iconSize = 22.dp,
-                                    contentDescription = stringResource(R.string.storage_file_upload_tasks),
-                                )
-                            }
-                            TransferCountBadge(count = activeUploadCount)
-                        }
-                    }
-                    // 常驻传输管理入口：独立全屏页不常驻 Home 底部导航，提供快捷入口查看下载/上传任务
-                    IconButton(onClick = onNavigateToDownloadManager) {
-                        NiStyleIcon(
-                            icon = Icons.Rounded.SwapVerticalCircle,
-                            style = NiAppIconStyle,
-                            containerSize = 40.dp,
-                            iconSize = 22.dp,
-                            contentDescription = stringResource(R.string.transfer_manager_title),
-                        )
                     }
                 },
             )
@@ -703,12 +818,6 @@ fun FileBrowserScreen(
         // 内容满铺全屏并延伸到顶栏之下，可滚入顶栏模糊区。
         // 顶栏高度用 topInset 让位；面包屑/缩略图进度条作为列表首个 item 融入滚动流，随页面滚动。
         val topInset = padding.calculateTopPadding()
-        // 多选操作栏的液态玻璃背景：捕获页面内容层（列表等），供 drawBackdrop 做真实模糊 + 高光
-        val contentBackdropSurface = MaterialTheme.colorScheme.background
-        val multiSelectBarBackdrop = rememberLayerBackdrop {
-            drawRect(contentBackdropSurface)
-            drawContent()
-        }
         // 列表头部：面包屑（非根目录）+ 缩略图生成进度条，随列表滚动
         val listHeader: @Composable () -> Unit = {
             Column {
@@ -765,8 +874,8 @@ fun FileBrowserScreen(
                                     onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
                                     onPlayFile = viewModel::playFile,
                                     onOpenImageFile = viewModel::openImageFile,
-                                    onShowFileActions = viewModel::openFileActions,
                                     onToggleSelection = viewModel::toggleSelection,
+                                    onEnterMultiSelect = viewModel::enterMultiSelect,
                                     galleryState = galleryState,
                                     header = listHeader,
                                     contentTopInset = topInset,
@@ -785,6 +894,7 @@ fun FileBrowserScreen(
                                     onOpenImageFile = viewModel::openImageFile,
                                     onShowFileActions = viewModel::openFileActions,
                                     onToggleSelection = viewModel::toggleSelection,
+                                    onEnterMultiSelect = viewModel::enterMultiSelect,
                                     gridState = gridState,
                                     header = listHeader,
                                     contentTopInset = topInset,
@@ -805,6 +915,7 @@ fun FileBrowserScreen(
                                     onOpenImageFile = viewModel::openImageFile,
                                     onShowFileActions = viewModel::openFileActions,
                                     onToggleSelection = viewModel::toggleSelection,
+                                    onEnterMultiSelect = viewModel::enterMultiSelect,
                                     listState = listState,
                                     header = listHeader,
                                     contentTopInset = topInset,
@@ -815,13 +926,10 @@ fun FileBrowserScreen(
             }
             }
 
-            BackHandler(enabled = fabExpanded) {
-                fabExpanded = false
-            }
-
-            if (showScrollToTop && !fabExpanded && !isMultiSelect) {
-                NiFAB(
+            if (showScrollToTop && !isMultiSelect && !isGalleryView) {
+                GlassIconCircle(
                     icon = Icons.Rounded.KeyboardArrowUp,
+                    contentDescription = stringResource(R.string.storage_file_back_to_top),
                     onClick = {
                         scope.launch {
                             // 跳转回顶部：瞬时定位替代滑动，长列表下更省时
@@ -832,64 +940,19 @@ fun FileBrowserScreen(
                             }
                         }
                     },
-                    contentDescription = stringResource(R.string.storage_file_back_to_top),
+                    backdrop = multiSelectBarBackdrop,
+                    size = 56.dp,
+                    iconSize = 26.dp,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(start = 16.dp, end = 16.dp, bottom = FabBottomOffset + 88.dp),
-                    variant = NiFabVariant.OUTLINED,
+                        // 原底部“上传/新建”FAB 已并入顶栏，无需再为其让位，下移到底栏避让位置
+                        .padding(start = 16.dp, end = 16.dp, bottom = FabBottomOffset),
                 )
             }
 
-            if (viewModel.supportsFileManagement && !isMultiSelect) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(start = 16.dp, end = 16.dp, bottom = FabBottomOffset),
-                ) {
-                    Column(
-                        modifier = Modifier.align(Alignment.BottomEnd),
-                        horizontalAlignment = Alignment.End,
-                    ) {
-                        AnimatedVisibility(
-                            visible = fabExpanded,
-                            enter = fadeIn() + scaleIn(initialScale = 0.8f),
-                            exit = fadeOut() + scaleOut(targetScale = 0.8f),
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(bottom = 16.dp),
-                                horizontalAlignment = Alignment.End,
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                NiExtendedFAB(
-                                    icon = Icons.Rounded.Upload,
-                                    text = stringResource(R.string.storage_file_upload),
-                                    onClick = {
-                                        fabExpanded = false
-                                        uploadLauncher.launch(arrayOf("*/*"))
-                                    },
-                                    variant = NiFabVariant.OUTLINED,
-                                )
-                                NiExtendedFAB(
-                                    icon = Icons.Rounded.CreateNewFolder,
-                                    text = stringResource(R.string.storage_file_new_folder),
-                                    onClick = {
-                                        fabExpanded = false
-                                        showCreateFolder = true
-                                    },
-                                    variant = NiFabVariant.OUTLINED,
-                                )
-                            }
-                        }
-                        NiFAB(
-                            icon = if (fabExpanded) Icons.Rounded.Close else Icons.Rounded.Add,
-                            onClick = { fabExpanded = !fabExpanded },
-                            contentDescription = stringResource(
-                                if (fabExpanded) R.string.storage_file_collapse_menu else R.string.storage_file_new,
-                            ),
-                            variant = NiFabVariant.PRIMARY,
-                        )
-                    }
-                }
+            // 批量文件操作进度浮层（移动/复制/删除）
+            fileOpProgress?.let {
+                FileOpProgressOverlay(progress = it)
             }
 
             // 多选模式底部操作栏：固定操作位（全选/下载/更多），更多内收起移动/复制/快速访问/删除
@@ -978,6 +1041,16 @@ fun FileBrowserScreen(
                     BatchTransferOp.COPY -> viewModel.copyFiles(selected, target)
                 }
             },
+        )
+    }
+
+    // 移动/复制冲突弹窗：目标目录已有同名文件时由 ViewModel 挂起状态驱动
+    transferConflict?.let { conflict ->
+        TransferConflictDialog(
+            duplicateCount = conflict.duplicateFiles.size,
+            onSkip = { viewModel.resolveTransfer(TransferConflictMode.SKIP_DUPLICATES) },
+            onOverwrite = { viewModel.resolveTransfer(TransferConflictMode.OVERWRITE) },
+            onDismiss = { viewModel.cancelTransfer() },
         )
     }
 
@@ -1243,6 +1316,7 @@ private fun SortToggleRow(
 @Composable
 private fun FilterMenuItem(
     label: String,
+    icon: ImageVector,
     value: FileBrowserSettings.MediaFilter,
     current: FileBrowserSettings.MediaFilter,
     onClick: () -> Unit,
@@ -1257,6 +1331,14 @@ private fun FilterMenuItem(
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (selected) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
         trailingIcon = {
@@ -1490,6 +1572,7 @@ private fun FileList(
     onOpenImageFile: (StorageFile) -> Unit,
     onShowFileActions: (StorageFile) -> Unit,
     onToggleSelection: (StorageFile) -> Unit,
+    onEnterMultiSelect: (StorageFile) -> Unit,
     listState: LazyListState = rememberLazyListState(),
     contentTopInset: Dp = 0.dp,
     header: (@Composable () -> Unit)? = null,
@@ -1531,6 +1614,7 @@ private fun FileList(
                 onOpenImageFile = onOpenImageFile,
                 onShowFileActions = { onShowFileActions(file) },
                 onToggleSelection = { onToggleSelection(file) },
+                onEnterMultiSelect = { onEnterMultiSelect(file) },
             )
         }
     }
@@ -1626,6 +1710,7 @@ private fun FileRow(
     onOpenImageFile: (StorageFile) -> Unit,
     onShowFileActions: () -> Unit,
     onToggleSelection: () -> Unit,
+    onEnterMultiSelect: () -> Unit,
 ) {
     val isVideo = MediaFileTypes.isVideoFile(file.name)
     val isAudio = MediaFileTypes.isAudioFile(file.name)
@@ -1688,8 +1773,8 @@ private fun FileRow(
                     }
                 },
                 onLongClick = {
-                    // 长按 = 打开单文件操作菜单；多选模式下长按不弹菜单（避免与多选冲突）
-                    if (!isMultiSelect) onShowFileActions()
+                    // 长按 = 进入多选并选中当前项；多选模式下长按不再响应（避免与多选冲突）
+                    if (!isMultiSelect) onEnterMultiSelect()
                 },
             )
             .padding(12.dp),
@@ -1892,6 +1977,7 @@ private fun FileGrid(
     onOpenImageFile: (StorageFile) -> Unit,
     onShowFileActions: (StorageFile) -> Unit,
     onToggleSelection: (StorageFile) -> Unit,
+    onEnterMultiSelect: (StorageFile) -> Unit,
     gridState: LazyGridState = rememberLazyGridState(),
     contentTopInset: Dp = 0.dp,
     header: (@Composable () -> Unit)? = null,
@@ -1930,6 +2016,7 @@ private fun FileGrid(
                 onOpenImageFile = onOpenImageFile,
                 onShowFileActions = { onShowFileActions(file) },
                 onToggleSelection = { onToggleSelection(file) },
+                onEnterMultiSelect = { onEnterMultiSelect(file) },
             )
         }
     }
@@ -1950,6 +2037,7 @@ private fun GridFileCard(
     onOpenImageFile: (StorageFile) -> Unit,
     onShowFileActions: () -> Unit,
     onToggleSelection: () -> Unit,
+    onEnterMultiSelect: () -> Unit,
 ) {
     val isVideo = MediaFileTypes.isVideoFile(file.name)
     val isAudio = MediaFileTypes.isAudioFile(file.name)
@@ -2006,8 +2094,8 @@ private fun GridFileCard(
                         }
                     },
                     onLongClick = {
-                        // 长按 = 打开单文件操作菜单；多选模式下长按不弹菜单（避免与多选冲突）
-                        if (!isMultiSelect) onShowFileActions()
+                        // 长按 = 进入多选并选中当前项；多选模式下长按不再响应
+                        if (!isMultiSelect) onEnterMultiSelect()
                     },
                 ),
         ) {
@@ -2031,11 +2119,11 @@ private fun GridFileCard(
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(48.dp),
                     )
-                    // 加密文件夹锁定角标
+                    // 加密文件夹锁定角标（左上角）
                     if (isEncrypted) {
                         Box(
                             modifier = Modifier
-                                .align(Alignment.TopEnd)
+                                .align(Alignment.TopStart)
                                 .padding(6.dp)
                                 .size(22.dp)
                                 .clip(CircleShape)
@@ -2085,16 +2173,13 @@ private fun GridFileCard(
                                 .align(Alignment.TopStart)
                                 .padding(start = 6.dp, top = 6.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(
-                                    if (isAudio) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-                                    else Color.Black.copy(alpha = 0.65f),
-                                )
+                                .background(MaterialTheme.colorScheme.tertiary.copy(alpha = LocalNiGlassPanelOpacity.current))
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                         ) {
                             Text(
                                 text = typeLabel,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (isAudio) MaterialTheme.colorScheme.onPrimary else Color.White,
+                                color = MaterialTheme.colorScheme.onTertiary,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
@@ -2126,13 +2211,13 @@ private fun GridFileCard(
                                 .align(Alignment.BottomEnd)
                                 .padding(end = 6.dp, bottom = 6.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(Color.Black.copy(alpha = 0.65f))
+                                .background(MaterialTheme.colorScheme.tertiary.copy(alpha = LocalNiGlassPanelOpacity.current))
                                 .padding(horizontal = 5.dp, vertical = 2.dp),
                         ) {
                             Text(
                                 text = formatFileSize(file.length),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onTertiary,
                                 fontWeight = FontWeight.Medium,
                             )
                         }
@@ -2190,6 +2275,17 @@ private fun GridFileCard(
                     }
                 }
             }
+
+                    // 单文件操作入口：右上角 ⋮ 按钮（多选模式下隐藏）
+                    if (!isMultiSelect) {
+                        CardMoreButton(
+                            onClick = onShowFileActions,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 4.dp, end = 4.dp),
+                            size = 30.dp,
+                        )
+                    }
 
                     // 多选模式：左上角选中指示（圆形勾选）
                     if (isMultiSelect) {
@@ -2252,8 +2348,8 @@ private fun FileGallery(
     onOpenDirectory: (StorageFile) -> Unit,
     onPlayFile: (StorageFile) -> Unit,
     onOpenImageFile: (StorageFile) -> Unit,
-    onShowFileActions: (StorageFile) -> Unit,
     onToggleSelection: (StorageFile) -> Unit,
+    onEnterMultiSelect: (StorageFile) -> Unit,
     galleryState: LazyGridState,
     contentTopInset: Dp = 0.dp,
     header: (@Composable () -> Unit)? = null,
@@ -2286,15 +2382,15 @@ private fun FileGallery(
     }
     LazyVerticalGrid(
         state = galleryState,
-        columns = GridCells.Adaptive(minSize = 112.dp),
+        columns = GridCells.Fixed(3),
         contentPadding = PaddingValues(
-            start = 8.dp,
-            end = 8.dp,
+            start = 0.dp,
+            end = 0.dp,
             top = contentTopInset,
             bottom = FabBottomOffset,
         ),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
         if (header != null) {
             item(key = "list-header", span = { GridItemSpan(maxLineSpan) }) {
@@ -2316,8 +2412,8 @@ private fun FileGallery(
                 onOpenDirectory = { onOpenDirectory(file) },
                 onPlayFile = { onPlayFile(file) },
                 onOpenImageFile = { onOpenImageFile(file) },
-                onShowFileActions = { onShowFileActions(file) },
                 onToggleSelection = { onToggleSelection(file) },
+                onEnterMultiSelect = { onEnterMultiSelect(file) },
             )
         }
     }
@@ -2336,11 +2432,13 @@ private fun GalleryCell(
     onOpenDirectory: () -> Unit,
     onPlayFile: () -> Unit,
     onOpenImageFile: () -> Unit,
-    onShowFileActions: () -> Unit,
     onToggleSelection: () -> Unit,
+    onEnterMultiSelect: () -> Unit,
 ) {
     val isVideo = MediaFileTypes.isVideoFile(file.name)
     val isImage = MediaFileTypes.isImageFile(file.name)
+    // 相册格统一无缝方形（文件夹与媒体一致）
+    val cellShape = RoundedCornerShape(0.dp)
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -2353,13 +2451,13 @@ private fun GalleryCell(
         modifier = Modifier
             .aspectRatio(1f)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(4.dp))
+            .clip(cellShape)
             .then(
                 if (isSelected) {
                     Modifier.border(
                         width = 2.dp,
                         color = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(4.dp),
+                        shape = cellShape,
                     )
                 } else {
                     Modifier
@@ -2381,13 +2479,13 @@ private fun GalleryCell(
                     }
                 },
                 onLongClick = {
-                    // 长按打开单文件操作菜单；多选模式下长按不弹菜单（避免与多选冲突）
-                    if (!isMultiSelect) onShowFileActions()
+                    // 长按 = 进入多选并选中当前项；多选模式下长按不再响应
+                    if (!isMultiSelect) onEnterMultiSelect()
                 },
             ),
     ) {
         if (file.isDirectory) {
-            // 文件夹：紧凑方形瓦片，品牌渐变 + 锁定角标 + 底部名称标签
+            // 文件夹：方形瓦片 + 双层图标 + 玻璃胶囊名（无圆角、无描边）
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -2401,6 +2499,7 @@ private fun GalleryCell(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
+                // 文件夹图标
                 Icon(
                     imageVector = Icons.Rounded.Folder,
                     contentDescription = null,
@@ -2408,34 +2507,42 @@ private fun GalleryCell(
                     modifier = Modifier.size(32.dp),
                 )
             }
-            // 底部名称：文件夹可见名称，媒体格子保持纯净
+            // 底部名称：贴合文字宽度的玻璃胶囊（非整条黑底），柔和可读
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-                contentAlignment = Alignment.CenterStart,
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                NiAutoSizeText(
-                    text = file.name,
-                    maxLines = 1,
-                    minFontSize = 9.sp,
-                    maxFontSize = 11.sp,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Box(
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.32f), RoundedCornerShape(50))
+                        .border(
+                            width = 0.5.dp,
+                            color = Color.White.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(50),
+                        )
+                        .padding(horizontal = 9.dp, vertical = 3.dp),
+                ) {
+                    Text(
+                        text = file.name,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             if (isEncrypted) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
+                        .align(Alignment.TopStart)
                         .padding(4.dp)
                         .size(20.dp)
                         .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.45f)),
+                        .background(Color.Black.copy(alpha = 0.35f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -2504,6 +2611,7 @@ private fun GalleryCell(
             }
         }
 
+        // 画廊模式不提供单文件操作入口，仅保留选中指示
         // 多选模式：左上角选中指示（圆形勾选）
         if (isMultiSelect) {
             Box(
@@ -2528,6 +2636,30 @@ private fun GalleryCell(
                 )
             }
         }
+    }
+}
+
+/**
+ * 卡片/瓦片右上角的单文件操作入口（⋮）按钮。
+ *
+ * 仅渲染纯 ⋮ 图标、无任何背景/描边/阴影，视觉干净利落。
+ */
+@Composable
+private fun CardMoreButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: Dp = 30.dp,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.size(size),
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.MoreVert,
+            contentDescription = stringResource(R.string.storage_file_more),
+            tint = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.size(size * 0.55f),
+        )
     }
 }
 
@@ -2796,6 +2928,84 @@ private fun fileTypeLabel(file: StorageFile, context: Context): String {
 
 // ---- 文件管理对话框 ----
 
+/**
+ * 批量文件操作进度浮层（移动/复制/删除）。
+ *
+ * 置于页面底部居中，展示操作类型 + 已完成/总数 + 确定性进度条 + 当前文件名。
+ * 不拦截点击（仅展示），仅在进行中的批量操作期间显示。
+ */
+@Composable
+private fun FileOpProgressOverlay(progress: FileOpProgress) {
+    val label = when (progress.type) {
+        FileOpType.MOVE -> stringResource(R.string.storage_file_op_moving)
+        FileOpType.COPY -> stringResource(R.string.storage_file_op_copying)
+        FileOpType.DELETE -> stringResource(R.string.storage_file_op_deleting)
+    }
+    val fraction = if (progress.total > 0) progress.done.toFloat() / progress.total else 0f
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = FabBottomOffset + 24.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = niFrostSurfaceColor(),
+        shadowElevation = 8.dp,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(label, style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = stringResource(R.string.storage_file_op_progress, progress.done, progress.total),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { fraction },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (progress.currentName.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = progress.currentName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+    }
+}
+
+/** 移动/复制冲突弹窗：目标目录已有同名文件，让用户选择「跳过重复 / 覆盖 / 取消」。 */
+@Composable
+private fun TransferConflictDialog(
+    duplicateCount: Int,
+    onSkip: () -> Unit,
+    onOverwrite: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    NiInfoDialog(
+        title = stringResource(R.string.storage_file_conflict_title),
+        onDismiss = onDismiss,
+        actions = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onSkip) { Text(stringResource(R.string.storage_file_conflict_skip)) }
+            TextButton(onClick = onOverwrite) { Text(stringResource(R.string.storage_file_conflict_overwrite)) }
+        },
+    ) {
+        Text(
+            text = stringResource(R.string.storage_file_conflict_body, duplicateCount),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 /** 重命名对话框。预填当前文件名（不含扩展名），用户确认后回调 [onConfirm]。 */
 @Composable
 fun RenameFileDialog(
@@ -2858,6 +3068,9 @@ fun RenameFileDialog(
 
 /** 多选批量传输操作类型：移动到 / 复制到。 */
 private enum class BatchTransferOp { MOVE, COPY }
+
+/** 目录选择对话框目录列表固定高度：加载/空态/列表共用，切换目录时弹窗尺寸不跳动。 */
+private val TargetListHeight = 320.dp
 
 /**
  * 目录浏览式目标选择对话框（用于"移动到"/"复制到"）。
@@ -2933,15 +3146,19 @@ private fun FolderTargetDialog(
                     modifier = Modifier.weight(1f),
                 )
             }
-            when {
-                loading -> TargetListLoading()
-                subfolders.value.isEmpty() -> TargetListEmpty(stringResource(R.string.storage_file_move_no_target))
-                else -> LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp),
-                ) {
-                    itemsIndexed(subfolders.value, key = { _, child -> child.path }) { _, child ->
+            // 固定高度区域：目录加载/空态/列表共用同一高度，避免切换目录时弹窗尺寸跳动
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(TargetListHeight),
+            ) {
+                when {
+                    loading -> TargetListLoading()
+                    subfolders.value.isEmpty() -> TargetListEmpty(stringResource(R.string.storage_file_move_no_target))
+                    else -> LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        itemsIndexed(subfolders.value, key = { _, child -> child.path }) { _, child ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
@@ -2975,6 +3192,7 @@ private fun FolderTargetDialog(
                         }
                     }
                 }
+                }
             }
         },
         actions = {
@@ -2988,9 +3206,7 @@ private fun FolderTargetDialog(
 @Composable
 private fun TargetListLoading() {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(140.dp),
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator()
@@ -3001,9 +3217,7 @@ private fun TargetListLoading() {
 @Composable
 private fun TargetListEmpty(text: String) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(140.dp),
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         Text(

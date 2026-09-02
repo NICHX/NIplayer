@@ -319,8 +319,6 @@
     <string name="storage_file_back_to_top">回到顶部</string>
     <string name="storage_file_more">更多</string>
     <string name="storage_file_collapse_menu">收起菜单</string>
-    <string name="storage_file_download_tasks">下载任务</string>
-    <string name="storage_file_upload_tasks">上传任务</string>
     <string name="upload_task_created">已创建上传任务「%1$s」</string>
     <string name="upload_task_create_failed">创建上传任务失败</string>
     <string name="storage_file_select">选择</string>
@@ -330,7 +328,6 @@
     <string name="storage_file_deselect_all">取消全选</string>
     <string name="storage_file_cancel_multi_select">取消多选</string>
     <string name="storage_file_selected_count">已选 %1$d 项</string>
-    <string name="storage_file_enter_multi_select">进入多选</string>
     <string name="more">更多</string>
     <string name="move_to">移动到</string>
     <string name="copy_to">复制到</string>
@@ -339,6 +336,17 @@
     <string name="storage_file_move_partial">移动部分完成（%1$d/%2$d）</string>
     <string name="storage_file_copied_count">已复制 %1$d 项</string>
     <string name="storage_file_copy_partial">复制部分完成（%1$d/%2$d）</string>
+    <string name="storage_file_moved_skipped">已移动 %1$d 项，跳过 %2$d 项重复</string>
+    <string name="storage_file_copied_skipped">已复制 %1$d 项，跳过 %2$d 项重复</string>
+    <string name="storage_file_conflict_title">存在同名文件</string>
+    <string name="storage_file_conflict_body">目标目录已有 %1$d 个同名文件，如何处理？</string>
+    <string name="storage_file_conflict_skip">跳过重复</string>
+    <string name="storage_file_conflict_overwrite">覆盖已有</string>
+    <string name="storage_file_op_moving">正在移动</string>
+    <string name="storage_file_op_copying">正在复制</string>
+    <string name="storage_file_op_deleting">正在删除</string>
+    <string name="storage_file_op_progress">%1$d/%2$d</string>
+    <string name="storage_file_op_busy">当前有文件操作进行中，请稍后再试</string>
     <string name="storage_file_batch_move_title">移动 %1$d 项到</string>
     <string name="storage_file_batch_copy_title">复制 %1$d 项到</string>
     <string name="storage_file_sort">排序</string>
@@ -449,7 +457,6 @@
     <string name="storage_file_preparing_playback">识别方向中…</string>
     <string name="storage_file_password_changed">已修改「%1$s」的密码</string>
     <string name="storage_file_renamed">已重命名为「%1$s」</string>
-    <string name="storage_file_moved">已移动到「%1$s」</string>
     <string name="storage_file_folder_created">已创建文件夹「%1$s」</string>
     <string name="storage_file_uploading">正在上传「%1$s」</string>
     <string name="storage_file_uploaded">已上传「%1$s」</string>
@@ -461,7 +468,6 @@
     <string name="storage_file_qa_added">已添加到快速访问</string>
     <string name="storage_file_qa_removed">已移出快速访问</string>
     <string name="storage_file_rename_failed">重命名失败</string>
-    <string name="storage_file_move_failed">移动失败</string>
     <string name="storage_file_folder_create_failed">创建文件夹失败</string>
     <string name="storage_file_upload_failed">上传失败</string>
     <string name="storage_file_delete_failed">删除失败</string>
@@ -703,6 +709,8 @@
     <string name="player_media_only_desc">文件浏览页仅显示视频、音频和图片，隐藏其他文件类型</string>
     <string name="player_show_hidden">显示隐藏文件/文件夹</string>
     <string name="player_show_hidden_desc">显示以 . 开头的隐藏文件和文件夹，如 .thumb/、.DS_Store 等</string>
+    <string name="player_hide_thumb_folder">隐藏 .thumb 文件夹</string>
+    <string name="player_hide_thumb_folder_desc">默认隐藏文件浏览中的 .thumb 缩略图文件夹，即便开启显示隐藏文件也不展示</string>
     <string name="player_frame_position_title">取帧位置</string>
     <string name="player_assrt_token_title">设置 ASSRT Token</string>
     <string name="player_assrt_token_hint">在 assrt.net 注册获取 API Token，用于字幕搜索。</string>
