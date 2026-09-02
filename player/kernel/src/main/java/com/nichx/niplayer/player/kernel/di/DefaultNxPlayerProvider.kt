@@ -22,7 +22,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class DefaultNxPlayerProvider @Inject constructor(
-    private val backends: Set<NxPlayerBackend>,
+    private val backends: Set<@JvmSuppressWildcards NxPlayerBackend>,
 ) : NxPlayerProvider {
 
     override fun resolveBackends(source: NxMediaSource?): List<NxPlayerBackend> {
