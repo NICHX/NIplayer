@@ -80,6 +80,10 @@ class NxMpvPlayer @Inject constructor(
     private var pendingStartMs = 0L
     private var pendingPlay = false
 
+    /** 待续播位置（ms），FILE_LOADED 后 seek 定位。 */
+    @Volatile
+    private var resumeMs = 0L
+
     private val createLock = Any()
 
     private fun ensureCreated() {
@@ -250,6 +254,10 @@ class NxMpvPlayer @Inject constructor(
             MpvEvent.MPV_EVENT_FILE_LOADED -> {
                 fileLoaded = true
                 _mediaInfo.value = readMediaInfo()
+                if (resumeMs > 0) {
+                    // 续播定位：seek 到记录位置（mpv time-pos 接受浮点秒）
+                    MPVLib.setPropertyDouble("time-pos", resumeMs / 1000.0)
+                }
                 deriveState()
             }
             MpvEvent.MPV_EVENT_VIDEO_RECONFIG -> {
@@ -276,16 +284,21 @@ class NxMpvPlayer @Inject constructor(
 
     private fun loadFile(source: NxMediaSource, startPositionMs: Long) {
         fileLoaded = false
+        resumeMs = startPositionMs
         val opts = buildString {
-            append("start=").append(startPositionMs / 1000.0)
             if (source is NxMediaSource.Http && source.headers.isNotEmpty()) {
                 // mpv 的 http-header-fields 以 "Key: Value" 分号分隔
-                append(",http-header-fields=").append(
+                append("http-header-fields=").append(
                     source.headers.entries.joinToString(";") { (k, v) -> "$k: $v" }
                 )
             }
         }
-        MPVLib.command(arrayOf("loadfile", source.uri.toString(), "replace", opts))
+        // start 经 loadfile options 传会被 mpv 拒绝解析，故不放；续播由 FILE_LOADED 后 seek 实现
+        MPVLib.command(if (opts.isEmpty()) {
+            arrayOf("loadfile", source.uri.toString(), "replace")
+        } else {
+            arrayOf("loadfile", source.uri.toString(), "replace", opts)
+        })
     }
 
     override fun prepare() {
