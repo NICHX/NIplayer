@@ -665,6 +665,10 @@
     <string name="media_library_settings_title">媒体库设置</string>
     <string name="player_kernel">播放器内核</string>
     <string name="player_current_kernel">当前内核</string>
+    <string name="player_backend">播放内核</string>
+    <string name="player_backend_auto">自动（AndroidX Media3）</string>
+    <string name="player_backend_media3">AndroidX Media3</string>
+    <string name="player_backend_mpv">mpv（实验）</string>
     <string name="player_pitch_preserve">倍速音调保持</string>
     <string name="player_pitch_preserve_desc">倍速播放时保持原音调，关闭则变速变调（适合快速浏览）</string>
     <string name="player_orientation_mode">进入播放器方向</string>

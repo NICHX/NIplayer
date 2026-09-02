@@ -84,6 +84,7 @@ fun PlayerSettingsScreen(
     var autoLoadSubtitle by remember { mutableStateOf(SubtitleSettings.autoLoadSameNameSubtitle) }
     var subtitlePriority by remember { mutableStateOf(SubtitleSettings.subtitlePriority) }
     var pitchPreservation by remember { mutableStateOf(PlayerSettings.pitchPreservationEnabled) }
+    var playerBackend by remember { mutableStateOf(PlayerSettings.playerBackend) }
     var longPressTimeoutMs by remember { mutableStateOf(PlayerSettings.longPressTimeoutMs) }
     var seekSensitivity by remember { mutableStateOf(PlayerSettings.seekSensitivity) }
     var doubleTapStepSeconds by remember { mutableStateOf(PlayerSettings.doubleTapStepSeconds) }
@@ -97,6 +98,7 @@ fun PlayerSettingsScreen(
     var showSeekDialog by remember { mutableStateOf(false) }
     var showDoubleTapDialog by remember { mutableStateOf(false) }
     var showControlCustomize by remember { mutableStateOf(false) }
+    var showBackendDialog by remember { mutableStateOf(false) }
 
     // 控制栏自定义为独立子页面（占满整屏、含返回栏），进入时整页替换设置页内容。
     if (showControlCustomize) {
@@ -123,6 +125,11 @@ fun PlayerSettingsScreen(
         2 -> stringResource(R.string.player_orientation_auto)
         else -> stringResource(R.string.player_orientation_landscape)
     }
+    val playerBackendLabel = when (playerBackend) {
+        "media3" -> stringResource(R.string.player_backend_media3)
+        "mpv" -> stringResource(R.string.player_backend_mpv)
+        else -> stringResource(R.string.player_backend_auto)
+    }
 
     NiScaffold(
         topBar = {
@@ -147,6 +154,12 @@ fun PlayerSettingsScreen(
                 iconBg = Color(0xFF2095F4),
             ) {
                 SettingInfoRow(label = stringResource(R.string.player_current_kernel), value = "AndroidX Media3")
+                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SettingClickRow(
+                    label = stringResource(R.string.player_backend),
+                    value = playerBackendLabel,
+                    onClick = { showBackendDialog = true },
+                )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingSwitchRow(
                     label = stringResource(R.string.player_pitch_preserve),
@@ -420,6 +433,29 @@ fun PlayerSettingsScreen(
                             doubleTapStepSeconds = option
                             PlayerSettings.doubleTapStepSeconds = option
                             showDoubleTapDialog = false
+                        },
+                    )
+                },
+        )
+    }
+
+    if (showBackendDialog) {
+        NiListItemDialog(
+            title = stringResource(R.string.player_backend),
+            onDismiss = { showBackendDialog = false },
+            items = listOf(
+                "auto" to stringResource(R.string.player_backend_auto),
+                "media3" to stringResource(R.string.player_backend_media3),
+                "mpv" to stringResource(R.string.player_backend_mpv),
+            )
+                .map { (option, label) ->
+                    NiDialogItem(
+                        label = label,
+                        isSelected = playerBackend == option,
+                        onClick = {
+                            playerBackend = option
+                            PlayerSettings.playerBackend = option
+                            showBackendDialog = false
                         },
                     )
                 },

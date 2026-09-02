@@ -665,6 +665,10 @@
     <string name="media_library_settings_title">Media library settings</string>
     <string name="player_kernel">Player kernel</string>
     <string name="player_current_kernel">Current kernel</string>
+    <string name="player_backend">Playback engine</string>
+    <string name="player_backend_auto">Auto (AndroidX Media3)</string>
+    <string name="player_backend_media3">AndroidX Media3</string>
+    <string name="player_backend_mpv">mpv (experimental)</string>
     <string name="player_pitch_preserve">Keep pitch when speeding up</string>
     <string name="player_pitch_preserve_desc">Keep the original pitch at faster speeds; turn off to change pitch with speed (for quick browsing)</string>
     <string name="player_orientation_mode">Player orientation</string>
