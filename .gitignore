@@ -18,3 +18,4 @@ keystore.properties
 /docs
 gradle/gradle-daemon-jvm.properties
 /legado-with-MD3
+/.mpv-build/
