@@ -299,6 +299,16 @@ interface Storage {
     suspend fun ping(): Boolean = testConnection()
 
     /**
+     * 播放链路会话保活。
+     *
+     * 播放走独立连接（如 [com.nichx.niplayer.storage.impl.SmbStorage] 的 `playContext`），
+     * 与浏览用的 [ping] 不是同一条会话。mpv 通过本地 HTTP 代理播放时会在缓冲暂停读取，
+     * 若期间 SMB 会话被路由器/NAS 空闲断开，seek/切集会卡住很长时段。此方法对播放用连接
+     * 做轻量探测，维持其存活。默认实现复用 [ping]，SMB 等子类覆盖为播放链路的探活。
+     */
+    suspend fun pingPlay(): Boolean = ping()
+
+    /**
      * 释放底层资源（连接、session 等）。
      *
      * BUG-07 修复：改为 suspend，允许子类在 close 时获取内部锁（如 SmbStorage 的

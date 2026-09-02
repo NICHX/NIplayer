@@ -3,6 +3,7 @@ package com.nichx.niplayer.player.mpv
 import android.content.Context
 import android.view.Surface
 import androidx.media3.common.text.Cue
+import androidx.media3.datasource.DefaultDataSource
 import com.nichx.niplayer.player.kernel.AudioTrackInfo
 import com.nichx.niplayer.player.kernel.MediaInfo
 import com.nichx.niplayer.player.kernel.NxMediaSource
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 /**
@@ -83,6 +85,9 @@ class NxMpvPlayer @Inject constructor(
     /** 待续播位置（ms），FILE_LOADED 后 seek 定位。 */
     @Volatile
     private var resumeMs = 0L
+
+    /** 本地 HTTP 读代理（mpv 读非 http 源时使用）。 */
+    private var proxy: StorageProxyServer? = null
 
     private val createLock = Any()
 
@@ -285,20 +290,57 @@ class NxMpvPlayer @Inject constructor(
     private fun loadFile(source: NxMediaSource, startPositionMs: Long) {
         fileLoaded = false
         resumeMs = startPositionMs
-        val opts = buildString {
-            if (source is NxMediaSource.Http && source.headers.isNotEmpty()) {
-                // mpv 的 http-header-fields 以 "Key: Value" 分号分隔
-                append("http-header-fields=").append(
-                    source.headers.entries.joinToString(";") { (k, v) -> "$k: $v" }
-                )
+        when (source) {
+            is NxMediaSource.Http -> {
+                // mpv 内置 libcurl，可直连 http(s)
+                val opts = if (source.headers.isNotEmpty()) {
+                    // mpv 的 http-header-fields 以 "Key: Value" 分号分隔
+                    "http-header-fields=" + source.headers.entries.joinToString(";") { (k, v) -> "$k: $v" }
+                } else null
+                MPVLib.command(if (opts == null) {
+                    arrayOf("loadfile", source.uri.toString(), "replace")
+                } else {
+                    arrayOf("loadfile", source.uri.toString(), "replace", opts)
+                })
+            }
+            is NxMediaSource.DataSource -> {
+                // 自定义存储（SMB 等）：用其 media3 DataSource.Factory 起本地 http 代理给 mpv
+                loadViaProxy(source.factory, source.uri, source.storage)
+            }
+            is NxMediaSource.Local -> {
+                // 本地 file/content：用 DefaultDataSource 代理
+                loadViaProxy(DefaultDataSource.Factory(context), source.uri)
             }
         }
-        // start 经 loadfile options 传会被 mpv 拒绝解析，故不放；续播由 FILE_LOADED 后 seek 实现
-        MPVLib.command(if (opts.isEmpty()) {
-            arrayOf("loadfile", source.uri.toString(), "replace")
-        } else {
-            arrayOf("loadfile", source.uri.toString(), "replace", opts)
-        })
+    }
+
+    /**
+     * 起（或替换）本地 http 代理，让 mpv 通过 http 读 media3 DataSource 的字节流。
+     *
+     * 参考 mpvExtended-android 的 SMB 稳定化方案：传入 [Storage] 注册保活回调，在 mpv 缓冲
+     * 暂停读取的间隙维持 SMB 播放会话不被空闲断开（否则 seek/切集可能卡住十几秒）。
+     */
+    private fun loadViaProxy(
+        factory: androidx.media3.datasource.DataSource.Factory,
+        uri: android.net.Uri,
+        storage: com.nichx.niplayer.storage.Storage? = null,
+    ) {
+        proxy?.stop()
+        val server = StorageProxyServer(
+            factory = factory,
+            uri = uri,
+            keepAlive = storage?.let { s ->
+                { runCatching { runBlocking { s.pingPlay() } } }
+            },
+        )
+        proxy = server
+        val url = server.start()
+        MPVLib.command(arrayOf("loadfile", url, "replace"))
+    }
+
+    private fun stopProxy() {
+        proxy?.stop()
+        proxy = null
     }
 
     override fun prepare() {
@@ -386,6 +428,7 @@ class NxMpvPlayer @Inject constructor(
 
     override fun release() {
         _equalizer.release()
+        stopProxy()
         if (created) {
             MPVLib.removeObserver(this)
             MPVLib.destroy()

@@ -679,6 +679,25 @@ class SmbStorage(
         }
     }
 
+    /**
+     * 播放链路 SMB 会话保活：通过 [playContext] 对**同一共享**做轻量探测。
+     *
+     * mpv 本地 HTTP 代理在缓冲暂停读取时，若播放用 SMB 连接（[playContext] 池）被路由器/NAS
+     * 空闲断开，seek/切集会卡住。此方法命中播放独立的连接池，维持其存活；不同于 [ping]
+     * （走浏览器 [smbContext] 的连接，无法保住播放会话）。
+     */
+    override suspend fun pingPlay(): Boolean {
+        return try {
+            ensurePlayShare()
+            val shareOnly = shareName?.trim('/')?.split('/')?.first()?.trim()
+            val base = if (shareOnly.isNullOrBlank()) "smb://$host:$port/" else "smb://$host:$port/$shareOnly/"
+            val target = if (playRootPrefix.isNotEmpty()) "$base${playRootPrefix.trimEnd('/')}/" else base
+            SmbFile(target, playContext).exists()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     override suspend fun testConnection(): Boolean {
         val name = shareName
         if (!name.isNullOrBlank()) {
