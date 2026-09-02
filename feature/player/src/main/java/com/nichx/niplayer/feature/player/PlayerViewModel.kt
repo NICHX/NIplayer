@@ -31,6 +31,7 @@ import com.nichx.niplayer.player.kernel.MediaInfo
 import com.nichx.niplayer.player.kernel.NxMediaSource
 import com.nichx.niplayer.player.kernel.MediaSourceBuilder
 import com.nichx.niplayer.player.kernel.NxPlayer
+import com.nichx.niplayer.player.kernel.NxPlayerProvider
 import com.nichx.niplayer.player.kernel.NxVideoScaleMode
 import com.nichx.niplayer.player.kernel.PlaybackEvent
 import com.nichx.niplayer.player.kernel.PlaybackRequest
@@ -111,7 +112,7 @@ import javax.inject.Inject
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
-    private val player: NxPlayer,
+    playerProvider: NxPlayerProvider,
     playbackRequestHolder: PlaybackRequestHolder,
     private val playHistoryDao: PlayHistoryDao,
     private val videoBookmarkDao: VideoBookmarkDao,
@@ -125,6 +126,12 @@ class PlayerViewModel @Inject constructor(
     private val encryptedFolderManager: EncryptedFolderManager,
     private val syncManager: PlayHistorySyncManager,
 ) : ViewModel() {
+
+    /**
+     * 实际播放内核：由能力解析器按设置/能力选出（构造期 source 未知，仅按设置取首选，
+     * 当前默认即 media3）。视频/音频都会经此 NxPlayer 操作。
+     */
+    private val player: NxPlayer = playerProvider.resolveBackends().first()
 
     /** 播放状态（WhileSubscribed(5000) 避免短暂配置变化导致 Player 释放）。 */
     val state: StateFlow<PlaybackState> = player.state

@@ -7,6 +7,7 @@ import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import com.nichx.niplayer.player.kernel.NxPlayer
 import com.nichx.niplayer.player.kernel.NxPlayerBackend
+import com.nichx.niplayer.player.kernel.NxPlayerProvider
 import com.nichx.niplayer.player.kernel.media3.NxMedia3Player
 import dagger.Binds
 import dagger.Module
@@ -35,12 +36,16 @@ abstract class PlayerModule {
     /**
      * 注册默认 media3 内核为多内核集合成员。
      *
-     * 当前该集合暂无消费方（能力解析器在第二内核落地时引入）；`@IntoSet` 多绑定在
-     * `Set<NxPlayerBackend>` 被请求前不会被实例化，此处仅作结构预留，不产生运行时开销。
+     * 该集合由 [com.nichx.niplayer.player.kernel.di.DefaultNxPlayerProvider] 消费：
+     * `@IntoSet` 多绑定在集合被请求时实例化。
      */
     @Binds
     @IntoSet
     abstract fun bindMedia3Backend(impl: NxMedia3Player): NxPlayerBackend
+
+    /** 绑定能力解析器：接口 → 默认实现（@Singleton，注入完整内核集合）。 */
+    @Binds
+    abstract fun bindPlayerProvider(impl: DefaultNxPlayerProvider): NxPlayerProvider
 
     companion object {
 

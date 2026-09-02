@@ -25,6 +25,7 @@ object PlayerSettings {
     private const val KEY_AUDIO_SPEED_INDEX = "player_audio_speed_index"
     private const val KEY_ORIENTATION_MODE = "player_orientation_mode"
     private const val KEY_AUTO_PIP = "player_auto_pip"
+    private const val KEY_PLAYER_BACKEND = "player_backend"
 
     /** 允许的长按倍速候选值（UI 选择用）。 */
     val LONG_PRESS_SPEED_OPTIONS: List<Float> = listOf(1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
@@ -118,6 +119,17 @@ object PlayerSettings {
     var autoPip: Boolean
         get() = mmkv.decodeBool(KEY_AUTO_PIP, false)
         set(value) { mmkv.encode(KEY_AUTO_PIP, value) }
+
+    /**
+     * 强制指定的播放内核 id（多内核接入）。
+     *
+     * - "auto"（默认）：由 [com.nichx.niplayer.player.kernel.NxPlayerProvider] 按能力
+     *   与优先级自动选择（当前仅 media3 已验证）。
+     * - 其它值（如 "mpv"）：强制使用指定内核；无效 id 回退到能力解析。
+     */
+    var playerBackend: String
+        get() = mmkv.decodeString(KEY_PLAYER_BACKEND, "auto") ?: "auto"
+        set(value) { mmkv.encode(KEY_PLAYER_BACKEND, value) }
 
     // region 黑边检测结果缓存
 

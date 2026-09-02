@@ -33,3 +33,6 @@ interface NxPlayerBackend : NxPlayer {
     /** 所属变体来源内核 id；独立内核为 null。 */
     val backendVariantOf: String?
 }
+
+/** 播放内核自动选择模式（[com.nichx.niplayer.datastore.PlayerSettings.playerBackend] 的默认值）。 */
+const val NX_BACKEND_AUTO: String = "auto"
