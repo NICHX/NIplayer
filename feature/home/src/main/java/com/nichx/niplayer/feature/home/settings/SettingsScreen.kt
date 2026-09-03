@@ -81,23 +81,27 @@ private data class PromoInfo(val title: String, val description: String)
 
 private const val PROMO_RAW_BASE = "https://raw.githubusercontent.com/NICHX/unraid-assistant-releases"
 private const val PROMO_JSDEIVR_BASE = "https://cdn.jsdelivr.net/gh/NICHX/unraid-assistant-releases"
-private const val PROMO_DESC_MARK = "一款 Android 端 unRAID 服务器管理应用"
-private const val PROMO_TITLE_MARK = "unRAID 助手（unRAID Assistant）"
+// 描述兜底短语：README 改名（unRAID 助手 → unDash）后仍保留该句
+private const val PROMO_DESC_MARK = "unRAID 服务器管理应用"
 private val PROMO_BRANCHES = listOf("master", "main")
 
 /**
- * 从 GitHub README 拉取推广段落。返回任一可达源的解析结果。
+ * 从 GitHub README 拉取推广段落并保证跟随 README 实时内容。
  *
- * 大陆访问限制：`raw.githubusercontent.com` 常不可达，因此优先用 **jsDelivr CDN**
- *（`cdn.jsdelivr.net/gh/...@branch/README.md`，有大陆节点）镜像 README，raw 作为
- * 兜底源依次尝试。全部失败/超时返回 null，调用方据此隐藏推广横幅。
+ * 标题/描述通过解析 README 结构获得（首个一级标题 + 其后首段正文），
+ * 不依赖写死的产品名，避免改名后显示旧名称。
+ *
+ * 源优先级：**raw 优先**（返回仓库最新内容，保证同步）；
+ * **jsDelivr CDN** 兜底（`cdn.jsdelivr.net/gh/...@branch/README.md` 有大陆节点，
+ * 但会因 CDN 缓存滞后于仓库最新提交，仅作为 raw 不可达时的回退）。
+ * 全部失败/超时返回 null，调用方据此隐藏推广横幅。
  */
 private suspend fun fetchPromoInfo(): PromoInfo? = withContext(Dispatchers.IO) {
     for (branch in PROMO_BRANCHES) {
-        // jsDelivr 优先（大陆可达），raw 兜底（非大陆 / 走代理时更快）
+        // raw 优先（实时最新），jsDelivr 兜底（大陆可达，可能有缓存延迟）
         val candidates = listOf(
-            "$PROMO_JSDEIVR_BASE@$branch/README.md",
             "$PROMO_RAW_BASE/$branch/README.md",
+            "$PROMO_JSDEIVR_BASE@$branch/README.md",
         )
         for (url in candidates) {
             val body = fetchRaw(url) ?: continue
@@ -130,18 +134,36 @@ private fun fetchRaw(url: String): String? {
 
 private fun parsePromo(body: String): PromoInfo? {
     val clean = body.replace("\r", "").removePrefix("\uFEFF")
-    val title = arrayOf(PROMO_TITLE_MARK, "unRAID 助手", "unRAID Assistant")
-        .firstNotNullOfOrNull { mark ->
-            clean.indexOf(mark).takeIf { it >= 0 }?.let { clean.substring(it, it + mark.length) }
-        }
-        ?: "Unraid 助手"
-    // 描述取包含关键短语的那一行（README 中该段落在独立行）
-    val desc = clean.lineSequence()
-        .map { it.trim() }
-        .firstOrNull { it.contains(PROMO_DESC_MARK) }
+    val lines = clean.lineSequence().map { it.trim() }.toList()
+
+    // 标题：取 README 首个一级标题（# 行，且非 ## 多级标题），去掉 # 与首尾装饰字符
+    val title = lines.firstOrNull { it.startsWith("# ") && !it.startsWith("##") }
+        ?.removePrefix("#")
         ?.trim()
+        ?.trimStart('>', '-', '*', ' ')
         ?: return null
-    return PromoInfo(title, desc)
+
+    // 描述：紧随标题后的首段纯文本行（跳过标题/引用/列表/图片/代码块等非正文）
+    val titleIdx = lines.indexOfFirst { it.startsWith("# ") && !it.startsWith("##") }
+    val desc = if (titleIdx >= 0) {
+        lines.drop(titleIdx + 1).firstOrNull { line ->
+            line.isNotEmpty() &&
+                !line.startsWith("#") &&
+                !line.startsWith(">") &&
+                !line.startsWith("-") &&
+                !line.startsWith("*") &&
+                !line.startsWith("|") &&
+                !line.startsWith("<img") &&
+                !line.startsWith("```") &&
+                !line.startsWith("!")
+        }
+    } else null
+
+    // 描述兜底：README 中任意包含产品关键短语的行（改名后描述仍保留该短语）
+    val resolvedDesc = desc ?: lines.firstOrNull { it.contains(PROMO_DESC_MARK) }
+    if (resolvedDesc.isNullOrBlank()) return null
+
+    return PromoInfo(title, resolvedDesc)
 }
 
 @Composable
