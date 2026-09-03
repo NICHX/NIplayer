@@ -413,6 +413,10 @@ class ThumbnailManager @Inject constructor(
                     }
                 }
 
+                // 顺带惰性清理服务端孤立缩略图：复用本次已列出（零额外网络）的 .thumb/ 与主目录
+                // 清单，删除 basename 已无对应视频的孤儿（如被移动/重命名/删除后残留）
+                cleanUpOrphanThumbs(storage, dirFiles, thumbFiles)
+
                 // 并发下载：优先用 .thumb/，未命中用同目录 {name}-thumb.jpg
                 for (file in filesInDir) {
                     // 用视频去扩展名匹配（与 uploadThumbnail / 刮削工具命名约定一致）
@@ -432,6 +436,47 @@ class ThumbnailManager @Inject constructor(
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * 惰性清理服务端孤立缩略图（[preloadThumbnails] 浏览目录时调用）。
+     *
+     * 对比 `.thumb/` 内容与该目录主文件清单，删除 basename 已无对应视频文件的缩略图。
+     * 复用已有列表，**零额外网络往返**；在非写回（[ThumbnailSettings.effectiveWriteBack]）
+     * 模式下不清理（避免替用户管理未授权的服务端缩略图）。单个删除失败不影响其余。
+     *
+     * @param storage 存储协议实现
+     * @param dirFiles 目录主文件清单（含视频/图片/其他）
+     * @param thumbFiles `.thumb/` 目录内容
+     */
+    private suspend fun cleanUpOrphanThumbs(
+        storage: Storage,
+        dirFiles: List<StorageFile>,
+        thumbFiles: List<StorageFile>,
+    ) {
+        try {
+            if (!ThumbnailSettings.effectiveWriteBack(storage.library.id)) return
+            // 主目录内有效"源文件"的 basename 集合：排除目录与缩略图/封面自身（避免把
+            // {name}-thumb.jpg 当成 {name-thumb}-thumb.jpg 的源）
+            val validBaseNames = dirFiles.mapNotNull { f ->
+                if (f.isDirectory) return@mapNotNull null
+                val n = f.name
+                if (n.endsWith("-thumb.jpg") || n.endsWith("-thumb.jpeg") ||
+                    n.endsWith("-cover.jpg") || n.endsWith("-cover.jpeg")
+                ) null else n.substringBeforeLast('.')
+            }.toHashSet()
+            if (validBaseNames.isEmpty()) return
+            for (tf in thumbFiles) {
+                val matched = tf.name.removeSuffix("-thumb.jpg").removeSuffix("-thumb.jpeg")
+                // 非缩略图命名或 removeSuffix 无变化（无 -thumb 后缀）的项不处理
+                if (matched.isEmpty() || matched == tf.name) continue
+                if (matched !in validBaseNames) {
+                    runCatching { storage.deleteFile(tf) }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "cleanUpOrphanThumbs failed: ${e.message}")
         }
     }
 
@@ -1235,6 +1280,73 @@ class ThumbnailManager @Inject constructor(
     private fun buildThumbDirPath(videoPath: String): String {
         val dirPath = videoPath.substringBeforeLast('/', "")
         return if (dirPath.isEmpty()) ".thumb" else "$dirPath/.thumb"
+    }
+
+    /**
+     * 移动/删除视频后同步删除其服务端缩略图（best-effort）。
+     *
+     * 视频被移动到其他目录（或删除）时，原目录 `.thumb/{视频去扩展名}-thumb.jpg` 不再有
+     * 对应视频，成为孤儿。此方法将旧目录的服务端缩略图当场删掉，避免残留；
+     * 新目录的缩略图由下次浏览时按需生成并上传。
+     *
+     * 受写回设置（[ThumbnailSettings.effectiveWriteBack]）门控；删除失败仅记录日志不影响主流程。
+     *
+     * @param storage 存储协议实现
+     * @param file 已移动/删除前的视频文件（用其旧路径计算 .thumb/ 与文件名）
+     */
+    suspend fun deleteServerThumbnail(storage: Storage, file: StorageFile) = withContext(Dispatchers.IO) {
+        if (!ThumbnailSettings.effectiveWriteBack(storage.library.id)) return@withContext
+        try {
+            val thumbPath = buildThumbDirPath(file.path) + "/${file.name.substringBeforeLast('.')}-thumb.jpg"
+            if (storage.fileExists(thumbPath)) {
+                storage.deleteFile(
+                    object : AbstractStorageFile(
+                        path = thumbPath,
+                        name = "${file.name.substringBeforeLast('.')}-thumb.jpg",
+                        isDirectory = false,
+                    ) {},
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "deleteServerThumbnail failed: ${e.message}")
+        }
+    }
+
+    /**
+     * 重命名视频后同步重命名其服务端缩略图（best-effort）。
+     *
+     * 名称 `{视频名}-thumb.jpg` 跟随去扩展名命名，视频只改扩展名时缩略图名不变（等价于 no-op）；
+     * 改动主名时把 `{旧主名}-thumb.jpg` 改名为 `{新主名}-thumb.jpg`，保留原缩略图避免删除后
+     * 重新生成。若目标已存在（刮削工具/其他设备已上传），保留现状不覆盖。
+     *
+     * 受写回设置门控；失败仅记录日志。
+     *
+     * @param storage 存储协议实现
+     * @param oldFile 重命名前的视频文件
+     * @param newFileName 重命名后的完整文件名（含扩展名）
+     */
+    suspend fun renameServerThumbnail(storage: Storage, oldFile: StorageFile, newFileName: String) = withContext(Dispatchers.IO) {
+        if (!ThumbnailSettings.effectiveWriteBack(storage.library.id)) return@withContext
+        try {
+            val thumbDir = buildThumbDirPath(oldFile.path)
+            val oldThumbPath = "$thumbDir/${oldFile.name.substringBeforeLast('.')}-thumb.jpg"
+            val newBasename = newFileName.substringBeforeLast('.')
+            val newThumbPath = "$thumbDir/$newBasename-thumb.jpg"
+            if (oldThumbPath == newThumbPath) return@withContext
+            if (!storage.fileExists(oldThumbPath)) return@withContext
+            // 目标已存在（可能来自刮削工具/别的设备），保留现状
+            if (storage.fileExists(newThumbPath)) return@withContext
+            storage.rename(
+                object : AbstractStorageFile(
+                    path = oldThumbPath,
+                    name = "${oldFile.name.substringBeforeLast('.')}-thumb.jpg",
+                    isDirectory = false,
+                ) {},
+                "$newBasename-thumb.jpg",
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "renameServerThumbnail failed: ${e.message}")
+        }
     }
 
     // ---------- 音频封面 ----------

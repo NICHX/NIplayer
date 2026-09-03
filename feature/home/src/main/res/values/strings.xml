@@ -43,6 +43,12 @@
 
     <!-- 通用 -->
     <string name="about_title">关于</string>
+    <string name="promo_unraid_url">https://github.com/NICHX/unraid-assistant-releases</string>
+    <string name="promo_view_hint">查看项目详情</string>
+    <string name="promo_view_open">访问项目</string>
+    <string name="promo_sponsor_title">赞助支持</string>
+    <string name="promo_sponsor_sub">通过爱发电支持本项目开发</string>
+    <string name="promo_sponsor_url">https://afdian.com/a/nichx</string>
     <string name="back">返回</string>
     <string name="cancel">取消</string>
     <string name="clear">清空</string>
@@ -275,6 +281,7 @@
     <string name="settings_group_playback">播放</string>
     <string name="settings_group_appearance">外观</string>
     <string name="settings_group_about">关于</string>
+    <string name="settings_group_other">其他</string>
     <string name="settings_entry_scan">扫描管理</string>
     <string name="settings_entry_scan_sub">扩展目录与屏蔽规则</string>
     <string name="settings_entry_download">传输管理</string>

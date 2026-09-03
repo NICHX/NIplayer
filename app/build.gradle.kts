@@ -34,8 +34,8 @@ android {
         applicationId = "com.nichx.niplayer"
         minSdk = 26
         targetSdk = 37
-        versionCode = 14
-        versionName = "2.5.2"
+        versionCode = 15
+        versionName = "2.5.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
