@@ -539,6 +539,13 @@ class StorageFileViewModel @Inject constructor(
                         // 传输成功，删除旧备份（尽力而为，失败不阻断）
                         runCatching { deleteBackup(s, target, backupName, file.isDirectory) }
                     }
+                    // 移动成功后处理旧缩略图（复制不处理：源文件保留，缩略图仍有效）：
+                    // - 本地缓存按旧路径失效，新位置下次浏览自动重建
+                    // - 服务端旧目录 .thumb/{basename}-thumb.jpg 同步删除，避免残留孤儿
+                    if (!isCopy) {
+                        thumbnailManager.clearCache(storageId, listOf(file))
+                        thumbnailManager.deleteServerThumbnail(s, file)
+                    }
                     // 移动目录后同步加密配置前缀
                     if (!isCopy && file.isDirectory) {
                         val oldPath = file.path.trimEnd('/')
@@ -1857,6 +1864,14 @@ class StorageFileViewModel @Inject constructor(
                 runCatching { s.rename(file, newName.trim()) }.getOrDefault(false)
             }
             if (ok) {
+                withContext(Dispatchers.IO) {
+                    // 重命名成功后处理旧缩略图：
+                    // - 本地缓存按旧路径失效，新名下次浏览自动重建。
+                    // - 服务端 .thumb/ 缩略图同步改名，保留原图避免删除后重新生成
+                    //   （仅改名主名时生效；仅改扩展名时缩略图名不变，等价于 no-op）
+                    thumbnailManager.clearCache(storageId, listOf(file))
+                    thumbnailManager.renameServerThumbnail(s, file, newName.trim())
+                }
                 _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_renamed, newName.trim())))
                 // 文件夹访问加密联动：目录重命名时同步更新加密配置前缀
                 if (file.isDirectory) {

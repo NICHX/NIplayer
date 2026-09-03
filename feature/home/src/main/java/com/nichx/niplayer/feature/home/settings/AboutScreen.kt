@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.home.settings
 
+import android.content.pm.ApplicationInfo
 import com.nichx.niplayer.feature.home.R
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -70,6 +71,8 @@ fun AboutScreen(
             "unknown"
         }
     }
+    // 构建类型：debug 包必然可调试；跨模块不依赖 BuildConfig 传递，用 APK 调试标志判定
+    val isDebug = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     NiScaffold(
         topBar = {
@@ -127,11 +130,15 @@ fun AboutScreen(
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.SemiBold,
                             )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = versionName.orEmpty(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.outline,
                             )
+                            Spacer(Modifier.width(8.dp))
+                            BuildTypeBadge(isDebug)
+                        }
                         }
                     }
                 }
@@ -218,6 +225,28 @@ private fun LicenseItemRow(dep: LicenseDependency) {
             imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.outline,
+        )
+    }
+}
+
+/** 构建类型徽标：debug 用 tertiary、release 用 secondary 区分显示。 */
+@Composable
+internal fun BuildTypeBadge(isDebug: Boolean) {
+    val label = if (isDebug) "Debug" else "Release"
+    val container = if (isDebug) MaterialTheme.colorScheme.tertiaryContainer
+    else MaterialTheme.colorScheme.secondaryContainer
+    val content = if (isDebug) MaterialTheme.colorScheme.onTertiaryContainer
+    else MaterialTheme.colorScheme.onSecondaryContainer
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(container)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = content,
         )
     }
 }

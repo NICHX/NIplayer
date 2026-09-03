@@ -131,6 +131,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
+import com.nichx.niplayer.designsystem.components.NiAutoFocusAndShowKeyboard
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTextFieldDefaults
 import androidx.compose.material3.Text
@@ -165,7 +166,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextRange
@@ -3017,16 +3017,11 @@ fun RenameFileDialog(
     val isDirectory = !fileName.contains('.')
     val extension = fileName.substringAfterLast('.')
     val initial = if (isDirectory) fileName else fileName.substringBeforeLast('.')
-    // 用 TextFieldValue 控制光标：初始即定位到文本末尾，长文件名默认光标在最后
+// 用 TextFieldValue 控制光标：初始即定位到文本末尾，长文件名默认光标在最后
     var nameState by remember { mutableStateOf(TextFieldValue(initial, selection = TextRange(initial.length))) }
     val newName = nameState.text
-    // 弹窗显示即自动聚焦输入框并拉起输入法
+    // 弹窗显示即自动聚焦输入框并拉起输入法（在 content 内触发，见 NiAutoFocusAndShowKeyboard）
     val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboardController?.show()
-    }
 
     NiInfoDialog(
         title = stringResource(R.string.storage_file_rename_title),
@@ -3047,6 +3042,7 @@ fun RenameFileDialog(
             ) { Text(stringResource(R.string.confirm)) }
         },
     ) {
+        NiAutoFocusAndShowKeyboard(focusRequester)
         OutlinedTextField(
             value = nameState,
             onValueChange = { nameState = it },
@@ -3270,6 +3266,8 @@ fun CreateFolderDialog(
     onConfirm: (String) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
+    // 弹窗显示即自动聚焦输入框并拉起输入法（需在 content 内触发，见 NiAutoFocusAndShowKeyboard）
+    val focusRequester = remember { FocusRequester() }
     NiInfoDialog(
         title = stringResource(R.string.storage_file_new_folder),
         onDismiss = onDismiss,
@@ -3281,10 +3279,12 @@ fun CreateFolderDialog(
             ) { Text(stringResource(R.string.create)) }
         },
     ) {
+        NiAutoFocusAndShowKeyboard(focusRequester)
         NiTextField(
             value = name,
             onValueChange = { name = it },
             label = stringResource(R.string.storage_file_folder_name),
+            focusRequester = focusRequester,
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -3303,6 +3303,7 @@ fun FolderPasswordDialog(
     onConfirm: (password: String) -> Unit,
 ) {
     var password by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
     NiInfoDialog(
         title = title,
         onDismiss = onDismiss,
@@ -3315,6 +3316,7 @@ fun FolderPasswordDialog(
         },
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            NiAutoFocusAndShowKeyboard(focusRequester)
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
@@ -3327,6 +3329,7 @@ fun FolderPasswordDialog(
                 label = stringResource(R.string.storage_file_password_label_min4),
                 placeholder = stringResource(R.string.storage_file_password_placeholder),
                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                focusRequester = focusRequester,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -3343,13 +3346,8 @@ fun FolderUnlockDialog(
     onPasswordChange: () -> Unit,
 ) {
     var password by remember { mutableStateOf("") }
-    // 弹窗显示即自动聚焦密码输入框并拉起输入法
+    // 弹窗显示即自动聚焦密码输入框并拉起输入法（在 content 内触发）
     val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboardController?.show()
-    }
     NiInfoDialog(
         title = stringResource(R.string.storage_file_unlock_title),
         onDismiss = onDismiss,
@@ -3362,6 +3360,7 @@ fun FolderUnlockDialog(
         },
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            NiAutoFocusAndShowKeyboard(focusRequester)
             Text(
                 text = stringResource(R.string.storage_file_unlock_body, folder.name),
                 style = MaterialTheme.typography.bodySmall,
@@ -3407,13 +3406,8 @@ fun ResetFolderPasswordDialog(
     var confirmPassword by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
-    // 弹窗显示即自动聚焦"当前密码"输入框并拉起输入法
+    // 弹窗显示即自动聚焦"当前密码"输入框并拉起输入法（在 content 内触发）
     val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboardController?.show()
-    }
     NiInfoDialog(
         title = stringResource(R.string.storage_file_change_password_title),
         onDismiss = onDismiss,
@@ -3434,6 +3428,7 @@ fun ResetFolderPasswordDialog(
         },
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            NiAutoFocusAndShowKeyboard(focusRequester)
             Text(
                 text = stringResource(R.string.storage_file_change_password_body, folder.name),
                 style = MaterialTheme.typography.bodySmall,

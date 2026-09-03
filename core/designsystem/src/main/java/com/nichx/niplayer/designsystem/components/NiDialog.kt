@@ -25,8 +25,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -288,3 +290,20 @@ data class NiDialogItem(
     val labelColor: Color? = null,
     val isSelected: Boolean = false,
 )
+
+/**
+ * 弹窗内容已渲染后，自动聚焦 [focusRequester] 指向的输入框并拉起输入法。
+ *
+ * **必须放在弹窗的 content 内调用**（靠近目标输入框），而非弹窗组件体调用点：
+ * 本应用的对话框/浮层内容由根宿主（[NiGlassOverlayHost]）**延迟渲染**，调用点组合时目标
+ * 输入框尚未挂载，请求焦点/键盘会落空。把本组件放进 content，LaunchedEffect 会在该子树
+ * 组合完成后执行，此时输入框已挂载、可正确聚焦并唤起 IME。
+ */
+@Composable
+fun NiAutoFocusAndShowKeyboard(focusRequester: FocusRequester) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+}

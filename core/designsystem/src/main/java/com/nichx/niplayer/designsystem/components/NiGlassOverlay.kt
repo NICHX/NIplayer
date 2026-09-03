@@ -1,7 +1,8 @@
 package com.nichx.niplayer.designsystem.components
 
 import android.os.Build
-import androidx.activity.compose.BackHandler
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -134,9 +136,39 @@ fun NiGlassOverlayHost(
     val dropdownShape = RoundedCornerShape(20.dp)
     val anchorGapPx = with(LocalDensity.current) { 8.dp.roundToPx() }
 
-    // 返回键：栈非空时关闭最上层浮层
-    BackHandler(enabled = NiGlassOverlay.requests.isNotEmpty()) {
-        NiGlassOverlay.dismissTop()
+    // 返回键：浮层非空时关闭最上层浮层。
+    // OnBackPressedDispatcher 的 onBackPressed() 取「最后注册且启用的回调」（lastOrNull{isEnabled}）。
+    // 本宿主位于 App 根部、早于文件浏览等页面注册返回回调；若只在初始注册，会被进入页面时
+    // 后注册的页面 BackHandler 抢占（页面回调排它更靠后→先命中→误走导航）。
+    // 因此：浮层打开时把本回调重新 remove→add 插到队尾，使其成为最后一个启用回调从而优先生效；
+    // 浮层关闭后仅禁用、不随手势动态删除，保持 predictive back 一致（onBackStarted/onBackPressed
+    // 均命中同一回调，保证手势动画与提交行为一致）。
+    val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    val overlayBackCallback = remember {
+        object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                NiGlassOverlay.dismissTop()
+            }
+        }
+    }
+    DisposableEffect(backDispatcher) {
+        backDispatcher?.addCallback(overlayBackCallback)
+        onDispose { overlayBackCallback.remove() }
+    }
+    // 浮层栈开合变化：打开时重新插到队尾并启用；关闭时禁用
+    LaunchedEffect(Unit) {
+        snapshotFlow { NiGlassOverlay.requests.isNotEmpty() }
+            .distinctUntilChanged()
+            .collect { open ->
+                if (open) {
+                    overlayBackCallback.isEnabled = true
+                    // 重新插入队尾，令其成为返回回调队列中 lastOrNull{isEnabled} 命中的回调
+                    overlayBackCallback.remove()
+                    backDispatcher?.addCallback(overlayBackCallback)
+                } else {
+                    overlayBackCallback.isEnabled = false
+                }
+            }
     }
 
     // 渲染中的浮层集合。新增即时加入；关闭的由 visible 置 false 播退场动画，

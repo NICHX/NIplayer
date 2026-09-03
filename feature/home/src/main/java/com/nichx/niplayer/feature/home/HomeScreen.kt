@@ -237,9 +237,11 @@ private fun HomeTabContent(
 ) {
     Box(modifier = modifier.fillMaxSize()) {
         // 原生 HorizontalPager：beyondViewportPageCount 让三页常驻，切走保留文件浏览状态
+        // 进入文件浏览（fbStorageId > 0）时禁用横向滑动，避免误触滑走切走 tab，仅能经底栏切换
         HorizontalPager(
             state = pagerState,
             beyondViewportPageCount = 2,
+            userScrollEnabled = fbStorageId <= 0,
             modifier = Modifier
                 .fillMaxSize()
                 .consumeWindowInsets(WindowInsets.navigationBars),

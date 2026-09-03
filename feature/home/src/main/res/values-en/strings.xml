@@ -43,6 +43,12 @@
 
     <!-- Common -->
     <string name="about_title">About</string>
+    <string name="promo_unraid_url">https://github.com/NICHX/unraid-assistant-releases</string>
+    <string name="promo_view_hint">View project details</string>
+    <string name="promo_view_open">Open project</string>
+    <string name="promo_sponsor_title">Sponsor</string>
+    <string name="promo_sponsor_sub">Support this project via Afdian</string>
+    <string name="promo_sponsor_url">https://afdian.com/a/nichx</string>
     <string name="back">Back</string>
     <string name="cancel">Cancel</string>
     <string name="clear">Clear</string>
@@ -275,6 +281,7 @@
     <string name="settings_group_playback">Playback</string>
     <string name="settings_group_appearance">Appearance</string>
     <string name="settings_group_about">About</string>
+    <string name="settings_group_other">Other</string>
     <string name="settings_entry_scan">Scan management</string>
     <string name="settings_entry_scan_sub">Scan directories and exclusion rules</string>
     <string name="settings_entry_download">Transfers</string>
