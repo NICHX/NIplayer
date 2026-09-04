@@ -1289,26 +1289,27 @@ class ThumbnailManager @Inject constructor(
      * 对应视频，成为孤儿。此方法将旧目录的服务端缩略图当场删掉，避免残留；
      * 新目录的缩略图由下次浏览时按需生成并上传。
      *
-     * 受写回设置（[ThumbnailSettings.effectiveWriteBack]）门控；删除失败仅记录日志不影响主流程。
+     * 全程 best-effort：不做 exists 前置探测（省一次远程往返，也避免探测误判导致跳过删除），
+     * 忽略写回开关（孤儿清理与"生成时是否回写"无关）。删除失败仅记录日志不影响主流程。
      *
      * @param storage 存储协议实现
      * @param file 已移动/删除前的视频文件（用其旧路径计算 .thumb/ 与文件名）
      */
     suspend fun deleteServerThumbnail(storage: Storage, file: StorageFile) = withContext(Dispatchers.IO) {
-        if (!ThumbnailSettings.effectiveWriteBack(storage.library.id)) return@withContext
+        val thumbName = "${file.name.substringBeforeLast('.')}-thumb.jpg"
+        val thumbPath = buildThumbDirPath(file.path) + "/$thumbName"
         try {
-            val thumbPath = buildThumbDirPath(file.path) + "/${file.name.substringBeforeLast('.')}-thumb.jpg"
-            if (storage.fileExists(thumbPath)) {
-                storage.deleteFile(
-                    object : AbstractStorageFile(
-                        path = thumbPath,
-                        name = "${file.name.substringBeforeLast('.')}-thumb.jpg",
-                        isDirectory = false,
-                    ) {},
-                )
-            }
+            storage.deleteFile(
+                object : AbstractStorageFile(
+                    path = thumbPath,
+                    name = thumbName,
+                    isDirectory = false,
+                ) {},
+            )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.w(TAG, "deleteServerThumbnail failed: ${e.message}")
+            Log.w(TAG, "deleteServerThumbnail failed: path=$thumbPath storage=${storage.library.id}, ${e.message}")
         }
     }
 
