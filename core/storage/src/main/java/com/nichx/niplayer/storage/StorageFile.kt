@@ -24,6 +24,12 @@ interface StorageFile {
     val lastModified: Long
 
     /**
+     * 服务端 ETag（文件内容强校验指纹），仅 WebDAV 提供；未知或不可用返回 null。
+     * 用于增量同步等场景在 mtime（秒级粒度）之外做精确变更判定。
+     */
+    val etag: String?
+
+    /**
      * 是否为隐藏文件/目录。
      *
      * - SMB：由 [com.hierynomus.msfscc.FileAttributes.FILE_ATTRIBUTE_HIDDEN] 决定

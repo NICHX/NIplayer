@@ -2351,6 +2351,7 @@ private class ThumbDirFile(override val path: String) : StorageFile {
     override val isDirectory = true
     override val length = 0L
     override val lastModified = 0L
+    override val etag = null
     override val isHidden = false
 }
 
@@ -2360,5 +2361,6 @@ private class CoverDirFile(override val path: String) : StorageFile {
     override val isDirectory = true
     override val length = 0L
     override val lastModified = 0L
+    override val etag = null
     override val isHidden = false
 }

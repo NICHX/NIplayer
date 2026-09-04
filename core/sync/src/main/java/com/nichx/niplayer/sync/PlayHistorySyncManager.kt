@@ -23,6 +23,9 @@ import com.squareup.moshi.Moshi
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -118,7 +121,7 @@ class PlayHistorySyncManager @Inject constructor(
         return mutex.withLock {
             _state.value = SyncUiState.Syncing
             try {
-                val conflictCount = doSync(libraryId)
+                val conflictCount = doSync(libraryId, auto)
                 val message = if (conflictCount > 0) {
                     context.getString(R.string.sync_success_with_conflicts, conflictCount)
                 } else {
@@ -139,7 +142,7 @@ class PlayHistorySyncManager @Inject constructor(
         }
     }
 
-    private suspend fun doSync(libraryId: Int): Int {
+    private suspend fun doSync(libraryId: Int, verifyConnection: Boolean): Int {
         val library = mediaLibraryDao.getById(libraryId)
             ?: throw IllegalStateException(context.getString(R.string.sync_error_server_not_found))
         val deviceId = PlayHistorySyncSettings.deviceId
@@ -148,7 +151,11 @@ class PlayHistorySyncManager @Inject constructor(
         return withContext(Dispatchers.IO) {
             val storage = storageFactory.create(library)
                 ?: throw IllegalStateException(context.getString(R.string.sync_error_cannot_connect))
-            verifyConnection(storage)
+            // 仅手动同步预检连接（给出友好错误）；自动同步省去这轮额外往返，
+            // 连接问题由后续 listSyncFiles / readDeviceFile 自然暴露
+            if (verifyConnection) {
+                verifyConnection(storage)
+            }
             val now = System.currentTimeMillis()
             var conflictCount = 0
 
@@ -184,8 +191,10 @@ class PlayHistorySyncManager @Inject constructor(
                 .toMap()
                 .toMutableMap()
 
-            // 本设备文件（不存在则视为空）
-            var localFile = readDeviceFile(storage, fileName) ?: PlayHistorySyncFile(deviceId = deviceId)
+            // 本设备文件（不存在则视为空）。originalBase 保留"上次上传的快照"用于增量 diff
+            // （合并过程会改写 localFile，但 originalBase 保持不被污染，供写回时计算 delta）
+            val originalBase = readDeviceFile(storage, fileName) ?: PlayHistorySyncFile(deviceId = deviceId)
+            var localFile = originalBase
 
             // 1) push 前置：把本地未同步的删除 tombstone 吸收进本设备文件，并剔除被命中记录
             val unsyncedDeletes = syncDeleteLogDao.getUnsyncedDeletes()
@@ -211,28 +220,68 @@ class PlayHistorySyncManager @Inject constructor(
                 },
             )
 
-            // 2) pull：合并各远端设备文件（跳过自己），按指纹跳过未变化的文件
+            // 2) pull：合并各远端设备文件（跳过自己）。
+            //    B5/B6：按设备分组，base + delta 合并为完整快照；网络下载/解析并行，合并保持串行。
             var maxRemoteUpdatedAt = 0L
-            val remoteFiles = listSyncFiles(storage, deviceId)
-            for (remoteFile in remoteFiles) {
-                // 增量拉取：与上次成功同步记录的 (mtime, length) 一致则跳过下载解析。
-                // mtime 粒度粗（如 WebDAV 1s）时可能跳过一次中间版本，但 LWW 合并单调收敛，仅延迟不丢最终态
-                val meta = PlayHistorySyncSettings.getRemoteFileMeta(remoteFile.name)
-                if (meta != null && meta.mtime > 0 &&
-                    meta.mtime == remoteFile.lastModified && meta.length == remoteFile.length
-                ) {
-                    continue
-                }
+            val syncFiles = listSyncFiles(storage, deviceId)
+            val deltaByName = syncFiles.filter { it.name.endsWith(DELTA_SUFFIX) }.associateBy { it.name }
+            val baseFiles = syncFiles.filter { !it.name.endsWith(DELTA_SUFFIX) }
 
-                val remote = readDeviceFile(storage, remoteFile.name)
-                    ?: continue
+            data class RemoteSnapshot(
+                val baseFile: StorageFile,
+                val snapshot: PlayHistorySyncFile?,
+            )
+
+            // 阶段 1（并行，仅网络 + 解析）：指纹判定 + 下载解析 base/delta，合并为设备快照
+            val snapshots: List<RemoteSnapshot> = coroutineScope {
+                baseFiles.map { baseFile ->
+                    async(Dispatchers.IO) {
+                        val deltaName = deltaNameOf(baseFile.name)
+                        val deltaFile = deltaByName[deltaName]
+                        // 增量拉取：与上次成功同步记录的指纹一致则跳过下载解析。
+                        // WebDAV mtime 粒度 1s，同一秒内两次写且长度相同可能漏跳；ETag 为内容强指纹，
+                        // 服务器提供时用它做精确判定（任一缺失则退回 mtime+length，仅延迟不丢最终态）
+                        val baseUnchanged = fingerprintUnchanged(baseFile.name, baseFile)
+                        val deltaUnchanged = if (deltaFile == null) {
+                            // delta 已不存在则清理残留元数据，视为无增量
+                            PlayHistorySyncSettings.clearRemoteFileMeta(deltaName)
+                            true
+                        } else {
+                            fingerprintUnchanged(deltaName, deltaFile)
+                        }
+                        if (baseUnchanged && deltaUnchanged) {
+                            RemoteSnapshot(baseFile, null)
+                        } else {
+                            val snapshot = readSnapshot(storage, baseFile, deltaFile)
+                            if (snapshot != null) {
+                                PlayHistorySyncSettings.setRemoteFileMeta(
+                                    baseFile.name,
+                                    baseFile.lastModified,
+                                    baseFile.length,
+                                    snapshot.lastSyncedAt,
+                                    baseFile.etag,
+                                )
+                                if (deltaFile != null) {
+                                    PlayHistorySyncSettings.setRemoteFileMeta(
+                                        deltaName,
+                                        deltaFile.lastModified,
+                                        deltaFile.length,
+                                        snapshot.lastSyncedAt,
+                                        deltaFile.etag,
+                                    )
+                                }
+                            }
+                            RemoteSnapshot(baseFile, snapshot)
+                        }
+                    }
+                }.awaitAll()
+            }
+
+            // 阶段 2（串行，共享 localFile / localEntities / DB）：合并各设备快照
+            for (rs in snapshots) {
+                val remoteFile = rs.baseFile
+                val remote = rs.snapshot ?: continue
                 maxRemoteUpdatedAt = maxOf(maxRemoteUpdatedAt, remote.updatedAt)
-                PlayHistorySyncSettings.setRemoteFileMeta(
-                    remoteFile.name,
-                    remoteFile.lastModified,
-                    remoteFile.length,
-                    remote.lastSyncedAt,
-                )
 
                 // P2-3 时钟防护：文件 lastModified 是服务器时间（该设备上次上传时刻）。
                 // 若文件内 updatedAt 明显晚于服务器时间，说明该设备时钟偏快，
@@ -277,9 +326,11 @@ class PlayHistorySyncManager @Inject constructor(
                     val local = localEntities[record.key]
                     when {
                         local == null -> {
-                            // 被 tombstone 命中则不复活
+                            // 被 tombstone 命中则不复活。墓碑强胜窗口：删除后 DELETE_TOMBSTONE_GRACE_MS 内，
+                            // 即使远端记录时间戳略新也以墓碑为准，抑制“本机刚删、另一设备仍持有旧记录且
+                            // 时钟略快 / 恰好重播”造成的删除复活；超过窗口的更新视为有意的重新播放（LWW 放行）
                             val tomb = localTombstones[record.key]
-                            if (tomb == null || effUpdatedAt > tomb.deletedAt) {
+                            if (tomb == null || effUpdatedAt > tomb.deletedAt + DELETE_TOMBSTONE_GRACE_MS) {
                                 // BUG-B：本机无此记录。仅当存在"归一化地址"与本机存储匹配时才落盘为
                                 // 本地可续播的历史（用本机 storageId 构造 uniqueKey）；本机没有对应存储
                                 // 的远端记录跳过，不制造无主且无法续播的悬空行。
@@ -336,7 +387,8 @@ class PlayHistorySyncManager @Inject constructor(
             val gcCutoff = now - TOMBSTONE_RETENTION_MS
             val keptDeletes = localFile.deletes.filter { it.deletedAt > gcCutoff }
 
-            // 4) 写回本设备文件：当前本地全量记录 + 保留的 tombstone
+            // 4) 写回本设备文件：当前本地全量记录 + 保留的 tombstone。
+            //    B5：小变更追加 delta 文件，大变更 / 心跳到期重写全量 base（避免每次整文件重传）
             val mergedRecords = localEntities.values
                 .mapNotNull { it.toSyncRecord(baseUrlByStorageId[it.storageId]) }
                 .sortedBy { it.key }
@@ -350,28 +402,33 @@ class PlayHistorySyncManager @Inject constructor(
                 deletes = keptDeletes.sortedBy { it.key },
                 lastSyncedAt = now,
             )
+            saveSnapshot(storage, deviceId, now, fileName, originalBase, newFile)
 
-            // 增量上传：记录与墓碑均未变化且心跳未过期时跳过上传，避免全量重传。
-            // 心跳保证活动设备文件至少每 HEARTBEAT_INTERVAL_MS 更新一次，供废弃设备判定
-            val heartbeatExpired = now - localFile.lastSyncedAt >= HEARTBEAT_INTERVAL_MS
-            val contentChanged = newFile.records != localFile.records || newFile.deletes != localFile.deletes
-            if (contentChanged || heartbeatExpired) {
-                saveDeviceFile(storage, fileName, newFile)
-            }
-
-            // 5) 废弃设备文件清理：超 90 天未同步的远端设备文件删除。
+            // 5) 废弃设备文件清理：超 90 天未同步的远端设备文件删除（含其 delta）。
             //    旧格式文件（无心跳）回退用文件 lastModified 判定；无法判定（两者均 0）则跳过
-            for (remoteFile in remoteFiles) {
-                val remoteMeta = PlayHistorySyncSettings.getRemoteFileMeta(remoteFile.name)
+            for (baseFile in baseFiles) {
+                val remoteMeta = PlayHistorySyncSettings.getRemoteFileMeta(baseFile.name)
                 val heartbeat = if (remoteMeta != null && remoteMeta.syncedAt > 0) {
                     remoteMeta.syncedAt
                 } else {
-                    remoteFile.lastModified
+                    baseFile.lastModified
                 }
                 if (heartbeat > 0 && now - heartbeat > STALE_DEVICE_MS) {
-                    storage.deleteFile(remoteFile)
-                    PlayHistorySyncSettings.clearRemoteFileMeta(remoteFile.name)
-                    Log.i(TAG, "清理废弃设备文件 ${remoteFile.name}")
+                    storage.deleteFile(baseFile)
+                    PlayHistorySyncSettings.clearRemoteFileMeta(baseFile.name)
+                    deltaByName[deltaNameOf(baseFile.name)]?.let { deltaFile ->
+                        storage.deleteFile(deltaFile)
+                        PlayHistorySyncSettings.clearRemoteFileMeta(deltaFile.name)
+                    }
+                    Log.i(TAG, "清理废弃设备文件 ${baseFile.name}")
+                }
+            }
+            // 孤儿 delta（base 已不存在）：一并清理，避免残留占位
+            for (deltaFile in deltaByName.values) {
+                val baseName = deltaFile.name.removeSuffix(DELTA_SUFFIX) + ".json"
+                if (baseFiles.none { it.name == baseName }) {
+                    storage.deleteFile(deltaFile)
+                    PlayHistorySyncSettings.clearRemoteFileMeta(deltaFile.name)
                 }
             }
 
@@ -431,7 +488,7 @@ class PlayHistorySyncManager @Inject constructor(
         }
     }
 
-    /** 列出 sync 子目录下的远端设备文件（跳过自己）。 */
+    /** 列出 sync 子目录下的远端设备文件（跳过自己的 base 与 delta）。 */
     private suspend fun listSyncFiles(storage: Storage, deviceId: String): List<StorageFile> {
         return try {
             ensureSyncDirectory(storage)
@@ -440,13 +497,128 @@ class PlayHistorySyncManager @Inject constructor(
                 !file.isDirectory &&
                     file.name.startsWith("play_history_") &&
                     file.name.endsWith(".json") &&
-                    file.name != "play_history_$deviceId.json"
+                    file.name.removeSuffix(DELTA_SUFFIX) != "play_history_$deviceId.json"
             }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    /** 由 base 文件名推导 delta 文件名：`play_history_<id>.json` → `play_history_<id>.delta.json`。 */
+    private fun deltaNameOf(baseName: String): String =
+        baseName.removeSuffix(".json") + DELTA_SUFFIX
+
+    /**
+     * 远端文件指纹判定：与上次成功同步记录的指纹一致则视为未变化。
+     *
+     * WebDAV mtime 粒度 1s，同一秒内两次写且长度相同可能漏跳；ETag 为内容强指纹，
+     * 服务器提供时用它做精确判定（任一缺失则退回 mtime+length）。
+     */
+    private fun fingerprintUnchanged(fileName: String, file: StorageFile): Boolean {
+        val meta = PlayHistorySyncSettings.getRemoteFileMeta(fileName) ?: return false
+        if (meta.mtime <= 0) return false
+        if (meta.mtime != file.lastModified || meta.length != file.length) return false
+        return meta.etag == null || meta.etag == file.etag
+    }
+
+    /**
+     * 读取某设备完整快照 = base 文件 + 可选 delta 文件合并。
+     * base 或 delta 任一解析失败返回 null（跳过该设备，避免丢增量）。
+     */
+    private suspend fun readSnapshot(
+        storage: Storage,
+        baseFile: StorageFile?,
+        deltaFile: StorageFile?,
+    ): PlayHistorySyncFile? {
+        val base = baseFile?.let { readDeviceFile(storage, it.name) }
+        if (baseFile != null && base == null) return null
+        val delta = deltaFile?.let { readDeviceFile(storage, it.name) }
+        if (deltaFile != null && delta == null) return null
+        if (base == null && delta == null) return null
+        return mergeSnapshot(base ?: PlayHistorySyncFile(deviceId = delta!!.deviceId), delta)
+    }
+
+    /** 把 delta（记录 upsert + 新墓碑）合并进 base，还原为完整快照。 */
+    private fun mergeSnapshot(base: PlayHistorySyncFile, delta: PlayHistorySyncFile?): PlayHistorySyncFile {
+        if (delta == null || (delta.records.isEmpty() && delta.deletes.isEmpty())) return base
+        val records = base.records.associateBy { it.key }.toMutableMap()
+        delta.records.forEach { records[it.key] = it }
+        val deletes = base.deletes.associateBy { it.key }.toMutableMap()
+        delta.deletes.forEach { d ->
+            val old = deletes[d.key]
+            if (old == null || d.deletedAt > old.deletedAt) deletes[d.key] = d
+        }
+        val deltaUpdatedAt = maxOf(
+            delta.updatedAt,
+            delta.records.maxOfOrNull { it.updatedAt } ?: 0,
+            delta.deletes.maxOfOrNull { it.deletedAt } ?: 0,
+        )
+        return base.copy(
+            records = records.values.sortedBy { it.key },
+            deletes = deletes.values.sortedBy { it.key },
+            updatedAt = maxOf(base.updatedAt, deltaUpdatedAt),
+            lastSyncedAt = maxOf(base.lastSyncedAt, delta.lastSyncedAt),
+        )
+    }
+
+    /**
+     * 增量写回：相对上次上传的 base 计算 delta，小变更追加 delta 文件，大变更 / 心跳到期重写全量 base。
+     *
+     * - delta 只增不减（记录 upsert / 新增墓碑）；墓碑 GC 等“收敛性”变化由心跳/超阈值压缩时的全量重写承载
+     * - 心跳保证活动设备 base 至少每 HEARTBEAT_INTERVAL_MS 重写一次，供废弃设备判定
+     * - 压缩时先删旧 delta 再写 base；任一步失败自愈（下次同步按新 base 重新计算增量）
+     */
+    private suspend fun saveSnapshot(
+        storage: Storage,
+        deviceId: String,
+        now: Long,
+        baseName: String,
+        originalBase: PlayHistorySyncFile,
+        newFile: PlayHistorySyncFile,
+    ) {
+        val deltaName = deltaNameOf(baseName)
+        val heartbeatExpired = now - originalBase.lastSyncedAt >= HEARTBEAT_INTERVAL_MS
+        val baseRecordByKey = originalBase.records.associateBy { it.key }
+        val baseDeleteByKey = originalBase.deletes.associateBy { it.key }
+        val deltaRecords = newFile.records.filter { r -> baseRecordByKey[r.key] != r }
+        val deltaDeletes = newFile.deletes.filter { d -> baseDeleteByKey[d.key]?.deletedAt != d.deletedAt }
+        val hasDelta = deltaRecords.isNotEmpty() || deltaDeletes.isNotEmpty()
+        if (!hasDelta && !heartbeatExpired) return
+
+        val compact = heartbeatExpired || (deltaRecords.size + deltaDeletes.size) > DELTA_COMPACT_THRESHOLD
+        if (compact) {
+            // 重写全量 base 并清掉旧 delta（避免旧 delta 叠加到新 base 上造成误删/复活）
+            deleteRemoteFile(storage, deltaName)
+            saveDeviceFile(storage, baseName, newFile)
+        } else {
+            // 追加 delta（与已有 delta 按 key 归并：记录取新、墓碑取新删除时间）
+            val existingDelta = readDeviceFile(storage, deltaName)
+            val mergedRecords = (existingDelta?.records.orEmpty() + deltaRecords)
+                .groupBy { it.key }.map { (_, v) -> v.last() }.sortedBy { it.key }
+            val mergedDeletes = (existingDelta?.deletes.orEmpty() + deltaDeletes)
+                .groupBy { it.key }.map { (_, v) -> v.sortedBy { it.deletedAt }.last() }.sortedBy { it.key }
+            val mergedDelta = PlayHistorySyncFile(
+                deviceId = deviceId,
+                version = PROTOCOL_VERSION,
+                updatedAt = maxOf(newFile.updatedAt, existingDelta?.updatedAt ?: 0),
+                records = mergedRecords,
+                deletes = mergedDeletes,
+                lastSyncedAt = now,
+            )
+            saveDeviceFile(storage, deltaName, mergedDelta)
+        }
+    }
+
+    /** best-effort 删除远端文件（不存在 / 失败均忽略）。 */
+    private suspend fun deleteRemoteFile(storage: Storage, fileName: String) {
+        val file = object : AbstractStorageFile(
+            path = "$SYNC_SUB_DIR/$fileName",
+            name = fileName,
+            isDirectory = false,
+        ) {}
+        runCatching { storage.deleteFile(file) }
     }
 
     /** 确保 sync 子目录存在（MKCOL 单级，需逐级创建）。 */
@@ -534,8 +706,23 @@ class PlayHistorySyncManager @Inject constructor(
         /** 冲突判定窗口（ms）：两端更新时间差在 10 秒内视为并发修改。 */
         private const val CONFLICT_WINDOW_MS = 10 * 1000L
 
-        /** 云端文件协议版本。 */
-        private const val PROTOCOL_VERSION = 2
+        /**
+         * 墓碑强胜窗口（ms）：删除后该时长内远端记录即使时间戳略新也不复活，
+         * 抑制“删除 vs 更新”的时序竞争导致的记录莫名回滚。
+         */
+        private const val DELETE_TOMBSTONE_GRACE_MS = 10 * 60 * 1000L
+
+        /** 增量 delta 文件后缀：`play_history_<deviceId>.delta.json`。 */
+        private const val DELTA_SUFFIX = ".delta.json"
+
+        /**
+         * delta 触发压缩的阈值（条）：本设备相对 base 的增量操作（记录 upsert + 新增墓碑）
+         * 累计超过该值则重写全量 base，避免 delta 无限膨胀与读取开销。
+         */
+        private const val DELTA_COMPACT_THRESHOLD = 200
+
+        /** 云端文件协议版本（v3：base 快照 + 可选增量 delta 文件）。 */
+        private const val PROTOCOL_VERSION = 3
 
         private const val TABLE_PLAY_HISTORY = "play_history"
     }

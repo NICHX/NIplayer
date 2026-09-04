@@ -766,6 +766,7 @@ class WebDavStorage(
         var isCollection = false
         var contentLength = 0L
         var lastModified = 0L
+        var etag: String? = null
         var isHidden = false
 
         while (parser.next() != XmlPullParser.END_TAG) {
@@ -784,6 +785,7 @@ class WebDavStorage(
                             "resourcetype" -> isCollection = true
                             "getcontentlength" -> contentLength = value?.toLongOrNull() ?: 0L
                             "getlastmodified" -> lastModified = parseHttpDate(value) ?: 0L
+                            "getetag" -> etag = value
                             "ishidden" -> isHidden = value == "1" || value.equals("true", ignoreCase = true)
                         }
                     }
@@ -821,6 +823,7 @@ class WebDavStorage(
             isDirectory = isCollection,
             length = contentLength,
             lastModified = lastModified,
+            etag = etag,
             isHidden = isHidden,
         ) {}
     }
@@ -907,7 +910,7 @@ class WebDavStorage(
                         }
                     }
                 }
-                "getcontentlength", "getlastmodified", "displayname", "ishidden" -> {
+                "getcontentlength", "getlastmodified", "getetag", "displayname", "ishidden" -> {
                     val name = parser.name
                     val text = parser.nextText()
                     if (text.isNotEmpty()) {
@@ -975,6 +978,7 @@ class WebDavStorage(
                     <resourcetype/>
                     <getcontentlength/>
                     <getlastmodified/>
+                    <getetag/>
                     <ishidden/>
                 </prop>
             </propfind>
