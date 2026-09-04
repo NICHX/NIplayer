@@ -87,6 +87,7 @@ object PlayHistorySyncSettings {
     private const val KEY_REMOTE_MTIME_PREFIX = "play_history_sync_remote_mtime_"
     private const val KEY_REMOTE_LENGTH_PREFIX = "play_history_sync_remote_len_"
     private const val KEY_REMOTE_SYNCED_AT_PREFIX = "play_history_sync_remote_synced_at_"
+    private const val KEY_REMOTE_ETAG_PREFIX = "play_history_sync_remote_etag_"
 
     /**
      * 读取远端设备文件的元数据快照（增量拉取跳过 / 废弃设备判定用）。
@@ -98,15 +99,18 @@ object PlayHistorySyncSettings {
         val mtime = mmkv.decodeLong(KEY_REMOTE_MTIME_PREFIX + fileName, 0)
         val length = mmkv.decodeLong(KEY_REMOTE_LENGTH_PREFIX + fileName, 0)
         val syncedAt = mmkv.decodeLong(KEY_REMOTE_SYNCED_AT_PREFIX + fileName, 0)
-        if (mtime <= 0 && length <= 0 && syncedAt <= 0) return null
-        return RemoteFileMeta(mtime, length, syncedAt)
+        val etag = mmkv.decodeString(KEY_REMOTE_ETAG_PREFIX + fileName, "")?.takeIf { it.isNotEmpty() }
+        if (mtime <= 0 && length <= 0 && syncedAt <= 0 && etag == null) return null
+        return RemoteFileMeta(mtime, length, syncedAt, etag)
     }
 
     /** 记录远端设备文件元数据快照（成功拉取解析后调用）。 */
-    fun setRemoteFileMeta(fileName: String, mtime: Long, length: Long, syncedAt: Long) {
+    fun setRemoteFileMeta(fileName: String, mtime: Long, length: Long, syncedAt: Long, etag: String?) {
         mmkv.encode(KEY_REMOTE_MTIME_PREFIX + fileName, mtime)
         mmkv.encode(KEY_REMOTE_LENGTH_PREFIX + fileName, length)
         mmkv.encode(KEY_REMOTE_SYNCED_AT_PREFIX + fileName, syncedAt)
+        // MMKV 原生 encode 不接受 null String，用空串占位表示"无 ETag"
+        mmkv.encode(KEY_REMOTE_ETAG_PREFIX + fileName, etag ?: "")
     }
 
     /** 清除远端设备文件元数据快照（文件被判定废弃删除时调用）。 */
@@ -114,6 +118,7 @@ object PlayHistorySyncSettings {
         mmkv.encode(KEY_REMOTE_MTIME_PREFIX + fileName, 0L)
         mmkv.encode(KEY_REMOTE_LENGTH_PREFIX + fileName, 0L)
         mmkv.encode(KEY_REMOTE_SYNCED_AT_PREFIX + fileName, 0L)
+        mmkv.encode(KEY_REMOTE_ETAG_PREFIX + fileName, "")
     }
 
     /** 确保存在设备标识，缺失时生成 UUID 并持久化。 */
@@ -173,4 +178,6 @@ data class RemoteFileMeta(
     val length: Long,
     /** 该设备文件内记录的最后同步时间（心跳），0 表示旧格式文件。 */
     val syncedAt: Long,
+    /** 该设备文件的服务端 ETag（内容强校验指纹），WebDAV 未提供时为 null。 */
+    val etag: String?,
 )

@@ -11,6 +11,7 @@ abstract class AbstractStorageFile(
     override val isDirectory: Boolean,
     override val length: Long = 0L,
     override val lastModified: Long = 0L,
+    override val etag: String? = null,
     override val isHidden: Boolean = false,
 ) : StorageFile {
 

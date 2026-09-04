@@ -1137,6 +1137,7 @@ fun FileBrowserScreen(
     renameTarget?.let { file ->
         RenameFileDialog(
             fileName = file.name,
+            isDirectory = file.isDirectory,
             onDismiss = { renameTarget = null },
             onConfirm = { newName ->
                 viewModel.renameFile(file, newName)
@@ -3010,13 +3011,16 @@ private fun TransferConflictDialog(
 @Composable
 fun RenameFileDialog(
     fileName: String,
+    isDirectory: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    // 预填名称：目录取全名，文件取主名（不含扩展名）以便用户改扩展名外的部分
-    val isDirectory = !fileName.contains('.')
-    val extension = fileName.substringAfterLast('.')
-    val initial = if (isDirectory) fileName else fileName.substringBeforeLast('.')
+    // 预填名称：目录取全名；文件仅在确实存在后缀（最后一个 . 不在首位/末尾）时取主名，
+    // 文件名中间的 . 视为名称本身的一部分，不当作扩展名分隔符
+    val dot = if (isDirectory) -1 else fileName.lastIndexOf('.')
+    val hasExtension = dot > 0 && dot < fileName.length - 1
+    val extension = if (hasExtension) fileName.substring(dot + 1) else ""
+    val initial = if (hasExtension) fileName.substringBeforeLast('.') else fileName
 // 用 TextFieldValue 控制光标：初始即定位到文本末尾，长文件名默认光标在最后
     var nameState by remember { mutableStateOf(TextFieldValue(initial, selection = TextRange(initial.length))) }
     val newName = nameState.text
@@ -3030,11 +3034,14 @@ fun RenameFileDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             TextButton(
                 onClick = {
-                    // 文件重命名时若新名称未携带扩展名，自动补回原扩展名，避免文件失去后缀
-                    val finalName = if (isDirectory || newName.trim().contains('.')) {
-                        newName.trim()
+                    // 文件重命名时若新名称未携带原扩展名（按结尾匹配，避免把名称中间的 . 当作扩展名），自动补回
+                    val trimmed = newName.trim()
+                    val finalName = if (isDirectory || !hasExtension ||
+                        trimmed.endsWith(extension, ignoreCase = true)
+                    ) {
+                        trimmed
                     } else {
-                        newName.trim() + ".$extension"
+                        trimmed + ".$extension"
                     }
                     onConfirm(finalName)
                 },

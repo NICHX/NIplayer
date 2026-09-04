@@ -64,5 +64,6 @@ private object RootStorageFile : StorageFile {
     override val isDirectory: Boolean = true
     override val length: Long = 0L
     override val lastModified: Long = 0L
+    override val etag: String? = null
     override val isHidden: Boolean = false
 }
