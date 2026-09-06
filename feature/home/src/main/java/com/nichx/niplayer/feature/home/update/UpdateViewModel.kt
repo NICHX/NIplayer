@@ -82,6 +82,9 @@ class UpdateViewModel @Inject constructor(
     private var pendingVersion: String? = null
     private var progressJob: Job? = null
 
+    /** 进行中的检查请求：防重入，避免并发检查导致结果分两次弹出。 */
+    private var checkJob: Job? = null
+
     init {
         // 恢复待安装提示：上次下载完成但未安装（或进程被杀后重启）
         if (updateManager.hasDownloadedApk()) {
@@ -112,34 +115,41 @@ class UpdateViewModel @Inject constructor(
             _uiState.value = UpdateUiState.DownloadReady(UpdateSettings.getDownloadedVersion())
             return
         }
+        // 防重入：已有检查请求在进行时忽略新的触发（启动自动检查与设置页手动检查
+        // 并发、或连点两次时），避免两个请求先后返回、关闭一个弹窗后第二个结果再次弹出
+        if (checkJob?.isActive == true) return
         if (!auto) {
             _uiState.value = UpdateUiState.Checking
         }
-        viewModelScope.launch {
-            when (val result = updateManager.checkUpdate(auto)) {
-                UpdateCheckOutcome.Skipped -> _uiState.value = UpdateUiState.Idle
-                UpdateCheckOutcome.NoUpdate -> _uiState.value = if (auto) {
-                    UpdateUiState.Idle
-                } else {
-                    UpdateUiState.AlreadyLatest(updateManager.currentVersionName())
+        checkJob = viewModelScope.launch {
+            try {
+                when (val result = updateManager.checkUpdate(auto)) {
+                    UpdateCheckOutcome.Skipped -> _uiState.value = UpdateUiState.Idle
+                    UpdateCheckOutcome.NoUpdate -> _uiState.value = if (auto) {
+                        UpdateUiState.Idle
+                    } else {
+                        UpdateUiState.AlreadyLatest(updateManager.currentVersionName())
+                    }
+                    is UpdateCheckOutcome.UpdateAvailable -> {
+                        pendingRelease = result.release
+                        pendingAsset = result.asset
+                        pendingVersion = result.latestVersion
+                        _uiState.value = UpdateUiState.UpdateAvailable(
+                            latestVersion = result.latestVersion,
+                            notes = result.release.body.orEmpty().trim(),
+                            sizeText = result.asset?.let { formatSize(it.size) }.orEmpty(),
+                            asset = result.asset,
+                            release = result.release,
+                        )
+                    }
+                    is UpdateCheckOutcome.Error -> _uiState.value = if (auto) {
+                        UpdateUiState.Idle
+                    } else {
+                        UpdateUiState.CheckFailed(result.message)
+                    }
                 }
-                is UpdateCheckOutcome.UpdateAvailable -> {
-                    pendingRelease = result.release
-                    pendingAsset = result.asset
-                    pendingVersion = result.latestVersion
-                    _uiState.value = UpdateUiState.UpdateAvailable(
-                        latestVersion = result.latestVersion,
-                        notes = result.release.body.orEmpty().trim(),
-                        sizeText = result.asset?.let { formatSize(it.size) }.orEmpty(),
-                        asset = result.asset,
-                        release = result.release,
-                    )
-                }
-                is UpdateCheckOutcome.Error -> _uiState.value = if (auto) {
-                    UpdateUiState.Idle
-                } else {
-                    UpdateUiState.CheckFailed(result.message)
-                }
+            } finally {
+                checkJob = null
             }
         }
     }
@@ -148,6 +158,8 @@ class UpdateViewModel @Inject constructor(
     fun dismiss() {
         progressJob?.cancel()
         progressJob = null
+        checkJob?.cancel()
+        checkJob = null
         _uiState.value = UpdateUiState.Idle
     }
 

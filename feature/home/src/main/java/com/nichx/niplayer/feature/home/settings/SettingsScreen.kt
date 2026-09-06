@@ -53,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -63,7 +64,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
-import com.nichx.niplayer.feature.home.update.UpdateDialogHost
 import com.nichx.niplayer.feature.home.update.UpdateViewModel
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -170,7 +170,12 @@ private fun parsePromo(body: String): PromoInfo? {
 fun SettingsScreen(
     onNavigateToGlobal: (String) -> Unit = {},
 ) {
-    val updateViewModel: UpdateViewModel = hiltViewModel()
+    // 与 MainActivity 常驻的 UpdateDialogHost 共享同一 Activity 作用域 ViewModel：
+    // 避免设置页另起独立实例，导致两处 host 同时渲染同一状态弹窗（偶发双份）
+    val updateViewModel: UpdateViewModel =
+        (LocalContext.current as? ComponentActivity)?.let { host ->
+            hiltViewModel(viewModelStoreOwner = host)
+        } ?: hiltViewModel()
     val context = LocalContext.current
     // 用系统浏览器打开外部链接（项目推广 / 赞助）
     val openExternal: (String) -> Unit = { url ->
@@ -235,9 +240,6 @@ fun SettingsScreen(
             }
         }
     }
-
-    // 检查更新对话框（手动触发 + 已下载待安装恢复）
-    UpdateDialogHost(viewModel = updateViewModel)
 }
 
 @Composable
