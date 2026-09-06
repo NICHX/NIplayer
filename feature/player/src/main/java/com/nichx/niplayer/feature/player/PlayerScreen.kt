@@ -341,13 +341,6 @@ fun PlayerScreen(
         }
     }
 
-    // 进入播放器后的 1.5s 返回冷却期：此期间忽略返回操作。SurfaceView 在没有视频首帧时其
-    // 空白层会透出白屏，刚进入立即退出会在返回动画里闪白；给首帧渲染留出时间再放行返回
-    var backReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay(1500)
-        backReady = true
-    }
     // 系统返回的统一处理在下方 capturedBack 定义后注册（BackHandler），保证手势/返回键
     // 与应用内返回按钮走同一套贴图退出逻辑
 
@@ -383,53 +376,50 @@ fun PlayerScreen(
         (sys / 255f).coerceIn(0.02f, 1f)
     }
     val capturedBack: () -> Unit = {
-        // 1.5s 冷却内不响应返回（应用内返回按钮），避免首帧未到就退出导致闪白
-        if (backReady) {
-            // 立即恢复系统亮度：一触发返回亮度马上回到系统值（不等待抓帧/动画），
-            // 让退出过渡全程以系统亮度呈现。写回进入前亮度值：BRIGHTNESS_OVERRIDE_NONE
-            // 在本设备不生效（保持播放器内亮度），必须显式写回具体亮度值。
-            // PixelCopy 读的是 surface 像素、不受窗口亮度设置影响，提前恢复不影响退出贴图。
-            window?.let { w ->
-                val attrs = w.attributes
-                attrs.screenBrightness = preEntryBrightness
-                w.attributes = attrs
-            }
-            captureThumbnailOnExit()
+        // 立即恢复系统亮度：一触发返回亮度马上回到系统值（不等待抓帧/动画），
+        // 让退出过渡全程以系统亮度呈现。写回进入前亮度值：BRIGHTNESS_OVERRIDE_NONE
+        // 在本设备不生效（保持播放器内亮度），必须显式写回具体亮度值。
+        // PixelCopy 读的是 surface 像素、不受窗口亮度设置影响，提前恢复不影响退出贴图。
+        window?.let { w ->
+            val attrs = w.attributes
+            attrs.screenBrightness = preEntryBrightness
+            w.attributes = attrs
+        }
+        captureThumbnailOnExit()
 
-            val doExit: () -> Unit = {
-                // 先还原方向：configChanges 拦截下瞬时切回竖屏，让深层文件浏览/首页等以竖屏稳定布局后
-                // 再 popBackStack。否则方向还原发生在 onDispose（pop 动画之后），popEnter 播放期间
-                // 返回页从横屏排布瞬间重排到竖屏排布，表现为主体内容向下坠落
-                activity?.requestedOrientation = originalOrientation
-                // 提前恢复系统栏：播放器进入时全屏隐藏了状态栏/导航栏（insetsController.hide），
-                // 若等 onDispose 才恢复，首页 popEnter 首帧仍按"系统栏隐藏"的 insets 布局（偏高抵顶），
-                // 待系统栏出现后 insets 让位造成整页下移到正确位置。这里在 pop 前恢复，让首页
-                // 首帧即按正确 insets 就位。systemBarsBehavior 由 onDispose 兜底还原。
-                activity?.window?.let { w ->
-                    WindowCompat.getInsetsController(w, w.decorView)
-                        .show(WindowInsetsCompat.Type.systemBars())
-                }
-                // 亮度已在 capturedBack 入口提前恢复（见上），此处不再重复；
-                // onDispose 仍保留兜底恢复（系统返回/异常路径未走 capturedBack 时）。
-                onBack()
+        val doExit: () -> Unit = {
+            // 先还原方向：configChanges 拦截下瞬时切回竖屏，让深层文件浏览/首页等以竖屏稳定布局后
+            // 再 popBackStack。否则方向还原发生在 onDispose（pop 动画之后），popEnter 播放期间
+            // 返回页从横屏排布瞬间重排到竖屏排布，表现为主体内容向下坠落
+            activity?.requestedOrientation = originalOrientation
+            // 提前恢复系统栏：播放器进入时全屏隐藏了状态栏/导航栏（insetsController.hide），
+            // 若等 onDispose 才恢复，首页 popEnter 首帧仍按"系统栏隐藏"的 insets 布局（偏高抵顶），
+            // 待系统栏出现后 insets 让位造成整页下移到正确位置。这里在 pop 前恢复，让首页
+            // 首帧即按正确 insets 就位。systemBarsBehavior 由 onDispose 兜底还原。
+            activity?.window?.let { w ->
+                WindowCompat.getInsetsController(w, w.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
             }
-            val sv = surfaceViewRef
-            if (sv != null && sv.width > 0 && sv.height > 0 && mediaInfo?.hdrType == null) {
-                // 非 HDR：抓当前帧作退出贴图（PixelCopy 一帧，几乎零成本），随后 Image 顶位随 fade 淡出
-                val bmp = Bitmap.createBitmap(sv.width, sv.height, Bitmap.Config.ARGB_8888)
-                try {
-                    PixelCopy.request(sv, bmp, { result ->
-                        if (result == PixelCopy.SUCCESS) exitFrame = bmp else bmp.recycle()
-                        doExit()
-                    }, Handler(Looper.getMainLooper()))
-                } catch (e: Exception) {
-                    bmp.recycle()
+            // 亮度已在 capturedBack 入口提前恢复（见上），此处不再重复；
+            // onDispose 仍保留兜底恢复（系统返回/异常路径未走 capturedBack 时）。
+            onBack()
+        }
+        val sv = surfaceViewRef
+        if (sv != null && sv.width > 0 && sv.height > 0 && mediaInfo?.hdrType == null) {
+            // 非 HDR：抓当前帧作退出贴图（PixelCopy 一帧，几乎零成本），随后 Image 顶位随 fade 淡出
+            val bmp = Bitmap.createBitmap(sv.width, sv.height, Bitmap.Config.ARGB_8888)
+            try {
+                PixelCopy.request(sv, bmp, { result ->
+                    if (result == PixelCopy.SUCCESS) exitFrame = bmp else bmp.recycle()
                     doExit()
-                }
-            } else {
-                // HDR / surface 未就绪：跳过贴图，直接退出
+                }, Handler(Looper.getMainLooper()))
+            } catch (e: Exception) {
+                bmp.recycle()
                 doExit()
             }
+        } else {
+            // HDR / surface 未就绪：跳过贴图，直接退出
+            doExit()
         }
     }
 
