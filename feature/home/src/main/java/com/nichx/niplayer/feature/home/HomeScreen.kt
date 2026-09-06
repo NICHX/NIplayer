@@ -108,11 +108,15 @@ fun HomeScreen(
     // 文件浏览打开状态：内联在媒体库页展示（无嵌套 NavHost）
     var fbStorageId by rememberSaveable { mutableIntStateOf(0) }
     var fbPath by rememberSaveable { mutableStateOf("") }
+    // 导航请求计数：每次外部请求打开文件浏览时 +1，即使目标路径与当前相同也强制重新导航，
+    // 修复重复点击同一快速访问书签时 LaunchedEffect(initialPath) 不触发、停留在上次目录的问题
+    var fbNavTick by rememberSaveable { mutableIntStateOf(0) }
 
     // 打开文件浏览：记录要浏览的存储源，并切到媒体库 tab
     val openFileBrowser: (Int, String) -> Unit = { storageId, path ->
         fbStorageId = storageId
         fbPath = path
+        fbNavTick++
         if (pagerState.currentPage != TabKey.LIBRARY.ordinal) {
             coroutineScope.launch { pagerState.scrollToPage(TabKey.LIBRARY.ordinal) }
         }
@@ -182,6 +186,7 @@ fun HomeScreen(
                 previousPage = previousPage,
                 fbStorageId = fbStorageId,
                 fbPath = fbPath,
+                fbNavTick = fbNavTick,
                 onCloseFileBrowser = closeFileBrowser,
                 onOpenFileBrowser = openFileBrowser,
                 onNavigateToGlobal = onNavigateToGlobal,
@@ -222,6 +227,7 @@ private fun HomeTabContent(
     previousPage: Int,
     fbStorageId: Int,
     fbPath: String,
+    fbNavTick: Int,
     onCloseFileBrowser: () -> Unit,
     onOpenFileBrowser: (Int, String) -> Unit,
     onNavigateToGlobal: (String) -> Unit,
@@ -270,6 +276,7 @@ private fun HomeTabContent(
                         FileBrowserScreen(
                             storageId = fbStorageId,
                             initialPath = fbPath,
+                            navTick = fbNavTick,
                             onBack = onCloseFileBrowser,
                             onPlayVideo = onPlayVideo,
                             onNavigateToImageViewer = onNavigateToImageViewer,

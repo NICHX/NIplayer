@@ -626,6 +626,7 @@
     <string name="quick_access_empty_hint">Long-press a folder in the file browser to add it</string>
     <string name="quick_access_delete_title">Delete quick access</string>
     <string name="quick_access_delete_confirm">Delete the quick access entry for “%1$s”?</string>
+    <string name="qa_section_file">Other files</string>
 
     <!-- Home (HomeTabScreen) -->
     <string name="home_empty_title">Nothing here yet</string>

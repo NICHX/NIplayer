@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -64,12 +65,15 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.nichx.niplayer.common.error.NiMessage
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.NiAutoSizeText
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiSkeletonBox
 import com.nichx.niplayer.designsystem.components.NiSkeletonLine
 import com.nichx.niplayer.designsystem.components.NiScaffold
+import com.nichx.niplayer.designsystem.components.NiSectionHeader
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
@@ -83,6 +87,7 @@ import org.burnoutcrew.reorderable.reorderable
 @Composable
 fun QuickAccessScreen(
     onNavigateToStorageFile: (Int, String) -> Unit = { _, _ -> },
+    onNavigateToPlayer: (Boolean) -> Unit = {},
     viewModel: QuickAccessViewModel = hiltViewModel(),
 ) {
     val items by viewModel.items.collectAsStateWithLifecycle()
@@ -91,14 +96,41 @@ fun QuickAccessScreen(
     var isEditing by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<QuickAccessUiItem?>(null) }
 
+    // 一次性事件路由：文件播放 / 文件夹跳文件浏览 / 错误提示
+    val messageController = LocalAppMessageController.current
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is QuickAccessEvent.NavigateToPlayer -> onNavigateToPlayer(event.isAudio)
+                is QuickAccessEvent.NavigateToStorageFile ->
+                    onNavigateToStorageFile(event.libraryId, event.relativePath)
+                is QuickAccessEvent.ShowError -> messageController.post(NiMessage.error(event.message))
+            }
+        }
+    }
+
     var orderedItems by remember { mutableStateOf(items) }
     LaunchedEffect(items) { orderedItems = items }
 
+    // 按类型分区的拍平行：Header（分区标题）与 ItemRow 交替，grid 顺序即本列表顺序
+    val rows = remember(orderedItems) { buildQaRows(orderedItems) }
+
     val gridState = rememberReorderableLazyGridState(
         onMove = { from, to ->
-            orderedItems = orderedItems.toMutableList().apply {
-                add(to.index, removeAt(from.index))
-            }
+            val fromRow = rows.getOrNull(from.index) as? QaRow.ItemRow
+                ?: return@rememberReorderableLazyGridState
+            val toRow = rows.getOrNull(to.index) as? QaRow.ItemRow
+                ?: return@rememberReorderableLazyGridState
+            // 仅允许同分区内拖拽排序，跨分区拖动直接驳回
+            if (fromRow.section != toRow.section) return@rememberReorderableLazyGridState
+            val list = orderedItems.toMutableList()
+            var fromIdx = list.indexOfFirst { it.entity.id == fromRow.item.entity.id }
+            var toIdx = list.indexOfFirst { it.entity.id == toRow.item.entity.id }
+            if (fromIdx < 0 || toIdx < 0 || fromIdx == toIdx) return@rememberReorderableLazyGridState
+            val moved = list.removeAt(fromIdx)
+            if (fromIdx < toIdx) toIdx--
+            list.add(toIdx, moved)
+            orderedItems = list
         },
         onDragEnd = { _, _ ->
             viewModel.persistOrder(orderedItems)
@@ -182,24 +214,32 @@ fun QuickAccessScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                items(
-                    items = orderedItems,
-                    key = { it.entity.id },
-                ) { item ->
-                    ReorderableItem(
-                        state = gridState,
-                        key = item.entity.id,
-                    ) { isDragging ->
-                        QuickAccessGridItem(
-                            item = item,
-                            thumbnailUrl = qaThumbnailUrls[item.entity.storagePath],
-                            isEditing = isEditing,
-                            isDragging = isDragging,
-                            onClick = {
-                                if (!isEditing) onNavigateToStorageFile(item.entity.libraryId, item.entity.storagePath)
-                            },
-                            onDelete = { deleteTarget = item },
-                        )
+                rows.forEach { row ->
+                    when (row) {
+                        is QaRow.Header -> item(
+                            key = row.key,
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            QaSectionHeader(section = row.section, count = row.count)
+                        }
+                        is QaRow.ItemRow -> item(key = row.key) {
+                            ReorderableItem(
+                                state = gridState,
+                                key = row.key,
+                            ) { isDragging ->
+                                val item = row.item
+                                QuickAccessGridItem(
+                                    item = item,
+                                    thumbnailUrl = qaThumbnailUrls[item.qaThumbKey],
+                                    isEditing = isEditing,
+                                    isDragging = isDragging,
+                                    onClick = {
+                                        if (!isEditing) viewModel.openItem(item)
+                                    },
+                                    onDelete = { deleteTarget = item },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -217,6 +257,66 @@ fun QuickAccessScreen(
             onDismiss = { deleteTarget = null },
         )
     }
+}
+
+/** 快速访问分区类型。 */
+private enum class QaSection { FOLDER, VIDEO, AUDIO, IMAGE, FILE }
+
+/** 分区内条目的类型归属：文件夹优先，其次按文件名扩展名判定。 */
+private fun sectionOf(item: QuickAccessUiItem): QaSection {
+    val name = item.entity.name
+    return when {
+        item.entity.isDirectory -> QaSection.FOLDER
+        MediaFileTypes.isVideoFile(name) -> QaSection.VIDEO
+        MediaFileTypes.isAudioFile(name) -> QaSection.AUDIO
+        MediaFileTypes.isImageFile(name) -> QaSection.IMAGE
+        else -> QaSection.FILE
+    }
+}
+
+/** 拍平网格行：Header（分区标题，占整行）与 ItemRow（条目卡片）交替。 */
+private sealed interface QaRow {
+    val key: String
+
+    data class Header(val section: QaSection, val count: Int) : QaRow {
+        override val key get() = "qa_header_${section.name}"
+    }
+
+    data class ItemRow(val item: QuickAccessUiItem, val section: QaSection) : QaRow {
+        override val key get() = "qa_item_${item.entity.id}"
+    }
+}
+
+/** 按固定分区顺序（文件夹→视频→音频→图片→其他）拍平，空分区不产出 Header。 */
+private fun buildQaRows(items: List<QuickAccessUiItem>): List<QaRow> {
+    val grouped = items.groupBy { sectionOf(it) }
+    return buildList {
+        for (section in QaSection.entries) {
+            val sectionItems = grouped[section].orEmpty()
+            if (sectionItems.isEmpty()) continue
+            add(QaRow.Header(section, sectionItems.size))
+            sectionItems.forEach { add(QaRow.ItemRow(it, section)) }
+        }
+    }
+}
+
+/** 分区标题行：复用 [NiSectionHeader] 的标题 + 计数胶囊样式（不显示"查看全部"）。 */
+@Composable
+private fun QaSectionHeader(section: QaSection, count: Int) {
+    val title = stringResource(
+        when (section) {
+            QaSection.FOLDER -> R.string.storage_file_folder
+            QaSection.VIDEO -> R.string.storage_file_type_video
+            QaSection.AUDIO -> R.string.storage_file_type_audio
+            QaSection.IMAGE -> R.string.storage_file_type_image
+            QaSection.FILE -> R.string.qa_section_file
+        }
+    )
+    NiSectionHeader(
+        title = title,
+        count = count,
+        onClick = null,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -301,7 +401,8 @@ private fun QuickAccessGridItem(
                         AsyncImage(
                             model = thumbnailUrl,
                             contentDescription = null,
-                            contentScale = ContentScale.Crop,
+                            // 音频封面为方形，Fit 完整显示于 16:9 容器（不裁切），其余类型 Crop
+                            contentScale = if (isAudio) ContentScale.Fit else ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
                         )
                         if (isVideo || isAudio) {

@@ -96,15 +96,16 @@ class QuickAccessViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             items.collect { items ->
-                val currentPaths = items.map { it.entity.storagePath }.toSet()
-                if (_qaThumbnailUrls.value.keys.any { it !in currentPaths }) {
-                    _qaThumbnailUrls.value = _qaThumbnailUrls.value.filterKeys { it in currentPaths }
+                // 缩略图 key 使用「库 id + 存储相对路径」组合，避免不同存储源下同名路径互相覆盖
+                val currentKeys = items.map { it.qaThumbKey }.toSet()
+                if (_qaThumbnailUrls.value.keys.any { it !in currentKeys }) {
+                    _qaThumbnailUrls.value = _qaThumbnailUrls.value.filterKeys { it in currentKeys }
                 }
 
                 val mediaItems = items.filter {
                     it.libraryValid && !it.entity.isDirectory &&
                         it.entity.storagePath.isNotEmpty() &&
-                        it.entity.storagePath !in _qaThumbnailUrls.value
+                        it.qaThumbKey !in _qaThumbnailUrls.value
                 }
                 if (mediaItems.isEmpty()) return@collect
 
@@ -119,7 +120,7 @@ class QuickAccessViewModel @Inject constructor(
                     } else {
                         thumbnailManager.getCachedThumbnailPath(sid, path)
                     }
-                    if (thumbPath != null) path to thumbPath else null
+                    if (thumbPath != null) item.qaThumbKey to thumbPath else null
                 }.toMap()
                 if (cached.isNotEmpty()) {
                     _qaThumbnailUrls.update { it + cached }
@@ -142,7 +143,7 @@ class QuickAccessViewModel @Inject constructor(
     ) {
         val pending = items.filter {
             it.libraryValid && !it.entity.isDirectory &&
-                it.entity.storagePath !in existingThumbnails
+                it.qaThumbKey !in existingThumbnails
         }
         if (pending.isEmpty()) return
 
@@ -176,7 +177,8 @@ class QuickAccessViewModel @Inject constructor(
                             }
                             if (requests.isEmpty()) continue
                             thumbnailManager.generateRemoteThumbnails(storage, requests) { path, thumbPath ->
-                                batchAccumulator[path] = thumbPath
+                                // 回调的 path 为请求 url（即存储相对路径），需还原组合 key
+                                batchAccumulator["$sid:$path"] = thumbPath
                             }
                         } finally {
                             storage.close()
@@ -215,7 +217,9 @@ class QuickAccessViewModel @Inject constructor(
             } else {
                 when (val result = playStarter.startFromQuickAccess(entity)) {
                     is PlayStartResult.Success ->
-                        _events.tryEmit(QuickAccessEvent.NavigateToPlayer)
+                        _events.tryEmit(
+                            QuickAccessEvent.NavigateToPlayer(MediaFileTypes.isAudioFile(entity.name))
+                        )
 
                     is PlayStartResult.Error ->
                         _events.tryEmit(QuickAccessEvent.ShowError(result.message))
@@ -235,14 +239,14 @@ class QuickAccessViewModel @Inject constructor(
 
     /**
      * 拖拽排序后持久化新顺序。按 [newOrder] 顺序重新分配 0..n 的 sortIndex，
-     * 一次性批量更新。UI 层在拖拽结束时调用。
+     * 通过 [QuickAccessDao.updateOrderBatch] 在单个事务内批量更新。UI 层在拖拽结束时调用。
      */
     fun persistOrder(newOrder: List<QuickAccessUiItem>) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                newOrder.forEachIndexed { index, item ->
-                    quickAccessDao.updateOrder(item.entity.id, index)
-                }
+                quickAccessDao.updateOrderBatch(
+                    newOrder.mapIndexed { index, item -> item.entity.id to index }
+                )
             }
         }
     }
@@ -253,11 +257,14 @@ data class QuickAccessUiItem(
     val entity: QuickAccessEntity,
     val libraryName: String?,
     val libraryValid: Boolean,
-)
+) {
+    /** 缩略图映射 key：库 id + 存储相对路径，跨存储源唯一。 */
+    val qaThumbKey: String get() = "${entity.libraryId}:${entity.storagePath}"
+}
 
 /** 一次性事件。 */
 sealed class QuickAccessEvent {
-    object NavigateToPlayer : QuickAccessEvent()
+    data class NavigateToPlayer(val isAudio: Boolean) : QuickAccessEvent()
     data class NavigateToStorageFile(val libraryId: Int, val relativePath: String = "") : QuickAccessEvent()
     data class ShowError(val message: String) : QuickAccessEvent()
 }

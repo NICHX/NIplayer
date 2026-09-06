@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.nichx.niplayer.database.entity.QuickAccessEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -58,10 +59,16 @@ interface QuickAccessDao {
 
     /**
      * 批量刷新排序序号。拖拽完成后按新顺序逐项传入 (id, newSortIndex)，
-     * 一次性提交事务，避免列表抖动。
+     * 在单个事务内批量更新，避免列表抖动与部分落库。
      */
     @Query("UPDATE quick_access SET sort_index = (:sortIndex) WHERE id = (:id)")
     suspend fun updateOrder(id: Int, sortIndex: Int)
+
+    /** 批量排序更新：内部在单事务中执行，避免逐条独立事务导致部分落库。 */
+    @Transaction
+    suspend fun updateOrderBatch(order: List<Pair<Int, Int>>) {
+        order.forEach { (id, sortIndex) -> updateOrder(id, sortIndex) }
+    }
 
     @Query("DELETE FROM quick_access WHERE id = (:id)")
     suspend fun delete(id: Int)

@@ -912,7 +912,7 @@ private fun HomeQuickAccessRow(
                 storageReachability[qaItem.entity.libraryId] != false
             HomeQuickAccessGridItem(
                 item = qaItem,
-                thumbnailUrl = thumbnailUrls[qaItem.entity.storagePath],
+                thumbnailUrl = thumbnailUrls[qaItem.qaThumbKey],
                 isValid = effectiveValid,
                 onClick = { onItemClick(qaItem) },
                 modifier = Modifier.weight(1f),
@@ -1121,12 +1121,12 @@ private fun HomeQuickAccessLazyRow(
         contentPadding = PaddingValues(horizontal = edgePadding),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items(items, key = { it.entity.storagePath }) { qaItem ->
+        items(items, key = { it.qaThumbKey }) { qaItem ->
             val effectiveValid = qaItem.libraryValid &&
                 storageReachability[qaItem.entity.libraryId] != false
             HomeQuickAccessGridItem(
                 item = qaItem,
-                thumbnailUrl = thumbnailUrls[qaItem.entity.storagePath],
+                thumbnailUrl = thumbnailUrls[qaItem.qaThumbKey],
                 isValid = effectiveValid,
                 onClick = { onItemClick(qaItem) },
                 modifier = Modifier.width(cardWidth),

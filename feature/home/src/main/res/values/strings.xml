@@ -626,6 +626,7 @@
     <string name="quick_access_empty_hint">在文件浏览器中长按文件夹即可添加</string>
     <string name="quick_access_delete_title">删除快速访问</string>
     <string name="quick_access_delete_confirm">确定删除「%1$s」的快速访问？</string>
+    <string name="qa_section_file">其他文件</string>
 
     <!-- 首页（HomeTabScreen） -->
     <string name="home_empty_title">暂无内容</string>

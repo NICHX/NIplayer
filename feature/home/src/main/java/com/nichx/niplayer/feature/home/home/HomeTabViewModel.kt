@@ -222,15 +222,15 @@ class HomeTabViewModel @Inject constructor(
         // 快速访问缩略图：收集 quickAccessItems 并生成缩略图
         viewModelScope.launch {
             quickAccessItems.collect { items ->
-                val currentPaths = items.map { it.entity.storagePath }.toSet()
-                if (_qaThumbnailUrls.value.keys.any { it !in currentPaths }) {
-                    _qaThumbnailUrls.value = _qaThumbnailUrls.value.filterKeys { it in currentPaths }
+                val currentKeys = items.map { it.qaThumbKey }.toSet()
+                if (_qaThumbnailUrls.value.keys.any { it !in currentKeys }) {
+                    _qaThumbnailUrls.value = _qaThumbnailUrls.value.filterKeys { it in currentKeys }
                 }
 
                 val mediaItems = items.filter {
                     it.libraryValid && !it.entity.isDirectory &&
                         it.entity.storagePath.isNotEmpty() &&
-                        it.entity.storagePath !in _qaThumbnailUrls.value
+                        it.qaThumbKey !in _qaThumbnailUrls.value
                 }
                 if (mediaItems.isEmpty()) return@collect
 
@@ -247,7 +247,7 @@ class HomeTabViewModel @Inject constructor(
                         } else {
                             thumbnailManager.getCachedThumbnailPath(sid, path)
                         }
-                        if (thumbPath != null) path to thumbPath else null
+                        if (thumbPath != null) item.qaThumbKey to thumbPath else null
                     }.toMap()
                 }
                 if (cached.isNotEmpty()) {
@@ -380,7 +380,7 @@ class HomeTabViewModel @Inject constructor(
     ) {
         val pending = items.filter {
             it.libraryValid && !it.entity.isDirectory &&
-                it.entity.storagePath !in existingThumbnails
+                it.qaThumbKey !in existingThumbnails
         }
         if (pending.isEmpty()) return
 
@@ -414,7 +414,8 @@ class HomeTabViewModel @Inject constructor(
                             }
                             if (requests.isEmpty()) continue
                             thumbnailManager.generateRemoteThumbnails(storage, requests) { path, thumbPath ->
-                                batchAccumulator[path] = thumbPath
+                                // 回调的 path 为请求 url（即存储相对路径），需还原组合 key
+                                batchAccumulator["$sid:$path"] = thumbPath
                             }
                         } finally {
                             storage.close()

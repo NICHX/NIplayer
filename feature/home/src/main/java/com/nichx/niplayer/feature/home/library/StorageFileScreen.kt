@@ -298,6 +298,9 @@ private fun GlassIconCircle(
 fun FileBrowserScreen(
     storageId: Int,
     initialPath: String = "",
+    // 导航请求计数：由宿主每次打开请求时递增，即使 initialPath 相同也重新触发定位，
+    // 修复重复点击同一快速访问书签时停留在上次浏览目录的问题
+    navTick: Int = 0,
     onBack: () -> Unit,
     onPlayVideo: (Boolean) -> Unit,
     onNavigateToImageViewer: () -> Unit = {},
@@ -482,12 +485,12 @@ fun FileBrowserScreen(
         }
     }
 
-    LaunchedEffect(storageId) {
+    LaunchedEffect(storageId, navTick) {
         viewModel.initialize(storageId, initialPath)
     }
 
     if (initialPath.isNotEmpty()) {
-        LaunchedEffect(initialPath) {
+        LaunchedEffect(initialPath, navTick) {
             viewModel.navigateToPath(initialPath)
         }
     }

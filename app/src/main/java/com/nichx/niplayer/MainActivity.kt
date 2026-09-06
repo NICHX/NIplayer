@@ -351,6 +351,7 @@ class MainActivity : ComponentActivity() {
                                     pendingFileBrowser = storageId to path
                                     navController.popBackStack(Routes.Home.ROOT, inclusive = false)
                                 },
+                                onNavigateToPlayer = navigateToPlayer,
                             )
                         }
                         composable(
