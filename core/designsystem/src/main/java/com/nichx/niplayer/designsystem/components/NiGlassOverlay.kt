@@ -77,6 +77,20 @@ object NiGlassOverlay {
         }
     }
 
+    /**
+     * 投递或更新一个浮层：同 [NiGlassOverlayRequest.id] 已存在时用新请求**覆盖**（内容/标题/
+     * 关闭回调原地刷新，弹窗不关闭重开），否则压栈。用于状态机驱动的弹窗（如更新流程）：
+     * 状态切换时原地更新内容，避免「旧窗退场 + 新窗进场」的闪动。
+     */
+    fun showOrUpdate(request: NiGlassOverlayRequest) {
+        val index = stack.indexOfFirst { it.id == request.id }
+        if (index >= 0) {
+            stack[index] = request
+        } else {
+            stack += request
+        }
+    }
+
     /** 移除指定浮层。 */
     fun dismiss(id: String) {
         stack.removeAll { it.id == id }
@@ -176,11 +190,13 @@ fun NiGlassOverlayHost(
     val rendered = remember { mutableStateMapOf<String, NiGlassOverlayRequest>() }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
-        snapshotFlow { NiGlassOverlay.requests.map { it.id } }
+        // 观察完整请求列表而非仅 id 列表：showOrUpdate 同 id 覆盖（内容/标题/关闭回调更新）
+        // 时也能触发 rendered 同步，弹窗原地刷新不关闭重开
+        snapshotFlow { NiGlassOverlay.requests.toList() }
             .distinctUntilChanged()
-            .collect { ids ->
-                val idSet = ids.toSet()
-                NiGlassOverlay.requests.forEach { rendered[it.id] = it }
+            .collect { reqs ->
+                val idSet = reqs.map { it.id }.toSet()
+                reqs.forEach { rendered[it.id] = it }
                 rendered.keys
                     .filterNot { it in idSet }
                     .forEach { id ->
