@@ -192,6 +192,7 @@
 
     <!-- VR look-around -->
     <string name="player_vr">VR Look-around</string>
+    <string name="player_vr_experimental">Beta</string>
     <string name="player_vr_recenter">Recenter view</string>
     <string name="player_vr_format_hint">Frame layout</string>
     <string name="player_vr_format_sbs_pano">Side-by-side · %1$d°</string>

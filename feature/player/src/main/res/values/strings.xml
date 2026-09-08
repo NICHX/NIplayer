@@ -192,6 +192,7 @@
 
     <!-- VR 环视 -->
     <string name="player_vr">VR 环视</string>
+    <string name="player_vr_experimental">实验</string>
     <string name="player_vr_recenter">画面归中</string>
     <string name="player_vr_format_hint">画面格式</string>
     <string name="player_vr_format_sbs_pano">左右 · %1$d°</string>

@@ -1435,19 +1435,27 @@ fun PlayerScreen(
                 stringResource(R.string.player_bookmark),
                 onClick = { showBookmarkDialog = true },
             )
-            "vr" -> HudButtonConfig(
-                id, VrHeadsetIcon,
-                stringResource(R.string.player_vr),
-                tint = if (vrMode) Color(0xFF6C9CFF) else Color.White.copy(alpha = 0.9f),
-                onClick = {
-                    vrMode = !vrMode
-                    infoOsd = if (vrMode) {
-                        context.getString(R.string.player_vr_entered)
-                    } else {
-                        context.getString(R.string.player_vr_exited)
-                    }
-                },
-            )
+            "vr" -> {
+                // 仅当原生画面为 VR 帧型（2:1 的 360°/SBS、1:2 的 OU）时才可进入；
+                // 已在 VR 模式时允许退出。普通视频禁用该按钮。
+                val vrCapable = isLikelyVrVideo(videoSize.width, videoSize.height) || vrMode
+                HudButtonConfig(
+                    id, VrHeadsetIcon,
+                    stringResource(R.string.player_vr),
+                    tint = if (vrMode) Color(0xFF6C9CFF)
+                    else if (vrCapable) Color.White.copy(alpha = 0.9f)
+                    else Color.White.copy(alpha = 0.35f),
+                    enabled = vrCapable,
+                    onClick = {
+                        vrMode = !vrMode
+                        infoOsd = if (vrMode) {
+                            context.getString(R.string.player_vr_entered)
+                        } else {
+                            context.getString(R.string.player_vr_exited)
+                        }
+                    },
+                )
+            }
             else -> null
         }
         val ctrlEntries = PlayerControlLayout.ALL_IDS.mapIndexed { i, id ->
@@ -3470,6 +3478,20 @@ private fun VrControlOverlay(
                     fontSize = 12.sp,
                     maxLines = 1,
                 )
+                Spacer(Modifier.width(6.dp))
+                // 实验性标记：VR 视觉/兼容性仍在迭代，明确告知用户
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF6C9CFF).copy(alpha = 0.25f))
+                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.player_vr_experimental),
+                        color = Color(0xFF6C9CFF),
+                        fontSize = 10.sp,
+                    )
+                }
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onClickFormat, modifier = Modifier.size(30.dp)) {
                     Icon(
@@ -3563,6 +3585,22 @@ private fun SmallRoundIconButton(
 // 中部侧边按钮由配置列表驱动，增删/排序/调样式只需改 [HudButtonConfig] 列表。
 // 后续用户自定义只需在设置页读写同一份配置列表，无需改动渲染逻辑。
 
+/**
+ * 依据原生画面宽高比粗略判定视频是否可能为 VR。
+ *
+ * VR 主流帧型：
+ * - **2:1（aspect≈2.0）**：360° 等距矩形 / 左右(SBS) 180/360°
+ * - **1:2（aspect≈0.5）**：上下(OU) 180/360°
+ *
+ * 仅作为「是否开放 VR 入口」的门槛，避免普通 16:9/4:3/宽银幕视频误入 VR 造成画面变形。
+ * 无法区分的极端形状（如 16:9 的竖置 SBS、9:16 与 OU 撞型）不强制开放，由用户手动判定。
+ */
+private fun isLikelyVrVideo(width: Int, height: Int): Boolean {
+    if (width <= 0 || height <= 0) return false
+    val ar = width.toFloat() / height
+    return ar in 1.88f..2.12f || ar in 0.47f..0.53f
+}
+
 /** 单个 HUD 按钮的配置描述。 */
 private data class HudButtonConfig(
     val id: String,
@@ -3572,6 +3610,7 @@ private data class HudButtonConfig(
     val iconSize: Dp = 24.dp,
     val order: Int = 0,
     val side: HudButtonSide = HudButtonSide.LEFT,
+    val enabled: Boolean = true,
     val onClick: () -> Unit = {},
     val onLongClick: (() -> Unit)? = null,
 )
@@ -3639,30 +3678,35 @@ private fun HudButtonColumn(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 shown.forEachIndexed { _, cfg ->
+                    // 禁用的按钮：颜色弱化 + 忽略点击/长按
+                    val effTint = if (cfg.enabled) cfg.tint else cfg.tint.copy(alpha = 0.35f)
+                    // 禁用态（enabled=false）时用空操作：按钮可见但不响应点击
+                    val noop: () -> Unit = {}
+                    val effClick: () -> Unit = if (cfg.enabled) cfg.onClick else noop
                     if (cfg.onLongClick != null) {
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
                                 .playerHudGlass()
                                 .combinedClickable(
-                                    onClick = cfg.onClick,
-                                    onLongClick = cfg.onLongClick,
+                                    onClick = effClick,
+                                    onLongClick = if (cfg.enabled) cfg.onLongClick else null,
                                 ),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
                                 imageVector = cfg.icon,
                                 contentDescription = cfg.contentDescription,
-                                tint = cfg.tint,
+                                tint = effTint,
                                 modifier = Modifier.size(cfg.iconSize),
                             )
                         }
                     } else {
-                        PlayerHudButton(onClick = cfg.onClick) {
+                        PlayerHudButton(onClick = effClick) {
                             Icon(
                                 imageVector = cfg.icon,
                                 contentDescription = cfg.contentDescription,
-                                tint = cfg.tint,
+                                tint = effTint,
                                 modifier = Modifier.size(cfg.iconSize),
                             )
                         }
