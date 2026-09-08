@@ -475,6 +475,7 @@
     <string name="storage_file_folder_create_failed">Failed to create folder</string>
     <string name="storage_file_upload_failed">Upload failed</string>
     <string name="storage_file_delete_failed">Failed to delete</string>
+    <string name="storage_file_delete_cancelled">Deletion cancelled</string>
     <string name="storage_library_deleted">Storage source has been deleted</string>
 
     <!-- Add storage (StoragePlusScreen / StoragePlusViewModel) -->

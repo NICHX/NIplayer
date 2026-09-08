@@ -43,6 +43,12 @@ import com.nichx.niplayer.thumbnail.ThumbnailResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Context
+import android.content.ContentUris
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import com.nichx.niplayer.storage.impl.VideoStorage
+import com.nichx.niplayer.storage.impl.VideoStorageFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -334,13 +340,24 @@ class StorageFileViewModel @Inject constructor(
         // 兜底：先清掉可能残留的进度，再发起本次删除
         _fileOpProgress.value = null
         if (selected.isNotEmpty()) _fileOpProgress.value = FileOpProgress(selected.size, 0, "", FileOpType.DELETE)
+
+        // 系统 MediaStore 索引视频需授权删除，其余（扩展目录/SAF/远程）直接删除
+        val consentFiles = selected.filter {
+            !it.isDirectory && (it as? VideoStorageFile)?.fileId?.let { id -> id > 0 } == true
+                && currentLibrary?.mediaType == MediaType.LOCAL_STORAGE
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        }
+        val consentUris = mediaConsentUris(consentFiles)
+        val directFiles = selected.filter { it !in consentFiles }
+        val consentPending = consentUris.isNotEmpty()
+
         viewModelScope.launch {
             var okCount = 0
             var done = 0
             val type = FileOpType.DELETE
             try {
                 withContext(Dispatchers.IO) {
-                    selected.forEach { file ->
+                    directFiles.forEach { file ->
                         _fileOpProgress.value = FileOpProgress(selected.size, done, file.name, type)
                         if (runCatching { s.deleteFile(file) }.getOrDefault(false)) {
                             okCount++
@@ -358,9 +375,18 @@ class StorageFileViewModel @Inject constructor(
                     }
                 }
             } finally {
-                endExclusiveFileOp()
-                // 无论成功/失败/协程取消，都清理进度浮层，保证它能自动消失
-                _fileOpProgress.value = null
+                if (!consentPending) {
+                    endExclusiveFileOp()
+                    // 无论成功/失败/协程取消，都清理进度浮层，保证它能自动消失
+                    _fileOpProgress.value = null
+                }
+            }
+            if (consentPending) {
+                pendingConsentPaths = consentFiles.map { it.path }
+                pendingConsentFiles = consentFiles
+                // 授权结果由 finalizePendingConsentDelete 统一收尾（含锁释放/刷新）
+                _events.tryEmit(StorageFileEvent.RequestMediaStoreDelete(consentUris))
+                return@launch
             }
             exitMultiSelect()
             if (okCount == selected.size) {
@@ -1122,6 +1148,12 @@ class StorageFileViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
+                // 本地视频库下拉刷新：强制触发一次增量重扫，使新下载视频立即可见
+                if (currentLibrary?.mediaType == MediaType.LOCAL_STORAGE) {
+                    withContext(Dispatchers.IO) {
+                        runCatching { (storage as? VideoStorage)?.forceRefresh() }
+                    }
+                }
                 listDirectory(directoryStack.last()) { }
             } finally {
                 _isRefreshing.value = false
@@ -1851,6 +1883,21 @@ class StorageFileViewModel @Inject constructor(
             currentLibrary?.mediaType == MediaType.WEBDAV_SERVER
 
     /**
+     * 是否支持删除文件。
+     *
+     * 覆盖本地视频库（LOCAL_STORAGE）、SAF（EXTERNAL_STORAGE）及远程 SMB/WebDAV。
+     * 与 [supportsFileManagement]（重命名/移动，仅远程）解耦，使本地存储也能删除。
+     */
+    val supportsDelete: Boolean
+        get() = currentLibrary?.mediaType?.let {
+            when (it) {
+                MediaType.LOCAL_STORAGE, MediaType.EXTERNAL_STORAGE,
+                MediaType.SMB_SERVER, MediaType.WEBDAV_SERVER -> true
+                else -> false
+            }
+        } ?: false
+
+    /**
      * 重命名当前目录下的文件/目录。
      *
      * @param file 待重命名的文件（必须在当前目录内）
@@ -1983,6 +2030,66 @@ class StorageFileViewModel @Inject constructor(
     /** 取消上传任务。 */
     fun cancelUpload(taskId: Long) = uploadManager.cancel(taskId)
 
+    // ---- MediaStore 授权删除（系统索引媒体） ----
+
+    private var pendingConsentPaths: List<String> = emptyList()
+    private var pendingConsentFiles: List<StorageFile> = emptyList()
+
+    /**
+     * 收集需通过 [MediaStore.createDeleteRequest] 授权删除的 URI 列表。
+     *
+     * 仅本地视频库（LOCAL_STORAGE）且 API 30+ 的系统索引项（fileId>0）需要走授权流程；
+     * 其余（扩展目录/SAF/远程）直接删除即可。
+     */
+    private fun mediaConsentUris(files: List<StorageFile>): List<Uri> {
+        if (currentLibrary?.mediaType != MediaType.LOCAL_STORAGE) return emptyList()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return emptyList()
+        return files
+            .map { it as? VideoStorageFile }
+            .filterNotNull()
+            .filter { !it.isDirectory && it.fileId > 0 }
+            .map { ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, it.fileId) }
+    }
+
+    /**
+     * 系统授权删除结果回调（由 [StorageFileScreen] 的 MediaStore launcher 调用）。
+     *
+     * @param granted 用户是否允许删除（RESULT_OK）。
+     */
+    fun finalizePendingConsentDelete(granted: Boolean) {
+        val paths = pendingConsentPaths
+        val files = pendingConsentFiles
+        pendingConsentPaths = emptyList()
+        pendingConsentFiles = emptyList()
+        _fileOpProgress.value = null
+        if (paths.isEmpty()) {
+            endExclusiveFileOp()
+            return
+        }
+        viewModelScope.launch {
+            if (granted) {
+                val s = storage
+                withContext(Dispatchers.IO) {
+                    (s as? VideoStorage)?.let { runCatching { it.finalizeMediaDelete(paths) } }
+                    if (s != null) {
+                        files.forEach { file ->
+                            runCatching { thumbnailManager.deleteThumbnailsForVideo(s, storageId, file) }
+                        }
+                    }
+                }
+                _events.tryEmit(StorageFileEvent.ShowToast(
+                    context.getString(R.string.storage_file_deleted_count, paths.size),
+                ))
+            } else {
+                _events.tryEmit(StorageFileEvent.ShowToast(
+                    context.getString(R.string.storage_file_delete_cancelled),
+                ))
+            }
+            endExclusiveFileOp()
+            refreshCurrentDirectory()
+        }
+    }
+
     /**
      * 删除文件或目录（目录需为空或可递归删除）。
      *
@@ -1992,6 +2099,14 @@ class StorageFileViewModel @Inject constructor(
         val s = storage ?: return
         // 互斥：已有文件操作在进行时拒绝删除，避免删除正在处理的文件
         if (!beginExclusiveFileOp()) return
+        // 系统 MediaStore 索引视频：先走授权删除，成功后由 finalizePendingConsentDelete 落地
+        val consentUris = mediaConsentUris(listOf(file))
+        if (consentUris.isNotEmpty()) {
+            pendingConsentPaths = listOf(file.path)
+            pendingConsentFiles = listOf(file)
+            _events.tryEmit(StorageFileEvent.RequestMediaStoreDelete(consentUris))
+            return
+        }
         viewModelScope.launch {
             try {
                 val ok = withContext(Dispatchers.IO) {
@@ -2260,6 +2375,9 @@ sealed class StorageFileEvent {
         val file: StorageFile,
         val isFavorited: Boolean,
     ) : StorageFileEvent()
+
+    /** 拉起系统 [android.provider.MediaStore.createDeleteRequest] 授权删除系统索引媒体。 */
+    data class RequestMediaStoreDelete(val uris: List<Uri>) : StorageFileEvent()
 
     /** 简短提示（添加/移除成功）。 */
     data class ShowToast(val message: String) : StorageFileEvent()

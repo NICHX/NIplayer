@@ -475,6 +475,7 @@
     <string name="storage_file_folder_create_failed">创建文件夹失败</string>
     <string name="storage_file_upload_failed">上传失败</string>
     <string name="storage_file_delete_failed">删除失败</string>
+    <string name="storage_file_delete_cancelled">已取消删除</string>
     <string name="storage_library_deleted">存储源已删除</string>
 
     <!-- 添加存储源（StoragePlusScreen / StoragePlusViewModel） -->

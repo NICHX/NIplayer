@@ -41,8 +41,12 @@ class VideoStorage(
 ) : AbstractStorage(library) {
 
     override suspend fun listFiles(directory: StorageFile): List<StorageFile> {
-        if (isRoot(directory) && videoDao.getAll().isEmpty()) {
-            scanner.scan()
+        // 本地视频库自动重扫：DB 为空时全量扫描；非空时按节流间隔做轻量 MediaStore
+        // 增量刷新，使新下载/被移除的视频在打开文件夹时自动同步（无需手动刷新）。
+        val dbEmpty = videoDao.getAll().isEmpty()
+        when {
+            dbEmpty -> scanner.scan()
+            shouldAutoRefresh() -> scanner.refreshMediaStore()
         }
         return if (isRoot(directory)) {
             videoDao.getFolderByFilter().map { it.toStorageFile() }
@@ -100,12 +104,80 @@ class VideoStorage(
 
     override suspend fun fileExists(path: String): Boolean = File(path).exists()
 
-    override suspend fun deleteFile(file: StorageFile): Boolean = false
+    /**
+     * 删除本地视频文件（仅文件，不含本地视频库的虚拟文件夹）。
+     *
+     * 双路径删除：
+     * 1. **MediaStore**：`fileId > 0` 时通过 contentResolver 删除系统索引项（分区存储下可删
+     *    应用自有/可写媒体）
+     * 2. **物理文件**：MediaStore 删除失败或无 fileId（扩展目录/应用自有文件）时直接 `File.delete()`
+     *
+     * 删除成功后同步清除 `video` 表记录，避免留幽灵条目。目录一律返回 false。
+     */
+    override suspend fun deleteFile(file: StorageFile): Boolean {
+        if (file.isDirectory) return false
+        val path = (file as? VideoStorageFile)?.filePath ?: file.path
+        if (path.isEmpty()) return false
+
+        var deleted = false
+        val vsf = file as? VideoStorageFile
+        if (vsf != null && vsf.fileId > 0) {
+            val uri = ContentUris.withAppendedId(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                vsf.fileId,
+            )
+            try {
+                deleted = context.contentResolver.delete(uri, null, null) > 0
+            } catch (_: Exception) {
+                deleted = false
+            }
+        }
+        if (!deleted) {
+            deleted = runCatching { File(path).delete() }.getOrDefault(false)
+        }
+        if (deleted) {
+            runCatching { videoDao.deleteByPath(path) }
+        }
+        return deleted
+    }
+
+    /**
+     * 系统 MediaStore 授权删除（createDeleteRequest）成功后的终结处理：
+     * 清除这些路径对应的 `video` 表记录，避免残留幽灵条目。
+     */
+    suspend fun finalizeMediaDelete(paths: List<String>) {
+        val valid = paths.filter { it.isNotEmpty() }
+        if (valid.isNotEmpty()) {
+            runCatching { videoDao.deleteByPaths(valid) }
+        }
+    }
+
+    /**
+     * 强制增量重扫（下拉刷新用）：重置节流并立即执行 [VideoScanner.refreshMediaStore]，
+     * 使新下载的视频在下拉刷新时立即可见（不受自动重扫的节流间隔限制）。
+     */
+    suspend fun forceRefresh() {
+        lastAutoRefreshAt = System.currentTimeMillis()
+        scanner.refreshMediaStore()
+    }
 
     override suspend fun testConnection(): Boolean = true
 
     private fun isRoot(file: StorageFile): Boolean =
         file === StorageFactory.ROOT || file.path.isEmpty()
+
+    /** 自动重扫节流：距上次刷新不足阈值时跳过，避免频繁打开目录触发重扫造成卡顿。 */
+    private var lastAutoRefreshAt = 0L
+    private fun shouldAutoRefresh(): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - lastAutoRefreshAt < AUTO_REFRESH_INTERVAL_MS) return false
+        lastAutoRefreshAt = now
+        return true
+    }
+
+    private companion object {
+        const val AUTO_REFRESH_INTERVAL_MS = 30_000L
+    }
 
     private fun FolderBean.toStorageFile() = VideoStorageFile(
         path = folderPath,

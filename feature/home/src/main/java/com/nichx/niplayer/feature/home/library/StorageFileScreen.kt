@@ -4,7 +4,10 @@ import com.nichx.niplayer.feature.home.R
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
+import android.app.Activity
+import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -456,6 +459,14 @@ fun FileBrowserScreen(
         }
     }
 
+    // MediaStore 授权删除 launcher：拉起系统 "删除这些项目？" 弹窗，
+    // 结果由 viewModel.finalizePendingConsentDelete 统一落地（清 DB/缩略图/刷新）
+    val mediaDeleteLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        viewModel.finalizePendingConsentDelete(result.resultCode == Activity.RESULT_OK)
+    }
+
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
@@ -465,6 +476,10 @@ fun FileBrowserScreen(
                 is StorageFileEvent.ShowToast -> messageController.post(NiMessage.info(event.message))
                 is StorageFileEvent.OpenFileActions ->
                     fileMenu = event.file to event.isFavorited
+                is StorageFileEvent.RequestMediaStoreDelete -> {
+                    val request = MediaStore.createDeleteRequest(context.contentResolver, event.uris)
+                    mediaDeleteLauncher.launch(IntentSenderRequest.Builder(request).build())
+                }
             }
         }
     }
@@ -1085,6 +1100,7 @@ fun FileBrowserScreen(
             isFavorited = favorited,
             canDownload = !file.isDirectory,
             showFileManagement = viewModel.supportsFileManagement,
+            showDelete = viewModel.supportsDelete,
             isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
             isRemoteStorage = uiState.isRemoteStorage,
             onDismiss = { fileMenu = null },
@@ -2674,6 +2690,7 @@ private fun FileActionsSheet(
     isFavorited: Boolean,
     canDownload: Boolean,
     showFileManagement: Boolean,
+    showDelete: Boolean = false,
     isEncrypted: Boolean = false,
     isRemoteStorage: Boolean = true,
     onDismiss: () -> Unit,
@@ -2742,6 +2759,8 @@ private fun FileActionsSheet(
                     text = stringResource(R.string.storage_file_action_move),
                     onClick = onMove,
                 )
+            }
+            if (showDelete) {
                 ActionRow(
                     icon = Icons.Rounded.Delete,
                     text = stringResource(R.string.storage_file_action_delete),

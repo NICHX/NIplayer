@@ -72,7 +72,21 @@ class VideoScanner @Inject constructor(
     }
 
     /**
-     * 删除指定扩展目录：从 extend_folder 表删除，并删除该目录下所有 isExtend 视频，
+     * 轻量增量刷新：仅重查系统 MediaStore 并与现存 DB 增量同步。
+     *
+     * 用于本地视频库打开文件夹时的自动重扫——同步新出现/被移除的系统索引视频。
+     * 扩展目录视频**不重新遍历**（避免逐个 MediaMetadataRetriever 提取时长造成卡顿），
+     * 直接从 DB 读取既有 extend 行并入结果，保持其不变。
+     *
+     * [syncToDatabase] 为增量同步：删除已不存在的 MediaStore 记录、插入新发现的记录。
+     */
+    suspend fun refreshMediaStore() = withContext(Dispatchers.IO) {
+        val mediaStoreVideos = queryMediaStore()
+        val existingExtend = videoDao.getAll().filter { it.isExtend }
+        syncToDatabase(mediaStoreVideos + existingExtend)
+    }
+
+    /** 删除指定扩展目录：从 extend_folder 表删除，并删除该目录下所有 isExtend 视频，
      * 然后重新全量扫描（其他扩展目录 + MediaStore 的视频会重新入库）。
      */
     suspend fun removeExtendFolder(folderPath: String) = withContext(Dispatchers.IO) {
