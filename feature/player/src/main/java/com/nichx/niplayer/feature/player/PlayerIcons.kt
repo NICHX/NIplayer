@@ -67,3 +67,48 @@ val AbLoopIcon: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
         )
     }.build()
 }
+
+/**
+ * VR 头戴显示器图标。
+ *
+ * Material 图标库没有语义贴切的 VR 图标（[Icons.Rounded.Vrpano] 缺失/近似），
+ * 这里用「凸起的半弧形头带 + 两侧镜片三角」的写意描边，表达"戴上设备左右环视"，
+ * 用于播放器 HUD 的 VR 模式开关按钮。
+ */
+val VrHeadsetIcon: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
+    // 头带：跨越头部的上拱弧线，两端落在两侧镜片上
+    val band = PathParser().parsePathString(
+        "M5 9 C5 4.5 19 4.5 19 9 " +
+            "M5 9 Q5 13 6.5 14 L6.5 9 Z " +
+            "M19 9 Q19 13 17.5 14 L17.5 9 Z " +
+            "M6.5 14 Q5.5 15 5 14 L5 9 Q5 13 6.5 14 Z " +
+            "M17.5 14 Q18.5 15 19 14 L19 9 Q19 13 17.5 14 Z"
+    ).toNodes()
+    // 边框：圆形外框（镜片边缘）
+    val frame = PathParser().parsePathString(
+        "M7.5 9.5 A1.5 1.5 0 1 1 7.49 9.5 " +
+            "M16.5 9.5 A1.5 1.5 0 1 1 16.49 9.5"
+    ).toNodes()
+    ImageVector.Builder(
+        name = "VrHeadset",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        addPath(
+            pathData = band,
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.6f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        )
+        addPath(
+            pathData = frame,
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.4f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        )
+    }.build()
+}

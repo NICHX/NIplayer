@@ -36,7 +36,7 @@ object PlayerControlLayout {
     /** 全部功能 id（按此默认顺序展示与排序）。 */
     val ALL_IDS: List<String> = listOf(
         "rotate", "ab_loop", "black_bar_crop", "lock", "screenshot",
-        "long_press_speed", "pip", "sleep_timer", "media_info", "bookmarks",
+        "long_press_speed", "pip", "sleep_timer", "media_info", "bookmarks", "vr",
     )
 
     /** 全部可放置的面，固定顺序（用于循环切换）。 */
@@ -58,6 +58,7 @@ object PlayerControlLayout {
         "sleep_timer" to PlayerControlSurface.MORE,
         "media_info" to PlayerControlSurface.MORE,
         "bookmarks" to PlayerControlSurface.MORE,
+        "vr" to PlayerControlSurface.RIGHT,
     )
 
     /** 是否为 HUD 面（左/右列），即画面侧边的近场按钮。 */

@@ -29,6 +29,8 @@ import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -74,6 +76,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.BatteryFull
@@ -105,6 +109,8 @@ import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MyLocation
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -167,6 +173,9 @@ import androidx.core.view.WindowInsetsCompat
 import com.nichx.niplayer.datastore.PlayerControlOrientation
 import com.nichx.niplayer.datastore.PlayerControlSurface
 import com.nichx.niplayer.datastore.PlayerControlLayout
+import com.nichx.niplayer.datastore.VrSettings
+import com.nichx.niplayer.feature.player.vr.VrFormat
+import com.nichx.niplayer.feature.player.vr.VrSurfaceView
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -271,6 +280,19 @@ fun PlayerScreen(
     var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showBookmarkDialog by rememberSaveable { mutableStateOf(false) }
     var surfaceViewRef by remember { mutableStateOf<SurfaceView?>(null) }
+
+    // VR（环视）播放状态：切换到 GL 全景渲染路径，用陀螺仪环视单眼画面。
+    var vrMode by rememberSaveable { mutableStateOf(false) }
+    var vrViewRef by remember { mutableStateOf<VrSurfaceView?>(null) }
+    // 画面格式索引（0..3，对应 VrFormat 枚举顺序），持久化
+    var vrFormatIndex by rememberSaveable { mutableIntStateOf(VrSettings.formatIndex.coerceIn(0, VrFormat.entries.lastIndex)) }
+    // VR 可调参数（FOV、陀螺仪灵敏度、视距），持久化并实时同步到渲染视图
+    var vrFov by rememberSaveable { mutableIntStateOf(VrSettings.fovDegrees.coerceIn(30, 120)) }
+    var vrSensitivity by rememberSaveable { mutableFloatStateOf(VrSettings.gyroSensitivity) }
+    var vrZoom by rememberSaveable { mutableFloatStateOf(VrSettings.zoom.coerceIn(1f, 3f)) }
+    // VR 控制条自动收起：进入/交互时显示，闲置后隐藏
+    var vrControlsVisible by rememberSaveable { mutableStateOf(true) }
+    var vrControlTouchKey by remember { mutableIntStateOf(0) }
 
     // 换源过渡状态：setSource 到新源首帧渲染(RenderingStart)之间，SurfaceView 表面
     // 仍停留在旧帧残影上，而 media3 会提前触发新源的 onVideoSizeChanged 改变布局比例。
@@ -896,6 +918,22 @@ fun PlayerScreen(
             }
         }
         val screenAspect = if (maxHeight.value > 0f) maxWidth.value / maxHeight.value else 16f / 9f
+
+        // VR 模式：进入小窗（PiP）时退出 VR，避免 GL 路径与小窗控件冲突。
+        LaunchedEffect(isInPip) {
+            if (isInPip) vrMode = false
+        }
+
+        // VR 当前画面格式（左右/上下 × 180°/360°）
+        val activeVrFormat = VrFormat.fromIndex(vrFormatIndex.coerceIn(0, VrFormat.entries.lastIndex))
+
+        // VR 控制条自动收起：进入/交互时显示，闲置数秒后收起
+        LaunchedEffect(vrMode, vrControlTouchKey) {
+            if (!vrMode) return@LaunchedEffect
+            vrControlsVisible = true
+            delay(VR_CONTROLS_AUTO_HIDE_MS)
+            vrControlsVisible = false
+        }
         val surfaceModifier = when (videoScaleMode) {
             NxVideoScaleMode.Stretch -> {
                 // 拉伸：忽略视频比例，填满屏幕（画面变形）
@@ -933,7 +971,35 @@ fun PlayerScreen(
                 }
             }
         }
-        if (exitFrame != null) {
+        if (vrMode) {
+            // VR 模式：GL 全景渲染路径（等距柱面 + 陀螺仪环视 + 手滑转向）。整屏投影，忽略画面比例。
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    VrSurfaceView(ctx, viewModel.nxPlayer).also { v ->
+                        v.setFormat(activeVrFormat.layout, activeVrFormat.halfPanoDegrees)
+                        v.setFovDegrees(vrFov.toFloat())
+                        v.setGyroSensitivity(vrSensitivity)
+                        v.setZoom(vrZoom)
+                        v.setInvertYaw(VrSettings.invertYaw)
+                        // 轻点唤出控制条并重置自动收起计时
+                        v.onTap = {
+                            vrControlsVisible = true
+                            vrControlTouchKey++
+                        }
+                        vrViewRef = v
+                    }
+                },
+                update = { v ->
+                    v.setVideoSize(videoSize.width, videoSize.height)
+                    v.setFormat(activeVrFormat.layout, activeVrFormat.halfPanoDegrees)
+                    v.setFovDegrees(vrFov.toFloat())
+                    v.setGyroSensitivity(vrSensitivity)
+                    v.setZoom(vrZoom)
+                    v.setInvertYaw(VrSettings.invertYaw)
+                },
+            )
+        } else if (exitFrame != null) {
             // 退出转场：用抓取的当前帧贴图顶替 SurfaceView，随退出 fade 与控件同步淡出
             Image(
                 bitmap = exitFrame!!.asImageBitmap(),
@@ -1047,11 +1113,13 @@ fun PlayerScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(locked, isInPip) {
+                .pointerInput(locked, isInPip, vrMode) {
                     val touchSlop = viewConfiguration.touchSlop
                     awaitEachGesture {
                         // PiP 小窗内禁用全部手势（控制栏/OSD 均隐藏，避免误触干扰小窗画面）
                         if (isInPip) return@awaitEachGesture
+                        // VR 模式：画面手势全部交给 VR 视图的自带滑动转向，避免干扰（亮度/音量/进度）
+                        if (vrMode) return@awaitEachGesture
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val startX = down.position.x
                         val startY = down.position.y
@@ -1362,6 +1430,19 @@ fun PlayerScreen(
                 stringResource(R.string.player_bookmark),
                 onClick = { showBookmarkDialog = true },
             )
+            "vr" -> HudButtonConfig(
+                id, VrHeadsetIcon,
+                stringResource(R.string.player_vr),
+                tint = if (vrMode) Color(0xFF6C9CFF) else Color.White.copy(alpha = 0.9f),
+                onClick = {
+                    vrMode = !vrMode
+                    infoOsd = if (vrMode) {
+                        context.getString(R.string.player_vr_entered)
+                    } else {
+                        context.getString(R.string.player_vr_exited)
+                    }
+                },
+            )
             else -> null
         }
         val ctrlEntries = PlayerControlLayout.ALL_IDS.mapIndexed { i, id ->
@@ -1482,6 +1563,52 @@ fun PlayerScreen(
                     hudButtons = hudButtons,
                 )
             }
+        }
+
+        // VR 模式控制条：方向（格式 / 滑动 / 归中）/ 视距 / FOV / 灵敏度 / 退出，闲置自动收起
+        if (vrMode && !isInPip) {
+            VrControlOverlay(
+                formatLabel = when (activeVrFormat.layout) {
+                    1 -> stringResource(R.string.player_vr_format_ou_pano, activeVrFormat.halfPanoDegrees)
+                    else -> stringResource(R.string.player_vr_format_sbs_pano, activeVrFormat.halfPanoDegrees)
+                },
+                fovDegrees = vrFov,
+                sensitivity = vrSensitivity,
+                zoom = vrZoom,
+                visible = vrControlsVisible && !locked,
+                onClickFormat = {
+                    vrFormatIndex = (vrFormatIndex + 1) % VrFormat.entries.size
+                    VrSettings.formatIndex = vrFormatIndex
+                    vrControlTouchKey++
+                },
+                onClickRecenter = {
+                    vrViewRef?.recenter()
+                    vrControlTouchKey++
+                },
+                onFovChange = { delta ->
+                    vrFov = (vrFov + delta.toInt()).coerceIn(30, 120)
+                    VrSettings.fovDegrees = vrFov
+                    vrViewRef?.setFovDegrees(vrFov.toFloat())
+                    vrControlTouchKey++
+                },
+                onSensitivityChange = { delta ->
+                    vrSensitivity = (vrSensitivity + delta).coerceIn(0.05f, 0.5f)
+                    VrSettings.gyroSensitivity = vrSensitivity
+                    vrViewRef?.setGyroSensitivity(vrSensitivity)
+                    vrControlTouchKey++
+                },
+                onZoomChange = { delta ->
+                    vrZoom = (vrZoom + delta).coerceIn(1f, 3f)
+                    VrSettings.zoom = vrZoom
+                    vrViewRef?.setZoom(vrZoom)
+                    vrControlTouchKey++
+                },
+                onClickExit = {
+                    vrMode = false
+                    infoOsd = context.getString(R.string.player_vr_exited)
+                },
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
 
         if (!isInPip) longPressSpeedActive?.let { speed ->
@@ -3279,6 +3406,144 @@ private fun LockedOverlay(onToggleLock: () -> Unit) {
                 modifier = Modifier.size(36.dp),
             )
         }
+    }
+}
+
+/** VR 控制条距顶部距离，避免与状态栏 / 挖孔重叠。 */
+private val VR_OVERLAY_TOP_DP: Dp = 88.dp
+
+/** VR 控制条闲置自动收起时长（ms）。 */
+private const val VR_CONTROLS_AUTO_HIDE_MS = 3500L
+
+/**
+ * VR 模式控制条（顶部玻璃胶囊）。
+ *
+ * 在 VR 环视模式下提供三个操作：循环切换画面格式（左右/上下 × 180°/360°）、画面归中、
+ * 退出 VR。随控制栏显隐一起淡入淡出。
+ *
+ * 位置固定为距顶部 [VR_OVERLAY_TOP_DP] 处并向下展开，避免沉浸式全屏下与状态栏 / 挖孔
+ * 重叠导致看不清。
+ *
+ * @param formatLabel 当前格式的显示文案（如「左右 · 360°」）
+ * @param fovDegrees 当前垂直视场角（度）
+ * @param sensitivity 当前陀螺仪灵敏度
+ * @param visible 是否可见（跟随控制栏显隐）
+ */
+@Composable
+private fun VrControlOverlay(
+    formatLabel: String,
+    fovDegrees: Int,
+    sensitivity: Float,
+    zoom: Float,
+    visible: Boolean,
+    onClickFormat: () -> Unit,
+    onClickRecenter: () -> Unit,
+    onFovChange: (Float) -> Unit,
+    onSensitivityChange: (Float) -> Unit,
+    onZoomChange: (Float) -> Unit,
+    onClickExit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+        exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top),
+        modifier = modifier.padding(top = VR_OVERLAY_TOP_DP),
+    ) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color.Black.copy(alpha = 0.45f))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.player_vr) + " · " + formatLabel,
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.width(4.dp))
+                IconButton(onClick = onClickFormat, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        imageVector = Icons.Rounded.SwapHoriz,
+                        contentDescription = stringResource(R.string.player_vr_format_hint),
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                IconButton(onClick = onClickRecenter, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        imageVector = Icons.Rounded.MyLocation,
+                        contentDescription = stringResource(R.string.player_vr_recenter),
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                IconButton(onClick = onClickExit, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.player_vr_exit),
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "${stringResource(R.string.player_vr_fov)} $fovDegrees°",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                )
+                SmallRoundIconButton(onFovChange, -5f, Icons.Rounded.Remove,
+                    stringResource(R.string.player_vr_fov_hint) + "-")
+                SmallRoundIconButton(onFovChange, 5f, Icons.Rounded.Add,
+                    stringResource(R.string.player_vr_fov_hint) + "+")
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "${stringResource(R.string.player_vr_sensitivity)} ${(sensitivity * 100).toInt()}",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                )
+                SmallRoundIconButton(onSensitivityChange, -0.05f, Icons.Rounded.Remove,
+                    stringResource(R.string.player_vr_sensitivity_hint) + "-")
+                SmallRoundIconButton(onSensitivityChange, 0.05f, Icons.Rounded.Add,
+                    stringResource(R.string.player_vr_sensitivity_hint) + "+")
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "${stringResource(R.string.player_vr_zoom)} ${zoom}×",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                )
+                SmallRoundIconButton(onZoomChange, -0.1f, Icons.Rounded.Remove,
+                    stringResource(R.string.player_vr_zoom_hint) + "-")
+                SmallRoundIconButton(onZoomChange, 0.1f, Icons.Rounded.Add,
+                    stringResource(R.string.player_vr_zoom_hint) + "+")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmallRoundIconButton(
+    onChange: (Float) -> Unit,
+    delta: Float,
+    icon: ImageVector,
+    contentDescription: String,
+) {
+    IconButton(
+        onClick = { onChange(delta) },
+        modifier = Modifier.size(30.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color.White,
+            modifier = Modifier.size(16.dp),
+        )
     }
 }
 

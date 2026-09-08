@@ -189,4 +189,20 @@
 
     <!-- 歌词 -->
     <string name="lyrics_empty">暂无歌词</string>
+
+    <!-- VR 环视 -->
+    <string name="player_vr">VR 环视</string>
+    <string name="player_vr_recenter">画面归中</string>
+    <string name="player_vr_format_hint">画面格式</string>
+    <string name="player_vr_format_sbs_pano">左右 · %1$d°</string>
+    <string name="player_vr_format_ou_pano">上下 · %1$d°</string>
+    <string name="player_vr_fov">视场</string>
+    <string name="player_vr_fov_hint">视场角</string>
+    <string name="player_vr_sensitivity">灵敏度</string>
+    <string name="player_vr_sensitivity_hint">陀螺仪灵敏度</string>
+    <string name="player_vr_zoom">视距</string>
+    <string name="player_vr_zoom_hint">视距</string>
+    <string name="player_vr_exit">退出 VR</string>
+    <string name="player_vr_entered">VR 环视：已开启</string>
+    <string name="player_vr_exited">VR 环视：已关闭</string>
 </resources>

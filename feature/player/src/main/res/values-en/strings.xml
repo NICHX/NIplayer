@@ -189,4 +189,20 @@
 
     <!-- Lyrics -->
     <string name="lyrics_empty">No lyrics</string>
+
+    <!-- VR look-around -->
+    <string name="player_vr">VR Look-around</string>
+    <string name="player_vr_recenter">Recenter view</string>
+    <string name="player_vr_format_hint">Frame layout</string>
+    <string name="player_vr_format_sbs_pano">Side-by-side · %1$d°</string>
+    <string name="player_vr_format_ou_pano">Over-under · %1$d°</string>
+    <string name="player_vr_fov">FOV</string>
+    <string name="player_vr_fov_hint">Field of view</string>
+    <string name="player_vr_sensitivity">Sensitivity</string>
+    <string name="player_vr_sensitivity_hint">Gyro sensitivity</string>
+    <string name="player_vr_zoom">Zoom</string>
+    <string name="player_vr_zoom_hint">View distance</string>
+    <string name="player_vr_exit">Exit VR</string>
+    <string name="player_vr_entered">VR look-around: ON</string>
+    <string name="player_vr_exited">VR look-around: OFF</string>
 </resources>
