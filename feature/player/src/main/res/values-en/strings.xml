@@ -203,6 +203,7 @@
     <string name="player_vr_zoom">Zoom</string>
     <string name="player_vr_zoom_hint">View distance</string>
     <string name="player_vr_exit">Exit VR</string>
+    <string name="player_vr_view_lock">Lock view</string>
     <string name="player_vr_entered">VR look-around: ON</string>
     <string name="player_vr_exited">VR look-around: OFF</string>
 </resources>

@@ -42,10 +42,10 @@ object VrSettings {
         get() = mmkv.decodeFloat(KEY_GYRO_SENSITIVITY, DEFAULT_GYRO_SENSITIVITY)
         set(value) { mmkv.encode(KEY_GYRO_SENSITIVITY, value.coerceIn(MIN_GYRO_SENSITIVITY, MAX_GYRO_SENSITIVITY)) }
 
-    /** 视距（Zoom）倍率，1~3，越大越拉近。 */
+    /** 视距（Zoom）倍率，MIN_ZOOM~MAX_ZOOM。>1 越推近（拉近视野），<1 越拉远（视野变宽）。 */
     var zoom: Float
         get() = mmkv.decodeFloat(KEY_ZOOM, 1f)
-        set(value) { mmkv.encode(KEY_ZOOM, value.coerceIn(1f, 3f)) }
+        set(value) { mmkv.encode(KEY_ZOOM, value.coerceIn(MIN_ZOOM, MAX_ZOOM)) }
 
     /** 水平转向反向开关。 */
     var invertYaw: Boolean
@@ -60,4 +60,8 @@ object VrSettings {
     const val MIN_GYRO_SENSITIVITY = 0.05f
     const val MAX_GYRO_SENSITIVITY = 0.5f
     const val DEFAULT_GYRO_SENSITIVITY = 0.12f
+
+    /** 视距（Zoom）范围：<1 拉远（视野变宽），>1 推近（视野变窄）。 */
+    const val MIN_ZOOM = 0.4f
+    const val MAX_ZOOM = 3f
 }

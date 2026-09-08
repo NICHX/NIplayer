@@ -83,6 +83,8 @@ import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Crop
@@ -289,10 +291,10 @@ fun PlayerScreen(
     // VR 可调参数（FOV、陀螺仪灵敏度、视距），持久化并实时同步到渲染视图
     var vrFov by rememberSaveable { mutableIntStateOf(VrSettings.fovDegrees.coerceIn(30, 120)) }
     var vrSensitivity by rememberSaveable { mutableFloatStateOf(VrSettings.gyroSensitivity) }
-    var vrZoom by rememberSaveable { mutableFloatStateOf(VrSettings.zoom.coerceIn(1f, 3f)) }
+    var vrZoom by rememberSaveable { mutableFloatStateOf(VrSettings.zoom.coerceIn(VrSettings.MIN_ZOOM, VrSettings.MAX_ZOOM)) }
     // VR 控制条自动收起：进入/交互时显示，闲置后隐藏
     var vrControlsVisible by rememberSaveable { mutableStateOf(true) }
-    var vrControlTouchKey by remember { mutableIntStateOf(0) }
+    var vrViewLocked by rememberSaveable { mutableStateOf(false) }
 
     // 换源过渡状态：setSource 到新源首帧渲染(RenderingStart)之间，SurfaceView 表面
     // 仍停留在旧帧残影上，而 media3 会提前触发新源的 onVideoSizeChanged 改变布局比例。
@@ -927,12 +929,9 @@ fun PlayerScreen(
         // VR 当前画面格式（左右/上下 × 180°/360°）
         val activeVrFormat = VrFormat.fromIndex(vrFormatIndex.coerceIn(0, VrFormat.entries.lastIndex))
 
-        // VR 控制条自动收起：进入/交互时显示，闲置数秒后收起
-        LaunchedEffect(vrMode, vrControlTouchKey) {
-            if (!vrMode) return@LaunchedEffect
-            vrControlsVisible = true
-            delay(VR_CONTROLS_AUTO_HIDE_MS)
-            vrControlsVisible = false
+        // VR 控制：进入 VR 时默认显示，轻点画面在显示/隐藏间切换（无自动收起，避免与切换冲突）
+        LaunchedEffect(vrMode) {
+            if (vrMode) vrControlsVisible = true
         }
         val surfaceModifier = when (videoScaleMode) {
             NxVideoScaleMode.Stretch -> {
@@ -972,7 +971,7 @@ fun PlayerScreen(
             }
         }
         if (vrMode) {
-            // VR 模式：GL 全景渲染路径（等距柱面 + 陀螺仪环视 + 手滑转向）。整屏投影，忽略画面比例。
+            // VR 模式：GL 球面渲染路径（等距柱面 + 陀螺仪环视）。整屏投影，忽略画面比例。
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
@@ -982,10 +981,10 @@ fun PlayerScreen(
                         v.setGyroSensitivity(vrSensitivity)
                         v.setZoom(vrZoom)
                         v.setInvertYaw(VrSettings.invertYaw)
-                        // 轻点唤出控制条并重置自动收起计时
+                        v.setViewLocked(vrViewLocked)
+                        // 轻点切换控制条显示/隐藏
                         v.onTap = {
-                            vrControlsVisible = true
-                            vrControlTouchKey++
+                            vrControlsVisible = !vrControlsVisible
                         }
                         vrViewRef = v
                     }
@@ -997,6 +996,7 @@ fun PlayerScreen(
                     v.setGyroSensitivity(vrSensitivity)
                     v.setZoom(vrZoom)
                     v.setInvertYaw(VrSettings.invertYaw)
+                    v.setViewLocked(vrViewLocked)
                 },
             )
         } else if (exitFrame != null) {
@@ -1110,16 +1110,20 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(locked, isInPip, vrMode) {
-                    val touchSlop = viewConfiguration.touchSlop
-                    awaitEachGesture {
-                        // PiP 小窗内禁用全部手势（控制栏/OSD 均隐藏，避免误触干扰小窗画面）
-                        if (isInPip) return@awaitEachGesture
-                        // VR 模式：画面手势全部交给 VR 视图的自带滑动转向，避免干扰（亮度/音量/进度）
-                        if (vrMode) return@awaitEachGesture
+        if (vrMode) {
+            // VR 模式：不附加 Compose 手势层，画面触摸完全交给 VrSurfaceView 的原生监听
+            // （轻点唤出控制条）。避免 Compose awaitEachGesture 循环在读 SnapshotMutableState
+            // 时于主线程自旋，导致"点击即卡死"（APP_SCOUT_WARNING / ANR）。
+            Box(modifier = Modifier.fillMaxSize())
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(locked, isInPip) {
+                        val touchSlop = viewConfiguration.touchSlop
+                        awaitEachGesture {
+                            // PiP 小窗内禁用全部手势（控制栏/OSD 均隐藏，避免误触干扰小窗画面）
+                            if (isInPip) return@awaitEachGesture
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val startX = down.position.x
                         val startY = down.position.y
@@ -1269,7 +1273,8 @@ fun PlayerScreen(
                         }
                     }
                 },
-        )
+            )
+        }
 
         // PiP 小窗内不展示错误三按钮层（控件无法在小窗适配），错误反馈由恢复大窗后呈现
         if (!isInPip) (state as? PlaybackState.Error)?.let { err ->
@@ -1575,33 +1580,33 @@ fun PlayerScreen(
                 fovDegrees = vrFov,
                 sensitivity = vrSensitivity,
                 zoom = vrZoom,
+                viewLocked = vrViewLocked,
                 visible = vrControlsVisible && !locked,
                 onClickFormat = {
                     vrFormatIndex = (vrFormatIndex + 1) % VrFormat.entries.size
                     VrSettings.formatIndex = vrFormatIndex
-                    vrControlTouchKey++
                 },
                 onClickRecenter = {
                     vrViewRef?.recenter()
-                    vrControlTouchKey++
+                },
+                onToggleViewLock = {
+                    vrViewLocked = !vrViewLocked
+                    vrViewRef?.setViewLocked(vrViewLocked)
                 },
                 onFovChange = { delta ->
                     vrFov = (vrFov + delta.toInt()).coerceIn(30, 120)
                     VrSettings.fovDegrees = vrFov
                     vrViewRef?.setFovDegrees(vrFov.toFloat())
-                    vrControlTouchKey++
                 },
                 onSensitivityChange = { delta ->
                     vrSensitivity = (vrSensitivity + delta).coerceIn(0.05f, 0.5f)
                     VrSettings.gyroSensitivity = vrSensitivity
                     vrViewRef?.setGyroSensitivity(vrSensitivity)
-                    vrControlTouchKey++
                 },
                 onZoomChange = { delta ->
-                    vrZoom = (vrZoom + delta).coerceIn(1f, 3f)
+                    vrZoom = (vrZoom + delta).coerceIn(VrSettings.MIN_ZOOM, VrSettings.MAX_ZOOM)
                     VrSettings.zoom = vrZoom
                     vrViewRef?.setZoom(vrZoom)
-                    vrControlTouchKey++
                 },
                 onClickExit = {
                     vrMode = false
@@ -3412,9 +3417,6 @@ private fun LockedOverlay(onToggleLock: () -> Unit) {
 /** VR 控制条距顶部距离，避免与状态栏 / 挖孔重叠。 */
 private val VR_OVERLAY_TOP_DP: Dp = 88.dp
 
-/** VR 控制条闲置自动收起时长（ms）。 */
-private const val VR_CONTROLS_AUTO_HIDE_MS = 3500L
-
 /**
  * VR 模式控制条（顶部玻璃胶囊）。
  *
@@ -3435,9 +3437,11 @@ private fun VrControlOverlay(
     fovDegrees: Int,
     sensitivity: Float,
     zoom: Float,
+    viewLocked: Boolean,
     visible: Boolean,
     onClickFormat: () -> Unit,
     onClickRecenter: () -> Unit,
+    onToggleViewLock: () -> Unit,
     onFovChange: (Float) -> Unit,
     onSensitivityChange: (Float) -> Unit,
     onZoomChange: (Float) -> Unit,
@@ -3483,6 +3487,14 @@ private fun VrControlOverlay(
                         modifier = Modifier.size(16.dp),
                     )
                 }
+                IconButton(onClick = onToggleViewLock, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        imageVector = if (viewLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                        contentDescription = stringResource(R.string.player_vr_view_lock),
+                        tint = if (viewLocked) Color(0xFFFFC107) else Color.White,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
                 IconButton(onClick = onClickExit, modifier = Modifier.size(30.dp)) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
@@ -3514,7 +3526,7 @@ private fun VrControlOverlay(
                     stringResource(R.string.player_vr_sensitivity_hint) + "+")
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "${stringResource(R.string.player_vr_zoom)} ${zoom}×",
+                    text = "${stringResource(R.string.player_vr_zoom)} ${"%.1f".format(zoom)}×",
                     color = Color.White,
                     fontSize = 12.sp,
                 )

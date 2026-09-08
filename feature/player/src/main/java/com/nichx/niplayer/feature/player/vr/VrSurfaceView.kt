@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.player.vr
 
+import android.app.Activity
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -7,9 +8,11 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
+import android.opengl.Matrix
 import android.os.Handler
 import android.os.Looper
 import android.view.Surface
+import android.view.WindowManager
 import com.nichx.niplayer.player.kernel.NxPlayer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -30,21 +33,18 @@ enum class VrResolvedLayout(val shaderIndex: Int) {
 /**
  * VR（全景单眼）播放视图。
  *
- * 把视频解码帧当作等距柱面（equirectangular）全景贴图，用陀螺仪（[SensorManager]
- * 的 TYPE_GAME_ROTATION_VECTOR）提供视角旋转，通过 OpenGL 片段着色器从全景里实时
- * 切出一个"窗外"/环视矩形视口。支持左右（SBS）与上下（OU）两种封装格式的单眼采样。
+ * 重设计：放弃"全屏四边形 + 片元和点着色器重投影 + 手写四元数"的旧方案，改为
+ * **球面网格（mesh sphere）+ 相机在球心** 的经典 360 观看模型：
+ * - 解码仍走 MediaCodec 硬解，输出 [Surface] 挂到视图内部的 [android.graphics.SurfaceTexture]，
+ *   由 GL 线程以 `samplerExternalOES` 采样；FFmpeg 音频软解链路不受影响。
+ * - 球面网格在 GL 线程 CPU 生成一次（仅位置，UV 在片元里由球面方向反算），相机置于球心，
+ *   view 矩阵来自陀螺仪（`SensorManager.getRotationMatrixFromVector` +
+ *   `remapCoordinateSystem` 矫正横屏 `Display.rotation`），projection 由 FOV/视距决定。
+ * - [recenter] 通过 volatile 标志在 GL 线程消费，把当前朝向置为视野正前方。
+ * - [VrSettings.invertYaw] 在片元里反转经度（镜像水平转向）。
  *
- * 设计要点：
- * - 解码仍走 MediaCodec 硬解，把输出 [Surface] 挂到本视图内部的 [android.graphics.SurfaceTexture]，
- *   由 SurfaceTexture 驱动解码帧更新；FFmpeg 音频软解链路与现有播放器完全不受影响。
- * - 默认 [GLSurfaceView.RENDERMODE_CONTINUOUSLY]：单纹理单次采样、GPU 开销极低，
- *   既能跟帧也能让陀螺仪视角平滑连续。
- * - 视角模型：把"贴饼"前方的设备朝向作为视线方向，用 3x3 旋转矩阵在着色器内完成
- *   视线→世界→经纬→全景 UV 的映射；[recenter] 把当前朝向置为视野正前方。
- * - [VrSettings.invertYaw] 通过镜像屏幕横轴实现水平转向反向，无需改陀螺仪数据。
- *
- * 生命周期：由调用方（PlayerScreen）在 VR 模式下通过 [androidx.compose.ui.viewinterop.AndroidView]
- * 挂载；视图销毁（surfaceDestroyed）时自动 detach 播放器 Surface 并释放 GL 资源。
+ * 线程铁律：主线程只写 volatile 标量 / 排队，绝不触碰 GL / SurfaceTexture / EGL，
+ * 从根上规避旧版"主线程 `setDefaultBufferSize` 与 GL 线程 `updateTexImage` 争 BufferQueue 锁"导致的 ANR。
  */
 class VrSurfaceView @JvmOverloads constructor(
     context: Context,
@@ -54,6 +54,10 @@ class VrSurfaceView @JvmOverloads constructor(
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // 显示（屏幕）相对设备机身的旋转，0/1/2/3 对应 0°/90°/180°/270°。
+    // 播放期间方向通常已锁定，构造时在主线程解析一次即可；GL 线程据此重映射传感器坐标系。
+    private val displayRotQuarter: Int = resolveDisplayRotQuarter(context)
+
     private val renderer = VrRenderer()
 
     init {
@@ -62,6 +66,19 @@ class VrSurfaceView @JvmOverloads constructor(
         // 连续渲染：画面跟随陀螺仪实时、平滑地环视
         renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         keepScreenOn = true
+    }
+
+    @Suppress("DEPRECATION")
+    private fun resolveDisplayRotQuarter(ctx: Context): Int {
+        val wm = (ctx as? Activity)?.windowManager
+            ?: ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            ?: return 0
+        return when (wm.defaultDisplay.rotation) {
+            Surface.ROTATION_90 -> 1
+            Surface.ROTATION_180 -> 2
+            Surface.ROTATION_270 -> 3
+            else -> 0
+        }
     }
 
     /**
@@ -97,39 +114,33 @@ class VrSurfaceView @JvmOverloads constructor(
         renderer.setInvertYaw(invert)
     }
 
+    /** 设置视角锁定：锁定后陀螺仪不再转动视角（画面固定）。 */
+    @JvmName("updateViewLocked")
+    fun setViewLocked(locked: Boolean) {
+        renderer.setViewLocked(locked)
+    }
+
     /** 设置陀螺仪灵敏度（slerp 权重，越大越灵敏）。 */
     @JvmName("updateGyroSensitivity")
     fun setGyroSensitivity(sensitivity: Float) {
         renderer.setGyroSensitivity(sensitivity)
     }
 
-    /** 视距（Zoom）倍率，>=1，越大越拉近。由外部（Compose）调用。 */
+    /** 视距（Zoom）倍率，MIN_ZOOM~MAX_ZOOM。>1 推近，<1 拉远。由外部（Compose）调用。 */
     @JvmName("updateZoom")
     fun setZoom(zoom: Float) {
         renderer.setZoom(zoom)
     }
 
-    /** 把当前朝向置为视野正前方（同时清空手滑偏移）。 */
+    /** 把当前朝向置为视野正前方（仅置标志，GL 线程消费，保持主线程不碰 GL）。 */
     fun recenter() {
         renderer.recenter()
-        renderer.resetManual()
-    }
-
-    /**
-     * 手滑转向（由原生触摸监听调用，主线程）。
-     * @param dxPx 本次横向位移（像素），右滑为正
-     * @param dyPx 本次纵向位移（像素），下滑为正
-     */
-    @androidx.annotation.MainThread
-    fun addDragPixels(dxPx: Float, dyPx: Float) {
-        renderer.addDrag(dxPx, dyPx)
     }
 
     /** 轻点（未位移）回调，用于唤出 VR 控制条。由 PlayerScreen 注入。 */
     var onTap: (() -> Unit)? = null
 
-    // 原生触摸：拖动手势 → 转向；轻点（无位移）→ 唤出控制条。
-    // 仅此一路处理触摸，VR 模式下外层 Compose 手势已屏蔽，互不冲突。
+    // 原生触摸：轻点（无位移）→ 唤出控制条。仅此一路处理触摸，VR 模式下外层 Compose 手势已屏蔽。
     private var touchDownX = 0f
     private var touchDownY = 0f
     private var touchDownTime = 0L
@@ -151,7 +162,6 @@ class VrSurfaceView @JvmOverloads constructor(
                     touchDownY = event.y
                     if (dx * dx + dy * dy > 1f) {
                         touchMoved = true
-                        renderer.addDrag(dx, dy)
                     }
                 }
                 android.view.MotionEvent.ACTION_UP -> {
@@ -175,6 +185,7 @@ class VrSurfaceView @JvmOverloads constructor(
 
     override fun onSensorChanged(event: SensorEvent) {
         if (event.sensor.type == Sensor.TYPE_GAME_ROTATION_VECTOR) {
+            // 主线程只拷贝到 volatile 引用，不做任何矩阵/四元数计算；由 GL 线程每帧消费
             renderer.setTargetRotation(event.values)
         }
     }
@@ -200,68 +211,133 @@ class VrSurfaceView @JvmOverloads constructor(
     // endregion
 
     override fun onDetachedFromWindow() {
-    runCatching { unregisterSensor() }
-    // 视图从窗口移除（Compose 销毁 AndroidView）：解除播放器表面，避免解码帧落入已失效纹理
-    try {
-        player.attachSurface(null)
-    } catch (_: Exception) {
+        runCatching { unregisterSensor() }
+        // 视图从窗口移除（Compose 销毁 AndroidView）：解除播放器表面，避免解码帧落入已失效纹理
+        try {
+            player.attachSurface(null)
+        } catch (_: Exception) {
+        }
+        super.onDetachedFromWindow()
     }
-    super.onDetachedFromWindow()
-}
 
     // region 渲染器
 
     private inner class VrRenderer : GLSurfaceView.Renderer {
 
-        private val quadVertices = floatArrayOf(
-            // x, y, u, v
-            -1f, -1f, 0f, 0f,
-             1f, -1f, 1f, 0f,
-            -1f,  1f, 0f, 1f,
-             1f,  1f, 1f, 1f,
-        )
-
-        private var vertexBuffer: FloatBuffer = ByteBuffer
-            .allocateDirect(quadVertices.size * 4)
-            .order(ByteOrder.nativeOrder())
-            .asFloatBuffer()
-            .apply {
-                put(quadVertices)
-                position(0)
-            }
-
+        // -- 着色器 / 对象句柄 --
         private var program = 0
-        private var surfaceTexture: android.graphics.SurfaceTexture? = null
-        private var texId = 0
-        @Volatile private var hasNewFrame = false
-
-        // uniform 位置
+        private var aPos = 0
+        private var uMvp = 0
         private var uTex = 0
-        private var uOrientation = 0
-        private var uAspect = 0
-        private var uHalfFovY = 0
-        private var uZoom = 0
         private var uLayout = 0
         private var uHalfPano = 0
         private var uInvertYaw = 0
+        private val uMvpBuf = FloatArray(16)
 
-        // 视口 / 参数
+        // -- 球面网格 --
+        private var sphereVB = 0
+        private var sphereCount = 0
+
+        // -- 解码纹理 --
+        private var texId = 0
+        @Volatile private var surfaceTexture: android.graphics.SurfaceTexture? = null
+        @Volatile private var hasNewFrame = false
+        // 已下发到 GL 线程的缓冲尺寸（变更守卫，避免主线程重复 setDefaultBufferSize）
+        @Volatile private var lastBufferSetW = 0
+        @Volatile private var lastBufferSetH = 0
+
+        // -- 视口 --
         private var viewportW = 1
         private var viewportH = 1
-        private var builtInAspect = 1f
+        private var aspect = 1f
 
-        // 视角（球面单位方向）
-        // 陀螺仪姿态（四元数 x,y,z,w）
-        private val targetQuat = FloatArray(4).apply { this[3] = 1f } // 最近一次传感器
-        private val currentQuat = FloatArray(4).apply { this[3] = 1f } // 平滑中的姿态
-        private val refQuat = FloatArray(4).apply { this[3] = 1f } // 归中基准
-        private val invRef = FloatArray(4)
-        private val relQuat = FloatArray(4)
-        private val relMatrix16 = FloatArray(16)
+        // -- 姿态（平滑中的 device→world 四元数 + 归中基准） --
+        private val currentQuat = FloatArray(4).apply { this[3] = 1f }
+        private val refQuat = FloatArray(4).apply { this[3] = 1f }
+        @Volatile private var targetRotVec: FloatArray? = null
+        @Volatile private var recenterRequested = false
+        private var firstPose = true // 首次有效传感器帧时自动归中，使进入 VR 时默认就面向设备当前朝向
+        private val lastMvp = FloatArray(16).apply {
+            Matrix.setIdentityM(this, 0)
+            setPerspective(this, 85f, 1f, 1f)
+        }
 
-        @Volatile var videoSize: IntArray? = null
+        // -- 可调参数 --
+        @Volatile private var fovDegrees: Float = 85f
+        @Volatile private var activeLayout: Int = VrResolvedLayout.SBS.shaderIndex
+        @Volatile private var activeHalfPanoDeg: Int = 360
+        @Volatile private var invertYaw: Boolean = false
+        @Volatile private var viewLocked: Boolean = false
+        @Volatile private var gyroSensitivity: Float = DEFAULT_GYRO_SENSITIVITY
+        @Volatile private var zoomFactor: Float = 1f
 
-        /** 编译 / 链接着色器。 */
+        private val activeHalfPanoRadians: Float
+            get() = (Math.toRadians(activeHalfPanoDeg / 2.0)).toFloat()
+
+        // -- 公共参数入口（全部只写 volatile，主线程安全，不触碰 GL） --
+
+        @JvmName("rendererSetFormat")
+        fun setFormat(layout: Int, halfPanoDeg: Int) {
+            activeLayout = layout
+            activeHalfPanoDeg = halfPanoDeg
+        }
+
+        @JvmName("rendererSetFov")
+        fun setFovDegrees(fov: Float) {
+            fovDegrees = fov.coerceIn(30f, 120f)
+        }
+
+        @JvmName("rendererSetGyroSensitivity")
+        fun setGyroSensitivity(sensitivity: Float) {
+            gyroSensitivity = sensitivity.coerceIn(0.05f, 0.5f)
+        }
+
+        @JvmName("rendererSetZoom")
+        fun setZoom(zoom: Float) {
+            // 视距可拉远（<1，视野变宽）也可推近（>1）
+            zoomFactor = zoom.coerceIn(MIN_ZOOM, MAX_ZOOM)
+        }
+
+        @JvmName("rendererSetInvertYaw")
+        fun setInvertYaw(invert: Boolean) {
+            invertYaw = invert
+        }
+
+        @JvmName("rendererSetViewLocked")
+        fun setViewLocked(locked: Boolean) {
+            viewLocked = locked
+        }
+
+        /** 主线程：只拷贝旋转向量到 volatile；GL 线程消费。 */
+        @androidx.annotation.AnyThread
+        fun setTargetRotation(values: FloatArray) {
+            targetRotVec = values.copyOf(4)
+        }
+
+        /** 主线程：只置标志；GL 线程在下一帧归中。 */
+        @androidx.annotation.MainThread
+        fun recenter() {
+            recenterRequested = true
+        }
+
+        @JvmName("rendererVideoSize")
+        fun setVideoSize(width: Int, height: Int) {
+            val buf = surfaceTexture ?: return
+            // setDefaultBufferSize 必须在拥有 EGL 上下文的 GL 线程调用；经 queueEvent 投递，
+            // 并用尺寸守卫避免主线程反复与 updateTexImage 争用 BufferQueue 锁（ANR 根因规避）。
+            if (width == lastBufferSetW && height == lastBufferSetH) return
+            lastBufferSetW = width
+            lastBufferSetH = height
+            queueEvent {
+                try {
+                    buf.setDefaultBufferSize(width, height)
+                } catch (_: Exception) {
+                }
+            }
+        }
+
+        // -- 着色器编译 / 链接 --
+
         private fun loadProgram(vsSrc: String, fsSrc: String): Int {
             val vs = compileShader(GLES20.GL_VERTEX_SHADER, vsSrc)
             val fs = compileShader(GLES20.GL_FRAGMENT_SHADER, fsSrc)
@@ -293,246 +369,185 @@ class VrSurfaceView @JvmOverloads constructor(
             return shader
         }
 
-        override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-            GLES20.glClearColor(0f, 0f, 0f, 1f)
+        // -- 球面网格（CPU 生成，仅位置；UV 在片元由方向反算，规避极点伪影） --
 
-            program = loadProgram(VERTEX_SRC, FRAGMENT_SRC)
-            uTex = GLES20.glGetUniformLocation(program, "uTex")
-            uOrientation = GLES20.glGetUniformLocation(program, "uOrientation")
-            uAspect = GLES20.glGetUniformLocation(program, "uAspect")
-            uHalfFovY = GLES20.glGetUniformLocation(program, "uHalfFovY")
-            uLayout = GLES20.glGetUniformLocation(program, "uLayout")
-            uZoom = GLES20.glGetUniformLocation(program, "uZoom")
-            uHalfPano = GLES20.glGetUniformLocation(program, "uHalfPano")
-            uInvertYaw = GLES20.glGetUniformLocation(program, "uInvertYaw")
-
-            // Varying 采样外部 OES 纹理：创建纹理对象
-            val tmp = IntArray(1)
-            GLES20.glGenTextures(1, tmp, 0)
-            texId = tmp[0]
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-            GLES20.glBindTexture(GL_TEXTURE_EXTERNAL_OES, texId)
-            GLES20.glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-            GLES20.glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-
-            surfaceTexture = android.graphics.SurfaceTexture(texId).also { tex ->
-                tex.setOnFrameAvailableListener { hasNewFrame = true }
-                // 兜底初始尺寸，避免解码器首帧前无尺寸
-                tex.setDefaultBufferSize(1920, 1080)
-            }
-
-            // 播放器解码帧输出到该纹理；在主线程安全切换表面
-            mainHandler.post {
-                player.attachSurface(Surface(surfaceTexture!!))
-            }
-            registerSensor()
-        }
-
-        override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-            viewportW = width.coerceAtLeast(1)
-            viewportH = height.coerceAtLeast(1)
-            GLES20.glViewport(0, 0, viewportW, viewportH)
-            builtInAspect = viewportW.toFloat() / viewportH.toFloat()
-        }
-
-        override fun onDrawFrame(gl: GL10?) {
-            val tex = surfaceTexture ?: return
-            if (hasNewFrame) {
-                try {
-                    tex.updateTexImage()
-                    hasNewFrame = false
-                } catch (_: Exception) {
-                    hasNewFrame = false
+        private fun buildSphere(longSeg: Int, latSeg: Int): FloatArray {
+            val verts = ArrayList<Float>(longSeg * latSeg * 6 * 3)
+            val dTheta = 2.0 * Math.PI / longSeg
+            for (j in 0 until latSeg) {
+                val phi0 = (Math.PI / 2 - (j).toDouble() * Math.PI / latSeg)
+                val phi1 = (Math.PI / 2 - (j + 1).toDouble() * Math.PI / latSeg)
+                for (i in 0 until longSeg) {
+                    val th0 = i.toDouble() * dTheta
+                    val th1 = (i + 1).toDouble() * dTheta
+                    fun v(phi: Double, th: Double): FloatArray {
+                        val cp = Math.cos(phi)
+                        return floatArrayOf(
+                            (Math.cos(th) * cp).toFloat(),
+                            (Math.sin(phi)).toFloat(),
+                            (Math.sin(th) * cp).toFloat(),
+                        )
+                    }
+                    val a = v(phi0, th0)
+                    val b = v(phi1, th0)
+                    val c = v(phi1, th1)
+                    val d = v(phi0, th1)
+                    verts.addAll(a.asIterable()); verts.addAll(b.asIterable()); verts.addAll(c.asIterable())
+                    verts.addAll(a.asIterable()); verts.addAll(c.asIterable()); verts.addAll(d.asIterable())
                 }
             }
-
-            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
-            GLES20.glUseProgram(program)
-
-            // 平滑陀螺仪姿态并向归中基准取相对旋转，再叠加手滑视角
-            smoothRotation()
-            buildRelativeMatrix()
-            computeOrientation(combinedOrient)
-
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-            GLES20.glBindTexture(GL_TEXTURE_EXTERNAL_OES, texId)
-            GLES20.glUniform1i(uTex, 0)
-
-            GLES20.glUniformMatrix3fv(uOrientation, 1, false, combinedOrient, 0)
-            GLES20.glUniform1f(uAspect, builtInAspect)
-            val fovRad = Math.toRadians(fovDegrees.toDouble()).toFloat()
-            GLES20.glUniform1f(uHalfFovY, fovRad * 0.5f)
-            GLES20.glUniform1f(uZoom, zoomFactor)
-            GLES20.glUniform1i(uLayout, activeLayout)
-            // 全景覆盖角度的一半（弧度）：360°→π，180°→π/2
-            GLES20.glUniform1f(uHalfPano, activeHalfPanoRadians)
-            GLES20.glUniform1i(uInvertYaw, if (invertYaw) 1 else 0)
-
-            // 全屏四边形
-            val aPos = GLES20.glGetAttribLocation(program, "aPos")
-            val aUV = GLES20.glGetAttribLocation(program, "aUV")
-            vertexBuffer.position(0)
-            GLES20.glEnableVertexAttribArray(aPos)
-            GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 16, vertexBuffer)
-            vertexBuffer.position(2)
-            GLES20.glEnableVertexAttribArray(aUV)
-            GLES20.glVertexAttribPointer(aUV, 2, GLES20.GL_FLOAT, false, 16, vertexBuffer)
-            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
-            GLES20.glDisableVertexAttribArray(aPos)
-            GLES20.glDisableVertexAttribArray(aUV)
+            return verts.toFloatArray()
         }
 
-        // -- 姿态与旋转 --
+        // -- 相机矩阵（球心、向 +z 看，经 view=refR*curR^T 做相对旋转与归中） --
 
-        /** 由传感器事件（GAME_ROTATION_VECTOR）更新目标姿态四元数。 */
-        @androidx.annotation.AnyThread
-        fun setTargetRotation(values: FloatArray) {
-            val len2 = values[0] * values[0] + values[1] * values[1] + values[2] * values[2]
-            synchronized(targetQuat) {
-                targetQuat[0] = values[0]
-                targetQuat[1] = values[1]
-                targetQuat[2] = values[2]
-                targetQuat[3] = if (len2 < 1f) Math.sqrt((1.0 - len2).toDouble()).toFloat() else 0f
+        /** 把当前 device→world 旋转向量（展示重映射后）作平滑并合成 mvp。在 GL 线程调用。 */
+        private fun updateCamera() {
+            val rv = targetRotVec ?: return // 尚无传感器数据，沿用 lastMvp
+            // 视角锁定：跳过传感器姿态更新与归中，保持当前视角不变（画面固定）
+            if (viewLocked) return
+            val base = FloatArray(9)
+            // GAME_ROTATION_VECTOR 旋转向量 → 3x3 device→world（API 37 起返回 void，直接填 R）
+            SensorManager.getRotationMatrixFromVector(base, rv)
+
+            // 按横屏 Display.rotation 重映射，把"屏幕坐标系"对齐到陀螺仪设备系（方向修正核心）
+            val remap = FloatArray(9)
+            if (SensorManager.remapCoordinateSystem(base, remapXAxis, remapYAxis, remap)) {
+                System.arraycopy(remap, 0, base, 0, 9)
             }
-        }
 
-        @androidx.annotation.MainThread
-        fun recenter() {
-            synchronized(refQuat) {
+            // 3x3 → 四元数，做 slerp 平滑（对 device→world 姿态平滑，避免归一化漂移）
+            val targetQuat = FloatArray(4)
+            matToQuat(base, targetQuat)
+            slerp(currentQuat, targetQuat, gyroSensitivity)
+
+            // recenter：以"原始设备朝向"(targetQuat) 为归中基准，而非平滑后的 currentQuat。
+            // 首帧自动归中 → 进入即面向设备当前朝向；手动回中 → 立即将当前看的方向置为前方。
+            if (firstPose) {
                 System.arraycopy(targetQuat, 0, refQuat, 0, 4)
+                firstPose = false
+            } else if (recenterRequested) {
+                System.arraycopy(targetQuat, 0, refQuat, 0, 4)
+                recenterRequested = false
+            }
+
+            // 相对旋转 view = refR * curR^T；归中（current==ref）时 view=identity → 前方=pano 中心
+            val curR = quatToMatrix3(currentQuat)
+            val curRT = transpose3(curR)
+            val refR = quatToMatrix3(refQuat)
+            val view3 = mat3Mul(refR, curRT)
+
+            // 3x3 view 嵌入 4x4（列主序），projection 由 FOV/视距决定
+            val view16 = FloatArray(16)
+            view16[0] = view3[0]; view16[1] = view3[1]; view16[2] = view3[2]; view16[3] = 0f
+            view16[4] = view3[3]; view16[5] = view3[4]; view16[6] = view3[5]; view16[7] = 0f
+            view16[8] = view3[6]; view16[9] = view3[7]; view16[10] = view3[8]; view16[11] = 0f
+            view16[12] = 0f; view16[13] = 0f; view16[14] = 0f; view16[15] = 1f
+
+            val proj16 = FloatArray(16)
+            // 有效透视竖直 FOV（度）：视距 zoom<1 拉远（FOV 变大），>1 推近（FOV 变小）
+            val effFovDeg = (fovDegrees / zoomFactor).coerceIn(5f, 165f)
+            Matrix.perspectiveM(proj16, 0, effFovDeg, aspect, 0.1f, 10f)
+
+            Matrix.multiplyMM(uMvpBuf, 0, proj16, 0, view16, 0)
+        }
+
+        private fun setPerspective(out: FloatArray, fovY: Float, aspect: Float, near: Float = 0.1f, far: Float = 10f) {
+            Matrix.perspectiveM(out, 0, fovY, aspect, near, far)
+        }
+
+        private fun matToQuat(m: FloatArray, out: FloatArray) {
+            val m00 = m[0]; val m10 = m[1]; val m20 = m[2]
+            val m01 = m[3]; val m11 = m[4]; val m21 = m[5]
+            val m02 = m[6]; val m12 = m[7]; val m22 = m[8]
+            val tr = m00 + m11 + m22
+            var s: Double
+            val x: Double; val y: Double; val z: Double; val w: Double
+            when {
+                tr > 0f -> {
+                    s = Math.sqrt(tr + 1.0) * 2.0
+                    w = 0.25 * s
+                    x = (m21 - m12) / s
+                    y = (m02 - m20) / s
+                    z = (m10 - m01) / s
+                }
+                m00 > m11 && m00 > m22 -> {
+                    s = Math.sqrt(1.0 + m00 - m11 - m22) * 2.0
+                    w = (m21 - m12) / s
+                    x = 0.25 * s
+                    y = (m01 + m10) / s
+                    z = (m02 + m20) / s
+                }
+                m11 > m22 -> {
+                    s = Math.sqrt(1.0 + m11 - m00 - m22) * 2.0
+                    w = (m02 - m20) / s
+                    x = (m01 + m10) / s
+                    y = 0.25 * s
+                    z = (m12 + m21) / s
+                }
+                else -> {
+                    s = Math.sqrt(1.0 + m22 - m00 - m11) * 2.0
+                    w = (m10 - m01) / s
+                    x = (m02 + m20) / s
+                    y = (m12 + m21) / s
+                    z = 0.25 * s
+                }
+            }
+            val n = Math.sqrt(x * x + y * y + z * z + w * w)
+            if (n > 1e-6) {
+                out[0] = (x / n).toFloat()
+                out[1] = (y / n).toFloat()
+                out[2] = (z / n).toFloat()
+                out[3] = (w / n).toFloat()
+            } else {
+                out[0] = 0f; out[1] = 0f; out[2] = 0f; out[3] = 1f
             }
         }
 
-        private fun smoothRotation() {
-            // 从目标姿态做较小幅度球面插值，得到平滑的当前姿态。
-            // gyroSensitivity 越大跟手越快（越灵敏）；越小越平缓抗抖。
-            val target = FloatArray(4)
-            synchronized(targetQuat) { System.arraycopy(targetQuat, 0, target, 0, 4) }
-            synchronized(currentQuat) {
-                slerp(currentQuat, target, gyroSensitivity)
-            }
-        }
-
-        private fun buildRelativeMatrix() {
-            val current = FloatArray(4)
-            val ref = FloatArray(4)
-            synchronized(currentQuat) { System.arraycopy(currentQuat, 0, current, 0, 4) }
-            synchronized(refQuat) { System.arraycopy(refQuat, 0, ref, 0, 4) }
-
-            conjugate(ref, invRef)
-            multiplyQuat(current, invRef, relQuat)
-            quatToMatrix(relQuat, relMatrix16)
-        }
-
-        // -- 视角合成：设备相对旋转 × 手滑 -- //
-
-        /** 可复用的 3x3 矩阵缓冲。 */
-        private val rel3x3 = FloatArray(9)
-        private val manual = FloatArray(9)
-        private val combinedOrient = FloatArray(9) // 列主序 3x3，供 uniform
-        private val manualYaw = FloatArray(1)
-        private val manualPitch = FloatArray(1)
-
-        /** 由手滑累计的 yaw / pitch 构建手动视角旋转（绕内容坐标轴）。 */
-        private fun buildManualRotation() {
-            val yaw = manualYaw[0]
-            val pitch = manualPitch[0]
-            val cy = Math.cos(yaw.toDouble()).toFloat(); val sy = Math.sin(yaw.toDouble()).toFloat()
-            val cp = Math.cos(pitch.toDouble()).toFloat(); val sp = Math.sin(pitch.toDouble()).toFloat()
-            // Ry(yaw) * Rx(pitch)：先竖直仰角，再水平转向
-            // 列主序 3x3
-            manual[0] = cy; manual[1] = 0f; manual[2] = -sy
-            manual[3] = sp * sy; manual[4] = cp; manual[5] = sp * cy
-            manual[6] = cp * sy; manual[7] = -sp; manual[8] = cp * cy
-        }
-
-        /**
-         * 合成最终朝向矩阵：deviceToWorld × Rmanual(手滑)。
-         * world = combined * contentDir，结果写入 [combinedOrient]。
-         */
-        private fun computeOrientation(out: FloatArray) {
-            relMatrix16extract()
-            buildManualRotation()
-            mat3Mul(rel3x3, manual, out)
-        }
-
-        private fun mat3Mul(a: FloatArray, b: FloatArray, out: FloatArray) {
-            // 列主序 3x3：C = A * B。a 与 out 可能不同，故先读回 a 三列
-            val c0 = a[0]; val c1 = a[1]; val c2 = a[2]
-            out[0] = c0 * b[0] + a[3] * b[1] + a[6] * b[2]
-            out[1] = c1 * b[0] + a[4] * b[1] + a[7] * b[2]
-            out[2] = c2 * b[0] + a[5] * b[1] + a[8] * b[2]
-            out[3] = c0 * b[3] + a[3] * b[4] + a[6] * b[5]
-            out[4] = c1 * b[3] + a[4] * b[4] + a[7] * b[5]
-            out[5] = c2 * b[3] + a[5] * b[4] + a[8] * b[5]
-            out[6] = c0 * b[6] + a[3] * b[7] + a[6] * b[8]
-            out[7] = c1 * b[6] + a[4] * b[7] + a[7] * b[8]
-            out[8] = c2 * b[6] + a[5] * b[7] + a[8] * b[8]
-        }
-
-        /** 从 relMatrix16（4x4）提取左上 3x3 到 [rel3x3]。 */
-        private fun relMatrix16extract() {
-            rel3x3[0] = relMatrix16[0]; rel3x3[1] = relMatrix16[1]; rel3x3[2] = relMatrix16[2]
-            rel3x3[3] = relMatrix16[4]; rel3x3[4] = relMatrix16[5]; rel3x3[5] = relMatrix16[6]
-            rel3x3[6] = relMatrix16[8]; rel3x3[7] = relMatrix16[9]; rel3x3[8] = relMatrix16[10]
-        }
-
-        /**
-         * 手滑累加视角（主线程调用）。
-         * @param dxPx 本次横向位移（相对上一次，像素），右滑为正
-         * @param dyPx 本次纵向位移（像素），下滑为正
-         */
-        @androidx.annotation.MainThread
-        fun addDrag(dxPx: Float, dyPx: Float) {
-            manualYaw[0] += -dxPx * DRAG_SENSITIVITY
-            manualPitch[0] += dyPx * DRAG_SENSITIVITY
-        }
-
-        /** 重置手滑视角（通常与陀螺仪归中一起调用）。 */
-        @androidx.annotation.MainThread
-        fun resetManual() {
-            manualYaw[0] = 0f
-            manualPitch[0] = 0f
-        }
-
-        private fun quatToMatrix(q: FloatArray, m: FloatArray) {
+        /** 四元数 → 3x3 列主序旋转矩阵（device→world）。 */
+        private fun quatToMatrix3(q: FloatArray): FloatArray {
             val x = q[0]; val y = q[1]; val z = q[2]; val w = q[3]
             val xx = x * x; val yy = y * y; val zz = z * z
             val xy = x * y; val xz = x * z; val yz = y * z
             val wx = w * x; val wy = w * y; val wz = w * z
-
-            // 构造列主序 3x3 旋转矩阵，嵌入 4x4 左上角
-            m[0] = 1 - 2 * (yy + zz); m[1] = 2 * (xy + wz); m[2] = 2 * (xz - wy)
-            m[4] = 2 * (xy - wz); m[5] = 1 - 2 * (xx + zz); m[6] = 2 * (yz + wx)
-            m[8] = 2 * (xz + wy); m[9] = 2 * (yz - wx); m[10] = 1 - 2 * (xx + yy)
+            return floatArrayOf(
+                1 - 2 * (yy + zz), 2 * (xy + wz), 2 * (xz - wy),
+                2 * (xy - wz), 1 - 2 * (xx + zz), 2 * (yz + wx),
+                2 * (xz + wy), 2 * (yz - wx), 1 - 2 * (xx + yy),
+            )
         }
 
-        private fun conjugate(q: FloatArray, out: FloatArray) {
-            out[0] = -q[0]; out[1] = -q[1]; out[2] = -q[2]; out[3] = q[3]
-        }
+        private fun transpose3(m: FloatArray): FloatArray =
+            floatArrayOf(
+                m[0], m[3], m[6],
+                m[1], m[4], m[7],
+                m[2], m[5], m[8],
+            )
 
-        private fun multiplyQuat(a: FloatArray, b: FloatArray, out: FloatArray) {
-            val ax = a[0]; val ay = a[1]; val az = a[2]; val aw = a[3]
-            val bx = b[0]; val by = b[1]; val bz = b[2]; val bw = b[3]
-            out[0] = aw * bx + ax * bw + ay * bz - az * by
-            out[1] = aw * by - ax * bz + ay * bw + az * bx
-            out[2] = aw * bz + ax * by - ay * bx + az * bw
-            out[3] = aw * bw - ax * bx - ay * by - az * bz
+        /** 3x3 列主序矩阵相乘。 */
+        private fun mat3Mul(a: FloatArray, b: FloatArray): FloatArray {
+            val r = FloatArray(9)
+            for (col in 0 until 3) {
+                for (row in 0 until 3) {
+                    r[col * 3 + row] =
+                        a[0 * 3 + row] * b[col * 3 + 0] +
+                        a[1 * 3 + row] * b[col * 3 + 1] +
+                        a[2 * 3 + row] * b[col * 3 + 2]
+                }
+            }
+            return r
         }
 
         private fun dot(a: FloatArray, b: FloatArray): Float = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]
 
         private fun slerp(q1: FloatArray, q2: FloatArray, t: Float) {
             var dot = dot(q1, q2)
-            var b = FloatArray(4) { q2[it] }
+            val b = q2.copyOf()
             if (dot < 0f) {
                 dot = -dot
                 for (i in 0..3) b[i] = -b[i]
             }
-            if (dot > 0.9995f) {
-                // 接近重合：线性插值后归一
+            if (dot > 0.9995f || t >= 1f) {
                 for (i in 0..3) q1[i] += t * (b[i] - q1[i])
                 normalize(q1)
                 return
@@ -546,6 +561,7 @@ class VrSurfaceView @JvmOverloads constructor(
             for (i in 0..3) {
                 q1[i] = (s0 * q1[i] + s1 * b[i]).toFloat()
             }
+            normalize(q1)
         }
 
         private fun normalize(q: FloatArray) {
@@ -555,56 +571,125 @@ class VrSurfaceView @JvmOverloads constructor(
             }
         }
 
-        // -- 可调参数 --
+        // -- GLSurfaceView.Renderer 生命周期 --
 
-        @Volatile private var fovDegrees: Float = 85f
-        @Volatile private var activeLayout: Int = VrResolvedLayout.SBS.shaderIndex
-        // 全景覆盖角度（度）：360 / 180
-        @Volatile private var activeHalfPanoDeg: Int = 360
-        @Volatile private var invertYaw: Boolean = false
-        // 陀螺仪灵敏度（slerp 权重），越大跟手越快
-        @Volatile private var gyroSensitivity: Float = DEFAULT_GYRO_SENSITIVITY
-        // 视距（Zoom）倍率，>=1，越大越拉近
-        @Volatile private var zoomFactor: Float = 1f
+        override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+            GLES20.glClearColor(0f, 0f, 0f, 1f)
+            // 单球无遮挡，球内表面面向相机，关闭背面剔除规避 winding 问题
+            GLES20.glDisable(GLES20.GL_CULL_FACE)
 
-        private val activeHalfPanoRadians: Float
-            get() = (Math.toRadians(activeHalfPanoDeg / 2.0)).toFloat()
+            program = loadProgram(VERTEX_SRC, FRAGMENT_SRC)
+            // attrib/uniform 位置在链接后缓存一次，onDrawFrame 内禁止 glGet*
+            aPos = GLES20.glGetAttribLocation(program, "aPos")
+            uMvp = GLES20.glGetUniformLocation(program, "uMvp")
+            uTex = GLES20.glGetUniformLocation(program, "uTex")
+            uLayout = GLES20.glGetUniformLocation(program, "uLayout")
+            uHalfPano = GLES20.glGetUniformLocation(program, "uHalfPano")
+            uInvertYaw = GLES20.glGetUniformLocation(program, "uInvertYaw")
 
-        /** 播放器设置布局（0=左右 / 1=上下）与全景覆盖角度（180/360）。 */
-        @JvmName("rendererSetFormat")
-        fun setFormat(layout: Int, halfPanoDeg: Int) {
-            activeLayout = layout
-            activeHalfPanoDeg = halfPanoDeg
+            // 球面 VBO
+            val sphere = buildSphere(SPHERE_LONG_SEG, SPHERE_LAT_SEG)
+            sphereCount = sphere.size / 3
+            val vb = ByteBuffer.allocateDirect(sphere.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+            vb.put(sphere)
+            vb.position(0)
+            val buf = IntArray(1)
+            GLES20.glGenBuffers(1, buf, 0)
+            sphereVB = buf[0]
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sphereVB)
+            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, sphere.size * 4, vb, GLES20.GL_STATIC_DRAW)
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+
+            // OES 外部纹理 + SurfaceTexture
+            val tmp = IntArray(1)
+            GLES20.glGenTextures(1, tmp, 0)
+            texId = tmp[0]
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+            GLES20.glBindTexture(GL_TEXTURE_EXTERNAL_OES, texId)
+            GLES20.glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0)
+
+            surfaceTexture = android.graphics.SurfaceTexture(texId).also { tex ->
+                tex.setOnFrameAvailableListener { hasNewFrame = true }
+                // GL 线程兜底初始尺寸，避免解码器首帧前尺寸未知（MediaCodec 随后自行覆盖）
+                tex.setDefaultBufferSize(1920, 1080)
+            }
+
+            // 播放器解码帧输出到该纹理；主线程安全切换表面，每次重建面只挂一次
+            mainHandler.post {
+                try {
+                    val tex = surfaceTexture
+                    if (tex != null) player.attachSurface(Surface(tex))
+                } catch (_: Exception) {
+                }
+            }
+            registerSensor()
         }
 
-        @JvmName("rendererSetFov")
-        fun setFovDegrees(fov: Float) {
-            fovDegrees = fov.coerceIn(30f, 120f)
+        override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+            viewportW = width.coerceAtLeast(1)
+            viewportH = height.coerceAtLeast(1)
+            GLES20.glViewport(0, 0, viewportW, viewportH)
+            aspect = viewportW.toFloat() / viewportH.toFloat()
         }
 
-        @JvmName("rendererSetGyroSensitivity")
-        fun setGyroSensitivity(sensitivity: Float) {
-            gyroSensitivity = sensitivity.coerceIn(0.05f, 0.5f)
-        }
+        override fun onDrawFrame(gl: GL10?) {
+            val tex = surfaceTexture
+            if (tex != null && hasNewFrame) {
+                try {
+                    tex.updateTexImage()
+                    hasNewFrame = false
+                } catch (_: Exception) {
+                    hasNewFrame = false
+                }
+            }
 
-        @JvmName("rendererSetZoom")
-        fun setZoom(zoom: Float) {
-            zoomFactor = zoom.coerceIn(1f, 3f)
-        }
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+            if (program == 0) return
 
-        @JvmName("rendererSetInvertYaw")
-        fun setInvertYaw(invert: Boolean) {
-            invertYaw = invert
-        }
+            GLES20.glUseProgram(program)
 
-        @JvmName("rendererVideoSize")
-        fun setVideoSize(width: Int, height: Int) {
-            videoSize = intArrayOf(width, height)
-            surfaceTexture?.setDefaultBufferSize(width, height)
+            // 相机矩阵：球心、陀螺仪相对旋转 + 透视
+            updateCamera()
+
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+            GLES20.glBindTexture(GL_TEXTURE_EXTERNAL_OES, texId)
+            GLES20.glUniform1i(uTex, 0)
+            GLES20.glUniformMatrix4fv(uMvp, 1, false, uMvpBuf, 0)
+            GLES20.glUniform1i(uLayout, activeLayout)
+            GLES20.glUniform1f(uHalfPano, activeHalfPanoRadians)
+            GLES20.glUniform1i(uInvertYaw, if (invertYaw) 1 else 0)
+
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, sphereVB)
+            GLES20.glEnableVertexAttribArray(aPos)
+            GLES20.glVertexAttribPointer(aPos, 3, GLES20.GL_FLOAT, false, 12, 0)
+            GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, sphereCount)
+            GLES20.glDisableVertexAttribArray(aPos)
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+            GLES20.glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0)
         }
     }
 
     // endregion
+
+    private val remapXAxis: Int
+        get() = when (displayRotQuarter) {
+            1 -> SensorManager.AXIS_Y
+            2 -> SensorManager.AXIS_MINUS_X
+            3 -> SensorManager.AXIS_MINUS_Y
+            else -> SensorManager.AXIS_X
+        }
+
+    private val remapYAxis: Int
+        get() = when (displayRotQuarter) {
+            1 -> SensorManager.AXIS_MINUS_X
+            2 -> SensorManager.AXIS_MINUS_Y
+            3 -> SensorManager.AXIS_X
+            else -> SensorManager.AXIS_Y
+        }
 
     private companion object {
 
@@ -614,28 +699,29 @@ class VrSurfaceView @JvmOverloads constructor(
         /** 陀螺仪灵敏度默认值（slerp 权重），越大跟手越快。 */
         private const val DEFAULT_GYRO_SENSITIVITY = 0.12f
 
-        /** 手滑转向灵敏度（弧度/像素）。 */
-        private const val DRAG_SENSITIVITY = 0.008f
+        /** 视距（Zoom）可调范围：<1 拉远（视野变宽），>1 推近（视野变窄）。 */
+        private const val MIN_ZOOM = 0.4f
+        private const val MAX_ZOOM = 3f
+
+        /** 球面网格细分：经线 × 纬线。 */
+        private const val SPHERE_LONG_SEG = 96
+        private const val SPHERE_LAT_SEG = 48
 
         val VERTEX_SRC = """
-            attribute vec4 aPos;
-            attribute vec2 aUV;
-            varying vec2 vUV;
+            attribute vec3 aPos;
+            uniform mat4 uMvp;
+            varying vec3 vDir;
             void main() {
-                gl_Position = aPos;
-                vUV = aUV;
+                vDir = aPos;
+                gl_Position = uMvp * vec4(aPos, 1.0);
             }
         """.trimIndent()
 
         val FRAGMENT_SRC = """
             #extension GL_OES_EGL_image_external : require
             precision mediump float;
-            varying vec2 vUV;
+            varying vec3 vDir;
             uniform samplerExternalOES uTex;
-            uniform mat3 uOrientation;
-            uniform float uAspect;
-            uniform float uHalfFovY;
-            uniform float uZoom;
             uniform int uLayout;
             uniform float uHalfPano;
             uniform int uInvertYaw;
@@ -644,34 +730,28 @@ class VrSurfaceView @JvmOverloads constructor(
             const float TWO_PI = 6.28318530718;
 
             void main() {
-                vec2 ndc = vUV * 2.0 - 1.0;
-                if (uInvertYaw == 1) ndc.x = -ndc.x;
+                // 球面顶点方向（对象空间）。相机在球心，view=identity 时前方为 -z（透视向 -z 看），
+                // 故以 -z 为前向：经度 = atan(x, -z)。uInvertYaw 镜像水平（反转 yaw）。
+                vec3 w = normalize(vDir);
+                float lon = atan(w.x, -w.z);
+                if (uInvertYaw == 1) lon = -lon;
+                float lat = asin(clamp(w.y, -1.0, 1.0));
 
-                // 屏幕平面 → 视点方向（屏幕外为 +z）。uZoom 倍率缩小视场等价拉近视距。
-                float effHalfFovY = uHalfFovY / uZoom;
-                float halfFovX = effHalfFovY * uAspect;
-                vec3 view = normalize(vec3(ndc.x * tan(halfFovX),
-                                           ndc.y * tan(effHalfFovY),
-                                           1.0));
-
-                // 旋转矩阵：设备朝向 → 世界方向，实现陀螺仪环视
-                vec3 world = uOrientation * view;
-
-                float lon = atan(world.x, world.z);
-                float lat = asin(clamp(world.y, -1.0, 1.0));
-
-                // 全景覆盖：uHalfPano 为该半幅对应的覆盖角的一半（弧度）。
-                // 360° → PI（整幅等距柱面）；180° → PI/2（只涵盖正前方半球）。
-                // 左右格式：水平跨度映射到半幅，垂直取全景全程；
-                // 上下格式：垂直跨度映射到半幅，水平取全景全程。
-                vec2 uv;
-                if (uLayout == 0) {
-                    uv = vec2((lon / (2.0 * uHalfPano) + 0.5) * 0.5,
-                                 lat / PI + 0.5);
-                } else {
-                    uv = vec2(lon / TWO_PI + 0.5,
-                              (lat / (2.0 * uHalfPano) + 0.5) * 0.5);
+                // 180° 内容：超出全景覆盖角（SBS 水平 ±90° / OU 垂直 ±90°）的区域置黑，
+                // 避免 uv 越出对应半幅露出另一只眼或贴边拉伸，形成"拼接错位"。
+                // 360°（uHalfPano=π）时该判断恒为假，不影响。
+                float halfPano = uHalfPano;
+                bool outside = (uLayout == 0 && abs(lon) > halfPano) ||
+                               (uLayout == 1 && abs(lat) > halfPano);
+                if (outside) {
+                    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                    return;
                 }
+
+                // 半幅采样：SBS 水平映射到半幅（取左半幅），OU 垂直映射到上半幅。
+                vec2 uv = (uLayout == 0)
+                    ? vec2((lon / (2.0 * uHalfPano) + 0.5) * 0.5, lat / PI + 0.5)
+                    : vec2(lon / TWO_PI + 0.5,                   (lat / (2.0 * uHalfPano) + 0.5) * 0.5);
                 // SurfaceTexture 帧纵向与此处坐标相反，翻转 v 使画面保持正立
                 uv.y = 1.0 - uv.y;
                 gl_FragColor = texture2D(uTex, uv);

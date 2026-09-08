@@ -203,6 +203,7 @@
     <string name="player_vr_zoom">视距</string>
     <string name="player_vr_zoom_hint">视距</string>
     <string name="player_vr_exit">退出 VR</string>
+    <string name="player_vr_view_lock">视角锁定</string>
     <string name="player_vr_entered">VR 环视：已开启</string>
     <string name="player_vr_exited">VR 环视：已关闭</string>
 </resources>
