@@ -1,0 +1,4397 @@
+package com.nichx.niplayer.feature.home.library
+
+import com.nichx.niplayer.feature.home.R
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.res.Configuration
+import android.net.Uri
+import android.app.Activity
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Category
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.AccountTree
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PhotoLibrary
+
+import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.SwapVert
+import androidx.compose.material.icons.rounded.Upload
+import androidx.compose.material.icons.automirrored.rounded.ViewList
+import androidx.compose.material.icons.rounded.FilterAlt
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.SortByAlpha
+import androidx.compose.material.icons.rounded.SwapVerticalCircle
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedTextField
+import com.nichx.niplayer.designsystem.components.DownloadDialogShell
+import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
+import com.nichx.niplayer.designsystem.components.NiGlassOverlay
+import com.nichx.niplayer.designsystem.components.NiGlassOverlayKind
+import com.nichx.niplayer.designsystem.components.NiGlassOverlayRequest
+import com.nichx.niplayer.designsystem.components.NiInfoDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
+import com.nichx.niplayer.common.error.NiMessage
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
+import com.nichx.niplayer.designsystem.components.NiAutoFocusAndShowKeyboard
+import com.nichx.niplayer.designsystem.components.NiTextField
+import com.nichx.niplayer.designsystem.components.NiTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import com.nichx.niplayer.datastore.DownloadSettings
+import com.nichx.niplayer.datastore.ExperimentalSettings
+import com.nichx.niplayer.datastore.FileBrowserSettings
+import com.nichx.niplayer.designsystem.components.NiAutoSizeText
+import com.nichx.niplayer.designsystem.components.NiConfirmDialog
+import com.nichx.niplayer.designsystem.components.NiEmptyState
+import com.nichx.niplayer.designsystem.components.NiProgressTrack
+import com.nichx.niplayer.designsystem.components.NiScaffold
+import com.nichx.niplayer.designsystem.components.NiTopBar
+import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
+import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
+import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
+import com.nichx.niplayer.designsystem.components.glassOnSurface
+import com.nichx.niplayer.designsystem.components.glassOnSurfaceMuted
+import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
+import com.nichx.niplayer.designsystem.iconstyle.NiStyleIcon
+import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import com.nichx.niplayer.designsystem.theme.NiMotion
+import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.feature.home.MediaFileTypes.isImageFile
+import com.nichx.niplayer.storage.StorageFile
+import com.nichx.niplayer.storage.StorageAccess
+import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.Shadow
+
+// 主 FAB 底部偏移，与媒体库页"新增媒体库"按钮位置保持一致
+// （该值已包含对应用底部导航栏 NiBottomBar 的避让）
+private val FabBottomOffset = 104.dp
+
+/** 顶栏按钮的液态玻璃模糊/折射参数（AndroidLiquidGlass backdrop 配方）。 */
+private object TopBarGlassDefaults {
+    const val BlurRadius = 6f
+    const val LensRadius = 6f
+}
+
+/**
+ * 顶栏按钮的**液态玻璃材质**（AndroidLiquidGlass / com.kyant.backdrop）。
+ *
+ * 复用页面内容层的本地 backdrop（与多选操作栏同款捕获层）做真实液态玻璃：
+ * vibrancy + blur + lens + highlight + shadow，底色与底部导航栏 pill 同款灰色
+ * （surfaceContainer 按底栏不透明度半透明），保证视觉统一。
+ *
+ * @param backdrop 页面内容层的本地捕获 backdrop（[rememberLayerBackdrop]），
+ *                 null 时（无捕获层）退化为无材质。
+ * @param bg 玻璃底色，默认与导航栏 pill 同款灰色
+ */
+@Composable
+private fun Modifier.niLiquidGlass(
+    backdrop: Backdrop?,
+    bg: Color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = LocalNiGlassOpacity.current),
+): Modifier {
+    if (backdrop == null) return this
+    return this.drawBackdrop(
+        backdrop = backdrop,
+        shape = { CircleShape },
+        effects = {
+            vibrancy()
+            blur(TopBarGlassDefaults.BlurRadius.dp.toPx())
+            lens(TopBarGlassDefaults.LensRadius.dp.toPx(), TopBarGlassDefaults.LensRadius.dp.toPx())
+        },
+        highlight = { Highlight.Default.copy(alpha = 0f) },
+        shadow = { Shadow.Default.copy(alpha = 0f) },
+        onDrawSurface = { drawRect(bg) },
+    )
+}
+
+/**
+ * 圆形玻璃按钮：液态玻璃灰圆底 + tertiary 图标（与底部导航栏 pill 视觉统一）。
+ * 默认顶栏尺寸 40dp；FAB 等场景通过 [size]/[iconSize] 调整。
+ */
+@Composable
+private fun GlassIconCircle(
+    icon: ImageVector,
+    contentDescription: String?,
+    onClick: () -> Unit,
+    backdrop: Backdrop?,
+    modifier: Modifier = Modifier,
+    size: Dp = 40.dp,
+    iconSize: Dp = 22.dp,
+    onLongClick: (() -> Unit)? = null,
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            // 先裁剪成圆，让涟漪与玻璃底都跟随圆形按钮形状
+            .clip(CircleShape)
+            .niLiquidGlass(backdrop)
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+@SuppressLint("LocalContextGetResourceValueCall")
+fun FileBrowserScreen(
+    storageId: Int,
+    initialPath: String = "",
+    // 导航请求计数：由宿主每次打开请求时递增，即使 initialPath 相同也重新触发定位，
+    // 修复重复点击同一快速访问书签时停留在上次浏览目录的问题
+    navTick: Int = 0,
+    onBack: () -> Unit,
+    onPlayVideo: (Boolean) -> Unit,
+    onNavigateToImageViewer: () -> Unit = {},
+    onNavigateToDownloadManager: () -> Unit = {},
+    // 多选态上抛给宿主：进入多选时由 Home 隐藏底部导航栏、MainActivity 隐藏音乐条
+    onFileBrowserMultiSelectChanged: (Boolean) -> Unit = {},
+) {
+    val viewModel: StorageFileViewModel = hiltViewModel(key = "file_browser_$storageId")
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val sortConfig by viewModel.sortConfig.collectAsStateWithLifecycle()
+    val thumbnailUrls by viewModel.thumbnailUrls.collectAsStateWithLifecycle()
+    val tooShortPaths by viewModel.tooShortPaths.collectAsStateWithLifecycle()
+    val thumbnailProgress by viewModel.thumbnailProgress.collectAsStateWithLifecycle()
+    val activeDownloadCount by viewModel.activeDownloadCount.collectAsStateWithLifecycle()
+    val activeUploadCount by viewModel.activeUploadCount.collectAsStateWithLifecycle()
+    val uploads by viewModel.uploads.collectAsStateWithLifecycle()
+    val encryptedPaths by viewModel.encryptedPaths.collectAsStateWithLifecycle()
+    val isMultiSelect by viewModel.isMultiSelect.collectAsStateWithLifecycle()
+    val selectedPaths by viewModel.selectedPaths.collectAsStateWithLifecycle()
+    val preparingPath by viewModel.preparingPlaybackPath.collectAsStateWithLifecycle()
+    val selectableFiles by viewModel.selectableFiles.collectAsStateWithLifecycle()
+    val messageController = LocalAppMessageController.current
+    var fileMenu by remember { mutableStateOf<Pair<StorageFile, Boolean>?>(null) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var showFilterMenu by remember { mutableStateOf(false) }
+    // 视图切换下拉菜单及其锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
+    var showViewMenu by remember { mutableStateOf(false) }
+    var viewMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    // 排序/过滤下拉菜单锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
+    var sortMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var filterMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    // 新建/上传 合并按钮的子菜单
+    var showActionMenu by remember { mutableStateOf(false) }
+    var actionMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var showFileInfo by remember { mutableStateOf<StorageFile?>(null) }
+    var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+    // 文件夹访问加密对话框状态
+    var showEncryptDialog by remember { mutableStateOf<StorageFile?>(null) }
+    var showDecryptDialog by remember { mutableStateOf<StorageFile?>(null) }
+    var showResetPasswordDialog by remember { mutableStateOf<StorageFile?>(null) }
+    // 解锁弹窗由 pendingUnlockFolder state 直接驱动：ViewModel 置 null 时立即关闭
+    val pendingUnlock by viewModel.pendingUnlockFolder.collectAsStateWithLifecycle()
+    val unlockError by viewModel.unlockError.collectAsStateWithLifecycle()
+    // 移动/复制冲突挂起状态：非空时弹窗让用户选择「跳过重复 / 覆盖 / 取消」
+    val transferConflict by viewModel.transferConflict.collectAsStateWithLifecycle()
+    // 批量文件操作进度（移动/复制/删除）：非空时显示进度条浮层
+    val fileOpProgress by viewModel.fileOpProgress.collectAsStateWithLifecycle()
+    // 文件管理对话框状态
+    var renameTarget by remember { mutableStateOf<StorageFile?>(null) }
+    var moveTarget by remember { mutableStateOf<StorageFile?>(null) }
+    var deleteTarget by remember { mutableStateOf<StorageFile?>(null) }
+    var showCreateFolder by remember { mutableStateOf(false) }
+    // 多选"更多"菜单展开态
+    var showMultiMoreMenu by remember { mutableStateOf(false) }
+    // 批量移动/复制：非空时弹出目标目录选择对话框；值是移动还是复制
+    var batchTransfer by remember { mutableStateOf<BatchTransferOp?>(null) }
+
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    val galleryState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+
+    var viewMode by remember { mutableStateOf(FileBrowserSettings.viewMode) }
+    val isGridView = viewMode == FileBrowserSettings.ViewMode.GRID
+    val isGalleryView = viewMode == FileBrowserSettings.ViewMode.GALLERY
+    val isFlatView = viewMode == FileBrowserSettings.ViewMode.FLAT_LIST
+    // 平铺列表模式下的展开树状态（子项缓存 / 展开集合 / 加载中集合）
+    val treeChildren by viewModel.treeChildren.collectAsStateWithLifecycle()
+    val treeExpanded by viewModel.treeExpanded.collectAsStateWithLifecycle()
+    val treeLoading by viewModel.treeLoading.collectAsStateWithLifecycle()
+
+    // 目录路径 -> 离开时的滚动位置(index, offset)
+    // 切换文件夹时记录旧目录位置，返回/进入时恢复原滚动位置，而不是把目录重新顶到最顶
+    val pathScrollCache = remember { mutableStateMapOf<String, Pair<Int, Int>>() }
+
+    // 记录当前目录的精确滚动位置（在导航动作前调用）
+    fun captureCurrentScroll() {
+        pathScrollCache[uiState.currentPath] = when {
+            isGridView -> gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+            isGalleryView -> galleryState.firstVisibleItemIndex to galleryState.firstVisibleItemScrollOffset
+            else -> listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }
+    }
+
+    // 已恢复过滚动位置的目录。仅当"目录发生变化"时才恢复缓存位置；
+    // 原地刷新/删除等 isLoading 翻转不应回拽到旧缓存位置（否则删完文件列表会跳回顶部）
+    var lastRestoredPath by remember { mutableStateOf<String?>(null) }
+
+    // 目录加载完成后：恢复该目录上次离开时的滚动位置
+    LaunchedEffect(uiState.currentPath, uiState.isLoading) {
+        if (!uiState.isLoading && lastRestoredPath != uiState.currentPath) {
+            lastRestoredPath = uiState.currentPath
+            pathScrollCache[uiState.currentPath]?.let { (index, offset) ->
+                when {
+                    isGridView -> gridState.scrollToItem(index, offset)
+                    isGalleryView -> galleryState.scrollToItem(index, offset)
+                    else -> listState.scrollToItem(index, offset)
+                }
+            }
+        }
+    }
+
+    val showScrollToTop by remember {
+        derivedStateOf {
+            when {
+                isGridView -> gridState.firstVisibleItemIndex > 2
+                isGalleryView -> galleryState.firstVisibleItemIndex > 2
+                else -> listState.firstVisibleItemIndex > 2
+            }
+        }
+    }
+
+    val context = LocalContext.current
+    // 待下载文件与下载目标选择状态
+    var pendingDownloadFiles by remember { mutableStateOf<List<StorageFile>>(emptyList()) }
+    var showTargetChooser by remember { mutableStateOf(false) }
+    var showPermissionDialog by remember { mutableStateOf(false) }
+
+    /** 按给定目标下载（避免目录选择为单次时改动全局预设）。 */
+    fun downloadFilesTo(files: List<StorageFile>, targetUrl: String?, targetName: String?) {
+        if (files.isEmpty()) return
+        if (files.size == 1) {
+            viewModel.downloadFile(files.first(), targetUrl, targetName)
+        } else {
+            viewModel.downloadFiles(files, targetUrl, targetName)
+        }
+    }
+
+    /** 目标选择确认：按 setAsPreset 决定写预设还是单次下载。 */
+    fun commitDownloadToPath(path: String, dirName: String, setAsPreset: Boolean) {
+        val files = pendingDownloadFiles
+        pendingDownloadFiles = emptyList()
+        showTargetChooser = false
+        if (setAsPreset) {
+            if (files.size == 1) {
+                viewModel.setDownloadDirAndDownload(files.first(), path, dirName)
+            } else {
+                viewModel.setDownloadDirAndDownloadFiles(files, path, dirName)
+            }
+        } else {
+            downloadFilesTo(files, "file://$path", dirName)
+        }
+    }
+
+    /** 目标选择确认：下载到预设目录。 */
+    fun commitDownloadToPreset() {
+        val files = pendingDownloadFiles
+        pendingDownloadFiles = emptyList()
+        showTargetChooser = false
+        downloadFilesTo(files, DownloadSettings.downloadDirTargetUrl, DownloadSettings.downloadDirName)
+    }
+
+    /** 下载入口：先保证存储权限，再弹出「预设 / 选择」目标选择器。 */
+    fun startDownload(files: List<StorageFile>) {
+        if (files.isEmpty()) return
+        pendingDownloadFiles = files
+        if (!StorageAccess.canWriteSharedStorage(context)) {
+            showPermissionDialog = true
+        } else {
+            showTargetChooser = true
+        }
+    }
+
+    // MediaStore 授权删除 launcher：拉起系统 "删除这些项目？" 弹窗，
+    // 结果由 viewModel.finalizePendingConsentDelete 统一落地（清 DB/缩略图/刷新）
+    val mediaDeleteLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        viewModel.finalizePendingConsentDelete(result.resultCode == Activity.RESULT_OK)
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is StorageFileEvent.NavigateToPlayer -> onPlayVideo(event.isAudio)
+                is StorageFileEvent.NavigateToImageViewer -> onNavigateToImageViewer()
+                is StorageFileEvent.ShowError -> messageController.post(NiMessage.error(event.message))
+                is StorageFileEvent.ShowToast -> messageController.post(NiMessage.info(event.message))
+                is StorageFileEvent.OpenFileActions ->
+                    fileMenu = event.file to event.isFavorited
+                is StorageFileEvent.RequestMediaStoreDelete -> {
+                    val request = MediaStore.createDeleteRequest(context.contentResolver, event.uris)
+                    mediaDeleteLauncher.launch(IntentSenderRequest.Builder(request).build())
+                }
+            }
+        }
+    }
+
+    // 上传文件 launcher：选择单个文件（任意类型），传给 ViewModel 上传到当前目录
+    val uploadLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            // 从 Uri 查询文件名
+            val fileName = runCatching {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex >= 0 && cursor.moveToFirst()) cursor.getString(nameIndex) else null
+                }
+            }.getOrNull() ?: "upload_${System.currentTimeMillis()}"
+            viewModel.uploadFile(uri, fileName)
+        }
+    }
+
+    LaunchedEffect(storageId, navTick) {
+        viewModel.initialize(storageId, initialPath)
+    }
+
+    if (initialPath.isNotEmpty()) {
+        LaunchedEffect(initialPath, navTick) {
+            // navTick 不变时 ViewModel 内部去重，避免图片查看等全屏页返回导致重新组合时
+            // 重复定位到初始路径、丢失用户当前浏览位置
+            viewModel.navigateToPath(initialPath, navTick)
+        }
+    }
+
+    // 多选态上抛：进入/退出多选时通知宿主隐藏/恢复底栏与音乐条
+    LaunchedEffect(isMultiSelect) {
+        onFileBrowserMultiSelectChanged(isMultiSelect)
+    }
+    // 离开本页（pop 出子栈）时复位宿主侧多选态，避免残留隐藏状态
+    DisposableEffect(Unit) {
+        onDispose { onFileBrowserMultiSelectChanged(false) }
+    }
+
+    BackHandler(enabled = true) {
+        when {
+            isMultiSelect -> viewModel.exitMultiSelect()
+            uiState.canGoUp -> { captureCurrentScroll(); viewModel.goUp() }
+            else -> onBack()
+        }
+    }
+
+    // 页面内容层的本地液态玻璃捕获：多选操作栏与顶栏按钮共用，供 drawBackdrop 做真实模糊 + 高光
+    val contentBackdropSurface = MaterialTheme.colorScheme.background
+    val multiSelectBarBackdrop = rememberLayerBackdrop {
+        drawRect(contentBackdropSurface)
+        drawContent()
+    }
+
+    NiScaffold(
+        // 独立全屏目的地，用不透明底色承载页面内容
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            if (isMultiSelect) {
+                NiTopBar(
+                    title = stringResource(R.string.storage_file_selected_count, selectedPaths.size),
+                    navigationIcon = {
+                        IconButton(onClick = viewModel::exitMultiSelect) {
+                            NiStyleIcon(
+                                icon = Icons.Rounded.Close,
+                                style = NiAppIconStyle,
+                                containerSize = 40.dp,
+                                iconSize = 22.dp,
+                                contentDescription = stringResource(R.string.storage_file_cancel_multi_select),
+                            )
+                        }
+                    },
+                )
+            } else {
+            NiTopBar(
+                title = uiState.storageName.ifEmpty { stringResource(R.string.storage_file_browser_title) },
+                navigationIcon = {
+                    // 点击逐级返回；长按直接回到存储根目录（深层目录快速返回）
+                    GlassIconCircle(
+                        icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = stringResource(
+                            if (uiState.canGoUp) R.string.storage_file_go_up else R.string.back,
+                        ),
+                        onClick = {
+                            if (uiState.canGoUp) { captureCurrentScroll(); viewModel.goUp() } else onBack()
+                        },
+                        onLongClick = {
+                            if (uiState.canGoUp) viewModel.goToRoot()
+                        },
+                        backdrop = multiSelectBarBackdrop,
+                    )
+                },
+                actions = {
+                    // 常驻：视图切换（图标显示当前模式，点击打开下拉菜单选择并持久化）
+                    Box(
+                        modifier = Modifier.onGloballyPositioned { coords ->
+                            // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
+                            val topLeft = coords.localToRoot(Offset.Zero)
+                            viewMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                        },
+                    ) {
+                        GlassIconCircle(
+                            icon = when (viewMode) {
+                                FileBrowserSettings.ViewMode.LIST -> Icons.AutoMirrored.Rounded.ViewList
+                                FileBrowserSettings.ViewMode.GRID -> Icons.Rounded.GridView
+                                FileBrowserSettings.ViewMode.GALLERY -> Icons.Rounded.PhotoLibrary
+                                FileBrowserSettings.ViewMode.FLAT_LIST -> Icons.Rounded.AccountTree
+                            },
+                            contentDescription = stringResource(
+                                when (viewMode) {
+                                    FileBrowserSettings.ViewMode.LIST -> R.string.storage_file_view_list
+                                    FileBrowserSettings.ViewMode.GRID -> R.string.storage_file_view_grid
+                                    FileBrowserSettings.ViewMode.GALLERY -> R.string.storage_file_view_gallery
+                                    FileBrowserSettings.ViewMode.FLAT_LIST -> R.string.storage_file_view_flat_list
+                                },
+                            ),
+                            onClick = { showViewMenu = true },
+                            backdrop = multiSelectBarBackdrop,
+                            modifier = Modifier.padding(horizontal = 2.dp),
+                        )
+                        NiGlassDropdownMenu(
+                            expanded = showViewMenu,
+                            onDismissRequest = { showViewMenu = false },
+                            anchor = IntOffset(viewMenuAnchor.x.toInt(), viewMenuAnchor.y.toInt()),
+                        ) {
+                            ViewModeMenuItem(
+                                label = stringResource(R.string.storage_file_view_list),
+                                icon = Icons.AutoMirrored.Rounded.ViewList,
+                                value = FileBrowserSettings.ViewMode.LIST,
+                                current = viewMode,
+                                onSelect = {
+                                    showViewMenu = false
+                                    viewMode = FileBrowserSettings.ViewMode.LIST
+                                    FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.LIST
+                                },
+                            )
+                            ViewModeMenuItem(
+                                label = stringResource(R.string.storage_file_view_grid),
+                                icon = Icons.Rounded.GridView,
+                                value = FileBrowserSettings.ViewMode.GRID,
+                                current = viewMode,
+                                onSelect = {
+                                    showViewMenu = false
+                                    viewMode = FileBrowserSettings.ViewMode.GRID
+                                    FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.GRID
+                                },
+                            )
+                            ViewModeMenuItem(
+                                label = stringResource(R.string.storage_file_view_gallery),
+                                icon = Icons.Rounded.PhotoLibrary,
+                                value = FileBrowserSettings.ViewMode.GALLERY,
+                                current = viewMode,
+                                onSelect = {
+                                    showViewMenu = false
+                                    viewMode = FileBrowserSettings.ViewMode.GALLERY
+                                    FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.GALLERY
+                                },
+                            )
+                            if (ExperimentalSettings.flatListViewEnabled) {
+                                ViewModeMenuItem(
+                                    label = stringResource(R.string.storage_file_view_flat_list),
+                                    icon = Icons.Rounded.AccountTree,
+                                    value = FileBrowserSettings.ViewMode.FLAT_LIST,
+                                    current = viewMode,
+                                    onSelect = {
+                                        showViewMenu = false
+                                        viewMode = FileBrowserSettings.ViewMode.FLAT_LIST
+                                        FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.FLAT_LIST
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    // 常驻：排序
+                    Box(
+                        modifier = Modifier.onGloballyPositioned { coords ->
+                            // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
+                            val topLeft = coords.localToRoot(Offset.Zero)
+                            sortMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                        },
+                    ) {
+                        GlassIconCircle(
+                            icon = Icons.Rounded.SwapVert,
+                            contentDescription = stringResource(R.string.storage_file_sort),
+                            onClick = { showSortMenu = true },
+                            backdrop = multiSelectBarBackdrop,
+                            modifier = Modifier.padding(horizontal = 2.dp),
+                        )
+                        NiGlassDropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false },
+                            anchor = IntOffset(sortMenuAnchor.x.toInt(), sortMenuAnchor.y.toInt()),
+                        ) {
+                            SortByMenuItem(
+                                label = stringResource(R.string.storage_file_sort_name),
+                                icon = Icons.Rounded.SortByAlpha,
+                                value = FileBrowserSettings.SortBy.NAME,
+                                current = sortConfig.sortBy,
+                                ascending = sortConfig.ascending,
+                                onSelect = {
+                                    viewModel.setSortBy(FileBrowserSettings.SortBy.NAME)
+                                },
+                                onToggleDirection = {
+                                    viewModel.setSortAscending(!sortConfig.ascending)
+                                },
+                            )
+                            SortByMenuItem(
+                                label = stringResource(R.string.storage_file_sort_modified),
+                                icon = Icons.Rounded.Schedule,
+                                value = FileBrowserSettings.SortBy.MODIFIED,
+                                current = sortConfig.sortBy,
+                                ascending = sortConfig.ascending,
+                                onSelect = {
+                                    viewModel.setSortBy(FileBrowserSettings.SortBy.MODIFIED)
+                                },
+                                onToggleDirection = {
+                                    viewModel.setSortAscending(!sortConfig.ascending)
+                                },
+                            )
+                            SortByMenuItem(
+                                label = stringResource(R.string.storage_file_sort_size),
+                                icon = Icons.Rounded.Storage,
+                                value = FileBrowserSettings.SortBy.SIZE,
+                                current = sortConfig.sortBy,
+                                ascending = sortConfig.ascending,
+                                onSelect = {
+                                    viewModel.setSortBy(FileBrowserSettings.SortBy.SIZE)
+                                },
+                                onToggleDirection = {
+                                    viewModel.setSortAscending(!sortConfig.ascending)
+                                },
+                            )
+                            SortByMenuItem(
+                                label = stringResource(R.string.storage_file_sort_type),
+                                icon = Icons.Rounded.Category,
+                                value = FileBrowserSettings.SortBy.TYPE,
+                                current = sortConfig.sortBy,
+                                ascending = sortConfig.ascending,
+                                onSelect = {
+                                    viewModel.setSortBy(FileBrowserSettings.SortBy.TYPE)
+                                },
+                                onToggleDirection = {
+                                    viewModel.setSortAscending(!sortConfig.ascending)
+                                },
+                            )
+                            HorizontalDivider()
+                            SortToggleRow(
+                                label = stringResource(R.string.storage_file_menu_media_only),
+                                checked = sortConfig.showOnlyMediaFiles,
+                                onCheckedChange = viewModel::toggleShowOnlyMediaFiles,
+                            )
+                            SortToggleRow(
+                                label = stringResource(R.string.storage_file_menu_show_hidden),
+                                checked = sortConfig.showHiddenFiles,
+                                onCheckedChange = viewModel::toggleShowHiddenFiles,
+                            )
+                        }
+                    }
+                    // 可展开收起 ⋮：默认折叠成单个 ⋮，点击展开更多按钮；再点 ✕ 收起
+                    var topBarExpanded by rememberSaveable { mutableStateOf(false) }
+                    val totalActiveTasks = activeDownloadCount + activeUploadCount
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // 展开态中间按钮组：淡入 + 从右向左横向展开（右侧 ⋮/✕ 位置不动）
+                        AnimatedVisibility(
+                            visible = topBarExpanded,
+                            enter = fadeIn() + expandHorizontally(expandFrom = Alignment.End),
+                            exit = fadeOut() + shrinkHorizontally(shrinkTowards = Alignment.End),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // 文件类型过滤：全部/视频/音频/图片
+                                Box(
+                                    modifier = Modifier.onGloballyPositioned { coords ->
+                                        val topLeft = coords.localToRoot(Offset.Zero)
+                                        filterMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                                    },
+                                ) {
+                                    GlassIconCircle(
+                                        icon = Icons.Rounded.FilterAlt,
+                                        contentDescription = stringResource(R.string.storage_file_filter_title),
+                                        onClick = { showFilterMenu = true },
+                                        backdrop = multiSelectBarBackdrop,
+                                        modifier = Modifier.padding(horizontal = 2.dp),
+                                    )
+                                    NiGlassDropdownMenu(
+                                        expanded = showFilterMenu,
+                                        onDismissRequest = { showFilterMenu = false },
+                                        anchor = IntOffset(filterMenuAnchor.x.toInt(), filterMenuAnchor.y.toInt()),
+                                    ) {
+                                        FilterMenuItem(
+                                            label = stringResource(R.string.storage_file_filter_all),
+                                            icon = Icons.Rounded.Apps,
+                                            value = FileBrowserSettings.MediaFilter.ALL,
+                                            current = sortConfig.mediaFilter,
+                                        ) {
+                                            viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.ALL)
+                                            showFilterMenu = false
+                                        }
+                                        FilterMenuItem(
+                                            label = stringResource(R.string.storage_file_filter_video),
+                                            icon = Icons.Rounded.Movie,
+                                            value = FileBrowserSettings.MediaFilter.VIDEO,
+                                            current = sortConfig.mediaFilter,
+                                        ) {
+                                            viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.VIDEO)
+                                            showFilterMenu = false
+                                        }
+                                        FilterMenuItem(
+                                            label = stringResource(R.string.storage_file_filter_audio),
+                                            icon = Icons.Rounded.MusicNote,
+                                            value = FileBrowserSettings.MediaFilter.AUDIO,
+                                            current = sortConfig.mediaFilter,
+                                        ) {
+                                            viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.AUDIO)
+                                            showFilterMenu = false
+                                        }
+                                        FilterMenuItem(
+                                            label = stringResource(R.string.storage_file_filter_image),
+                                            icon = Icons.Rounded.Image,
+                                            value = FileBrowserSettings.MediaFilter.IMAGE,
+                                            current = sortConfig.mediaFilter,
+                                        ) {
+                                            viewModel.setMediaFilter(FileBrowserSettings.MediaFilter.IMAGE)
+                                            showFilterMenu = false
+                                        }
+                                    }
+                                }
+                                // 新建/上传：合并为一个按钮，点击弹出子菜单二选一
+                                Box(
+                                    modifier = Modifier.onGloballyPositioned { coords ->
+                                        val topLeft = coords.localToRoot(Offset.Zero)
+                                        actionMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                                    },
+                                ) {
+                                    GlassIconCircle(
+                                        icon = Icons.Rounded.Add,
+                                        contentDescription = stringResource(R.string.storage_file_new),
+                                        onClick = { showActionMenu = !showActionMenu },
+                                        backdrop = multiSelectBarBackdrop,
+                                        modifier = Modifier.padding(horizontal = 2.dp),
+                                    )
+                                    NiGlassDropdownMenu(
+                                        expanded = showActionMenu,
+                                        onDismissRequest = { showActionMenu = false },
+                                        anchor = IntOffset(actionMenuAnchor.x.toInt(), actionMenuAnchor.y.toInt()),
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.storage_file_upload)) },
+                                            leadingIcon = { Icon(Icons.Rounded.Upload, contentDescription = null) },
+                                            onClick = {
+                                                showActionMenu = false
+                                                uploadLauncher.launch(arrayOf("*/*"))
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.storage_file_new_folder)) },
+                                            leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, contentDescription = null) },
+                                            onClick = {
+                                                showActionMenu = false
+                                                showCreateFolder = true
+                                            },
+                                        )
+                                    }
+                                }
+                                // 传输管理：合并下载/上传任务入口，有活动任务时带徽标
+                                Box {
+                                    GlassIconCircle(
+                                        icon = Icons.Rounded.SwapVerticalCircle,
+                                        contentDescription = stringResource(R.string.transfer_manager_title),
+                                        onClick = onNavigateToDownloadManager,
+                                        backdrop = multiSelectBarBackdrop,
+                                        modifier = Modifier.padding(horizontal = 2.dp),
+                                    )
+                                    if (totalActiveTasks > 0) {
+                                        TransferCountBadge(count = totalActiveTasks)
+                                    }
+                                }
+                            }
+                        }
+                        // 最右固定位：⋮ / ✕ 共用同一槽位原地交叉淡化，避免过渡期双占位导致位移
+                        Crossfade(
+                            targetState = topBarExpanded,
+                            animationSpec = tween(200),
+                        ) { expanded ->
+                            if (expanded) {
+                                GlassIconCircle(
+                                    icon = Icons.Rounded.Close,
+                                    contentDescription = stringResource(R.string.storage_file_collapse_menu),
+                                    onClick = { topBarExpanded = false },
+                                    backdrop = multiSelectBarBackdrop,
+                                    modifier = Modifier.padding(horizontal = 2.dp),
+                                )
+                            } else {
+                                GlassIconCircle(
+                                    icon = Icons.Rounded.MoreVert,
+                                    contentDescription = stringResource(R.string.storage_file_more),
+                                    onClick = { topBarExpanded = true },
+                                    backdrop = multiSelectBarBackdrop,
+                                    modifier = Modifier.padding(horizontal = 2.dp),
+                                )
+                            }
+                        }
+                    }
+                },
+            )
+            }
+        },
+        ) { padding ->
+        // 内容满铺全屏并延伸到顶栏之下，可滚入顶栏模糊区。
+        // 顶栏高度用 topInset 让位；面包屑/缩略图进度条作为列表首个 item 融入滚动流，随页面滚动。
+        val topInset = padding.calculateTopPadding()
+        // 列表头部：面包屑（非根目录）+ 缩略图生成进度条，随列表滚动
+        val listHeader: @Composable () -> Unit = {
+            Column {
+                if (uiState.currentPath.isNotEmpty()) {
+                    BreadcrumbBar(
+                        path = uiState.currentPath,
+                        onGoToRoot = { viewModel.goToRoot() },
+                        onJumpToDepth = { depth -> captureCurrentScroll(); viewModel.jumpToDepth(depth) },
+                    )
+                }
+                if (thumbnailProgress >= 0) {
+                    ThumbnailProgressBar(progress = thumbnailProgress)
+                }
+            }
+        }
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 内容层：仅列表/状态，满铺全屏延伸到顶栏下可被模糊；标记为玻璃模糊的背景源
+            Column(modifier = Modifier.fillMaxSize().layerBackdrop(multiSelectBarBackdrop)) {
+                // 下拉刷新指示器要避开顶栏：整页内容满铺全屏滚到玻璃顶栏之下，默认指示器定位在
+                // 全屏顶部会被透明顶栏盖住；故用自定义 indicator 下移 topInset，显现在顶栏之下。
+                val pullRefreshState = rememberPullToRefreshState()
+                PullToRefreshBox(
+                    isRefreshing = isRefreshing,
+                    onRefresh = { viewModel.refresh() },
+                    state = pullRefreshState,
+                    modifier = Modifier.fillMaxSize(),
+                    indicator = {
+                        PullToRefreshDefaults.Indicator(
+                            isRefreshing = isRefreshing,
+                            state = pullRefreshState,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .offset(y = topInset),
+                        )
+                    },
+                ) {
+                    when {
+                        uiState.isLoading && uiState.rawFiles.isEmpty() -> LoadingState()
+                        uiState.error != null && uiState.rawFiles.isEmpty() -> ErrorState(
+                            message = uiState.error!!,
+                            onRetry = { viewModel.retryLoadCurrent() },
+                        )
+                        uiState.rawFiles.isEmpty() -> EmptyDirState()
+                        else -> {
+                            if (isGalleryView) {
+                                FileGallery(
+                                    files = uiState.files,
+                                    thumbnailUrls = thumbnailUrls,
+                                    tooShortPaths = tooShortPaths,
+                                    encryptedPaths = encryptedPaths,
+                                    isMultiSelect = isMultiSelect,
+                                    selectedPaths = selectedPaths,
+                                    preparingPath = preparingPath,
+                                    onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
+                                    onPlayFile = viewModel::playFile,
+                                    onOpenImageFile = viewModel::openImageFile,
+                                    onToggleSelection = viewModel::toggleSelection,
+                                    onEnterMultiSelect = viewModel::enterMultiSelect,
+                                    galleryState = galleryState,
+                                    header = listHeader,
+                                    contentTopInset = topInset,
+                                )
+                            } else if (isGridView) {
+                                FileGrid(
+                                    files = uiState.files,
+                                    thumbnailUrls = thumbnailUrls,
+                                    tooShortPaths = tooShortPaths,
+                                    encryptedPaths = encryptedPaths,
+                                    isMultiSelect = isMultiSelect,
+                                    selectedPaths = selectedPaths,
+                                    preparingPath = preparingPath,
+                                    onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
+                                    onPlayFile = viewModel::playFile,
+                                    onOpenImageFile = viewModel::openImageFile,
+                                    onShowFileActions = viewModel::openFileActions,
+                                    onToggleSelection = viewModel::toggleSelection,
+                                    onEnterMultiSelect = viewModel::enterMultiSelect,
+                                    gridState = gridState,
+                                    header = listHeader,
+                                    contentTopInset = topInset,
+                                )
+                            } else if (isFlatView) {
+                                FileFlatList(
+                                    files = uiState.files,
+                                    thumbnailUrls = thumbnailUrls,
+                                    tooShortPaths = tooShortPaths,
+                                    encryptedPaths = encryptedPaths,
+                                    isMultiSelect = isMultiSelect,
+                                    selectedPaths = selectedPaths,
+                                    preparingPath = preparingPath,
+                                    treeChildren = treeChildren,
+                                    treeExpanded = treeExpanded,
+                                    treeLoading = treeLoading,
+                                    uploads = uploads,
+                                    onCancelUpload = viewModel::cancelUpload,
+                                    onToggleFolder = viewModel::toggleFolderExpanded,
+                                    onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
+                                    onPlayFile = viewModel::playFile,
+                                    onOpenImageFile = viewModel::openImageFile,
+                                    onShowFileActions = viewModel::openFileActions,
+                                    onToggleSelection = viewModel::toggleSelection,
+                                    onEnterMultiSelect = viewModel::enterMultiSelect,
+                                    listState = listState,
+                                    header = listHeader,
+                                    contentTopInset = topInset,
+                                )
+                            } else {
+                                FileList(
+                                    files = uiState.files,
+                                    thumbnailUrls = thumbnailUrls,
+                                    tooShortPaths = tooShortPaths,
+                                    encryptedPaths = encryptedPaths,
+                                    isMultiSelect = isMultiSelect,
+                                    selectedPaths = selectedPaths,
+                                    preparingPath = preparingPath,
+                                    uploads = uploads,
+                                    onCancelUpload = viewModel::cancelUpload,
+                                    onOpenDirectory = { file -> captureCurrentScroll(); viewModel.openDirectory(file) },
+                                    onPlayFile = viewModel::playFile,
+                                    onOpenImageFile = viewModel::openImageFile,
+                                    onShowFileActions = viewModel::openFileActions,
+                                    onToggleSelection = viewModel::toggleSelection,
+                                    onEnterMultiSelect = viewModel::enterMultiSelect,
+                                    listState = listState,
+                                    header = listHeader,
+                                    contentTopInset = topInset,
+                                )
+                            }
+                        }
+                }
+            }
+            }
+
+            if (showScrollToTop && !isMultiSelect && !isGalleryView) {
+                GlassIconCircle(
+                    icon = Icons.Rounded.KeyboardArrowUp,
+                    contentDescription = stringResource(R.string.storage_file_back_to_top),
+                    onClick = {
+                        scope.launch {
+                            // 跳转回顶部：瞬时定位替代滑动，长列表下更省时
+                            when {
+                                isGridView -> gridState.scrollToItem(0)
+                                isGalleryView -> galleryState.scrollToItem(0)
+                                else -> listState.scrollToItem(0)
+                            }
+                        }
+                    },
+                    backdrop = multiSelectBarBackdrop,
+                    size = 56.dp,
+                    iconSize = 26.dp,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        // 原底部“上传/新建”FAB 已并入顶栏，无需再为其让位，下移到底栏避让位置
+                        .padding(start = 16.dp, end = 16.dp, bottom = FabBottomOffset),
+                )
+            }
+
+            // 批量文件操作进度浮层（移动/复制/删除）
+            fileOpProgress?.let {
+                FileOpProgressOverlay(progress = it)
+            }
+
+            // 多选模式底部操作栏：固定操作位（全选/下载/更多），更多内收起移动/复制/快速访问/删除
+            if (isMultiSelect) {
+                val selectedFiles = selectableFiles.filter { it.path in selectedPaths && !it.isDirectory }
+                MultiSelectActionBar(
+                    backdrop = multiSelectBarBackdrop,
+                    selectedCount = selectedPaths.size,
+                    allSelected = selectedPaths.size >= selectableFiles.count { !it.isDirectory } && selectableFiles.any { !it.isDirectory },
+                    downloadEnabled = selectedFiles.isNotEmpty(),
+                    fileManagementEnabled = viewModel.supportsFileManagement,
+                    moreMenuExpanded = showMultiMoreMenu,
+                    onMoreMenuOpenChange = { showMultiMoreMenu = it },
+                    onSelectAll = viewModel::selectAllFiles,
+                    onDownload = { startDownload(selectedFiles) },
+                    onAddToQuickAccess = {
+                        val selected = selectableFiles.filter { it.path in selectedPaths }
+                        viewModel.addFilesToQuickAccess(selected)
+                    },
+                    onMove = {
+                        showMultiMoreMenu = false
+                        val selected = selectableFiles.filter { it.path in selectedPaths }
+                        if (selected.isNotEmpty()) batchTransfer = BatchTransferOp.MOVE
+                    },
+                    onCopy = {
+                        showMultiMoreMenu = false
+                        val selected = selectableFiles.filter { it.path in selectedPaths }
+                        if (selected.isNotEmpty()) batchTransfer = BatchTransferOp.COPY
+                    },
+                    onDelete = { showBatchDeleteConfirm = true },
+                    onClose = viewModel::exitMultiSelect,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 12.dp)
+                        // 多选态宿主已隐藏底栏/音乐条，底部避让系统手势区后再上抬固定间距
+                        .navigationBarsPadding(),
+                )
+            }
+        }
+    }
+
+    if (showBatchDeleteConfirm) {
+        val selectedForDelete = selectableFiles.filter { it.path in selectedPaths }
+        val deleteFileCount = selectedForDelete.count { !it.isDirectory }
+        val deleteDirCount = selectedForDelete.count { it.isDirectory }
+        NiConfirmDialog(
+            title = stringResource(R.string.storage_file_delete_selected_title),
+            text = stringResource(
+                if (deleteDirCount > 0) R.string.storage_file_delete_selected_body_dir
+                else R.string.storage_file_delete_selected_body,
+                selectedForDelete.size,
+                deleteFileCount,
+                deleteDirCount,
+            ),
+            confirmText = stringResource(R.string.storage_file_delete),
+            confirmDanger = true,
+            onConfirm = {
+                showBatchDeleteConfirm = false
+                viewModel.deleteSelected()
+            },
+            onDismiss = { showBatchDeleteConfirm = false },
+        )
+    }
+
+    // 批量移动/复制的目标目录选择对话框
+    batchTransfer?.let { op ->
+        val selected = selectableFiles.filter { it.path in selectedPaths }
+        FolderTargetDialog(
+            title = stringResource(
+                if (op == BatchTransferOp.MOVE) R.string.storage_file_batch_move_title
+                else R.string.storage_file_batch_copy_title,
+                selected.size,
+            ),
+            confirmText = stringResource(
+                if (op == BatchTransferOp.MOVE) R.string.move_here else R.string.copy_here,
+            ),
+            startPath = uiState.currentPath,
+            listSubfolders = viewModel::listSubfolders,
+            toDirectory = viewModel::makeDirectory,
+            encryptedPaths = encryptedPaths,
+            unlockFolder = viewModel::tryUnlockFolder,
+            onDismiss = { batchTransfer = null },
+            onConfirm = { target ->
+                batchTransfer = null
+                when (op) {
+                    BatchTransferOp.MOVE -> viewModel.moveFiles(selected, target)
+                    BatchTransferOp.COPY -> viewModel.copyFiles(selected, target)
+                }
+            },
+        )
+    }
+
+    // 移动/复制冲突弹窗：目标目录已有同名文件时由 ViewModel 挂起状态驱动
+    transferConflict?.let { conflict ->
+        TransferConflictDialog(
+            duplicateCount = conflict.duplicateFiles.size,
+            onSkip = { viewModel.resolveTransfer(TransferConflictMode.SKIP_DUPLICATES) },
+            onOverwrite = { viewModel.resolveTransfer(TransferConflictMode.OVERWRITE) },
+            onDismiss = { viewModel.cancelTransfer() },
+        )
+    }
+
+    if (showTargetChooser) {
+        DownloadTargetChooserDialog(
+            presetPath = DownloadSettings.downloadDirPath,
+            onDismiss = { showTargetChooser = false },
+            onDownloadToPreset = ::commitDownloadToPreset,
+            onDownloadToPath = ::commitDownloadToPath,
+        )
+    }
+
+    if (showPermissionDialog) {
+        NiConfirmDialog(
+            title = stringResource(R.string.download_dir_permission_title),
+            text = stringResource(R.string.download_dir_permission_message),
+            confirmText = stringResource(R.string.download_dir_permission_grant),
+            onConfirm = {
+                showPermissionDialog = false
+                StorageAccess.openAllFilesAccessSettings(context)
+            },
+            onDismiss = { showPermissionDialog = false },
+        )
+    }
+
+    fileMenu?.let { (file, favorited) ->
+        FileActionsSheet(
+            file = file,
+            isFavorited = favorited,
+            canDownload = !file.isDirectory,
+            showFileManagement = viewModel.supportsFileManagement,
+            showDelete = viewModel.supportsDelete,
+            isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
+            isRemoteStorage = uiState.isRemoteStorage,
+            onDismiss = { fileMenu = null },
+            onPlay = {
+                fileMenu = null
+                viewModel.playFile(file)
+            },
+            onDownload = {
+                fileMenu = null
+                startDownload(listOf(file))
+            },
+            onToggleQuickAccess = {
+                fileMenu = null
+                if (favorited) viewModel.removeQuickAccess(file)
+                else viewModel.addQuickAccess(file)
+            },
+            onShowInfo = {
+                fileMenu = null
+                showFileInfo = file
+            },
+            onRename = {
+                fileMenu = null
+                renameTarget = file
+            },
+            onMove = {
+                fileMenu = null
+                moveTarget = file
+            },
+            onDelete = {
+                fileMenu = null
+                deleteTarget = file
+            },
+            onEncrypt = {
+                fileMenu = null
+                showEncryptDialog = file
+            },
+            onDecrypt = {
+                fileMenu = null
+                showDecryptDialog = file
+            },
+            onResetPassword = {
+                fileMenu = null
+                showResetPasswordDialog = file
+            },
+        )
+    }
+
+    showFileInfo?.let { file ->
+        FileInfoDialog(file = file, onDismiss = { showFileInfo = null })
+    }
+
+    // 文件管理对话框
+    renameTarget?.let { file ->
+        RenameFileDialog(
+            fileName = file.name,
+            isDirectory = file.isDirectory,
+            onDismiss = { renameTarget = null },
+            onConfirm = { newName ->
+                viewModel.renameFile(file, newName)
+                renameTarget = null
+            },
+        )
+    }
+
+    moveTarget?.let { file ->
+        FolderTargetDialog(
+            title = stringResource(R.string.storage_file_move_title, file.name),
+            confirmText = stringResource(R.string.move_here),
+            startPath = uiState.currentPath,
+            listSubfolders = viewModel::listSubfolders,
+            toDirectory = viewModel::makeDirectory,
+            encryptedPaths = encryptedPaths,
+            unlockFolder = viewModel::tryUnlockFolder,
+            onDismiss = { moveTarget = null },
+            onConfirm = { target ->
+                viewModel.moveFile(file, target)
+                moveTarget = null
+            },
+        )
+    }
+
+    deleteTarget?.let { file ->
+        DeleteConfirmDialog(
+            fileName = file.name,
+            isDirectory = file.isDirectory,
+            onDismiss = { deleteTarget = null },
+            onConfirm = {
+                viewModel.deleteFile(file)
+                deleteTarget = null
+            },
+        )
+    }
+
+    if (showCreateFolder) {
+        CreateFolderDialog(
+            onDismiss = { showCreateFolder = false },
+            onConfirm = { name ->
+                viewModel.createFolder(name)
+                showCreateFolder = false
+            },
+        )
+    }
+
+    // 文件夹访问加密对话框（仅远程存储 SMB/WebDAV 显示加密入口）
+    val canEncrypt = uiState.isRemoteStorage
+
+    showEncryptDialog?.let { folder ->
+        FolderPasswordDialog(
+            title = stringResource(R.string.storage_file_encrypt_folder),
+            subtitle = stringResource(R.string.storage_file_encrypt_folder_desc, folder.name),
+            confirmText = stringResource(R.string.storage_file_encrypt),
+            onDismiss = { showEncryptDialog = null },
+            onConfirm = { password ->
+                viewModel.encryptFolder(folder, password)
+                showEncryptDialog = null
+            },
+            visible = canEncrypt,
+        )
+    }
+
+    showDecryptDialog?.let { folder ->
+        FolderPasswordDialog(
+            title = stringResource(R.string.storage_file_decrypt),
+            subtitle = stringResource(R.string.storage_file_decrypt_desc, folder.name),
+            confirmText = stringResource(R.string.storage_file_decrypt_confirm),
+            onDismiss = { showDecryptDialog = null },
+            onConfirm = { password ->
+                viewModel.decryptFolder(folder, password)
+                showDecryptDialog = null
+            },
+            visible = canEncrypt,
+        )
+    }
+
+    showResetPasswordDialog?.let { folder ->
+        ResetFolderPasswordDialog(
+            folder = folder,
+            onDismiss = { showResetPasswordDialog = null },
+            onConfirm = { oldPassword, newPassword ->
+                viewModel.resetFolderPassword(folder, oldPassword, newPassword)
+                showResetPasswordDialog = null
+            },
+        )
+    }
+
+    pendingUnlock?.let { folder ->
+        FolderUnlockDialog(
+            folder = folder,
+            errorMessage = unlockError,
+            onDismiss = {
+                viewModel.clearUnlockError()
+                viewModel.cancelUnlock()
+            },
+            onPasswordSubmit = { password ->
+                viewModel.submitFolderPassword(password)
+            },
+            onPasswordChange = { viewModel.clearUnlockError() },
+        )
+    }
+}
+
+@Composable
+private fun SortByMenuItem(
+    label: String,
+    icon: ImageVector,
+    value: FileBrowserSettings.SortBy,
+    current: FileBrowserSettings.SortBy,
+    ascending: Boolean,
+    onSelect: () -> Unit,
+    onToggleDirection: () -> Unit,
+) {
+    val selected = current == value
+    DropdownMenuItem(
+        modifier = Modifier.height(38.dp),
+        text = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        // 当前排序项显示方向箭头（点击切换升降序），非当前项无箭头（点击仅选中）
+        trailingIcon = {
+            if (selected) {
+                Icon(
+                    imageVector = if (ascending) Icons.Rounded.ArrowUpward
+                    else Icons.Rounded.ArrowDownward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        onClick = { if (selected) onToggleDirection() else onSelect() },
+    )
+}
+
+/** 菜单内的视图模式项：点击选中并关闭菜单，当前项以主色+半粗体+勾选高亮。 */
+@Composable
+private fun ViewModeMenuItem(
+    label: String,
+    icon: ImageVector,
+    value: FileBrowserSettings.ViewMode,
+    current: FileBrowserSettings.ViewMode,
+    onSelect: () -> Unit,
+) {
+    val selected = current == value
+    DropdownMenuItem(
+        modifier = Modifier.height(38.dp),
+        text = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        trailingIcon = {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        onClick = onSelect,
+    )
+}
+
+/** 菜单内的轻量勾选行：点击整行或复选框均可切换，不关闭菜单。 */
+@Composable
+private fun SortToggleRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { onCheckedChange() }
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        Checkbox(checked = checked, onCheckedChange = { onCheckedChange() })
+    }
+}
+
+/** 菜单内的文件类型过滤选项：点击选中并关闭菜单（单选）。 */
+@Composable
+private fun FilterMenuItem(
+    label: String,
+    icon: ImageVector,
+    value: FileBrowserSettings.MediaFilter,
+    current: FileBrowserSettings.MediaFilter,
+    onClick: () -> Unit,
+) {
+    val selected = current == value
+    DropdownMenuItem(
+        modifier = Modifier.height(38.dp),
+        text = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        trailingIcon = {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun ThumbnailProgressBar(progress: Int) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.storage_file_generating_thumbnails),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            Text(
+                text = "$progress%",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        LinearProgressIndicator(
+            progress = { progress / 100f },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
+ * "识别方向中…"状态标签：居中叠在文件占位图标上，提示正在为进入播放前读取视频宽高比。
+ * 仅当点击后又未立即进入播放（维持一小段时间）时让用户感知到等待，背景用主题色缓慢脉冲。
+ */
+@Composable
+private fun BoxScope.PreparingBadge() {
+    val transition = rememberInfiniteTransition(label = "preparing")
+    val alpha by transition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(NiMotion.DURATION_PAGE),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "preparingAlpha",
+    )
+    Box(
+        modifier = Modifier
+            .align(Alignment.Center)
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f * alpha))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.storage_file_preparing_playback),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onPrimary,
+        )
+    }
+}
+
+@Composable
+private fun BreadcrumbBar(
+    path: String,
+    onJumpToDepth: (Int) -> Unit,
+    onGoToRoot: () -> Unit,
+) {
+    val segments = path.split("/").filter { it.isNotEmpty() }
+    // 面包屑作为列表首个 item 随页面滚动，保持全透明观感（透明底 + 不透明胶囊）
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // 根目录入口：点击直接回到存储根，深层目录无需逐级返回
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .clickable(onClick = onGoToRoot)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Home,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Text(
+            text = "▸",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+        segments.forEachIndexed { index, segment ->
+            val isLast = index == segments.lastIndex
+            val bgColor = if (isLast)
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            else
+                MaterialTheme.colorScheme.surfaceContainerLow
+
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(bgColor)
+                    .then(
+                        // 任务8 修复：directoryStack[0] = ROOT（path=""，不出现在 segments 中），
+                        // segments[0] 是第一级子目录，对应 directoryStack[1]。
+                        // 原实现传 index 会导致点击任意段都跳到比预期浅一级
+                        // （点击 segments[0] 跳到 directoryStack[0]=ROOT 根目录）。
+                        // 修正为 index + 1 让 segments 索引对齐 directoryStack 索引。
+                        if (!isLast) Modifier.clickable { onJumpToDepth(index + 1) }
+                        else Modifier
+                    )
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = if (index == 0) Icons.Rounded.FolderOpen
+                    else Icons.Rounded.Folder,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = if (isLast) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = segment,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (isLast) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (!isLast) {
+                Text(
+                    text = "▸",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoadingState() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator()
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = stringResource(R.string.storage_file_connecting),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ErrorState(message: String, onRetry: () -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        NiEmptyState(
+            icon = Icons.Rounded.Refresh,
+            text = stringResource(R.string.storage_file_load_failed),
+            hint = message,
+            actionText = stringResource(R.string.retry),
+            onAction = onRetry,
+        )
+    }
+}
+
+@Composable
+private fun EmptyDirState() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        contentAlignment = Alignment.Center,
+    ) {
+        NiEmptyState(
+            icon = Icons.Rounded.FolderOpen,
+            text = stringResource(R.string.storage_file_empty_dir),
+            hint = stringResource(R.string.storage_file_empty_dir_hint),
+        )
+    }
+}
+
+@Composable
+private fun FileList(
+    files: List<StorageFile>,
+    thumbnailUrls: Map<String, String>,
+    tooShortPaths: Set<String>,
+    encryptedPaths: Set<String>,
+    isMultiSelect: Boolean,
+    selectedPaths: Set<String>,
+    preparingPath: String?,
+    uploads: List<ActiveUpload>,
+    onCancelUpload: (Long) -> Unit,
+    onOpenDirectory: (StorageFile) -> Unit,
+    onPlayFile: (StorageFile) -> Unit,
+    onOpenImageFile: (StorageFile) -> Unit,
+    onShowFileActions: (StorageFile) -> Unit,
+    onToggleSelection: (StorageFile) -> Unit,
+    onEnterMultiSelect: (StorageFile) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
+    contentTopInset: Dp = 0.dp,
+    header: (@Composable () -> Unit)? = null,
+) {
+    LazyColumn(
+        state = listState,
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = contentTopInset,
+            bottom = FabBottomOffset,
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (header != null) {
+            item(key = "list-header") {
+                header()
+            }
+        }
+        if (uploads.isNotEmpty()) {
+            item(key = "upload-strip") {
+                UploadPendingStrip(uploads = uploads, onCancel = onCancelUpload)
+            }
+        }
+        items(
+            items = files,
+            key = { it.path },
+        ) { file ->
+            FileRow(
+                file = file,
+                thumbnailUrl = thumbnailUrls[file.path],
+                isTooShort = tooShortPaths.contains(file.path),
+                isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
+                isMultiSelect = isMultiSelect,
+                isSelected = file.path in selectedPaths,
+                preparing = preparingPath != null && file.path == preparingPath,
+                onOpenDirectory = onOpenDirectory,
+                onPlayFile = onPlayFile,
+                onOpenImageFile = onOpenImageFile,
+                onShowFileActions = { onShowFileActions(file) },
+                onToggleSelection = { onToggleSelection(file) },
+                onEnterMultiSelect = { onEnterMultiSelect(file) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun UploadPendingStrip(uploads: List<ActiveUpload>, onCancel: (Long) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        uploads.forEach { u ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = u.fileName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    if (u.fraction >= 0f) {
+                        LinearProgressIndicator(
+                            progress = { u.fraction },
+                            modifier = Modifier.fillMaxWidth().height(4.dp),
+                        )
+                    } else {
+                        // 总大小未知 → 不确定进度
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().height(4.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = if (u.fraction >= 0f) {
+                                stringResource(R.string.storage_file_upload_progress, (u.fraction * 100).toInt())
+                            } else {
+                                stringResource(R.string.storage_file_upload_waiting)
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (u.speedBytesPerSec > 0) {
+                            Text(
+                                text = formatUploadSpeed(u.speedBytesPerSec),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                }
+                IconButton(
+                    onClick = { onCancel(u.taskId) },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.storage_file_upload_cancel),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FileRow(
+    file: StorageFile,
+    thumbnailUrl: String?,
+    isTooShort: Boolean,
+    isEncrypted: Boolean,
+    isMultiSelect: Boolean,
+    isSelected: Boolean,
+    preparing: Boolean,
+    onOpenDirectory: (StorageFile) -> Unit,
+    onPlayFile: (StorageFile) -> Unit,
+    onOpenImageFile: (StorageFile) -> Unit,
+    onShowFileActions: () -> Unit,
+    onToggleSelection: () -> Unit,
+    onEnterMultiSelect: () -> Unit,
+) {
+    val isVideo = MediaFileTypes.isVideoFile(file.name)
+    val isAudio = MediaFileTypes.isAudioFile(file.name)
+    val isImage = MediaFileTypes.isImageFile(file.name)
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val bgAlpha by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = tween(durationMillis = NiMotion.DURATION_MICRO),
+        label = "rowBgAlpha",
+    )
+
+    val thumbShape = RoundedCornerShape(8.dp)
+
+    val rowBgColor = if (isSelected) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+    } else {
+        NiExtraColors.current.surfaceLevel2
+    }
+
+    val rowShape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { this.alpha = bgAlpha }
+            // 多选模式下取消阴影：列表保持平整，选中态用边框+背景区分，避免阴影干扰视觉
+            .then(
+                if (isMultiSelect) {
+                    Modifier
+                } else {
+                    Modifier.shadow(elevation = 1.dp, shape = rowShape, clip = false)
+                }
+            )
+            .clip(rowShape)
+            .then(
+                if (isSelected) {
+                    Modifier.border(
+                        width = 1.5.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = rowShape,
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .background(rowBgColor)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                onClick = {
+                    if (isMultiSelect) {
+                        onToggleSelection()
+                    } else {
+                        when {
+                            file.isDirectory -> onOpenDirectory(file)
+                            isVideo || isAudio -> onPlayFile(file)
+                            isImage -> onOpenImageFile(file)
+                            else -> Unit
+                        }
+                    }
+                },
+                onLongClick = {
+                    // 长按 = 进入多选并选中当前项；多选模式下长按不再响应（避免与多选冲突）
+                    if (!isMultiSelect) onEnterMultiSelect()
+                },
+            )
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (isMultiSelect) {
+            Icon(
+                imageVector = if (isSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                contentDescription = stringResource(
+                    if (isSelected) R.string.storage_file_deselect else R.string.storage_file_select,
+                ),
+                tint = if (isSelected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(22.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+        }
+        if (isVideo || isAudio || isImage) {
+            // 列表缩略图：音频用 56×56 方形（唱片封套感 + 品牌色底），
+            // 视频/图片保持 88×56 16:9 影视感。
+            val thumbWidth = if (isAudio) 56.dp else 88.dp
+            val thumbHeight = 56.dp
+            val thumbBgColor: Color = if (isAudio)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+            else NiExtraColors.current.surfaceLevel3
+            Box(
+                modifier = Modifier
+                    .size(width = thumbWidth, height = thumbHeight)
+                    .clip(thumbShape)
+                    .background(thumbBgColor),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (thumbnailUrl != null) {
+                    AsyncImage(
+                        model = thumbnailUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    // 中央播放徽章：仅可播放文件
+                    if (isVideo || isAudio) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.45f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.PlayArrow,
+                                contentDescription = stringResource(R.string.storage_file_action_play),
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                    }
+                    // 文件大小角标：右下角
+                    if (file.length > 0) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 4.dp, bottom = 4.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color.Black.copy(alpha = 0.65f))
+                                .padding(horizontal = 4.dp, vertical = 1.dp),
+                        ) {
+                            Text(
+                                text = formatFileSize(file.length),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                } else if (isVideo && isTooShort) {
+                    Text(
+                        text = "<15s",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.7f),
+                    )
+                } else {
+                    Icon(
+                        imageVector = when {
+                            isImage -> Icons.Rounded.Image
+                            isAudio -> Icons.Rounded.MusicNote
+                            else -> Icons.Rounded.Movie
+                        },
+                        contentDescription = null,
+                        tint = if (isAudio)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                        else Color.White.copy(alpha = 0.55f),
+                        modifier = Modifier.size(if (isAudio) 26.dp else 24.dp),
+                    )
+                    if (preparing) PreparingBadge()
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+        } else if (file.isDirectory) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp),
+                )
+                // 加密文件夹锁定角标
+                if (isEncrypted) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surface),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Lock,
+                            contentDescription = stringResource(R.string.storage_file_encrypted),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(10.dp),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(NiExtraColors.current.surfaceLevel3),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = fileIcon(file, isVideo, isAudio),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            // 文件名 2 行自动缩字，长名从 16sp 缩到 12sp，仍超出则省略
+            NiAutoSizeText(
+                text = file.name,
+                maxLines = 2,
+                minFontSize = 12.sp,
+                maxFontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 20.sp,
+            )
+            // 文件大小已移至缩略图右下角角标，此处仅保留文件夹提示
+            if (file.isDirectory) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.storage_file_folder),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        if (!isMultiSelect) {
+            IconButton(
+                onClick = onShowFileActions,
+                modifier = Modifier.size(32.dp),
+            ) {
+                NiStyleIcon(
+                    icon = Icons.Rounded.MoreVert,
+                    style = NiAppIconStyle,
+                    containerSize = 32.dp,
+                    iconSize = 18.dp,
+                    contentDescription = stringResource(R.string.storage_file_more),
+                )
+            }
+        }
+    }
+}
+
+/** 平铺列表模式下，每个缩进层级左侧增加的缩进宽度。 */
+private val FlatIndentStep = 12.dp
+
+/** 平铺列表缩进封顶深度（竖屏）：超过该层级不再继续缩进，避免深层嵌套让列表项变得过窄。 */
+private const val FlatMaxIndentDepth = 7
+
+/** 平铺列表缩进封顶深度（横屏）：横向空间充足，允许更多缩进层级。 */
+private const val FlatMaxIndentDepthLandscape = 11
+
+/**
+ * 平铺列表缩进区：按层级缩进，封顶后不再加宽。
+ *
+ * 因为手风琴（同级只开一枝）限制了实际深度，封顶设得较高（竖屏 7 / 横屏 11），
+ * 常规目录基本不会触及封顶，无需额外深度指示元素。
+ */
+@Composable
+private fun FlatIndent(depth: Int) {
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val cap = if (isLandscape) FlatMaxIndentDepthLandscape else FlatMaxIndentDepth
+    val width = FlatIndentStep * minOf(depth, cap).toFloat()
+    Spacer(Modifier.width(width))
+}
+
+/** 平铺列表的树节点：文件（含文件夹）+ 其在当前目录树中的缩进深度。 */
+private data class FlatTreeNode(val file: StorageFile, val depth: Int)
+
+/**
+ * 将当前目录及其已展开的子树拍平成按顺序排列的 [FlatTreeNode] 列表。
+ *
+ * 仅缓存了子项的展开文件夹才会内联展开（[treeChildren] 命中），未加载完成的
+ * 文件夹只显示折叠行；子文件夹若也处于展开态且已有缓存则递归继续展开。
+ */
+private fun buildFlatTreeItems(
+    files: List<StorageFile>,
+    treeChildren: Map<String, List<StorageFile>>,
+    treeExpanded: Set<String>,
+): List<FlatTreeNode> {
+    val out = ArrayList<FlatTreeNode>()
+    fun walk(items: List<StorageFile>, depth: Int) {
+        for (f in items) {
+            out.add(FlatTreeNode(f, depth))
+            if (f.isDirectory) {
+                val key = f.path.trimEnd('/')
+                if (key in treeExpanded) {
+                    treeChildren[key]?.let { walk(it, depth + 1) }
+                }
+            }
+        }
+    }
+    walk(files, 0)
+    return out
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FileFlatList(
+    files: List<StorageFile>,
+    thumbnailUrls: Map<String, String>,
+    tooShortPaths: Set<String>,
+    encryptedPaths: Set<String>,
+    isMultiSelect: Boolean,
+    selectedPaths: Set<String>,
+    preparingPath: String?,
+    treeChildren: Map<String, List<StorageFile>>,
+    treeExpanded: Set<String>,
+    treeLoading: Set<String>,
+    uploads: List<ActiveUpload>,
+    onCancelUpload: (Long) -> Unit,
+    onToggleFolder: (StorageFile) -> Unit,
+    onOpenDirectory: (StorageFile) -> Unit,
+    onPlayFile: (StorageFile) -> Unit,
+    onOpenImageFile: (StorageFile) -> Unit,
+    onShowFileActions: (StorageFile) -> Unit,
+    onToggleSelection: (StorageFile) -> Unit,
+    onEnterMultiSelect: (StorageFile) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
+    contentTopInset: Dp = 0.dp,
+    header: (@Composable () -> Unit)? = null,
+) {
+    // 拍平当前目录 + 已展开子目录为纵向顺序的节点列表（key 用 path，树内唯一）
+    val nodes = remember(files, treeChildren, treeExpanded) {
+        buildFlatTreeItems(files, treeChildren, treeExpanded)
+    }
+    // 展开/折叠前记录首可见行（node path + 像素 offset）；nodes 变化后复位滚动，
+    // 避免手风琴折叠同级导致其上方行被移除、引发首屏内容跳动
+    var scrollAnchor by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    LaunchedEffect(nodes) {
+        val anchor = scrollAnchor ?: return@LaunchedEffect
+        scrollAnchor = null
+        val idx = nodes.indexOfFirst { it.file.path == anchor.first }
+        if (idx >= 0 && listState.firstVisibleItemIndex != idx) {
+            listState.scrollToItem(idx, anchor.second)
+        }
+    }
+    LazyColumn(
+        state = listState,
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = contentTopInset,
+            bottom = FabBottomOffset,
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (header != null) {
+            item(key = "list-header") {
+                header()
+            }
+        }
+        if (uploads.isNotEmpty()) {
+            item(key = "upload-strip") {
+                UploadPendingStrip(uploads = uploads, onCancel = onCancelUpload)
+            }
+        }
+        items(
+            items = nodes,
+            key = { it.file.path },
+        ) { node ->
+            val file = node.file
+            // animateItem 让新增/移除/位移的节点以淡入淡出+展开收缩动画出现，实现展开收起动画
+            Box(Modifier.animateItem()) {
+                if (file.isDirectory) {
+                    val key = file.path.trimEnd('/')
+                    Row {
+                        FlatIndent(node.depth)
+                        Box(Modifier.weight(1f)) {
+                            FlatFolderRow(
+                                file = file,
+                                isExpanded = key in treeExpanded,
+                                isLoading = key in treeLoading,
+                                isEncrypted = key in encryptedPaths,
+                                isMultiSelect = isMultiSelect,
+                                isSelected = file.path in selectedPaths,
+                                onToggleExpand = {
+                                    // 记录当前首可见行作为滚动锚点，展开/折叠由 onToggleFolder 触发
+                                    val first = listState.firstVisibleItemIndex
+                                    scrollAnchor = nodes.getOrNull(first)?.file?.path
+                                        ?.let { it to listState.firstVisibleItemScrollOffset }
+                                    onToggleFolder(file)
+                                },
+                                onOpenDirectory = { onOpenDirectory(file) },
+                                onShowFileActions = { onShowFileActions(file) },
+                                onToggleSelection = { onToggleSelection(file) },
+                                onEnterMultiSelect = { onEnterMultiSelect(file) },
+                            )
+                        }
+                    }
+                } else {
+                    // 叶子文件行：缩进+层级指示后复用 FileRow（播放/看图/⋮/长按多选行为一致）
+                    Row {
+                        FlatIndent(node.depth)
+                        Box(Modifier.weight(1f)) {
+                            FileRow(
+                                file = file,
+                                thumbnailUrl = thumbnailUrls[file.path],
+                                isTooShort = tooShortPaths.contains(file.path),
+                                isEncrypted = false,
+                                isMultiSelect = isMultiSelect,
+                                isSelected = file.path in selectedPaths,
+                                preparing = preparingPath != null && file.path == preparingPath,
+                                onOpenDirectory = {},
+                                onPlayFile = onPlayFile,
+                                onOpenImageFile = onOpenImageFile,
+                                onShowFileActions = { onShowFileActions(file) },
+                                onToggleSelection = { onToggleSelection(file) },
+                                onEnterMultiSelect = { onEnterMultiSelect(file) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FlatFolderRow(
+    file: StorageFile,
+    isExpanded: Boolean,
+    isLoading: Boolean,
+    isEncrypted: Boolean,
+    isMultiSelect: Boolean,
+    isSelected: Boolean,
+    onToggleExpand: () -> Unit,
+    onOpenDirectory: () -> Unit,
+    onShowFileActions: () -> Unit,
+    onToggleSelection: () -> Unit,
+    onEnterMultiSelect: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val bgAlpha by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = tween(durationMillis = NiMotion.DURATION_MICRO),
+        label = "flatFolderBgAlpha",
+    )
+
+    val rowBgColor = if (isSelected) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+    } else {
+        NiExtraColors.current.surfaceLevel2
+    }
+    val rowShape = RoundedCornerShape(16.dp)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { this.alpha = bgAlpha }
+            .then(
+                if (isMultiSelect) {
+                    Modifier
+                } else {
+                    Modifier.shadow(elevation = 1.dp, shape = rowShape, clip = false)
+                }
+            )
+            .clip(rowShape)
+            .then(
+                if (isSelected) {
+                    Modifier.border(
+                        width = 1.5.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = rowShape,
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .background(rowBgColor)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                onClick = {
+                    if (isMultiSelect) {
+                        onToggleSelection()
+                    } else {
+                        // 点击卡片其余区域：进入文件夹（加密文件夹由 openDirectory 拦截弹密码）
+                        onOpenDirectory()
+                    }
+                },
+                onLongClick = {
+                    if (!isMultiSelect) onEnterMultiSelect()
+                },
+            )
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // 展开/折叠箭头：独立可点击区域，消费点击（不会触发上方进入文件夹）
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { onToggleExpand() },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                // 箭头旋转动画：收起→向右，展开→旋转 90°向下
+                val chevronRotation by animateFloatAsState(
+                    targetValue = if (isExpanded) 90f else 0f,
+                    animationSpec = tween(durationMillis = 180),
+                    label = "flatChevronRotation",
+                )
+                Icon(
+                    imageVector = Icons.Rounded.KeyboardArrowRight,
+                    contentDescription = stringResource(R.string.storage_file_toggle_folder),
+                    tint = if (isExpanded) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.outline,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .graphicsLayer {
+                            rotationZ = chevronRotation
+                            // 旋转中心在图标中心（默认即中心，无需额外处理）
+                        },
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        if (isMultiSelect) {
+            Icon(
+                imageVector = if (isSelected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                contentDescription = stringResource(
+                    if (isSelected) R.string.storage_file_deselect else R.string.storage_file_select,
+                ),
+                tint = if (isSelected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(22.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+        }
+        // 文件夹图标（含加密锁角标，与 FileRow 一致）
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Folder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp),
+            )
+            if (isEncrypted) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Lock,
+                        contentDescription = stringResource(R.string.storage_file_encrypted),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(10.dp),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            NiAutoSizeText(
+                text = file.name,
+                maxLines = 2,
+                minFontSize = 12.sp,
+                maxFontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 20.sp,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = if (isLoading) stringResource(R.string.storage_file_folder_loading)
+                else stringResource(R.string.storage_file_folder),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        if (!isMultiSelect) {
+            IconButton(
+                onClick = onShowFileActions,
+                modifier = Modifier.size(32.dp),
+            ) {
+                NiStyleIcon(
+                    icon = Icons.Rounded.MoreVert,
+                    style = NiAppIconStyle,
+                    containerSize = 32.dp,
+                    iconSize = 18.dp,
+                    contentDescription = stringResource(R.string.storage_file_more),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FileGrid(
+    files: List<StorageFile>,
+    thumbnailUrls: Map<String, String>,
+    tooShortPaths: Set<String>,
+    encryptedPaths: Set<String>,
+    isMultiSelect: Boolean,
+    selectedPaths: Set<String>,
+    preparingPath: String?,
+    onOpenDirectory: (StorageFile) -> Unit,
+    onPlayFile: (StorageFile) -> Unit,
+    onOpenImageFile: (StorageFile) -> Unit,
+    onShowFileActions: (StorageFile) -> Unit,
+    onToggleSelection: (StorageFile) -> Unit,
+    onEnterMultiSelect: (StorageFile) -> Unit,
+    gridState: LazyGridState = rememberLazyGridState(),
+    contentTopInset: Dp = 0.dp,
+    header: (@Composable () -> Unit)? = null,
+) {
+    LazyVerticalGrid(
+        state = gridState,
+        columns = GridCells.Adaptive(minSize = 160.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = contentTopInset,
+            bottom = FabBottomOffset,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (header != null) {
+            item(key = "list-header", span = { GridItemSpan(maxLineSpan) }) {
+                header()
+            }
+        }
+        items(
+            items = files,
+            key = { it.path },
+        ) { file ->
+            GridFileCard(
+                file = file,
+                thumbnailUrl = thumbnailUrls[file.path],
+                isTooShort = tooShortPaths.contains(file.path),
+                isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
+                isMultiSelect = isMultiSelect,
+                isSelected = file.path in selectedPaths,
+                preparing = preparingPath != null && file.path == preparingPath,
+                onOpenDirectory = onOpenDirectory,
+                onPlayFile = onPlayFile,
+                onOpenImageFile = onOpenImageFile,
+                onShowFileActions = { onShowFileActions(file) },
+                onToggleSelection = { onToggleSelection(file) },
+                onEnterMultiSelect = { onEnterMultiSelect(file) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun GridFileCard(
+    file: StorageFile,
+    thumbnailUrl: String?,
+    isTooShort: Boolean,
+    isEncrypted: Boolean,
+    isMultiSelect: Boolean,
+    isSelected: Boolean,
+    preparing: Boolean,
+    onOpenDirectory: (StorageFile) -> Unit,
+    onPlayFile: (StorageFile) -> Unit,
+    onOpenImageFile: (StorageFile) -> Unit,
+    onShowFileActions: () -> Unit,
+    onToggleSelection: () -> Unit,
+    onEnterMultiSelect: () -> Unit,
+) {
+    val isVideo = MediaFileTypes.isVideoFile(file.name)
+    val isAudio = MediaFileTypes.isAudioFile(file.name)
+    val isImage = MediaFileTypes.isImageFile(file.name)
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1f,
+        animationSpec = tween(durationMillis = NiMotion.DURATION_MICRO),
+        label = "gridCardScale",
+    )
+
+    val cardShape = RoundedCornerShape(16.dp)
+
+    // 卡片仅含缩略图/文件夹图标（16:9 圆角），
+    // 文件名在卡片外底部居中显示，长文字两行自动缩字。
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { scaleX = scale; scaleY = scale },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .shadow(elevation = 1.dp, shape = cardShape, clip = false)
+                .clip(cardShape)
+                .then(
+                    if (isSelected) {
+                        Modifier.border(
+                            width = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = cardShape,
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
+                .background(NiExtraColors.current.surfaceLevel3)
+                .combinedClickable(
+                    interactionSource = interactionSource,
+                    onClick = {
+                        if (isMultiSelect) {
+                            onToggleSelection()
+                        } else {
+                            when {
+                                file.isDirectory -> onOpenDirectory(file)
+                                isVideo || isAudio -> onPlayFile(file)
+                                isImage -> onOpenImageFile(file)
+                                else -> Unit
+                            }
+                        }
+                    },
+                    onLongClick = {
+                        // 长按 = 进入多选并选中当前项；多选模式下长按不再响应
+                        if (!isMultiSelect) onEnterMultiSelect()
+                    },
+                ),
+        ) {
+            if (file.isDirectory) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                ),
+                            ),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp),
+                    )
+                    // 加密文件夹锁定角标（左上角）
+                    if (isEncrypted) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(6.dp)
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.45f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Lock,
+                                contentDescription = stringResource(R.string.storage_file_encrypted),
+                                tint = Color.White,
+                                modifier = Modifier.size(13.dp),
+                            )
+                        }
+                    }
+                }
+            } else {
+                // 文件：统一 16:9 缩略图比例，音乐视频混存时卡片高度对齐。
+                val thumbBg: Color = when {
+                    isAudio -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    else -> NiExtraColors.current.surfaceLevel3
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(thumbBg),
+                ) {
+                    val hasThumbnail = (isVideo || isAudio || isImage) && thumbnailUrl != null
+                    if (hasThumbnail) {
+                        AsyncImage(
+                            model = thumbnailUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    // 类型角标：左上角，仅在媒体文件显示（多选模式让位于选中指示）
+                    val typeLabel = when {
+                        isVideo -> stringResource(R.string.storage_file_type_video)
+                        isAudio -> stringResource(R.string.storage_file_type_audio)
+                        isImage -> stringResource(R.string.storage_file_type_image)
+                        else -> null
+                    }
+                    if (typeLabel != null && !isMultiSelect) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(start = 6.dp, top = 6.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MaterialTheme.colorScheme.tertiary.copy(alpha = LocalNiGlassPanelOpacity.current))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                text = typeLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onTertiary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+
+                    // 中央播放按钮：仅在有缩略图的可播放文件显示，避免与占位图标重叠
+                    if ((isVideo || isAudio) && hasThumbnail) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.45f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.PlayArrow,
+                                contentDescription = stringResource(R.string.storage_file_action_play),
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+
+                    // 大小角标：右下角
+                    if ((isVideo || isAudio || isImage) && file.length > 0) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 6.dp, bottom = 6.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MaterialTheme.colorScheme.tertiary.copy(alpha = LocalNiGlassPanelOpacity.current))
+                                .padding(horizontal = 5.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                text = formatFileSize(file.length),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onTertiary,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+
+                    // 无缩略图占位：按文件类型给不同图标 + 软色
+                    if (!hasThumbnail) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    if (isAudio) Brush.linearGradient(
+                                        listOf(
+                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f),
+                                        ),
+                                    ) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            when {
+                                isVideo && isTooShort -> Text(
+                                    text = "<15s",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                isVideo -> Icon(
+                                    imageVector = Icons.Rounded.Movie,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.65f),
+                                    modifier = Modifier.size(52.dp),
+                                )
+                                isAudio -> Icon(
+                                    imageVector = Icons.Rounded.MusicNote,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(56.dp),
+                                )
+                                isImage -> Icon(
+                                    imageVector = Icons.Rounded.Image,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.65f),
+                                    modifier = Modifier.size(52.dp),
+                                )
+                                else -> Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.InsertDriveFile,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(52.dp),
+                                )
+                            }
+                            if (preparing) PreparingBadge()
+                        }
+                    }
+                }
+            }
+
+                    // 单文件操作入口：右上角 ⋮ 按钮（多选模式下隐藏）
+                    if (!isMultiSelect) {
+                        CardMoreButton(
+                            onClick = onShowFileActions,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 4.dp, end = 4.dp),
+                            size = 30.dp,
+                        )
+                    }
+
+                    // 多选模式：左上角选中指示（圆形勾选）
+                    if (isMultiSelect) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(6.dp)
+                                .size(26.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.primary
+                                    else Color.Black.copy(alpha = 0.45f),
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = if (isSelected) Icons.Rounded.Check else Icons.Rounded.Add,
+                                contentDescription = stringResource(
+                                    if (isSelected) R.string.storage_file_selected else R.string.storage_file_select,
+                                ),
+                                tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.White,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+        }
+        // 文件名：卡片外底部居中，长文字两行自动缩字
+        NiAutoSizeText(
+            text = file.name,
+            maxLines = 2,
+            minFontSize = 11.sp,
+            maxFontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Medium,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 17.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 6.dp)
+                .align(Alignment.CenterHorizontally),
+        )
+    }
+}
+
+/**
+ * 画廊视图：手机相册式密集方形格子，仅展示图片/视频媒体与文件夹。
+ *
+ * 非媒体文件（音频/文档等）在画廊模式隐藏以保持画面纯净；文件夹保留为紧凑方形
+ * 瓦片以支持继续下钻导航。空媒体目录显示"暂无媒体"空态。
+ */
+@Composable
+private fun FileGallery(
+    files: List<StorageFile>,
+    thumbnailUrls: Map<String, String>,
+    tooShortPaths: Set<String>,
+    encryptedPaths: Set<String>,
+    isMultiSelect: Boolean,
+    selectedPaths: Set<String>,
+    preparingPath: String?,
+    onOpenDirectory: (StorageFile) -> Unit,
+    onPlayFile: (StorageFile) -> Unit,
+    onOpenImageFile: (StorageFile) -> Unit,
+    onToggleSelection: (StorageFile) -> Unit,
+    onEnterMultiSelect: (StorageFile) -> Unit,
+    galleryState: LazyGridState,
+    contentTopInset: Dp = 0.dp,
+    header: (@Composable () -> Unit)? = null,
+) {
+    // 仅保留：文件夹（继续导航）+ 图片 / 视频（相册媒体），隐藏音频与其他文件
+    val galleryItems = files.filter {
+        it.isDirectory || MediaFileTypes.isImageFile(it.name) || MediaFileTypes.isVideoFile(it.name)
+    }
+    if (galleryItems.isEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            if (header != null) header()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                NiEmptyState(
+                    icon = Icons.Rounded.Image,
+                    text = stringResource(R.string.storage_file_gallery_empty),
+                    hint = stringResource(R.string.storage_file_gallery_empty_hint),
+                )
+            }
+        }
+        return
+    }
+    LazyVerticalGrid(
+        state = galleryState,
+        columns = GridCells.Fixed(3),
+        contentPadding = PaddingValues(
+            start = 0.dp,
+            end = 0.dp,
+            top = contentTopInset,
+            bottom = FabBottomOffset,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        if (header != null) {
+            item(key = "list-header", span = { GridItemSpan(maxLineSpan) }) {
+                header()
+            }
+        }
+        items(
+            items = galleryItems,
+            key = { it.path },
+        ) { file ->
+            GalleryCell(
+                file = file,
+                thumbnailUrl = thumbnailUrls[file.path],
+                isTooShort = tooShortPaths.contains(file.path),
+                isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
+                isMultiSelect = isMultiSelect,
+                isSelected = file.path in selectedPaths,
+                preparing = preparingPath != null && file.path == preparingPath,
+                onOpenDirectory = { onOpenDirectory(file) },
+                onPlayFile = { onPlayFile(file) },
+                onOpenImageFile = { onOpenImageFile(file) },
+                onToggleSelection = { onToggleSelection(file) },
+                onEnterMultiSelect = { onEnterMultiSelect(file) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun GalleryCell(
+    file: StorageFile,
+    thumbnailUrl: String?,
+    isTooShort: Boolean,
+    isEncrypted: Boolean,
+    isMultiSelect: Boolean,
+    isSelected: Boolean,
+    preparing: Boolean,
+    onOpenDirectory: () -> Unit,
+    onPlayFile: () -> Unit,
+    onOpenImageFile: () -> Unit,
+    onToggleSelection: () -> Unit,
+    onEnterMultiSelect: () -> Unit,
+) {
+    val isVideo = MediaFileTypes.isVideoFile(file.name)
+    val isImage = MediaFileTypes.isImageFile(file.name)
+    // 相册格统一无缝方形（文件夹与媒体一致）
+    val cellShape = RoundedCornerShape(0.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = tween(durationMillis = NiMotion.DURATION_MICRO),
+        label = "galleryCellScale",
+    )
+
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(cellShape)
+            .then(
+                if (isSelected) {
+                    Modifier.border(
+                        width = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = cellShape,
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .background(NiExtraColors.current.surfaceLevel3)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                onClick = {
+                    if (isMultiSelect) {
+                        onToggleSelection()
+                    } else {
+                        when {
+                            file.isDirectory -> onOpenDirectory()
+                            isVideo -> onPlayFile()
+                            isImage -> onOpenImageFile()
+                            else -> onPlayFile()
+                        }
+                    }
+                },
+                onLongClick = {
+                    // 长按 = 进入多选并选中当前项；多选模式下长按不再响应
+                    if (!isMultiSelect) onEnterMultiSelect()
+                },
+            ),
+    ) {
+        if (file.isDirectory) {
+            // 文件夹：方形瓦片 + 双层图标 + 玻璃胶囊名（无圆角、无描边）
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                            ),
+                        ),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                // 文件夹图标
+                Icon(
+                    imageVector = Icons.Rounded.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+            // 底部名称：贴合文字宽度的玻璃胶囊（非整条黑底），柔和可读
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.32f), RoundedCornerShape(50))
+                        .border(
+                            width = 0.5.dp,
+                            color = Color.White.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(50),
+                        )
+                        .padding(horizontal = 9.dp, vertical = 3.dp),
+                ) {
+                    Text(
+                        text = file.name,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (isEncrypted) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(4.dp)
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Lock,
+                        contentDescription = stringResource(R.string.storage_file_encrypted),
+                        tint = Color.White,
+                        modifier = Modifier.size(12.dp),
+                    )
+                }
+            }
+        } else {
+            // 媒体：方形相册格，缩略图满载裁剪
+            val hasThumbnail = thumbnailUrl != null
+            if (hasThumbnail) {
+                AsyncImage(
+                    model = thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when {
+                        isVideo && isTooShort -> Text(
+                            text = "<15s",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.85f),
+                            fontWeight = FontWeight.Medium,
+                        )
+                        isVideo -> Icon(
+                            imageVector = Icons.Rounded.Movie,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.65f),
+                            modifier = Modifier.size(34.dp),
+                        )
+                        isImage -> Icon(
+                            imageVector = Icons.Rounded.Image,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.65f),
+                            modifier = Modifier.size(34.dp),
+                        )
+                    }
+                    if (preparing) PreparingBadge()
+                }
+            }
+            // 视频中心播放徽章
+            if (isVideo && hasThumbnail) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = stringResource(R.string.storage_file_action_play),
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+            }
+        }
+
+        // 画廊模式不提供单文件操作入口，仅保留选中指示
+        // 多选模式：左上角选中指示（圆形勾选）
+        if (isMultiSelect) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(4.dp)
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.primary
+                        else Color.Black.copy(alpha = 0.45f),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (isSelected) Icons.Rounded.Check else Icons.Rounded.Add,
+                    contentDescription = stringResource(
+                        if (isSelected) R.string.storage_file_selected else R.string.storage_file_select,
+                    ),
+                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.White,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 卡片/瓦片右上角的单文件操作入口（⋮）按钮。
+ *
+ * 仅渲染纯 ⋮ 图标、无任何背景/描边/阴影，视觉干净利落。
+ */
+@Composable
+private fun CardMoreButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: Dp = 30.dp,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.size(size),
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.MoreVert,
+            contentDescription = stringResource(R.string.storage_file_more),
+            tint = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.size(size * 0.55f),
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FileActionsSheet(
+    file: StorageFile,
+    isFavorited: Boolean,
+    canDownload: Boolean,
+    showFileManagement: Boolean,
+    showDelete: Boolean = false,
+    isEncrypted: Boolean = false,
+    isRemoteStorage: Boolean = true,
+    onDismiss: () -> Unit,
+    onPlay: () -> Unit,
+    onDownload: () -> Unit,
+    onToggleQuickAccess: () -> Unit,
+    onShowInfo: () -> Unit,
+    onRename: () -> Unit = {},
+    onMove: () -> Unit = {},
+    onDelete: () -> Unit = {},
+    onEncrypt: () -> Unit = {},
+    onDecrypt: () -> Unit = {},
+    onResetPassword: () -> Unit = {},
+) {
+    val overlayId = remember(file.path) { "file_actions_${file.path}" }
+    val isPlayable = !file.isDirectory && (MediaFileTypes.isVideoFile(file.name) || MediaFileTypes.isAudioFile(file.name))
+
+    // 投递到全局玻璃浮层槽位（NiGlassBottomSheet，backdrop 真模糊，透明度随面板设置）
+    LaunchedEffect(file, isFavorited, canDownload, showFileManagement, isEncrypted, isRemoteStorage) {
+        NiGlassOverlay.show(
+            NiGlassOverlayRequest(
+                id = overlayId,
+                kind = NiGlassOverlayKind.BottomSheet,
+                onDismiss = onDismiss,
+            ) {
+                Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Text(
+                text = file.name,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp))
+
+            if (isPlayable) {
+                ActionRow(
+                    icon = Icons.Rounded.PlayArrow,
+                    text = stringResource(R.string.storage_file_action_play),
+                    onClick = onPlay,
+                )
+            }
+            if (canDownload) {
+                ActionRow(
+                    icon = Icons.Rounded.Download,
+                    text = stringResource(R.string.storage_file_action_download),
+                    onClick = onDownload,
+                )
+            }
+            ActionRow(
+                icon = if (isFavorited) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                text = stringResource(
+                    if (isFavorited) R.string.storage_file_action_remove_from_quick_access
+                    else R.string.storage_file_action_add_to_quick_access,
+                ),
+                onClick = onToggleQuickAccess,
+            )
+            if (showFileManagement) {
+                ActionRow(
+                    icon = Icons.Rounded.Edit,
+                    text = stringResource(R.string.storage_file_action_rename),
+                    onClick = onRename,
+                )
+                ActionRow(
+                    icon = Icons.AutoMirrored.Rounded.DriveFileMove,
+                    text = stringResource(R.string.storage_file_action_move),
+                    onClick = onMove,
+                )
+            }
+            if (showDelete) {
+                ActionRow(
+                    icon = Icons.Rounded.Delete,
+                    text = stringResource(R.string.storage_file_action_delete),
+                    onClick = onDelete,
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
+            // 文件夹访问加密（仅远程存储 SMB/WebDAV 支持；本地/SAF 不加密）
+            if (file.isDirectory && isRemoteStorage) {
+                if (isEncrypted) {
+                    ActionRow(
+                        icon = Icons.Rounded.Lock,
+                        text = stringResource(R.string.storage_file_action_reset_password),
+                        onClick = onResetPassword,
+                    )
+                    ActionRow(
+                        icon = Icons.Rounded.Lock,
+                        text = stringResource(R.string.storage_file_action_decrypt),
+                        onClick = onDecrypt,
+                    )
+                } else {
+                    ActionRow(
+                        icon = Icons.Rounded.Lock,
+                        text = stringResource(R.string.storage_file_action_encrypt_folder),
+                        onClick = onEncrypt,
+                    )
+                }
+            }
+            ActionRow(
+                icon = Icons.Rounded.Info,
+                text = stringResource(R.string.storage_file_action_properties),
+                onClick = onShowInfo,
+            )
+            }
+        }
+    )
+    }
+    DisposableEffect(overlayId) {
+        onDispose { NiGlassOverlay.dismiss(overlayId) }
+    }
+}
+
+@Composable
+private fun ActionRow(
+    icon: ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Spacer(Modifier.width(16.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = tint,
+        )
+    }
+}
+
+private fun fileIcon(file: StorageFile, isVideo: Boolean, isAudio: Boolean): ImageVector = when {
+    file.isDirectory -> Icons.Rounded.Folder
+    isVideo -> Icons.Rounded.Movie
+    isAudio -> Icons.Rounded.MusicNote
+    MediaFileTypes.isImageFile(file.name) -> Icons.Rounded.Image
+    else -> Icons.AutoMirrored.Rounded.InsertDriveFile
+}
+
+private fun formatFileSize(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val units = arrayOf("B", "KB", "MB", "GB", "TB")
+    var size = bytes.toDouble()
+    var unitIndex = 0
+    while (size >= 1024 && unitIndex < units.lastIndex) {
+        size /= 1024
+        unitIndex++
+    }
+    return if (unitIndex == 0) "${bytes} B" else String.format("%.1f %s", size, units[unitIndex])
+}
+
+/**
+ * 传输管理入口图标右上角的数量角标。
+ *
+ * 作为 [IconButton] 的**外层**叠加层（而非其内部子项），避免被 M3 IconButton 的
+ * 圆形 Surface 裁剪；用自定义圆角胶囊完整显示数量。
+ */
+@Composable
+private fun BoxScope.TransferCountBadge(count: Int) {
+    Text(
+        text = count.toString(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onError,
+        fontSize = 9.sp,
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 1.dp, y = 1.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.error)
+            .padding(horizontal = 4.dp, vertical = 1.dp),
+    )
+}
+
+@Composable
+private fun FileInfoDialog(file: StorageFile, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    NiInfoDialog(
+        title = stringResource(R.string.storage_file_properties_title),
+        onDismiss = onDismiss,
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 360.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            InfoRow(label = stringResource(R.string.storage_file_info_name), value = file.name)
+            if (!file.isDirectory && file.length > 0) {
+                InfoRow(label = stringResource(R.string.storage_file_info_size), value = formatFileSize(file.length))
+            }
+            if (file.lastModified > 0) {
+                InfoRow(label = stringResource(R.string.storage_file_info_modified), value = formatDate(file.lastModified, context))
+            }
+            InfoRow(label = stringResource(R.string.storage_file_info_path), value = file.path)
+            InfoRow(label = stringResource(R.string.storage_file_info_type), value = fileTypeLabel(file, context))
+        }
+    }
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(72.dp),
+        )
+        SelectionContainer(modifier = Modifier.weight(1f)) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+private fun formatDate(timestamp: Long, context: Context): String {
+    if (timestamp <= 0) return context.getString(R.string.storage_file_unknown)
+    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+    return sdf.format(java.util.Date(timestamp))
+}
+
+private fun fileTypeLabel(file: StorageFile, context: Context): String {
+    if (file.isDirectory) return context.getString(R.string.storage_file_folder)
+    val name = file.name
+    val dot = name.lastIndexOf('.')
+    if (dot < 0 || dot == name.length - 1) return context.getString(R.string.storage_file_file)
+    val ext = name.substring(dot + 1).uppercase()
+    return when {
+        MediaFileTypes.isVideoFile(name) -> context.getString(R.string.storage_file_type_video_ext, ext)
+        MediaFileTypes.isAudioFile(name) -> context.getString(R.string.storage_file_type_audio_ext, ext)
+        MediaFileTypes.isImageFile(name) -> context.getString(R.string.storage_file_type_image_ext, ext)
+        else -> context.getString(R.string.storage_file_type_file_ext, ext)
+    }
+}
+
+// ---- 文件管理对话框 ----
+
+/**
+ * 批量文件操作进度浮层（移动/复制/删除）。
+ *
+ * 置于页面底部居中，展示操作类型 + 已完成/总数 + 确定性进度条 + 当前文件名。
+ * 不拦截点击（仅展示），仅在进行中的批量操作期间显示。
+ */
+@Composable
+private fun FileOpProgressOverlay(progress: FileOpProgress) {
+    val label = when (progress.type) {
+        FileOpType.MOVE -> stringResource(R.string.storage_file_op_moving)
+        FileOpType.COPY -> stringResource(R.string.storage_file_op_copying)
+        FileOpType.DELETE -> stringResource(R.string.storage_file_op_deleting)
+    }
+    val fraction = if (progress.total > 0) progress.done.toFloat() / progress.total else 0f
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = FabBottomOffset + 24.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = niFrostSurfaceColor(),
+        shadowElevation = 8.dp,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(label, style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = stringResource(R.string.storage_file_op_progress, progress.done, progress.total),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { fraction },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (progress.currentName.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = progress.currentName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+    }
+}
+
+/** 移动/复制冲突弹窗：目标目录已有同名文件，让用户选择「跳过重复 / 覆盖 / 取消」。 */
+@Composable
+private fun TransferConflictDialog(
+    duplicateCount: Int,
+    onSkip: () -> Unit,
+    onOverwrite: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    NiInfoDialog(
+        title = stringResource(R.string.storage_file_conflict_title),
+        onDismiss = onDismiss,
+        actions = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = onSkip) { Text(stringResource(R.string.storage_file_conflict_skip)) }
+            TextButton(onClick = onOverwrite) { Text(stringResource(R.string.storage_file_conflict_overwrite)) }
+        },
+    ) {
+        Text(
+            text = stringResource(R.string.storage_file_conflict_body, duplicateCount),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 重命名对话框。预填当前文件名（不含扩展名），用户确认后回调 [onConfirm]。 */
+@Composable
+fun RenameFileDialog(
+    fileName: String,
+    isDirectory: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    // 预填名称：目录取全名；文件仅在确实存在后缀（最后一个 . 不在首位/末尾）时取主名，
+    // 文件名中间的 . 视为名称本身的一部分，不当作扩展名分隔符
+    val dot = if (isDirectory) -1 else fileName.lastIndexOf('.')
+    val hasExtension = dot > 0 && dot < fileName.length - 1
+    val extension = if (hasExtension) fileName.substring(dot + 1) else ""
+    val initial = if (hasExtension) fileName.substringBeforeLast('.') else fileName
+// 用 TextFieldValue 控制光标：初始即定位到文本末尾，长文件名默认光标在最后
+    var nameState by remember { mutableStateOf(TextFieldValue(initial, selection = TextRange(initial.length))) }
+    val newName = nameState.text
+    // 弹窗显示即自动聚焦输入框并拉起输入法（在 content 内触发，见 NiAutoFocusAndShowKeyboard）
+    val focusRequester = remember { FocusRequester() }
+
+    NiInfoDialog(
+        title = stringResource(R.string.storage_file_rename_title),
+        onDismiss = onDismiss,
+        actions = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(
+                onClick = {
+                    // 文件重命名时若新名称未携带原扩展名（按结尾匹配，避免把名称中间的 . 当作扩展名），自动补回
+                    val trimmed = newName.trim()
+                    val finalName = if (isDirectory || !hasExtension ||
+                        trimmed.endsWith(extension, ignoreCase = true)
+                    ) {
+                        trimmed
+                    } else {
+                        trimmed + ".$extension"
+                    }
+                    onConfirm(finalName)
+                },
+                enabled = newName.isNotBlank() && newName != initial,
+            ) { Text(stringResource(R.string.confirm)) }
+        },
+    ) {
+        NiAutoFocusAndShowKeyboard(focusRequester)
+        OutlinedTextField(
+            value = nameState,
+            onValueChange = { nameState = it },
+            label = { Text(stringResource(R.string.storage_file_rename_new_name)) },
+            // 长文件名支持换行显示；上限 5 行防止弹窗过高，超出内部滚动
+            singleLine = false,
+            maxLines = 5,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester),
+            shape = NiTextFieldDefaults.Shape,
+            colors = NiTextFieldDefaults.colors(),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 0.9f,
+            ),
+        )
+    }
+}
+
+/** 多选批量传输操作类型：移动到 / 复制到。 */
+private enum class BatchTransferOp { MOVE, COPY }
+
+/** 目录选择对话框目录列表固定高度：加载/空态/列表共用，切换目录时弹窗尺寸不跳动。 */
+private val TargetListHeight = 320.dp
+
+/**
+ * 目录浏览式目标选择对话框（用于"移动到"/"复制到"）。
+ *
+ * 复用下载管理器文件选择弹窗样式（[DownloadDialogShell] 宽面板）。
+ * **点击子目录仅进入该目录浏览**，点击底部「确定」才把当前所在目录作为移动/复制目标，
+ * 避免误触即执行。
+ *
+ * @param title 标题文案
+ * @param confirmText 底部确认按钮文案（如"移动到此处"/"复制到此处"）
+ * @param startPath 初始浏览目录（当前所在目录路径）
+ * @param listSubfolders 列出指定路径下直接子目录的挂起回调
+ * @param toDirectory 由路径构造目录 [StorageFile]（确认时的目标）
+ * @param onDismiss 关闭
+ * @param onConfirm 点确认：以当前目录为目标执行
+ */
+@Composable
+private fun FolderTargetDialog(
+    title: String,
+    confirmText: String,
+    startPath: String,
+    listSubfolders: suspend (String) -> List<StorageFile>,
+    toDirectory: (String) -> StorageFile,
+    encryptedPaths: Set<String>,
+    unlockFolder: suspend (StorageFile, String) -> Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (StorageFile) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    // 当前浏览目录路径：进入子目录则更新，返回上级则回溯
+    var currentPath by remember { mutableStateOf(startPath) }
+    val subfolders = remember { mutableStateOf<List<StorageFile>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    // 本次弹窗会话内已成功解锁的文件夹路径：已解锁后再次点击直接进入，不再重复弹密码
+    var unlockedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // 待解锁文件夹（点击加密目录时置非空，在弹窗内部联显示密码输入，避免根遮罩层级被压）
+    var unlockTarget by remember { mutableStateOf<StorageFile?>(null) }
+    var unlockPassword by remember { mutableStateOf("") }
+    var unlockError by remember { mutableStateOf<String?>(null) }
+    var unlocking by remember { mutableStateOf(false) }
+    val wrongPasswordText = stringResource(R.string.storage_file_wrong_password)
+
+    LaunchedEffect(currentPath) {
+        loading = true
+        subfolders.value = listSubfolders(currentPath)
+        loading = false
+    }
+
+    DownloadDialogShell(
+        forceDark = false,
+        title = title,
+        onClose = onDismiss,
+        content = {
+            // 当前位置指示：可点击返回上级目录
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .then(
+                        if (currentPath.isNotEmpty()) {
+                            Modifier.clickable { currentPath = currentPath.substringBeforeLast('/') }
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .padding(horizontal = 12.dp),
+            ) {
+                Icon(
+                    imageVector = if (currentPath.isNotEmpty()) Icons.AutoMirrored.Rounded.ArrowBack
+                    else Icons.Rounded.FolderOpen,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = if (currentPath.isEmpty()) stringResource(R.string.storage_file_move_root)
+                    else currentPath,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            // 固定高度区域：目录加载/空态/列表共用同一高度，避免切换目录时弹窗尺寸跳动
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(TargetListHeight),
+            ) {
+                when {
+                    unlockTarget != null -> TargetUnlockForm(
+                        folder = unlockTarget!!,
+                        password = unlockPassword,
+                        error = unlockError,
+                        unlocking = unlocking,
+                        onPasswordChange = { unlockPassword = it; unlockError = null },
+                        onCancel = { unlockTarget = null },
+                        onSubmit = {
+                            unlockError = null
+                            unlocking = true
+                            scope.launch {
+                                val target = unlockTarget
+                                val ok = if (target != null) {
+                                    unlockFolder(target, unlockPassword.trim())
+                                } else {
+                                    false
+                                }
+                                unlocking = false
+                                if (ok && target != null) {
+                                    unlockedPaths = unlockedPaths + target.path.trimEnd('/')
+                                    unlockTarget = null
+                                    currentPath = target.path
+                                } else {
+                                    unlockError = wrongPasswordText
+                                }
+                            }
+                        },
+                    )
+                    loading -> TargetListLoading()
+                    subfolders.value.isEmpty() -> TargetListEmpty(stringResource(R.string.storage_file_move_no_target))
+                    else -> LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        itemsIndexed(subfolders.value, key = { _, child -> child.path }) { _, child ->
+                        val childKey = child.path.trimEnd('/')
+                        // 加密且未在本会话解锁：点击弹出密码框，解锁成功后自动进入
+                        val isLocked = childKey in encryptedPaths && childKey !in unlockedPaths
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                // 点击仅进入该子目录浏览，不直接执行移动/复制
+                                .clickable {
+                                    if (isLocked) {
+                                        unlockTarget = child
+                                        unlockPassword = ""
+                                        unlockError = null
+                                    } else {
+                                        currentPath = child.path
+                                    }
+                                }
+                                .padding(horizontal = 12.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Folder,
+                                contentDescription = null,
+                                tint = if (isLocked) MaterialTheme.colorScheme.outline
+                                else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            if (isLocked) {
+                                Spacer(Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.Lock,
+                                    contentDescription = stringResource(R.string.storage_file_encrypted),
+                                    tint = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = child.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (isLocked) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Icon(
+                                imageVector = Icons.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                }
+                }
+            }
+        },
+        actions = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(onClick = { onConfirm(toDirectory(currentPath)) }) { Text(confirmText) }
+        },
+    )
+}
+
+/** 候选目录加载占位：避免异步加载期间短暂显示"空"造成的闪烁。 */
+@Composable
+private fun TargetListLoading() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator()
+    }
+}
+
+/** 无可选目录提示。 */
+@Composable
+private fun TargetListEmpty(text: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 目录选择弹窗内的加密文件夹解锁表单。
+ *
+ * 直接渲染在目录选择器自身的 Dialog 窗口内，规避根玻璃遮罩被独立 Dialog 窗口压在下方的问题。
+ */
+@Composable
+private fun TargetUnlockForm(
+    folder: StorageFile,
+    password: String,
+    error: String?,
+    unlocking: Boolean,
+    onPasswordChange: (String) -> Unit,
+    onCancel: () -> Unit,
+    onSubmit: () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Rounded.Lock,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.storage_file_unlock_body, folder.name),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(
+                onClick = onCancel,
+                enabled = !unlocking,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.cancel),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+        NiAutoFocusAndShowKeyboard(focusRequester)
+        NiTextField(
+            value = password,
+            onValueChange = onPasswordChange,
+            label = stringResource(R.string.storage_file_password_label),
+            placeholder = stringResource(R.string.storage_file_password_placeholder),
+            isError = error != null,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+            ),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                onDone = { if (password.isNotBlank() && !unlocking) onSubmit() },
+            ),
+            focusRequester = focusRequester,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (error != null) {
+            Text(
+                text = error,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                onClick = onCancel,
+                enabled = !unlocking,
+            ) { Text(stringResource(R.string.cancel)) }
+            Spacer(Modifier.weight(1f))
+            TextButton(
+                onClick = onSubmit,
+                enabled = password.isNotBlank() && !unlocking,
+            ) { Text(stringResource(R.string.storage_file_unlock)) }
+        }
+    }
+}
+
+/** 删除确认对话框。 */
+@Composable
+fun DeleteConfirmDialog(
+    fileName: String,
+    isDirectory: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    NiInfoDialog(
+        title = stringResource(
+            if (isDirectory) R.string.storage_file_delete_folder
+            else R.string.storage_file_delete_file,
+        ),
+        onDismiss = onDismiss,
+        actions = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(
+                onClick = onConfirm,
+                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) { Text(stringResource(R.string.delete)) }
+        },
+    ) {
+        Text(
+            text = stringResource(
+                if (isDirectory) R.string.storage_file_delete_confirm_dir
+                else R.string.storage_file_delete_confirm_file,
+                fileName,
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+/** 新建文件夹对话框。 */
+@Composable
+fun CreateFolderDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    // 弹窗显示即自动聚焦输入框并拉起输入法（需在 content 内触发，见 NiAutoFocusAndShowKeyboard）
+    val focusRequester = remember { FocusRequester() }
+    NiInfoDialog(
+        title = stringResource(R.string.storage_file_new_folder),
+        onDismiss = onDismiss,
+        actions = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(
+                onClick = { onConfirm(name.trim()) },
+                enabled = name.isNotBlank(),
+            ) { Text(stringResource(R.string.create)) }
+        },
+    ) {
+        NiAutoFocusAndShowKeyboard(focusRequester)
+        NiTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = stringResource(R.string.storage_file_folder_name),
+            focusRequester = focusRequester,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+// ---- 文件夹访问加密对话框 ----
+
+/** 设置 / 取消文件夹访问密码对话框。 */
+@Composable
+fun FolderPasswordDialog(
+    title: String,
+    subtitle: String,
+    confirmText: String,
+    visible: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (password: String) -> Unit,
+) {
+    var password by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    NiInfoDialog(
+        title = title,
+        onDismiss = onDismiss,
+        actions = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(
+                onClick = { onConfirm(password.trim()) },
+                enabled = password.length >= 4,
+            ) { Text(confirmText) }
+        },
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            NiAutoFocusAndShowKeyboard(focusRequester)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            NiTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = stringResource(R.string.storage_file_password_label_min4),
+                placeholder = stringResource(R.string.storage_file_password_placeholder),
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                focusRequester = focusRequester,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/** 解锁加密文件夹对话框：密码输入 + 解锁，密码错误时内联提示。 */
+@Composable
+fun FolderUnlockDialog(
+    folder: StorageFile,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onPasswordSubmit: (String) -> Unit,
+    onPasswordChange: () -> Unit,
+) {
+    var password by remember { mutableStateOf("") }
+    // 弹窗显示即自动聚焦密码输入框并拉起输入法（在 content 内触发）
+    val focusRequester = remember { FocusRequester() }
+    NiInfoDialog(
+        title = stringResource(R.string.storage_file_unlock_title),
+        onDismiss = onDismiss,
+        actions = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(
+                onClick = { onPasswordSubmit(password.trim()) },
+                enabled = password.isNotBlank(),
+            ) { Text(stringResource(R.string.storage_file_unlock)) }
+        },
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            NiAutoFocusAndShowKeyboard(focusRequester)
+            Text(
+                text = stringResource(R.string.storage_file_unlock_body, folder.name),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            NiTextField(
+                value = password,
+                onValueChange = {
+                    password = it
+                    onPasswordChange()
+                },
+                label = stringResource(R.string.storage_file_password_label),
+                placeholder = stringResource(R.string.storage_file_password_placeholder),
+                isError = errorMessage != null,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                focusRequester = focusRequester,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (errorMessage != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = errorMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+/** 修改文件夹访问密码对话框：验证当前密码 + 输入新密码两次。 */
+@Composable
+@SuppressLint("LocalContextGetResourceValueCall")
+fun ResetFolderPasswordDialog(
+    folder: StorageFile,
+    onDismiss: () -> Unit,
+    onConfirm: (oldPassword: String, newPassword: String) -> Unit,
+) {
+    var oldPassword by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    // 弹窗显示即自动聚焦"当前密码"输入框并拉起输入法（在 content 内触发）
+    val focusRequester = remember { FocusRequester() }
+    NiInfoDialog(
+        title = stringResource(R.string.storage_file_change_password_title),
+        onDismiss = onDismiss,
+        actions = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            TextButton(
+                onClick = {
+                    if (newPassword.length < 4) {
+                        error = context.getString(R.string.storage_file_password_min4_error)
+                    } else if (newPassword != confirmPassword) {
+                        error = context.getString(R.string.storage_file_password_mismatch)
+                    } else {
+                        onConfirm(oldPassword.trim(), newPassword.trim())
+                    }
+                },
+                enabled = oldPassword.isNotBlank() && newPassword.isNotBlank() && confirmPassword.isNotBlank(),
+            ) { Text(stringResource(R.string.save)) }
+        },
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            NiAutoFocusAndShowKeyboard(focusRequester)
+            Text(
+                text = stringResource(R.string.storage_file_change_password_body, folder.name),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            NiTextField(
+                value = oldPassword,
+                onValueChange = {
+                    oldPassword = it
+                    error = null
+                },
+                label = stringResource(R.string.storage_file_current_password),
+                placeholder = stringResource(R.string.storage_file_current_password_placeholder),
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                focusRequester = focusRequester,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            NiTextField(
+                value = newPassword,
+                onValueChange = {
+                    newPassword = it
+                    error = null
+                },
+                label = stringResource(R.string.storage_file_new_password),
+                placeholder = stringResource(R.string.storage_file_new_password_placeholder),
+                isError = error != null,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            NiTextField(
+                value = confirmPassword,
+                onValueChange = {
+                    confirmPassword = it
+                    error = null
+                },
+                label = stringResource(R.string.storage_file_confirm_password),
+                placeholder = stringResource(R.string.storage_file_confirm_password_placeholder),
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (error != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = error.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+/** 多选模式底部操作栏：液态玻璃胶囊。固定三操作位（全选/下载/删除）+ 顶部"已选N项/关闭"行。 */
+@Composable
+private fun MultiSelectActionBar(
+    backdrop: Backdrop,
+    selectedCount: Int,
+    allSelected: Boolean,
+    downloadEnabled: Boolean,
+    fileManagementEnabled: Boolean,
+    moreMenuExpanded: Boolean,
+    onMoreMenuOpenChange: (Boolean) -> Unit,
+    onSelectAll: () -> Unit,
+    onDownload: () -> Unit,
+    onAddToQuickAccess: () -> Unit,
+    onMove: () -> Unit,
+    onCopy: () -> Unit,
+    onDelete: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isInLightTheme = !NiExtraColors.current.isDark
+    // 与悬浮底栏一致的液态玻璃容器：vibrancy + blur + lens + 高光边 + 柔和阴影，
+    // 背景由 [backdrop] 捕获页面内容，实现真实背景模糊；不透明度由 LocalNiGlassOpacity 统一控制
+    val containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = LocalNiGlassOpacity.current)
+    // "更多"菜单锚点：取按钮右下角，从按钮下方展开（近屏底时自动上抬）
+    var moreAnchor by remember { mutableStateOf(Offset.Zero) }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { RoundedCornerShape(28.dp) },
+                effects = {
+                    vibrancy()
+                    blur(8f.dp.toPx())
+                    lens(6f.dp.toPx(), 6f.dp.toPx())
+                },
+                highlight = { Highlight.Default.copy(alpha = 1f) },
+                shadow = {
+                    Shadow.Default.copy(color = Color.Black.copy(if (isInLightTheme) 0.1f else 0.2f))
+                },
+                onDrawSurface = { drawRect(containerColor) },
+            ),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // 顶部行：已选数量 + 关闭按钮（选中态指示下沉到操作栏，并提供一键退出）
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 8.dp, top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.storage_file_selected_count, selectedCount),
+                    style = MaterialTheme.typography.labelMedium,
+                    // 玻璃底上用高对比前景色，避免灰色次文字对比不足
+                    color = glassOnSurfaceMuted(),
+                )
+                IconButton(onClick = onClose) {
+                    NiStyleIcon(
+                        icon = Icons.Rounded.Close,
+                        style = NiAppIconStyle,
+                        containerSize = 32.dp,
+                        iconSize = 18.dp,
+                        contentDescription = stringResource(R.string.storage_file_cancel_multi_select),
+                    )
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
+            // 固定操作位（全选/下载）+ 更多：不按选中内容显隐，仅置灰，保证布局稳定不抖动；
+            // 低频/破坏性操作收进「更多」展开菜单，避免固定位过多
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ActionBarItem(
+                    icon = if (allSelected) Icons.Rounded.Close else Icons.Rounded.SelectAll,
+                    label = stringResource(
+                        if (allSelected) R.string.storage_file_deselect_all
+                        else R.string.storage_file_select_all,
+                    ),
+                    enabled = selectedCount > 0,
+                    onClick = onSelectAll,
+                    modifier = Modifier.weight(1f),
+                )
+                ActionBarItem(
+                    icon = Icons.Rounded.Download,
+                    label = stringResource(R.string.storage_file_action_download),
+                    enabled = downloadEnabled,
+                    onClick = onDownload,
+                    modifier = Modifier.weight(1f),
+                )
+                ActionBarItem(
+                    icon = Icons.Rounded.MoreVert,
+                    label = stringResource(R.string.more),
+                    enabled = selectedCount > 0,
+                    onClick = { onMoreMenuOpenChange(true) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .onGloballyPositioned { coords ->
+                            val topLeft = coords.localToRoot(Offset.Zero)
+                            moreAnchor = topLeft + Offset(coords.size.width.toFloat(), coords.size.height.toFloat())
+                        },
+                )
+            }
+        }
+        // 「更多」展开菜单：移动/复制（需文件管理能力）/快速访问/删除
+        NiGlassDropdownMenu(
+            expanded = moreMenuExpanded,
+            onDismissRequest = { onMoreMenuOpenChange(false) },
+            anchor = IntOffset(moreAnchor.x.toInt(), moreAnchor.y.toInt()),
+        ) {
+            val hasSelection = selectedCount > 0
+            BatchActionMenuItem(
+                icon = Icons.AutoMirrored.Rounded.DriveFileMove,
+                text = stringResource(R.string.move_to),
+                enabled = fileManagementEnabled && hasSelection,
+                onClick = onMove,
+            )
+            BatchActionMenuItem(
+                icon = Icons.Rounded.ContentCopy,
+                text = stringResource(R.string.copy_to),
+                enabled = fileManagementEnabled && hasSelection,
+                onClick = onCopy,
+            )
+            BatchActionMenuItem(
+                icon = Icons.Rounded.Star,
+                text = stringResource(R.string.storage_file_action_add_to_quick_access),
+                enabled = hasSelection,
+                onClick = onAddToQuickAccess,
+            )
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            BatchActionMenuItem(
+                icon = Icons.Rounded.Delete,
+                text = stringResource(R.string.delete),
+                enabled = hasSelection,
+                onClick = onDelete,
+                isDanger = true,
+            )
+        }
+    }
+}
+
+/** 「更多」菜单内的批量操作项（图标 + 文案）。 */
+@Composable
+private fun BatchActionMenuItem(
+    icon: ImageVector,
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    isDanger: Boolean = false,
+) {
+    DropdownMenuItem(
+        modifier = Modifier.height(40.dp),
+        enabled = enabled,
+        text = {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = when {
+                    !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    isDanger -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+            )
+        },
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = when {
+                    !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    isDanger -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+                modifier = Modifier.size(20.dp),
+            )
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun ActionBarItem(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    isDanger: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val color = when {
+        !enabled -> glassOnSurfaceMuted().copy(alpha = 0.5f)
+        isDanger -> MaterialTheme.colorScheme.error
+        else -> glassOnSurface()
+    }
+    Column(
+        modifier = modifier
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = color,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun formatUploadSpeed(bytesPerSec: Long): String = when {
+    bytesPerSec >= 1000 * 1000 -> String.format("%.1f MB/s", bytesPerSec / (1000.0 * 1000.0))
+    bytesPerSec >= 1000 -> "${bytesPerSec / 1000} KB/s"
+    else -> "$bytesPerSec B/s"
+}

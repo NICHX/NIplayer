@@ -1,0 +1,10 @@
+<resources>
+    <!-- Default messages for error types (ErrorType.defaultMessageRes) -->
+    <string name="error_type_network">Network error</string>
+    <string name="error_type_auth">Incorrect username or password</string>
+    <string name="error_type_file">File not found</string>
+    <string name="error_type_storage">Storage connection failed</string>
+    <string name="error_type_decode">Decode failed</string>
+    <string name="error_type_database">Data read/write failed</string>
+    <string name="error_type_unknown">An error occurred</string>
+</resources>

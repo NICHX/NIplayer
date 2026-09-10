@@ -1,0 +1,51 @@
+<resources>
+    <!-- 通用操作 -->
+    <string name="action_play">播放</string>
+    <string name="action_confirm">确认</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_close">关闭</string>
+    <string name="section_view_all">查看全部</string>
+    <string name="copied">已复制</string>
+    <string name="details">详情</string>
+    <string name="collapse">收起</string>
+
+    <!-- 应用内目录选择器（FolderPickerDialog） -->
+    <string name="folder_picker_choose_title">选择下载目录</string>
+    <string name="folder_picker_choose_here">选择此目录</string>
+    <string name="folder_picker_parent">返回上级目录</string>
+    <string name="folder_picker_empty">此目录为空</string>
+
+    <!-- 下载目标选择（DownloadTargetChooserDialog） -->
+    <string name="download_choose_target_title">下载到</string>
+    <string name="download_target_preset">预设目录</string>
+    <string name="download_target_preset_subtitle">%1$s</string>
+    <string name="download_target_preset_not_set">未设置下载目录</string>
+    <string name="download_target_custom">选择下载目录</string>
+
+    <!-- 配色方案（NiScheme.labelRes） -->
+    <string name="color_scheme_misty">雾蓝静谧</string>
+    <string name="color_scheme_blueberry">蓝莓之夜</string>
+    <string name="color_scheme_denim">复古牛仔</string>
+    <string name="color_scheme_rose_dust">玫瑰尘埃</string>
+    <string name="color_scheme_strawberry">草莓奶油</string>
+    <string name="color_scheme_coral">落日珊瑚</string>
+    <string name="color_scheme_forest">森野絮语</string>
+    <string name="color_scheme_matcha">抹茶微风</string>
+    <string name="color_scheme_caramel">焦糖琥珀</string>
+    <string name="color_scheme_mint_macaron">薄荷糖</string>
+    <string name="color_scheme_sakura_macaron">樱花布丁</string>
+    <string name="color_scheme_lavender_macaron">香芋慕斯</string>
+    <string name="color_scheme_almond">杏仁慕斯</string>
+    <string name="color_scheme_mauve">灰霭紫</string>
+    <string name="color_scheme_sage">鼠尾草</string>
+    <string name="color_scheme_spearmint">青柠薄荷</string>
+    <string name="color_scheme_bubblegum">泡泡糖</string>
+    <string name="color_scheme_summer_soda">橘夏汽水</string>
+
+    <!-- 配色方案分类（NiScheme.categoryRes） -->
+    <string name="color_scheme_category_cool">冷色系</string>
+    <string name="color_scheme_category_warm">暖色系</string>
+    <string name="color_scheme_category_nature">自然色系</string>
+    <string name="color_scheme_category_macaron">糖果系</string>
+    <string name="color_scheme_category_morandi">莫兰迪</string>
+</resources>

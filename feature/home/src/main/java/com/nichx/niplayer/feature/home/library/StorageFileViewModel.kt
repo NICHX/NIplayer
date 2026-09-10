@@ -1,0 +1,2608 @@
+package com.nichx.niplayer.feature.home.library
+
+import com.nichx.niplayer.feature.home.R
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.nichx.niplayer.database.dao.MediaLibraryDao
+import com.nichx.niplayer.database.dao.PlayHistoryDao
+import com.nichx.niplayer.database.dao.QuickAccessDao
+import com.nichx.niplayer.database.entity.MediaLibraryEntity
+import com.nichx.niplayer.database.entity.DownloadState
+import com.nichx.niplayer.database.entity.QuickAccessEntity
+import com.nichx.niplayer.database.entity.resumeStartPositionMs
+import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.database.security.EncryptedFolderManager
+import com.nichx.niplayer.datastore.DownloadSettings
+import com.nichx.niplayer.datastore.FileBrowserSettings
+import com.nichx.niplayer.datastore.LrcApiSettings
+import com.nichx.niplayer.datastore.PlayerSettings
+import com.nichx.niplayer.datastore.SortConfig
+import com.nichx.niplayer.datastore.ThumbnailGenerationMode
+import com.nichx.niplayer.datastore.ThumbnailSettings
+import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.feature.home.PrePlayAspectReader
+import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequest
+import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequestHolder
+import com.nichx.niplayer.player.kernel.HistoryDescriptor
+import com.nichx.niplayer.player.kernel.MediaSourceBuilder
+import com.nichx.niplayer.player.kernel.PlaybackRequest
+import com.nichx.niplayer.player.kernel.PlaybackRequestHolder
+import com.nichx.niplayer.player.kernel.PlaylistHolder
+import com.nichx.niplayer.player.kernel.PlaylistItem
+import com.nichx.niplayer.player.kernel.isAudioFile
+import com.nichx.niplayer.storage.AbstractStorageFile
+import com.nichx.niplayer.storage.Storage
+import com.nichx.niplayer.storage.StorageFactory
+import com.nichx.niplayer.storage.StorageFile
+import com.nichx.niplayer.storage.download.DownloadManager
+import com.nichx.niplayer.storage.download.UploadManager
+import com.nichx.niplayer.storage.impl.WebDavHttpException
+import com.nichx.niplayer.thumbnail.ThumbnailManager
+import com.nichx.niplayer.thumbnail.ThumbnailResult
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import android.content.Context
+import android.content.ContentUris
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import com.nichx.niplayer.storage.impl.VideoStorage
+import com.nichx.niplayer.storage.impl.VideoStorageFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import java.util.Collections
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import javax.inject.Inject
+
+/** 文件目录加载的总超时（ms）。不可达存储底层 listFiles 可能阻塞数十秒，此值兜底停止转圈。 */
+private const val DIRECTORY_LOAD_TIMEOUT_MS = 10_000L
+
+/** 平铺列表展开目录加载/缩略图生成的并发上限。 */
+private const val TREE_LOAD_CONCURRENCY = 2
+
+/**
+ * 文件浏览页 ViewModel。
+ *
+ * 从 [LibraryScreen] 点击存储源进入，列出根目录文件，支持逐级进入子目录、返回上级、
+ * 点击视频文件构造播放源并导航到 [com.nichx.niplayer.feature.player.PlayerScreen]。
+ *
+ * 在 ViewModel 内以 [directoryStack] 维护目录层级，
+ * 取代 Fragment 堆栈式目录管理。
+ *
+ * 播放源构造委托 [MediaSourceBuilder.buildMediaSource]（按 [Storage.createPlayUrl] 返回值
+ * 分流 Http / Local / DataSource），构造好的 [NxMediaSource] 经 [PlaybackRequestHolder]
+ * 传递给 :feature:player。
+ *
+ * 播放历史（P1）：
+ * - [playFile] 时构造 [HistoryDescriptor]（uniqueKey = `"${library.id}:${file.path}"`）
+ *   填充到 [PlaybackRequest.history]，PlayerViewModel 据此写回 play_history 表
+ * - [playFile] 时查询 [PlayHistoryDao.getPlayHistory] 获取续播位置，设置到
+ *   [PlaybackRequest.startPositionMs]，实现"接着上次看"
+ *
+ * @param savedStateHandle 由 Navigation Compose hiltViewModel 自动注入，读取路由参数 `storageId`
+ */
+@HiltViewModel
+class StorageFileViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
+    savedStateHandle: SavedStateHandle,
+    private val storageFactory: StorageFactory,
+    private val mediaLibraryDao: MediaLibraryDao,
+    private val playHistoryDao: PlayHistoryDao,
+    private val quickAccessDao: QuickAccessDao,
+    private val playbackRequestHolder: PlaybackRequestHolder,
+    private val imageViewerRequestHolder: ImageViewerRequestHolder,
+    private val playlistHolder: PlaylistHolder,
+    private val thumbnailManager: ThumbnailManager,
+    private val downloadManager: DownloadManager,
+    private val uploadManager: UploadManager,
+    private val encryptedFolderManager: EncryptedFolderManager,
+) : ViewModel() {
+
+    private var storageId: Int = savedStateHandle.get<Int>("storageId") ?: 0
+    private var initialized = false
+
+    /**
+     * Initialize the ViewModel with explicit parameters (used by file browser overlay).
+     *
+     * overlay 采用单一宿主（Home 内挂载），ViewModel 以 `"file_browser_$storageId"` 为 key
+     * 跨组合存续。`[initialized]` 守卫保证同一 storageId 重复进入时不会二次重置，
+     * 因此浏览器关闭后再次打开同一存储源会沿用上次的目录/列表状态；
+     * 如需每次都从根目录开始，需另行重置本 ViewModel。
+     */
+    fun initialize(storageId: Int, initialPath: String = "") {
+        if (initialized) return
+        initialized = true
+        this.storageId = storageId
+        _initialPath = initialPath
+        loadRoot()
+        // 收集本存储源上传完成事件：刷新目录 + 全局通知（含用户在别处等大文件完成后再回来）
+        viewModelScope.launch {
+            uploadManager.completions
+                .filter { it.storageId == storageId }
+                .collect { t ->
+                    when (t.state) {
+                        DownloadState.COMPLETED -> {
+                            refreshCurrentDirectory()
+                            _events.tryEmit(
+                                StorageFileEvent.ShowToast(
+                                    context.getString(R.string.storage_file_uploaded, t.fileName),
+                                ),
+                            )
+                        }
+                        DownloadState.FAILED -> _events.tryEmit(
+                            StorageFileEvent.ShowError(context.getString(R.string.storage_file_upload_failed)),
+                        )
+                        else -> {}
+                    }
+                }
+        }
+        // 收集本存储源的加密文件夹配置（锁定角标）
+        viewModelScope.launch {
+            encryptedFolderManager.getEncryptedFlow(storageId).collect { list ->
+                _encryptedPaths.value = list.map { it.folderPath.trimEnd('/') }.toSet()
+            }
+        }
+    }
+
+    /**
+     * W-N1 / W-N12 修复：将异常转换为面向用户的中文错误提示。
+     *
+     * - [WebDavHttpException]：使用 [WebDavHttpException.friendlyMessageRes]
+     *   按 HTTP 响应码分类（401 账号密码错误 / 403 无权限 / 404 不存在 / 5xx 服务器异常）
+     * - [java.net.UnknownHostException] / [java.net.SocketTimeoutException]：网络异常提示
+     * - 其他：回退到 e.message 或通用错误
+     */
+    private fun Throwable.toFriendlyMessage(): String = when (this) {
+        is WebDavHttpException -> context.getString(friendlyMessageRes, code)
+        is java.net.UnknownHostException -> context.getString(R.string.error_network_host)
+        is java.net.SocketTimeoutException -> context.getString(R.string.error_network_timeout)
+        is java.net.ConnectException -> context.getString(R.string.error_network_connect)
+        else -> message ?: context.getString(R.string.error_unknown)
+    }
+
+    /** 当前 Storage 实例，loadRoot 成功后赋值。 */
+    private var storage: Storage? = null
+
+    /** 当前存储源实体，playFile 时用于构造 HistoryDescriptor。 */
+    private var currentLibrary: MediaLibraryEntity? = null
+
+    /** 初始路径（overlay 模式从 composable 传入），loadRoot 完成后自动跳转。 */
+    private var _initialPath: String = ""
+
+    /** 目录栈：记录已进入的目录，栈底为根目录。用于 [goUp] 返回上级。 */
+    private val directoryStack = ArrayDeque<StorageFile>()
+
+    /**
+     * 目录入口路径栈：与 [directoryStack] 同步（少 root），记录进入每一级子目录时
+     * 点击的文件夹路径。返回上级目录时据此定位 scroll 目标位置。
+     * - entryPathStack[i] 对应从 directoryStack[i] 进入 directoryStack[i+1] 的点击项路径
+     */
+    private val entryPathStack = ArrayDeque<String>()
+
+    private val _uiState = MutableStateFlow(StorageFileUiState(isLoading = true))
+    val uiState: StateFlow<StorageFileUiState> = _uiState.asStateFlow()
+
+    /** 当前存储源的上传任务（含进度），供文件列表上方"上传中"条展示（跨页面退出仍存在）。 */
+    val uploads: StateFlow<List<ActiveUpload>> = combine(
+        uploadManager.tasks,
+        uploadManager.taskProgress,
+        uploadManager.taskSpeeds,
+    ) { tasks, progress, speeds ->
+        tasks.filter { it.storageId == storageId }.mapNotNull { t ->
+            when (t.state) {
+                DownloadState.WAITING, DownloadState.DOWNLOADING -> {
+                    val uploaded = progress[t.id] ?: t.uploadedBytes
+                    val fraction = if (t.totalBytes > 0) {
+                        (uploaded.toFloat() / t.totalBytes).coerceIn(0f, 1f)
+                    } else -1f
+                    ActiveUpload(t.id, t.fileName, fraction, speeds[t.id] ?: 0L)
+                }
+                else -> null
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** 视频文件路径 → 可播放 URI（用于 Coil 加载缩略图）。目录切换时清空。 */
+    private val _thumbnailUrls = MutableStateFlow<Map<String, String>>(emptyMap())
+    val thumbnailUrls: StateFlow<Map<String, String>> = _thumbnailUrls.asStateFlow()
+
+    /** 视频时长过短（< 15s）的文件路径集合，UI 显示 "<15s" 标识。目录切换时清空。 */
+    private val _tooShortPaths = MutableStateFlow<Set<String>>(emptySet())
+    val tooShortPaths: StateFlow<Set<String>> = _tooShortPaths.asStateFlow()
+
+    /** 缩略图生成进度（0-100），-1 表示未在生成。 */
+    private val _thumbnailProgress = MutableStateFlow(-1)
+    val thumbnailProgress: StateFlow<Int> = _thumbnailProgress.asStateFlow()
+
+    /** 活跃下载任务数（WAITING + DOWNLOADING），> 0 时顶栏显示下载按钮角标。 */
+    val activeDownloadCount: StateFlow<Int> = downloadManager.activeDownloadCount
+
+    /** 活跃上传任务数（WAITING + DOWNLOADING），> 0 时顶栏显示上传按钮角标。 */
+    val activeUploadCount: StateFlow<Int> = uploadManager.activeUploadCount
+
+    /** 排序配置，从 [FileBrowserSettings] 持久化读取，UI 可 collect 展示当前排序态。 */
+    val sortConfig: StateFlow<SortConfig> = FileBrowserSettings.sortFlow
+
+    /**
+     * 连接健康状态：远程存储的心跳检测结果。
+     *
+     * 仅远程存储（SMB/WebDAV）启用心跳。心跳每 [HEARTBEAT_INTERVAL_MS] 执行一次，
+     * 通过 [Storage.ping] 验证连接是否仍然可达。
+     * UI 层据此在顶栏显示连接状态指示器。
+     */
+    private val _connectionHealthy = MutableStateFlow<Boolean?>(null)
+    val connectionHealthy: StateFlow<Boolean?> = _connectionHealthy.asStateFlow()
+
+    /** 下拉刷新状态：true 时 UI 显示刷新指示器。 */
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    /** 心跳检测 Job，存储源切换或 ViewModel 销毁时取消。 */
+    private var heartbeatJob: Job? = null
+
+    /** 本存储源已加密的文件夹路径集合（锁定角标用），响应式：加密配置变更后自动更新。 */
+    private val _encryptedPaths = MutableStateFlow<Set<String>>(emptySet())
+    val encryptedPaths: StateFlow<Set<String>> = _encryptedPaths.asStateFlow()
+
+    /** 待解锁的加密文件夹（进入目录被拦截时设置，密码对话框提交后消费）。 */
+    private val _pendingUnlockFolder = MutableStateFlow<StorageFile?>(null)
+    val pendingUnlockFolder: StateFlow<StorageFile?> = _pendingUnlockFolder.asStateFlow()
+
+    /** 解锁密码错误提示：非空时解锁对话框内联显示错误。 */
+    private val _unlockError = MutableStateFlow<String?>(null)
+    val unlockError: StateFlow<String?> = _unlockError.asStateFlow()
+
+    /**
+     * 平铺列表展开被加密门禁拦截时记录的待展开路径。
+     * 解锁成功后据此改为"展开内联"而非"进入目录"；取消/进目录解锁时置空。
+     */
+    private var _pendingFlatExpand: String? = null
+
+    /** 清除解锁密码错误（对话框输入变更时调用）。 */
+    fun clearUnlockError() {
+        _unlockError.value = null
+    }
+
+    // ---- 多选模式（长按进入，供批量添加到歌单 / 批量删除）----
+
+    /** 是否处于多选模式。 */
+    private val _isMultiSelect = MutableStateFlow(false)
+    val isMultiSelect: StateFlow<Boolean> = _isMultiSelect.asStateFlow()
+
+    /** 已选中的文件路径集合。 */
+    private val _selectedPaths = MutableStateFlow<Set<String>>(emptySet())
+    val selectedPaths: StateFlow<Set<String>> = _selectedPaths.asStateFlow()
+
+    /**
+     * 平铺列表模式下，已展开文件夹路径 -> 其子项列表（已过滤排序，含子文件夹与文件）。
+     * 仅缓存已展开过的文件夹；折叠后再展开复用缓存，折叠/切目录时才清理。
+     */
+    private val _treeChildren = MutableStateFlow<Map<String, List<StorageFile>>>(emptyMap())
+    val treeChildren: StateFlow<Map<String, List<StorageFile>>> = _treeChildren.asStateFlow()
+
+    /** 平铺列表模式下，当前处于展开状态的文件夹路径集合。 */
+    private val _treeExpanded = MutableStateFlow<Set<String>>(emptySet())
+    val treeExpanded: StateFlow<Set<String>> = _treeExpanded.asStateFlow()
+
+    /** 平铺列表模式下，正在异步加载子项的文件夹路径集合（用于显示加载提示）。 */
+    private val _treeLoading = MutableStateFlow<Set<String>>(emptySet())
+    val treeLoading: StateFlow<Set<String>> = _treeLoading.asStateFlow()
+
+    /** 平铺列表展开目录加载/缩略图生成的并发限流信号量。 */
+    private val treeLoadSemaphore = Semaphore(TREE_LOAD_CONCURRENCY)
+
+    /**
+     * 当前可见的全部可选择文件：当前目录文件 + 平铺列表已展开子目录的所有子项。
+     * 多选/批量操作据此覆盖整棵树，而非仅当前目录。按 path 去重（当前目录优先）。
+     */
+    val selectableFiles: StateFlow<List<StorageFile>> = combine(
+        _uiState, _treeChildren,
+    ) { state, tree ->
+        val map = LinkedHashMap<String, StorageFile>()
+        state.files.forEach { map[it.path] = it }
+        tree.values.flatten().forEach { if (it.path !in map) map[it.path] = it }
+        map.values.toList()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * 正在"准备播放"的文件路径（进入播放器前的方向预读阶段）。
+     *
+     * 自动方向模式下、无缩略图缓存时，进入前需读取视频宽高比（远程源可能耗时），
+     * UI 据此在该文件的占位图标上叠加"识别中…"状态标签，提示用户正在等待。
+     * 快速（本地/有缓存）场景几乎瞬间清除。null 表示当前无文件在准备。
+     */
+    private val _preparingPlaybackPath = MutableStateFlow<String?>(null)
+    val preparingPlaybackPath: StateFlow<String?> = _preparingPlaybackPath.asStateFlow()
+
+    /**
+     * 长按文件进入多选模式，并选中当前长按的文件。
+     *
+     * 多选仅由长按进入（长按不再打开单文件菜单，单文件菜单改由文件项 ⋮ 按钮进入），
+     * 故初始即选中 [file]。
+     */
+    fun enterMultiSelect(file: StorageFile) {
+        _selectedPaths.value = setOf(file.path)
+        _isMultiSelect.value = true
+    }
+
+    /** 多选模式下点击切换选中状态。 */
+    fun toggleSelection(file: StorageFile) {
+        val current = _selectedPaths.value
+        _selectedPaths.value = if (file.path in current) current - file.path else current + file.path
+    }
+
+    /** 退出多选模式并清空选择。 */
+    fun exitMultiSelect() {
+        _selectedPaths.value = emptySet()
+        _isMultiSelect.value = false
+    }
+
+    /**
+     * 平铺列表模式下折叠/展开文件夹。
+     *
+     * 展开时若该文件夹子项尚未加载缓存，则异步加载并写入 [treeChildren]；
+     * 已缓存则直接复用。折叠仅从 [treeExpanded] 移除，保留缓存供再次展开秒显。
+     */
+    fun toggleFolderExpanded(file: StorageFile) {
+        val path = file.path.trimEnd('/')
+        if (path in _treeExpanded.value) {
+            // 已展开 → 折叠
+            _treeExpanded.value = _treeExpanded.value - path
+            return
+        }
+        val sid = storageId
+        viewModelScope.launch {
+            // 加密文件夹未解锁时不可直接展开：先弹密码，解锁成功后自动展开
+            if (encryptedFolderManager.isEncrypted(sid, file.path) &&
+                !encryptedFolderManager.isUnlocked(sid, file.path)
+            ) {
+                _pendingFlatExpand = file.path
+                _pendingUnlockFolder.value = file
+            } else {
+                expandFolder(file)
+            }
+        }
+    }
+
+    /** 平铺列表展开：加入展开集合并按需加载子项/生成子项缩略图。 */
+    private fun expandFolder(file: StorageFile) {
+        val path = file.path.trimEnd('/')
+        // 同级手风琴：展开该文件夹前，折叠其他同深度的展开项（及它们的后代），保持同一层级只开一枝
+        val myDepth = pathDepth(path)
+        val expanded = _treeExpanded.value
+        val siblings = expanded.filter { it != path && pathDepth(it) == myDepth }
+        val nextExpanded = if (siblings.isEmpty()) {
+            expanded
+        } else {
+            expanded.filterNot { x ->
+                siblings.any { sib -> x == sib || x.startsWith("$sib/") }
+            }.toSet()
+        }
+        _treeExpanded.value = nextExpanded + path
+        if (path !in _treeChildren.value && path !in _treeLoading.value) {
+            loadTreeChildren(file)
+        }
+    }
+
+    /** 路径层级深度：按路径段数计算（根 "" 深度 0）。 */
+    private fun pathDepth(p: String): Int = p.split('/').count { it.isNotEmpty() }
+
+    /** 异步加载指定文件夹子项到 [treeChildren]，并合并 [treeLoading] 中展示加载态。 */
+    private fun loadTreeChildren(folder: StorageFile) {
+        val s = storage ?: return
+        val folderPath = folder.path.trimEnd('/')
+        _treeLoading.value = _treeLoading.value + folderPath
+        viewModelScope.launch {
+            // 并发限流：同一时刻至多加载/生成 TREE_LOAD_CONCURRENCY 个展开目录，
+            // 防止快速连续展开多个文件夹导致 IO 瞬时飙升
+            treeLoadSemaphore.withPermit {
+                try {
+                    val children = loadTreeChildrenWithTimeout(s, folder)
+                    val sorted = applyFilterAndSort(children)
+                    _treeChildren.update { it + (folderPath to sorted) }
+                    // 展开的子项媒体文件同步生成缩略图，合并进 _thumbnailUrls（与当前目录一致）
+                    if (sorted.isNotEmpty()) {
+                        generateThumbnailUrls(s, sorted)
+                    }
+                } catch (e: Exception) {
+                    // 加载失败视为空目录，避免无限重试；折叠后重新展开仍会再次尝试
+                    _treeChildren.update { it + (folderPath to emptyList()) }
+                } finally {
+                    _treeLoading.value = _treeLoading.value - folderPath
+                }
+            }
+        }
+    }
+
+    /**
+     * 有界加载远程/本地目录子项：底层 listFiles 可能是阻塞调用（SMB/WebDAV 含多次重试），
+     * 协程 withTimeout 无法打断，故用 Future.get(timeout) 立即返回，超时后取消加载协程。
+     */
+    private suspend fun loadTreeChildrenWithTimeout(s: Storage, folder: StorageFile): List<StorageFile> {
+        val resultFuture = CompletableFuture<List<StorageFile>>()
+        val loadJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                resultFuture.complete(s.listFiles(folder))
+            } catch (e: Exception) {
+                resultFuture.completeExceptionally(e)
+            }
+        }
+        return try {
+            withContext(Dispatchers.IO) {
+                resultFuture.get(DIRECTORY_LOAD_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            }
+        } catch (e: java.util.concurrent.ExecutionException) {
+            throw (e.cause ?: e)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            loadJob.cancel()
+            throw java.net.SocketTimeoutException()
+        }
+    }
+
+    /** 全选当前目录中的文件（不含子目录，子目录不可入歌单）。 */
+    fun selectAllFiles() {
+        _selectedPaths.value = selectableFiles.value
+            .filter { !it.isDirectory }
+            .map { it.path }
+            .toSet()
+    }
+
+    /** 批量删除选中文件/目录。 */
+    fun deleteSelected() {
+        val s = storage ?: return
+        val selected = selectableFiles.value.filter { it.path in _selectedPaths.value }
+        if (selected.isEmpty()) return
+        // 互斥：已有文件操作在进行时拒绝删除，避免删除正在处理的文件
+        if (!beginExclusiveFileOp()) return
+        // 操作开始即退出多选，避免底部多选菜单与进度浮层同时显示
+        exitMultiSelect()
+        // 兜底：先清掉可能残留的进度，再发起本次删除
+        _fileOpProgress.value = null
+        if (selected.isNotEmpty()) _fileOpProgress.value = FileOpProgress(selected.size, 0, "", FileOpType.DELETE)
+
+        // 系统 MediaStore 索引视频需授权删除，其余（扩展目录/SAF/远程）直接删除
+        val consentFiles = selected.filter {
+            !it.isDirectory && (it as? VideoStorageFile)?.fileId?.let { id -> id > 0 } == true
+                && currentLibrary?.mediaType == MediaType.LOCAL_STORAGE
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        }
+        val consentUris = mediaConsentUris(consentFiles)
+        val directFiles = selected.filter { it !in consentFiles }
+        val consentPending = consentUris.isNotEmpty()
+
+        viewModelScope.launch {
+            var okCount = 0
+            var done = 0
+            val type = FileOpType.DELETE
+            try {
+                withContext(Dispatchers.IO) {
+                    directFiles.forEach { file ->
+                        _fileOpProgress.value = FileOpProgress(selected.size, done, file.name, type)
+                        if (runCatching { s.deleteFile(file) }.getOrDefault(false)) {
+                            okCount++
+                            if (file.isDirectory) {
+                                encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
+                            } else {
+                                // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
+                                runCatching {
+                                    thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
+                                }
+                            }
+                        }
+                        done++
+                        _fileOpProgress.value = FileOpProgress(selected.size, done, "", type)
+                    }
+                }
+            } finally {
+                if (!consentPending) {
+                    endExclusiveFileOp()
+                    // 无论成功/失败/协程取消，都清理进度浮层，保证它能自动消失
+                    _fileOpProgress.value = null
+                }
+            }
+            if (consentPending) {
+                pendingConsentPaths = consentFiles.map { it.path }
+                pendingConsentFiles = consentFiles
+                // 授权结果由 finalizePendingConsentDelete 统一收尾（含锁释放/刷新）
+                _events.tryEmit(StorageFileEvent.RequestMediaStoreDelete(consentUris))
+                return@launch
+            }
+            exitMultiSelect()
+            if (okCount == selected.size) {
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_deleted_count, okCount)))
+            } else {
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_delete_partial, okCount, selected.size)))
+            }
+            refreshCurrentDirectory()
+        }
+    }
+
+    /**
+     * 批量添加选中文件到快速访问（多选模式）。
+     *
+     * 仅非目录文件可入快速访问；已收藏的跳过去重。sortIndex 从当前最大值连续递增。
+     * 完成后退出多选模式。
+     *
+     * @param files 待添加文件列表
+     */
+    fun addFilesToQuickAccess(files: List<StorageFile>) {
+        val library = currentLibrary ?: return
+        val toAdd = files.filter { !it.isDirectory }
+        if (toAdd.isEmpty()) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                var nextIndex = (quickAccessDao.getMaxSortIndex() ?: -1) + 1
+                toAdd.forEach { file ->
+                    if (quickAccessDao.get(library.id, file.path) == null) {
+                        quickAccessDao.insert(
+                            QuickAccessEntity(
+                                name = file.name,
+                                storagePath = file.path,
+                                isDirectory = false,
+                                libraryId = library.id,
+                                sortIndex = nextIndex++,
+                            )
+                        )
+                    }
+                }
+            }
+            exitMultiSelect()
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_qa_added_batch, toAdd.size)))
+        }
+    }
+
+    /**
+     * 批量移动选中文件/目录到指定目标目录（多选模式）。
+     *
+     * 逐个调用 [Storage.move]，目录移动时同步更新加密配置前缀。
+     * 完成后退出多选模式并刷新当前目录。
+     *
+     * @param files 待移动文件列表
+     * @param targetDirectory 目标目录（必须已存在）
+     */
+    fun moveFiles(files: List<StorageFile>, targetDirectory: StorageFile) {
+        beginTransfer(files, targetDirectory, isCopy = false, isBatch = true)
+    }
+
+    /**
+     * 批量复制选中文件/目录到指定目标目录（多选模式）。
+     *
+     * 逐个调用 [Storage.copy]（默认实现为流式递归复制）。
+     * 完成后退出多选模式并刷新当前目录。
+     *
+     * @param files 待复制文件列表
+     * @param targetDirectory 目标目录（必须已存在）
+     */
+    fun copyFiles(files: List<StorageFile>, targetDirectory: StorageFile) {
+        beginTransfer(files, targetDirectory, isCopy = true, isBatch = true)
+    }
+
+    /**
+     * 移动/复制前统一入口。
+     *
+     * 先检测目标目录是否存在同名文件：
+     * - 无同名文件：直接执行传输
+     * - 存在同名文件：挂起 [_transferConflict]，由 UI 弹窗让用户选择「跳过重复 / 覆盖 / 取消」
+     */
+    private fun beginTransfer(
+        files: List<StorageFile>,
+        targetDirectory: StorageFile,
+        isCopy: Boolean,
+        isBatch: Boolean,
+    ) {
+        val s = storage ?: return
+        if (files.isEmpty()) return
+        // 互斥：已有文件操作在进行时，拒绝再发起移动/复制，避免触及正在被处理的文件
+        if (!beginExclusiveFileOp()) return
+        // 操作开始即退出多选，避免底部多选菜单与进度浮层同时显示（操作完成后不再重复退出）
+        exitMultiSelect()
+        viewModelScope.launch {
+            try {
+                // 移动时过滤"目标即源位置"的原地操作（无实际效果）
+                val effective = if (isCopy) files else files.filter {
+                    val dest = if (targetDirectory.path.isEmpty()) it.name
+                    else "${targetDirectory.path}/${it.name}"
+                    dest != it.path
+                }
+                if (effective.isEmpty()) return@launch
+                val duplicates = withContext(Dispatchers.IO) {
+                    detectNameConflicts(s, effective, targetDirectory)
+                }
+                if (duplicates.isNotEmpty()) {
+                    _transferConflict.value = TransferConflict(
+                        files = effective,
+                        target = targetDirectory,
+                        isCopy = isCopy,
+                        isBatch = isBatch,
+                        duplicateFiles = duplicates,
+                    )
+                } else {
+                    val ok = withContext(Dispatchers.IO) {
+                        executeTransfer(s, effective, targetDirectory, isCopy, emptySet(), emptySet())
+                    }
+                    reportTransferResult(isCopy, ok, effective.size, skipped = 0)
+                }
+            } finally {
+                endExclusiveFileOp()
+            }
+        }
+    }
+
+    /** 检测 source 中哪些文件/目录在目标目录已有同名项。 */
+    private suspend fun detectNameConflicts(
+        s: Storage,
+        files: List<StorageFile>,
+        target: StorageFile,
+    ): List<StorageFile> {
+        if (files.isEmpty()) return emptyList()
+        return try {
+            val targetFiles = s.listFiles(if (target.path.isEmpty()) StorageFactory.ROOT else target)
+            val targetNames = targetFiles.map { it.name }.toHashSet()
+            files.filter { it.name in targetNames }
+        } catch (e: Exception) {
+            // 目标目录列不出来交给传输本身决定成败，不因检测失败阻断
+            emptyList()
+        }
+    }
+
+    /**
+     * 逐个执行移动/复制，返回成功项数。
+     *
+     * [skipPaths]：跳过的源文件（用户选「跳过重复」）。
+     * [overwritePaths]：需覆盖重名项的源文件 —— 采用**安全覆盖**，全程不预先删除目标，
+     * 避免传输失败导致用户文件丢失：
+     * 1. 先把目标同名项重命名为临时备份名（原数据仍在盘上）
+     * 2. 再执行移动/复制
+     * 3. 成功 → 删除旧备份；失败 → 把备份还原为原目标名
+     */
+    private suspend fun executeTransfer(
+        s: Storage,
+        files: List<StorageFile>,
+        target: StorageFile,
+        isCopy: Boolean,
+        skipPaths: Set<String>,
+        overwritePaths: Set<String>,
+    ): Int {
+        val total = files.size - skipPaths.size
+        var okCount = 0
+        var done = 0
+        val type = if (isCopy) FileOpType.COPY else FileOpType.MOVE
+        if (total > 0) _fileOpProgress.value = FileOpProgress(total, 0, "", type)
+        try {
+            for (file in files) {
+                if (file.path in skipPaths) continue
+                _fileOpProgress.value = FileOpProgress(total, done, file.name, type)
+                val needOverwrite = file.path in overwritePaths
+                // 安全覆盖：先备份目标（重命名），失败则跳过该项以避免数据丢失
+                val backupName = if (needOverwrite) backupTarget(s, file, target) ?: continue else null
+                val success = runCatching {
+                    if (isCopy) s.copy(file, target) else s.move(file, target)
+                }.getOrDefault(false)
+                if (success) {
+                    okCount++
+                    if (backupName != null) {
+                        // 传输成功，删除旧备份（尽力而为，失败不阻断）
+                        runCatching { deleteBackup(s, target, backupName, file.isDirectory) }
+                    }
+                    // 移动成功后处理旧缩略图（复制不处理：源文件保留，缩略图仍有效）：
+                    // - 本地缓存按旧路径失效，新位置下次浏览自动重建
+                    // - 服务端旧目录 .thumb/{basename}-thumb.jpg 同步删除，避免残留孤儿
+                    if (!isCopy) {
+                        thumbnailManager.clearCache(storageId, listOf(file))
+                        thumbnailManager.deleteServerThumbnail(s, file)
+                    }
+                    // 移动目录后同步加密配置前缀
+                    if (!isCopy && file.isDirectory) {
+                        val oldPath = file.path.trimEnd('/')
+                        val newPath = if (target.path.isEmpty()) file.name
+                        else "${target.path.trimEnd('/')}/${file.name}"
+                        if (oldPath != newPath) {
+                            encryptedFolderManager.renameFolderPrefix(storageId, oldPath, newPath)
+                        }
+                    }
+                } else if (backupName != null) {
+                    // 传输失败：还原备份，保证用户原目标文件不丢失
+                    runCatching {
+                        val backupPath = if (target.path.isEmpty()) backupName
+                        else "${target.path}/${backupName}"
+                        val backupFile = object : AbstractStorageFile(backupPath, backupName, file.isDirectory) {}
+                        s.rename(backupFile, file.name)
+                    }
+                }
+                done++
+                _fileOpProgress.value = FileOpProgress(total, done, "", type)
+            }
+        } finally {
+            if (total > 0) _fileOpProgress.value = null
+        }
+        return okCount
+    }
+
+    /** 安全覆盖第一步：把目标同名项重命名为临时备份名，返回备份名；不支持重命名/失败时返回 null。 */
+    private suspend fun backupTarget(s: Storage, file: StorageFile, target: StorageFile): String? {
+        return try {
+            val targetPath = if (target.path.isEmpty()) file.name
+            else "${target.path}/${file.name}"
+            // 目标已不存在（可能刚被删）则无需备份，返回 null 表示直接覆盖式传输、无备份可清理
+            if (!s.fileExists(targetPath)) return null
+            val backupName = uniqueBackupName(s, target, file)
+            val targetFile = object : AbstractStorageFile(targetPath, file.name, file.isDirectory) {}
+            if (s.rename(targetFile, backupName)) backupName else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** 生成目标目录不冲突的备份名：`{name}.niplayer_old`、`{name}.niplayer_old2`… */
+    private suspend fun uniqueBackupName(s: Storage, target: StorageFile, file: StorageFile): String {
+        var index = 1
+        while (true) {
+            val candidate = if (index == 1) "${file.name}.niplayer_old"
+            else "${file.name}.niplayer_old$index"
+            val path = if (target.path.isEmpty()) candidate else "${target.path}/${candidate}"
+            if (!s.fileExists(path)) return candidate
+            index++
+        }
+    }
+
+    /** 安全覆盖收尾：删除传输成功后遗留的旧备份。 */
+    private suspend fun deleteBackup(s: Storage, target: StorageFile, backupName: String, isDirectory: Boolean) {
+        val backupPath = if (target.path.isEmpty()) backupName else "${target.path}/${backupName}"
+        if (s.fileExists(backupPath)) {
+            s.deleteFile(
+                object : AbstractStorageFile(backupPath, backupName, isDirectory) {}
+            )
+        }
+    }
+
+    /** 按用户在冲突弹窗中的选择继续传输。 */
+    fun resolveTransfer(mode: TransferConflictMode) {
+        val pending = _transferConflict.value ?: return
+        val s = storage ?: return
+        // 互斥：冲突弹窗期间锁已释放，真正执行传输前需重新获取独占权
+        if (!beginExclusiveFileOp()) {
+            _transferConflict.value = null
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val skipPaths = if (mode == TransferConflictMode.SKIP_DUPLICATES) {
+                    pending.duplicateFiles.map { it.path }.toSet()
+                } else emptySet()
+                val overwritePaths = if (mode == TransferConflictMode.OVERWRITE) {
+                    pending.duplicateFiles.map { it.path }.toSet()
+                } else emptySet()
+                val ok = withContext(Dispatchers.IO) {
+                    executeTransfer(
+                        s, pending.files, pending.target, pending.isCopy,
+                        skipPaths, overwritePaths,
+                    )
+                }
+                _transferConflict.value = null
+                reportTransferResult(
+                    isCopy = pending.isCopy,
+                    ok = ok,
+                    total = pending.files.size - skipPaths.size,
+                    skipped = skipPaths.size,
+                )
+            } finally {
+                endExclusiveFileOp()
+            }
+        }
+    }
+
+    /** 取消传输（冲突弹窗关闭），保持现状。 */
+    fun cancelTransfer() {
+        _transferConflict.value = null
+    }
+
+    /** 汇总传输结果并展示提示（全部成功后退多选、刷新当前目录）。 */
+    private fun reportTransferResult(
+        isCopy: Boolean,
+        ok: Int,
+        total: Int,
+        skipped: Int,
+    ) {
+        exitMultiSelect()
+        if (ok == total) {
+            if (skipped > 0) {
+                _events.tryEmit(
+                    StorageFileEvent.ShowToast(
+                        context.getString(
+                            if (isCopy) R.string.storage_file_copied_skipped
+                            else R.string.storage_file_moved_skipped,
+                            ok, skipped,
+                        )
+                    )
+                )
+            } else {
+                _events.tryEmit(
+                    StorageFileEvent.ShowToast(
+                        context.getString(
+                            if (isCopy) R.string.storage_file_copied_count
+                            else R.string.storage_file_moved_count,
+                            ok,
+                        )
+                    )
+                )
+            }
+        } else {
+            _events.tryEmit(
+                StorageFileEvent.ShowError(
+                    context.getString(
+                        if (isCopy) R.string.storage_file_copy_partial
+                        else R.string.storage_file_move_partial,
+                        ok, total,
+                    )
+                )
+            )
+        }
+        refreshCurrentDirectory()
+    }
+
+    /**
+     * 列出指定目录下的直接子目录（供目录选择器的层级浏览）。
+     *
+     * 不依赖当前浏览位置，可对任意绝对路径（如父目录）递归下钻。
+     *
+     * @param dirPath 目录相对路径，根目录为空字符串
+     */
+    suspend fun listSubfolders(dirPath: String): List<StorageFile> {
+        val s = storage ?: return emptyList()
+        val dir = makeDirectory(dirPath)
+        return withContext(Dispatchers.IO) {
+            runCatching { s.listFiles(dir).filter { it.isDirectory } }.getOrDefault(emptyList())
+        }
+    }
+
+    /** 由路径构造目录 [StorageFile]，供目录选择器确定当前位置 / 目标。 */
+    fun makeDirectory(path: String): StorageFile = object : AbstractStorageFile(
+        path = path,
+        name = path.substringAfterLast('/').ifEmpty { "/" },
+        isDirectory = true,
+        length = 0L,
+        lastModified = 0L,
+        isHidden = false,
+    ) {}
+
+    /** 取消解锁（对话框取消按钮）：清除待解锁文件夹与错误提示。 */
+    fun cancelUnlock() {
+        _pendingUnlockFolder.value = null
+        _unlockError.value = null
+        _pendingFlatExpand = null
+    }
+
+    /**
+     * 目录选择弹窗内解锁文件夹：验证密码并解锁目标目录。
+     *
+     * 相比根遮罩的 [submitFolderPassword]，此方法不改变主浏览目录、不消费弹窗状态，
+     * 供目录选择器在自身 Dialog 窗口内完成内联解锁，避免与窗口层级冲突。
+     *
+     * @return 密码是否正确（true 表示已解锁）
+     */
+    suspend fun tryUnlockFolder(folder: StorageFile, password: String): Boolean {
+        val ok = encryptedFolderManager.unlockWithPassword(storageId, folder.path, password)
+        if (ok) {
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_unlocked, folder.name)))
+        }
+        return ok
+    }
+
+    private val _events = MutableSharedFlow<StorageFileEvent>(extraBufferCapacity = 4)
+    val events: SharedFlow<StorageFileEvent> = _events.asSharedFlow()
+
+    /** 移动/复制冲突（目标已有同名文件）挂起状态；非空时 UI 弹窗让用户选择处理方式。 */
+    private val _transferConflict = MutableStateFlow<TransferConflict?>(null)
+    val transferConflict: StateFlow<TransferConflict?> = _transferConflict.asStateFlow()
+
+    /** 批量文件操作进度（移动/复制/删除）；null 表示无进行中的操作。 */
+    private val _fileOpProgress = MutableStateFlow<FileOpProgress?>(null)
+    val fileOpProgress: StateFlow<FileOpProgress?> = _fileOpProgress.asStateFlow()
+
+    /** 是否有文件操作（移动/复制/删除）正在进行，用于互斥：期间禁止再发起可能冲突的文件操作。 */
+    @Volatile
+    private var fileOpRunning = false
+
+    /** 尝试获取文件操作独占权；已有操作进行中则提示繁忙并返回 false。 */
+    private fun beginExclusiveFileOp(): Boolean {
+        if (fileOpRunning) {
+            _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_op_busy)))
+            return false
+        }
+        fileOpRunning = true
+        return true
+    }
+
+    /** 释放文件操作独占权。 */
+    private fun endExclusiveFileOp() {
+        fileOpRunning = false
+    }
+
+    init {
+        if (storageId > 0) initialize(storageId)
+    }
+
+    /** 加载存储源并列出根目录。 */
+    private fun loadRoot() {
+        viewModelScope.launch {
+            val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(storageId) }
+            if (library == null) {
+                _uiState.update { it.copy(isLoading = false, error = context.getString(R.string.storage_file_library_missing)) }
+                return@launch
+            }
+            try {
+                val s = storageFactory.create(library)
+                if (s == null) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = context.getString(
+                                R.string.play_error_unsupported_storage,
+                                context.getString(library.mediaType.storageNameRes),
+                            ),
+                        )
+                    }
+                    return@launch
+                }
+                storage = s
+                currentLibrary = library
+                _uiState.update {
+                    it.copy(
+                        storageName = library.displayName,
+                        isRemoteStorage = library.mediaType != MediaType.LOCAL_STORAGE
+                                && library.mediaType != MediaType.EXTERNAL_STORAGE,
+                    )
+                }
+                listDirectory(StorageFactory.ROOT) {
+                    if (directoryStack.isEmpty()) directoryStack.addLast(StorageFactory.ROOT)
+                }
+                if (_initialPath.isNotEmpty()) {
+                    navigateToPathSegments(_initialPath)
+                }
+                // 远程存储启用心跳检测
+                startHeartbeat()
+            } catch (e: Exception) {
+                // W-C2 修复：原 catch 仅捕获 UnsupportedOperationException，
+                // 但 WebDavStorage 构造时对非法 URL 抛 IllegalArgumentException，
+                // SmbStorage 构造时也可能抛其他 RuntimeException，均会漏捕导致 UI 永久 loading。
+                // 改为 catch (e: Exception) 兜底，确保任何初始化异常都能反馈给用户。
+                // W-N1/W-N12 修复：用 toFriendlyMessage 中文化错误提示
+                _uiState.update { it.copy(isLoading = false, error = e.toFriendlyMessage()) }
+            }
+        }
+    }
+
+    /**
+     * 进入子目录。保存入口路径用于返回时定位滚动位置。
+     *
+     * 文件夹访问加密门禁：目录为加密根目录且未解锁时，不进入，
+     * 改为设置 [pendingUnlockFolder]，UI 观察该 state 自动弹出解锁对话框。
+     */
+    fun openDirectory(file: StorageFile) {
+        val sid = storageId
+        viewModelScope.launch {
+            if (encryptedFolderManager.isEncrypted(sid, file.path) &&
+                !encryptedFolderManager.isUnlocked(sid, file.path)
+            ) {
+                _pendingUnlockFolder.value = file
+                return@launch
+            }
+            entryPathStack.addLast(file.path)
+            listDirectory(file) { directoryStack.addLast(file) }
+        }
+    }
+
+    /**
+     * 密码对话框提交：验证密码，成功则消费 [pendingUnlockFolder] 并进入目录，
+     * 失败则设置 [unlockError] 供对话框内联提示（不关闭对话框）。
+     *
+     * @param password 用户输入的密码
+     */
+    fun submitFolderPassword(password: String) {
+        val folder = _pendingUnlockFolder.value ?: return
+        val sid = storageId
+        viewModelScope.launch {
+            if (encryptedFolderManager.unlockWithPassword(sid, folder.path, password)) {
+                _pendingUnlockFolder.value = null
+                _unlockError.value = null
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_unlocked, folder.name)))
+                val flatExpand = _pendingFlatExpand
+                _pendingFlatExpand = null
+                if (flatExpand != null && flatExpand == folder.path.trimEnd('/')) {
+                    // 平铺列表展开被拦截场景：解锁成功后展开内联，而非进入目录
+                    expandFolder(folder)
+                } else {
+                    entryPathStack.addLast(folder.path)
+                    listDirectory(folder) { directoryStack.addLast(folder) }
+                }
+            } else {
+                _unlockError.value = context.getString(R.string.storage_file_wrong_password)
+            }
+        }
+    }
+
+    /** 为文件夹设置密码（加密）。 */
+    fun encryptFolder(folder: StorageFile, password: String) {
+        val sid = storageId
+        viewModelScope.launch {
+            encryptedFolderManager.setPassword(sid, folder.path, password)
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_encrypted, folder.name)))
+        }
+    }
+
+    /** 取消加密（需验证当前密码）。 */
+    fun decryptFolder(folder: StorageFile, password: String) {
+        val sid = storageId
+        viewModelScope.launch {
+            if (encryptedFolderManager.removePassword(sid, folder.path, password)) {
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_decrypted, folder.name)))
+            } else {
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_wrong_password)))
+            }
+        }
+    }
+
+    /** 修改访问密码（需验证当前密码）。 */
+    fun resetFolderPassword(folder: StorageFile, oldPassword: String, newPassword: String) {
+        val sid = storageId
+        viewModelScope.launch {
+            if (encryptedFolderManager.changePassword(sid, folder.path, oldPassword, newPassword)) {
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_password_changed, folder.name)))
+            } else {
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_wrong_current_password)))
+            }
+        }
+    }
+
+    /** 已消费的导航请求计数，用于 [navigateToPath] 去重。 */
+    private var lastConsumedNavTick = 0
+
+    /**
+     * 导航到指定初始路径（由快速访问书签等深层入口传入）。
+     * 在 [loadRoot] 完成后依次进入路径的每一级子目录。
+     * 路径为空时不执行任何操作（保持根目录）。
+     * [loadRoot] 失败（storage 最终为 null）时静默跳过。
+     *
+     * @param navTick 宿主每次打开文件浏览时递增的请求计数。
+     *   仅当计数与上次消费值不同（新请求）时才触发定位：
+     *   文件浏览页被图片查看等全屏页压栈后重新组合时，LaunchedEffect 会重新执行本方法，
+     *   但 navTick 未变，应保留用户当前的浏览位置，而非重置回初始路径。
+     */
+    fun navigateToPath(path: String, navTick: Int = 0) {
+        if (path.isEmpty()) return
+        if (navTick == lastConsumedNavTick) return
+        lastConsumedNavTick = navTick
+        viewModelScope.launch {
+            // 等待存储初始化完成：storage 就绪且目录加载结束。
+            // 原实现仅等待 storage 非空，根目录列表未加载完就按空列表下钻，
+            // 第一层目录匹配不到直接 break，导致快速访问深层跳转偶发失败。
+            while ((storage == null || _uiState.value.isLoading) && _uiState.value.error == null) {
+                delay(50)
+            }
+            if (storage != null) navigateToPathSegments(path)
+        }
+    }
+
+    /**
+     * 跳转到指定路径的每一级子目录。
+     *
+     * 修复：文件浏览已进入深层目录后，快速访问再跳转同一存储源的其他目录时，
+     * 原实现在"当前目录的文件列表"里查找路径第一段，必然找不到直接 break，
+     * 表现为点击快速访问无反应。现在：
+     * - 目标与当前目录同分支（相等或当前目录是目标的祖先）→ 只下钻剩余层级
+     * - 目标与当前目录不同分支 → 先清栈回到根目录，再逐级进入
+     */
+    private suspend fun navigateToPathSegments(path: String) {
+        val segments = path.split("/").filter { it.isNotEmpty() }
+        val currentPath = _uiState.value.currentPath.trimEnd('/')
+        val targetPath = path.trimEnd('/')
+        if (targetPath == currentPath) return
+
+        val remainingSegments = if (currentPath.isEmpty() || targetPath.startsWith("$currentPath/")) {
+            val currentDepth = if (currentPath.isEmpty()) 0
+            else currentPath.split("/").count { it.isNotEmpty() }
+            segments.drop(currentDepth)
+        } else {
+            resetToRoot()
+            segments
+        }
+        for (segment in remainingSegments) {
+            val dir = _uiState.value.rawFiles.firstOrNull { it.name == segment && it.isDirectory }
+            if (dir == null) break
+            // 文件夹访问加密门禁：深层跳转遇到未解锁的加密目录时同样拦截
+            if (encryptedFolderManager.isEncrypted(storageId, dir.path) &&
+                !encryptedFolderManager.isUnlocked(storageId, dir.path)
+            ) {
+                _pendingUnlockFolder.value = dir
+                break
+            }
+            listDirectory(dir) { directoryStack.addLast(dir) }
+        }
+    }
+
+    /** 回到根目录：清空目录栈并重新列出根目录。 */
+    private suspend fun resetToRoot() {
+        directoryStack.clear()
+        entryPathStack.clear()
+        listDirectory(StorageFactory.ROOT) { directoryStack.addLast(StorageFactory.ROOT) }
+    }
+
+    /**
+     * 返回上级目录；已在根目录时不操作（由 UI 调用 onBack 退出页面）。
+     *
+     * 注意：不在此处修改目录栈，而是在 [listDirectory] 成功后才 removeLast，
+     * 避免列目录失败时栈状态被破坏导致用户无法回到正确目录。
+     */
+    fun goUp() {
+        if (directoryStack.size <= 1) return
+        val parent = directoryStack[directoryStack.size - 2]
+        val targetPath = if (entryPathStack.isNotEmpty()) entryPathStack.removeLast() else null
+        viewModelScope.launch {
+            listDirectory(parent) { if (directoryStack.size > 1) directoryStack.removeLast() }
+            if (targetPath != null) {
+                val targetIndex = _uiState.value.files.indexOfFirst { it.path == targetPath }
+                if (targetIndex >= 0) {
+                    _uiState.update { it.copy(scrollTargetIndex = targetIndex) }
+                }
+            }
+        }
+    }
+
+    /** 快速回到根目录（存储根），供长按返回按钮 / 面包屑根入口调用。 */
+    fun goToRoot() {
+        if (directoryStack.size <= 1) return
+        viewModelScope.launch { resetToRoot() }
+    }
+
+    /**
+     * 目录加载互斥锁。
+     *
+     * BUG-F6 修复：原 [listDirectory] 无同步，用户快速点击进入 A → B 时两个协程并发执行，
+     * stackOp 对 [directoryStack] 的 addLast/removeLast 交错执行导致栈错乱
+     * （如栈变为 [root, B, A] 而非 [root, B]）。
+     *
+     * 用 [Mutex] 串行化 listDirectory，确保同一时刻只有一个目录加载在执行，
+     * stackOp 也串行执行，栈状态始终正确。
+     */
+    private val dirMutex = Mutex()
+
+    /**
+     * 缩略图生成世代计数器。
+     *
+     * BUG-50 修复：切目录时生成新世代，旧世代 cancelled 后 finally 块中的 flushBatch
+     * 通过比对世代自动丢弃，避免旧目录的缩略图重新写入已清空的 _thumbnailUrls，
+     * 造成新目录页面显示旧目录的缩略图（显示错乱）。
+     */
+    private val thumbnailGeneration = AtomicLong(0)
+
+    /**
+     * 当前目录缩略图生成任务。切目录前 cancel，避免旧目录生成占用资源 + 新目录叠加导致卡顿。
+     *
+     * 性能修复：原实现 [generateThumbnailUrls] 在 [dirMutex.withLock] 内部调用，
+     * 必须等当前目录所有缩略图生成完才能释放 dirMutex，用户点子目录时被阻塞 → 界面卡死。
+     * 现拆出独立 Job，listDirectory 只负责加载文件列表，立即释放 dirMutex。
+     */
+    private var thumbnailJob: Job? = null
+
+    /**
+     * 列出指定目录文件。
+     *
+     * 栈变更通过 [stackOp] lambda 表达，在列目录成功后执行，失败时保持原栈不变。
+     *
+     * BUG-F6 修复：用 [dirMutex] 串行化，避免并发加载导致目录栈竞态。
+     *
+     * @param stackOp 栈操作回调，在列目录成功后调用。常见模式：
+     *  - 进入子目录：`{ directoryStack.addLast(directory) }`
+     *  - 返回上级：`{ if (directoryStack.size > 1) directoryStack.removeLast() }`
+     *  - 重试当前目录：`{ }`（不动栈）
+     *  - 跳到指定深度：`{ while (directoryStack.size > targetSize) directoryStack.removeLast() }`
+     */
+    private suspend fun listDirectory(directory: StorageFile, stackOp: () -> Unit) {
+        val s = storage ?: return
+        // 性能修复：generateThumbnailUrls 移出 dirMutex.withLock，避免缩略图生成期间
+        // dirMutex 被占用导致用户切目录请求被阻塞（界面卡死的根因）。
+        // listDirectory 只负责加载文件列表，立即释放 dirMutex；缩略图生成用独立
+        // thumbnailJob 后台异步进行，切目录前 cancel 旧 Job。
+        val files = dirMutex.withLock {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            _thumbnailUrls.value = emptyMap()
+            _tooShortPaths.value = emptySet()
+            try {
+                // 有界加载：不可达存储（SMB/WebDAV）底层 listFiles 是阻塞调用（含多次重试），
+                // 协程 withTimeout 会一直等待后台阻塞完成、无法按时返回，因此改用
+                // Future.get(timeout)：超时立即抛 TimeoutException，不停转圈。
+                // 后台线程随后被 cancel(true) 尝试打断；smbj 若不响应中断，则自行阻塞到底层
+                // 超时后结束，其结果一并丢弃。
+                val resultFuture = CompletableFuture<List<StorageFile>>()
+                val loadJob = viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        resultFuture.complete(s.listFiles(directory))
+                    } catch (e: Exception) {
+                        resultFuture.completeExceptionally(e)
+                    }
+                }
+                // 阻塞式 get(timeout) 必须放到 IO 线程：listDirectory 运行在 Main 协程，
+                // 若直接在主线程调用会阻塞到超时，导致重试时 UI 卡死/ANR。
+                val fs = withContext(Dispatchers.IO) {
+                    try {
+                        resultFuture.get(DIRECTORY_LOAD_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                    } catch (e: java.util.concurrent.ExecutionException) {
+                        // 解包底层异常（如 SMB/WebDAV 错误），让错误提示走对应文案
+                        throw (e.cause ?: e)
+                    } catch (e: java.util.concurrent.TimeoutException) {
+                        // 超时立即返回（不等待后台协程到底层阻塞结束），并尝试取消；后台阻塞线程残留自行结束
+                        loadJob.cancel()
+                        throw java.net.SocketTimeoutException()
+                    }
+                }
+                // 栈变更在列目录成功后执行，失败时保持原栈不变
+                stackOp()
+                // 目录切换后平铺列表的展开/缓存全部失效，重置
+                _treeExpanded.value = emptySet()
+                _treeChildren.value = emptyMap()
+                _treeLoading.value = emptySet()
+                _uiState.update {
+                    it.copy(
+                        rawFiles = fs,
+                        files = applyFilterAndSort(fs),
+                        currentPath = directory.path,
+                        isLoading = false,
+                        canGoUp = directoryStack.size > 1,
+                    )
+                }
+                // 退出加密文件夹自动重新上锁：当前目录不再覆盖的已解锁加密根目录立即锁定
+                encryptedFolderManager.reLockUncovered(storageId, directory.path)
+                fs
+            } catch (e: Exception) {
+                // W-N1/W-N12 修复：用 toFriendlyMessage 中文化错误提示
+                _uiState.update {
+                    it.copy(isLoading = false, error = e.toFriendlyMessage())
+                }
+                null
+            }
+        } ?: return
+
+        // dirMutex 已释放，启动缩略图生成（独立 Job，不阻塞 listDirectory 调用方）
+        // 先 cancel 旧目录的生成任务，避免叠加导致 CPU/IO 抢占
+        thumbnailJob?.cancel()
+        val gen = thumbnailGeneration.incrementAndGet()
+        thumbnailJob = viewModelScope.launch(Dispatchers.IO) {
+            generateThumbnailUrls(s, files, gen)
+        }
+    }
+
+    /**
+     * 重试加载当前目录（错误状态下点「重试」调用）。
+     *
+     * 若 [storage] 为 null（[loadRoot] 失败），重新执行初始化；
+     * 否则重新列当前栈顶目录。
+     */
+    fun retryLoadCurrent() {
+        if (storage == null || directoryStack.isEmpty()) {
+            // storage 未初始化或目录栈为空（loadRoot 部分失败），重新执行初始化
+            initialized = false
+            initialized = true
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            loadRoot()
+            return
+        }
+        val current = directoryStack.lastOrNull() ?: return
+        viewModelScope.launch { listDirectory(current) { } }
+    }
+
+    /**
+     * 下拉刷新当前目录：重新加载栈顶目录的文件列表。
+     *
+     * 解决 SAF/网络存储外部更新后列表不刷新的问题（原实现需退出重新进入）。
+     * 存储未初始化时回退到 [retryLoadCurrent] 重新初始化；
+     * 刷新期间通过 [isRefreshing] 驱动 UI 显示下拉刷新指示器。
+     */
+    fun refresh() {
+        if (storage == null || directoryStack.isEmpty()) {
+            retryLoadCurrent()
+            return
+        }
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                // 本地视频库下拉刷新：强制触发一次增量重扫，使新下载视频立即可见
+                if (currentLibrary?.mediaType == MediaType.LOCAL_STORAGE) {
+                    withContext(Dispatchers.IO) {
+                        runCatching { (storage as? VideoStorage)?.forceRefresh() }
+                    }
+                }
+                listDirectory(directoryStack.last()) { }
+            } finally {
+                _isRefreshing.value = false
+            }
+        }
+    }
+
+    /**
+     * 启动远程存储心跳检测。
+     *
+     * 每 [HEARTBEAT_INTERVAL_MS] 通过 [Storage.ping] 检测连接是否仍然可达。
+     * ping 失败时更新 [_connectionHealthy] 为 false，UI 显示断开指示。
+     * ping 成功时恢复为 true。
+     */
+    private fun startHeartbeat() {
+        heartbeatJob?.cancel()
+        val s = storage ?: return
+        val isRemote = currentLibrary?.mediaType?.let {
+            it != MediaType.LOCAL_STORAGE && it != MediaType.EXTERNAL_STORAGE
+        } ?: false
+        if (!isRemote) {
+            _connectionHealthy.value = null // 本地存储不需要心跳
+            return
+        }
+        _connectionHealthy.value = true // 初始假设健康
+        heartbeatJob = viewModelScope.launch {
+            while (isActive) {
+                delay(HEARTBEAT_INTERVAL_MS)
+                try {
+                    val healthy = withContext(Dispatchers.IO) { s.ping() }
+                    _connectionHealthy.value = healthy
+                } catch (_: Exception) {
+                    _connectionHealthy.value = false
+                }
+            }
+        }
+    }
+
+    private fun stopHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+        _connectionHealthy.value = null
+    }
+
+    /**
+     * 刷新当前目录的缩略图：清除本地缓存 → 清空状态 → 重新生成。
+     *
+     * 适用于用户手动点「刷新缩略图」按钮：
+     * - 清空当前目录相关缩略图本地缓存（BUG-T-M4 修复：仅清当前目录，不清全应用）
+     * - 重置 _thumbnailUrls / _tooShortPaths 状态
+     * - 重新触发 [generateThumbnailUrls] 并发生成
+     *
+     * BUG-T-M4 修复：原实现调用 `thumbnailManager.clearCache()`（无参）会清空
+     * `video_cover` / `audio_cover` / `image_thumb` / `seek_preview` 全部四个缓存目录，
+     * 导致用户在某个 SMB 目录点"刷新"会清空其他存储源、其他目录、播放历史页已缓存的
+     * 缩略图，全应用缩略图被强制重新生成。现改用 `clearCache(storageId, files)`
+     * 细粒度清理，仅删除当前目录文件对应的本地缓存。
+     */
+    fun refreshThumbnails() {
+        val s = storage ?: return
+        val current = directoryStack.lastOrNull() ?: return
+        val libId = currentLibrary?.id ?: return
+        // 当前目录的文件列表快照（在协程外捕获，避免 listDirectory 重新加载后丢失）
+        val filesToClear = _uiState.value.rawFiles
+        viewModelScope.launch {
+            // BUG-T-M4 修复：仅清当前目录相关缓存，不影响其他目录/存储源/播放历史
+            withContext(Dispatchers.IO) { thumbnailManager.clearCache(libId, filesToClear) }
+            // 清空状态
+            _thumbnailUrls.value = emptyMap()
+            _tooShortPaths.value = emptySet()
+            // 重新列当前目录（触发 generateThumbnailUrls）
+            listDirectory(current) { }
+        }
+    }
+
+    /**
+     * 跳到面包屑指定深度的目录（单次协程，避免多次 goUp 产生竞态）。
+     *
+     * @param targetDepth 目标在目录栈中的索引（0 = 根目录）。若等于当前栈顶索引则不操作。
+     */
+    fun jumpToDepth(targetDepth: Int) {
+        if (targetDepth < 0 || targetDepth >= directoryStack.size) return
+        if (targetDepth == directoryStack.size - 1) return
+        val target = directoryStack[targetDepth]
+        val exitedDirPath = directoryStack[targetDepth + 1].path
+        viewModelScope.launch {
+            listDirectory(target) {
+                while (directoryStack.size > targetDepth + 1) directoryStack.removeLast()
+            }
+            // 同步 entryPathStack：移除目标层级之后的入口记录
+            while (entryPathStack.size > targetDepth) entryPathStack.removeLast()
+            val targetIndex = _uiState.value.files.indexOfFirst { it.path == exitedDirPath }
+            if (targetIndex >= 0) {
+                _uiState.update { it.copy(scrollTargetIndex = targetIndex) }
+            }
+        }
+    }
+
+    /** UI 消费完滚动目标后调用，重置 [StorageFileUiState.scrollTargetIndex]。 */
+    fun clearScrollTarget() {
+        _uiState.update { it.copy(scrollTargetIndex = -1) }
+    }
+
+    /**
+     * 异步加载视频缩略图：先预加载服务端已有缓存，再并发生成缺失的缩略图。
+     *
+     * 两阶段策略：
+     * 1. **预加载**：检查服务端 `.thumb/` 目录，并发下载已生成的缩略图到本地缓存
+     *    （第二次浏览同一目录时，几十 ms/张 vs 生成 1-3s/张，数量级提升）
+     * 2. **并发生成**：对预加载未命中的视频，用 [Storage.thumbnailConcurrency] 控制并发数
+     *    生成新缩略图（SMB/WebDAV 6 并发）
+     *
+     * 生成完成后，异步上传到服务端 `.thumb/` 目录（跳过 LocalStorage），
+     * 使其他设备访问同一存储时可直接下载，无需重新生成。
+     *
+     * 性能修复（卡顿根治）：
+     * - **批量合并 + 节流**：原实现每生成一个就 `_thumbnailUrls.update`，100 个文件
+     *   = 100 次 StateFlow emit + 100 次 Compose 重组 + 100 次 Map 全量拷贝。
+     *   现用 batchAccumulator 累积结果，flusher 协程每 250ms 批量提交一次，
+     *   100 个文件降至 4-5 次 emit。
+     * - **进度按 5% 步进**：避免每个文件完成都触发进度 StateFlow emit。
+     * - **上传并行化 + fire-and-forget**：原实现串行 uploadThumbnail 阻塞生成协程，
+     *   现用 async + Semaphore 并发，且不等待上传完成即返回（上传失败不影响 UI）。
+     */
+    private suspend fun generateThumbnailUrls(s: Storage, files: List<StorageFile>, generation: Long = -1) {
+        val videoFiles = files.filter { !it.isDirectory && MediaFileTypes.isVideoFile(it.name) }
+        val audioFiles = files.filter { !it.isDirectory && MediaFileTypes.isAudioFile(it.name) }
+        val imageFiles = files.filter { !it.isDirectory && MediaFileTypes.isImageFile(it.name) }
+        if (videoFiles.isEmpty() && audioFiles.isEmpty() && imageFiles.isEmpty()) return
+        val libId = currentLibrary?.id ?: return
+        // 存储源生效策略检查：关闭模式跳过全部（含缓存命中与 preload）；
+        // "仅播放后生成"模式保留缓存命中与服务端 preload，但跳过浏览时批量生成
+        val mode = ThumbnailSettings.effectiveMode(libId)
+        val browseGenerationAllowed = mode == ThumbnailGenerationMode.ALL
+        if (mode == ThumbnailGenerationMode.OFF) return
+        val isLocal = s.library.mediaType == MediaType.LOCAL_STORAGE
+
+        withContext(Dispatchers.IO) {
+            // ---- 批量合并 + 节流机制 ----
+            // 累积缩略图结果，由 flusher 协程定期批量提交到 _thumbnailUrls
+            val batchAccumulator = mutableMapOf<String, String>()
+            // 用 synchronized 而非 Mutex：onLoaded 回调是非 suspend lambda，不能调 withLock；
+            // 且持有时间极短（仅 map put/get/clear），synchronized 在 IO 线程上无影响。
+            val batchLock = Any()
+            // flusher 协程：每 250ms 把累积结果批量提交，大幅减少 StateFlow emit 次数
+            val flusher = launch {
+                while (isActive) {
+                    delay(FLUSH_INTERVAL_MS)
+                    flushBatch(batchAccumulator, batchLock)
+                }
+            }
+
+            var completed = 0
+            var totalCount = 0
+            // 进度按 5% 步进，避免每个文件完成都触发 emit
+            var lastProgressStep = -1
+            fun reportProgress() {
+                if (totalCount <= 0) return
+                val current = (completed * 100) / totalCount
+                val stepped = (current / PROGRESS_STEP) * PROGRESS_STEP
+                // 步进变化或完成时才 emit
+                if (stepped != lastProgressStep || current >= 100) {
+                    lastProgressStep = stepped
+                    _thumbnailProgress.value = if (current >= 100) 100 else stepped
+                }
+            }
+
+            try {
+                // ---- 图片缩略图 ----
+                if (imageFiles.isNotEmpty() &&
+                    browseGenerationAllowed &&
+                    ThumbnailSettings.generateThumbnail && ThumbnailSettings.generateForImage
+                ) {
+                    // BUG-T-m4 修复：先扫描本地缓存，已命中的立即可用（与视频组/音频组对齐）
+                    // 原实现直接 launch 协程调用 generateImageThumbnail，每个文件都要协程调度 +
+                    // 获取 mutex + 检查缓存，100 张图片 = 100 次协程 launch 仅为了命中已存在的缓存
+                    val cachedImages = imageFiles.mapNotNull { file ->
+                        val path = thumbnailManager.getCachedImageThumbnailPath(libId, file.path)
+                        if (path != null) file.path to path else null
+                    }.toMap()
+                    if (cachedImages.isNotEmpty()) {
+                        synchronized(batchLock) { batchAccumulator.putAll(cachedImages) }
+                        flushBatch(batchAccumulator, batchLock)
+                    }
+
+                    // 仅对未命中缓存的图片启动生成
+                    val toGenerateImages = imageFiles.filter { file ->
+                        _thumbnailUrls.value[file.path] == null &&
+                            batchAccumulator[file.path] == null
+                    }
+                    totalCount += toGenerateImages.size
+                    if (completed == 0 && totalCount > 0) {
+                        _thumbnailProgress.value = 0
+                        lastProgressStep = 0
+                    }
+                    if (toGenerateImages.isNotEmpty()) {
+                        val imageConcurrency = minOf(s.thumbnailConcurrency, toGenerateImages.size)
+                        val imageSemaphore = Semaphore(imageConcurrency)
+                        coroutineScope {
+                            for (file in toGenerateImages) {
+                                launch {
+                                    imageSemaphore.withPermit {
+                                        try {
+                                            val path = thumbnailManager.generateImageThumbnail(s, libId, file)
+                                            if (path != null) {
+                                                synchronized(batchLock) {
+                                                    batchAccumulator[file.path] = path
+                                                }
+                                            }
+                                        } catch (_: Exception) {
+                                        }
+                                        completed++
+                                        reportProgress()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ---- 音频封面 ----
+                if (audioFiles.isNotEmpty()) {
+                    // 扫描本地缓存（不受开关影响）
+                    val cached = audioFiles.mapNotNull { file ->
+                        val path = thumbnailManager.getCachedAudioCoverPath(libId, file.path)
+                        if (path != null) file.path to path else null
+                    }.toMap()
+                    if (cached.isNotEmpty()) {
+                        synchronized(batchLock) { batchAccumulator.putAll(cached) }
+                        flushBatch(batchAccumulator, batchLock)
+                    }
+
+                    // BUG-T-M1 修复：第一步 - 预加载服务端 .cover/ 已生成的封面
+                    // 与视频组 preloadThumbnails 对称，跨设备复用服务端缓存
+                    val remainingFromCache = audioFiles.filter { file ->
+                        _thumbnailUrls.value[file.path] == null &&
+                            batchAccumulator[file.path] == null
+                    }
+                    if (remainingFromCache.isNotEmpty() && !isLocal) {
+                        try {
+                            thumbnailManager.preloadAudioCovers(
+                                s, libId, remainingFromCache,
+                                onLoaded = { audioPath, coverPath ->
+                                    synchronized(batchLock) { batchAccumulator[audioPath] = coverPath }
+                                },
+                            )
+                        } catch (_: Exception) {
+                        }
+                    }
+
+                    // 第二步：本地提取内嵌封面（受生成模式与 generateForAudio 开关控制）
+                    val toGenerate = if (browseGenerationAllowed &&
+                        ThumbnailSettings.generateThumbnail && ThumbnailSettings.generateForAudio
+                    ) {
+                        audioFiles.filter { file ->
+                            _thumbnailUrls.value[file.path] == null &&
+                                batchAccumulator[file.path] == null &&
+                                (if (LrcApiSettings.isConfigured) {
+                                    // API 已配置：放行从未尝试过 API 的文件（即使有 no_cover）
+                                    !thumbnailManager.hasNoCover(libId, file.path) ||
+                                        !thumbnailManager.hasApiNoCover(libId, file.path)
+                                } else {
+                                    !thumbnailManager.hasNoCover(libId, file.path)
+                                })
+                        }
+                    } else {
+                        emptyList()
+                    }
+                    totalCount += toGenerate.size
+                    if (toGenerate.isNotEmpty()) {
+                        if (completed == 0 && totalCount > 0) {
+                            _thumbnailProgress.value = 0
+                            lastProgressStep = 0
+                        }
+                        val audioConcurrency = minOf(s.thumbnailConcurrency, toGenerate.size)
+                        val audioSemaphore = Semaphore(audioConcurrency)
+                        val successFiles = Collections.synchronizedList(mutableListOf<StorageFile>())
+                        coroutineScope {
+                            for (file in toGenerate) {
+                                launch {
+                                    audioSemaphore.withPermit {
+                                        try {
+                                            val path = thumbnailManager.generateAudioCover(s, libId, file)
+                                            if (path != null) {
+                                                synchronized(batchLock) {
+                                                    batchAccumulator[file.path] = path
+                                                }
+                                                successFiles.add(file)
+                                            }
+                                        } catch (_: Exception) {
+                                        }
+                                        completed++
+                                        reportProgress()
+                                    }
+                                }
+                            }
+                        }
+
+                        // BUG-T-M1 修复：第三步 - 上传新生成的封面到服务端 .cover/
+                        // 与视频组 uploadThumbnail 对称，跨设备复用
+                        // uploadAudioCover 内部已应用 BUG-T-C1 fileExists 检查，不覆盖服务端已有文件
+                        if (!isLocal && successFiles.isNotEmpty() && ThumbnailSettings.saveInSameDir) {
+                            val uploadConcurrency = minOf(s.thumbnailConcurrency, successFiles.size)
+                            val uploadSemaphore = Semaphore(uploadConcurrency)
+                            launch {
+                                coroutineScope {
+                                    for (file in successFiles) {
+                                        launch {
+                                            uploadSemaphore.withPermit {
+                                                try {
+                                                    thumbnailManager.uploadAudioCover(s, file)
+                                                } catch (_: Exception) {
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ---- 视频缩略图 ----
+                if (videoFiles.isNotEmpty()) {
+                    // 第一步：扫描本地缓存，已存在的缩略图立即可用（不受开关影响）
+                    val cached = videoFiles.mapNotNull { file ->
+                        val path = thumbnailManager.getCachedThumbnailPath(libId, file.path)
+                        if (path != null) file.path to path else null
+                    }.toMap()
+                    if (cached.isNotEmpty()) {
+                        synchronized(batchLock) { batchAccumulator.putAll(cached) }
+                        flushBatch(batchAccumulator, batchLock)
+                    }
+
+                    val remainingFromCache = videoFiles.filter { file ->
+                        _thumbnailUrls.value[file.path] == null &&
+                            batchAccumulator[file.path] == null &&
+                            _tooShortPaths.value.contains(file.path).not()
+                    }
+                    if (remainingFromCache.isNotEmpty() && !isLocal) {
+                        try {
+                            // BUG-T-M6 修复：传入同目录全部文件（files 已是 listDirectory 返回值，
+                            // 含 {name}-thumb.jpg 刮削缩略图），避免 preloadThumbnails 重复 listFiles
+                            thumbnailManager.preloadThumbnails(
+                                s, libId, remainingFromCache,
+                                onLoaded = { videoPath, thumbPath ->
+                                    synchronized(batchLock) { batchAccumulator[videoPath] = thumbPath }
+                                },
+                                sameDirFiles = files,
+                            )
+                        } catch (_: Exception) {
+                        }
+                    }
+
+                    // 第二步：本地生成新缩略图（受生成模式与 generateForVideo 开关控制）
+                    val toGenerate = if (browseGenerationAllowed &&
+                        ThumbnailSettings.generateThumbnail && ThumbnailSettings.generateForVideo
+                    ) {
+                        videoFiles.filter { file ->
+                            _thumbnailUrls.value[file.path] == null &&
+                                batchAccumulator[file.path] == null &&
+                                _tooShortPaths.value.contains(file.path).not()
+                        }
+                    } else {
+                        emptyList()
+                    }
+                    totalCount += toGenerate.size
+                    if (toGenerate.isNotEmpty()) {
+                        _thumbnailProgress.value = 0
+                        lastProgressStep = 0
+                        val concurrency = minOf(s.thumbnailConcurrency, toGenerate.size)
+                        val semaphore = Semaphore(concurrency)
+                        val successFiles = Collections.synchronizedList(mutableListOf<StorageFile>())
+                        coroutineScope {
+                            for (file in toGenerate) {
+                                launch {
+                                    semaphore.withPermit {
+                                        try {
+                                            when (val result = thumbnailManager.generateThumbnail(
+                                            s, libId, file,
+                                            positionKey = ThumbnailSettings.framePositionKey,
+                                        )) {
+                                                is ThumbnailResult.Success -> {
+                                                    synchronized(batchLock) {
+                                                        batchAccumulator[file.path] = result.path
+                                                    }
+                                                    successFiles.add(file)
+                                                }
+                                                is ThumbnailResult.TooShort -> {
+                                                    _tooShortPaths.update { it + file.path }
+                                                }
+                                                is ThumbnailResult.Failed -> {
+                                                }
+                                                // W-M9 修复：401/403 凭证错误等永久失败，加入 _tooShortPaths
+                                                // 复用"不重试"集合语义，避免每次刷新都无谓重试（凭据未变必再失败）
+                                                is ThumbnailResult.PermanentFailure -> {
+                                                    _tooShortPaths.update { it + file.path }
+                                                }
+                                            }
+                                        } catch (_: Exception) {
+                                        }
+                                        completed++
+                                        reportProgress()
+                                    }
+                                }
+                            }
+                        }
+
+                        // 上传并行化 + fire-and-forget：不阻塞 generateThumbnailUrls 返回
+                        // 原实现串行 uploadThumbnail，10 个文件 × 几秒 = 几十秒阻塞
+                        if (!isLocal && successFiles.isNotEmpty() && ThumbnailSettings.saveInSameDir) {
+                            val uploadConcurrency = minOf(s.thumbnailConcurrency, successFiles.size)
+                            val uploadSemaphore = Semaphore(uploadConcurrency)
+                            // launch 独立协程，不 await，生成协程立即返回
+                            launch {
+                                coroutineScope {
+                                    for (file in successFiles) {
+                                        launch {
+                                            uploadSemaphore.withPermit {
+                                                try {
+                                                    thumbnailManager.uploadThumbnail(s, file)
+                                                } catch (_: Exception) {
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } finally {
+                // 停止 flusher，强制提交剩余累积结果
+                flusher.cancel()
+                // BUG-50 修复：仅当仍是当前世代时才提交，避免 cancelled 后旧目录的
+                // 缩略图数据写入已清空的 _thumbnailUrls，造成页面显示错乱
+                if (generation <= 0 || generation == thumbnailGeneration.get()) {
+                    flushBatch(batchAccumulator, batchLock)
+                }
+                _thumbnailProgress.value = -1
+            }
+        }
+    }
+
+    /**
+     * 把 [accumulator] 中累积的缩略图结果批量提交到 [_thumbnailUrls]。
+     * 提交后清空 [accumulator]，等待下一批累积。
+     */
+    private fun flushBatch(
+        accumulator: MutableMap<String, String>,
+        lock: Any,
+    ) {
+        val batch = synchronized(lock) {
+            if (accumulator.isEmpty()) return@synchronized null
+            val snapshot = accumulator.toMap()
+            accumulator.clear()
+            snapshot
+        } ?: return
+        if (batch.isNotEmpty()) {
+            _thumbnailUrls.update { it + batch }
+        }
+    }
+
+    /**
+     * 点击视频文件：构造播放源 → 查询续播位置 → 写入 [PlaybackRequestHolder] → 通知 UI 导航。
+     *
+     * 同时构造同目录视频文件列表写入 [PlaylistHolder]，供 PlayerViewModel 实现连播。
+     */
+    fun playFile(file: StorageFile) {
+        val s = storage ?: return
+        val library = currentLibrary ?: return
+        viewModelScope.launch {
+            try {
+                val uniqueKey = "${library.id}:${file.path}"
+                // W-N7 修复：传入 uniqueKey 作为 mediaId，与播放历史 uniqueKey 一致。
+                val source = MediaSourceBuilder.buildMediaSource(s, file, mediaId = uniqueKey)
+
+                // 只有"自动方向"模式（orientationMode==2）才会在进入前预读视频宽高比并可能
+                // 触发等待，才标记"正在准备"以显示"识别方向中"标签；其余情况不显示该提示。
+                val needsAspect =
+                    !isAudioFile(file.name) && PlayerSettings.orientationMode == 2
+                val initialAspectRatio = if (needsAspect) {
+                    _preparingPlaybackPath.value = file.path
+                    // 进入播放前预算宽高比可能耗时（远程源无缩略图缓存时读取视频元数据），
+                    // 已标记"正在准备"，UI 在占位图标上显示"识别方向中…"。
+                    // 优先用本地缩略图缓存比例（缩略图是视频帧，已含旋转校正，纯本地 IO 极快），
+                    // 缺失时回退 MediaMetadataRetriever 读取（本地/远程均支持，带超时）。
+                    PrePlayAspectReader.read(context, thumbnailManager, s, library.id, file)
+                } else {
+                    null
+                }
+
+                // 文件夹访问加密双保险：加密目录内的文件不写播放历史（history = null 走现有"不记历史"机制）
+                val withinEncrypted = encryptedFolderManager.isWithinEncrypted(library.id, file.path)
+
+                // 查询续播位置（已播完的曲目从头播放）
+                val startPositionMs = withContext(Dispatchers.IO) {
+                    playHistoryDao.getPlayHistory(uniqueKey, library.id)?.resumeStartPositionMs() ?: 0L
+                }
+
+                // 构造同目录播放列表（仅视频文件，按当前排序顺序）
+                val playlist = buildPlaylist(file)
+                val startIndex = playlist.indexOfFirst { it.filePath == file.path }
+                if (startIndex >= 0) {
+                    playlistHolder.set(playlist, startIndex)
+                }
+
+                playbackRequestHolder.set(
+                    PlaybackRequest(
+                        source = source,
+                        title = file.name,
+                        startPositionMs = startPositionMs,
+                        history = if (withinEncrypted) null else HistoryDescriptor(
+                            uniqueKey = uniqueKey,
+                            url = file.path,
+                            mediaTypeValue = library.mediaType.value,
+                            storageId = library.id,
+                            storagePath = file.path,
+                            fileSize = file.length,
+                        ),
+                        isAudio = isAudioFile(file.name),
+                        initialAspectRatio = initialAspectRatio,
+                    )
+                )
+                _events.tryEmit(StorageFileEvent.NavigateToPlayer(isAudioFile(file.name)))
+            } catch (e: Exception) {
+                _events.tryEmit(StorageFileEvent.ShowError(e.message ?: context.getString(R.string.play_error_open_failed)))
+            } finally {
+                _preparingPlaybackPath.value = null
+            }
+        }
+    }
+
+    /**
+     * 构造同目录视频文件播放列表。
+     *
+     * 从当前 [StorageFileUiState.rawFiles] 筛选视频文件（按扩展名），转换为
+     * [PlaylistItem] 列表。若当前目录无其他视频，返回空列表。
+     */
+    private fun buildPlaylist(currentFile: StorageFile): List<PlaylistItem> {
+        val library = currentLibrary ?: return emptyList()
+        // BUG-9 修复：原实现只过滤视频文件，导致音频播放列表始终为空、上下首按钮永远禁用。
+        // 改为按"当前点击文件类型"过滤——点击音频则构建音频播放列表，点击视频则构建视频列表，
+        // 避免音视频混播（用户在音频页点击下一首切到视频文件会导致 UI 错乱）
+        val isAudio = MediaFileTypes.isAudioFile(currentFile.name)
+        return _uiState.value.rawFiles
+            .filter { sf ->
+                !sf.isDirectory && (
+                    (isAudio && MediaFileTypes.isAudioFile(sf.name)) ||
+                        (!isAudio && MediaFileTypes.isVideoFile(sf.name))
+                )
+            }
+            .map {
+                PlaylistItem(
+                    libraryId = library.id,
+                    filePath = it.path,
+                    fileName = it.name,
+                    mediaTypeValue = library.mediaType.value,
+                    // BUG-26：携带文件大小，切集时 createVirtualFile 传入真实 size
+                    fileSize = it.length,
+                )
+            }
+    }
+
+    /**
+     * 点击图片文件：写入 [ImageViewerRequestHolder] → 通知 UI 导航到图片查看页。
+     *
+     * 携带 storageId + 当前目录路径 + 点击的文件路径，[com.nichx.niplayer.feature.home
+     * .imageviewer.ImageViewerViewModel] 据此重建 Storage 并列出同目录所有图片。
+     */
+    fun openImageFile(file: StorageFile) {
+        val library = currentLibrary ?: return
+        imageViewerRequestHolder.set(
+            ImageViewerRequest(
+                storageId = library.id,
+                directoryPath = _uiState.value.currentPath,
+                initialFilePath = file.path,
+            )
+        )
+        _events.tryEmit(StorageFileEvent.NavigateToImageViewer)
+    }
+
+    // ---- 下载 ----
+
+    /**
+     * 下载文件到指定目标目录。
+     *
+     * - [targetStorageUrl] 为 SAF tree URI（`content://...`）时下载到用户选定目录；
+     *   为 null 时下载到应用缓存目录（`<cache>/download/`）。
+     * - uniqueKey 与播放历史保持一致（`"${library.id}:${file.path}"`），便于去重与关联。
+     * - 任务去重由 [DownloadManager.addTask] 处理：已存在活跃任务时忽略，已结束任务重新插入。
+     *
+     * @param file 待下载文件（必须为非目录文件）
+     * @param targetStorageUrl 目标存储 tree URI，null 表示下载到缓存
+     * @param targetStorageName 目标存储显示名（用于下载管理页展示），null 时显示"缓存"
+     */
+    fun downloadFile(file: StorageFile, targetStorageUrl: String?, targetStorageName: String?) {
+        val library = currentLibrary ?: return
+        val uniqueKey = "${library.id}:${file.path}"
+        downloadManager.addTask(
+            storageId = library.id,
+            filePath = file.path,
+            fileName = file.name,
+            uniqueKey = uniqueKey,
+            totalBytes = file.length,
+            targetStorageUrl = targetStorageUrl,
+            targetStorageName = targetStorageName,
+        )
+        _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_added_to_download)))
+    }
+
+    /**
+     * 设置下载目录并下载文件。
+     * 用于用户首次下载时选择目录后，自动保存为下载目录。
+     *
+     * @param targetDirPath 下载目录绝对路径
+     */
+    fun setDownloadDirAndDownload(file: StorageFile, targetDirPath: String, dirName: String) {
+        setDownloadDir(targetDirPath, dirName)
+        downloadFile(file, DownloadSettings.downloadDirTargetUrl, dirName)
+    }
+
+    /**
+     * 批量下载选中文件（多选模式）。
+     *
+     * 与 [downloadFile] 相同语义：仅非目录文件逐个加入下载队列，
+     * uniqueKey 与播放历史保持一致，任务去重由 [DownloadManager.addTask] 处理。
+     * 完成后退出多选模式。
+     *
+     * @param files 待下载文件列表（自动过滤目录）
+     * @param targetStorageUrl 目标存储 tree URI，null 表示下载到缓存
+     * @param targetStorageName 目标存储显示名，null 时显示"缓存"
+     */
+    fun downloadFiles(files: List<StorageFile>, targetStorageUrl: String?, targetStorageName: String?) {
+        val library = currentLibrary ?: return
+        val filesToDownload = files.filter { !it.isDirectory }
+        if (filesToDownload.isEmpty()) return
+        filesToDownload.forEach { file ->
+            downloadManager.addTask(
+                storageId = library.id,
+                filePath = file.path,
+                fileName = file.name,
+                uniqueKey = "${library.id}:${file.path}",
+                totalBytes = file.length,
+                targetStorageUrl = targetStorageUrl,
+                targetStorageName = targetStorageName,
+            )
+        }
+        exitMultiSelect()
+        _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_batch_download_added, filesToDownload.size)))
+    }
+
+    /**
+     * 设置下载目录并批量下载文件（多选模式）。
+     * 用于用户首次批量下载时选择目录后，自动保存为下载目录。
+     *
+     * @param targetDirPath 下载目录绝对路径
+     */
+    fun setDownloadDirAndDownloadFiles(files: List<StorageFile>, targetDirPath: String, dirName: String) {
+        setDownloadDir(targetDirPath, dirName)
+        downloadFiles(files, DownloadSettings.downloadDirTargetUrl, dirName)
+    }
+
+    /** 保存下载目录（共享存储绝对路径，免 SAF）。 */
+    private fun setDownloadDir(path: String, dirName: String) {
+        DownloadSettings.setDownloadDir(path, dirName)
+    }
+
+    // ---- 单文件操作菜单（长按 / ⋮ 触发） ----
+
+    /**
+     * 打开单文件文件操作菜单：查询是否已收藏，emit 菜单事件供 UI 弹出 FileActionsSheet。
+     *
+     * 该菜单承载播放/下载/快速访问/重命名/移动/删除/属性等操作，长按与列表 ⋮ 均指向这里
+     * （长按不再进入多选，多选改由顶栏「选择」按钮显式进入）。
+     */
+    fun openFileActions(file: StorageFile) {
+        val library = currentLibrary ?: return
+        viewModelScope.launch {
+            val favorited = withContext(Dispatchers.IO) {
+                quickAccessDao.get(library.id, file.path) != null
+            }
+            _events.tryEmit(StorageFileEvent.OpenFileActions(file, favorited))
+        }
+    }
+
+    /** 添加到快速访问。新增项排在列表末尾（sortIndex 取当前最大值 +1）。 */
+    fun addQuickAccess(file: StorageFile) {
+        val library = currentLibrary ?: return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val nextIndex = (quickAccessDao.getMaxSortIndex() ?: -1) + 1
+                quickAccessDao.insert(
+                    QuickAccessEntity(
+                        name = file.name,
+                        storagePath = file.path,
+                        isDirectory = file.isDirectory,
+                        libraryId = library.id,
+                        sortIndex = nextIndex,
+                    )
+                )
+            }
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_qa_added)))
+        }
+    }
+
+    /** 从快速访问移除。 */
+    fun removeQuickAccess(file: StorageFile) {
+        val library = currentLibrary ?: return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                quickAccessDao.delete(library.id, file.path)
+            }
+            _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_qa_removed)))
+        }
+    }
+
+    // ---- 文件管理（重命名 / 移动 / 新建文件夹 / 删除） ----
+
+    /**
+     * 是否支持文件管理操作（重命名/移动/新建文件夹/删除）。
+     *
+     * 仅远程存储（SMB/WebDAV）支持；本地存储通过系统文件管理器操作。
+     */
+    val supportsFileManagement: Boolean
+        get() = currentLibrary?.mediaType == MediaType.SMB_SERVER ||
+            currentLibrary?.mediaType == MediaType.WEBDAV_SERVER
+
+    /**
+     * 是否支持删除文件。
+     *
+     * 覆盖本地视频库（LOCAL_STORAGE）、SAF（EXTERNAL_STORAGE）及远程 SMB/WebDAV。
+     * 与 [supportsFileManagement]（重命名/移动，仅远程）解耦，使本地存储也能删除。
+     */
+    val supportsDelete: Boolean
+        get() = currentLibrary?.mediaType?.let {
+            when (it) {
+                MediaType.LOCAL_STORAGE, MediaType.EXTERNAL_STORAGE,
+                MediaType.SMB_SERVER, MediaType.WEBDAV_SERVER -> true
+                else -> false
+            }
+        } ?: false
+
+    /**
+     * 重命名当前目录下的文件/目录。
+     *
+     * @param file 待重命名的文件（必须在当前目录内）
+     * @param newName 新名称（不含路径）
+     */
+    fun renameFile(file: StorageFile, newName: String) {
+        val s = storage ?: return
+        if (newName.isBlank() || newName == file.name) return
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { s.rename(file, newName.trim()) }.getOrDefault(false)
+            }
+            if (ok) {
+                withContext(Dispatchers.IO) {
+                    // 重命名成功后处理旧缩略图：
+                    // - 本地缓存按旧路径失效，新名下次浏览自动重建。
+                    // - 服务端 .thumb/ 缩略图同步改名，保留原图避免删除后重新生成
+                    //   （仅改名主名时生效；仅改扩展名时缩略图名不变，等价于 no-op）
+                    thumbnailManager.clearCache(storageId, listOf(file))
+                    thumbnailManager.renameServerThumbnail(s, file, newName.trim())
+                }
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_renamed, newName.trim())))
+                // 文件夹访问加密联动：目录重命名时同步更新加密配置前缀
+                if (file.isDirectory) {
+                    val oldPath = file.path.trimEnd('/')
+                    val newPath = (file.path.substringBeforeLast('/', "").trimEnd('/') + "/" + newName.trim()).trimStart('/')
+                    if (oldPath != newPath) {
+                        encryptedFolderManager.renameFolderPrefix(storageId, oldPath, newPath)
+                    }
+                }
+                refreshCurrentDirectory()
+            } else {
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_rename_failed)))
+            }
+        }
+    }
+
+    /**
+     * 移动文件/目录到指定目标目录。
+     *
+     * @param file 待移动的文件
+     * @param targetDirectory 目标目录（必须已存在）
+     */
+    fun moveFile(file: StorageFile, targetDirectory: StorageFile) {
+        if (file.path == targetDirectory.path) return
+        beginTransfer(listOf(file), targetDirectory, isCopy = false, isBatch = false)
+    }
+
+    /**
+     * 在当前目录下新建文件夹。
+     *
+     * @param name 新文件夹名称
+     */
+    fun createFolder(name: String) {
+        val s = storage ?: return
+        if (name.isBlank()) return
+        val currentDir = directoryStack.lastOrNull() ?: return
+        val newPath = if (currentDir.path.isEmpty()) name.trim()
+        else "${currentDir.path}/${name.trim()}"
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { s.createDirectory(newPath) }.getOrDefault(false)
+            }
+            if (ok) {
+                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_folder_created, name.trim())))
+                refreshCurrentDirectory()
+            } else {
+                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_folder_create_failed)))
+            }
+        }
+    }
+
+    /**
+     * 上传本地文件到当前目录。
+     *
+     * 通过 [ContentResolver] 打开本地 Uri 的输入流，调用 [Storage.uploadFile] 流式上传。
+     * 上传完成后自动刷新当前目录。
+     *
+     * @param uri 本地文件 Uri（来自 SAF OpenDocument）
+     * @param fileName 原始文件名（用于远程目标路径）
+     */
+    fun uploadFile(uri: android.net.Uri, fileName: String) {
+        val library = currentLibrary ?: return
+        val currentDir = directoryStack.lastOrNull() ?: return
+        val remotePath = if (currentDir.path.isEmpty()) fileName
+        else "${currentDir.path}/$fileName"
+        val totalBytes = queryUriSize(uri)
+        // 交给 UploadManager 后台任务执行：App 级作用域，切出页面不中断；进度由上传条展示。
+        viewModelScope.launch {
+            val taskId = uploadManager.enqueue(
+                storageId = library.id,
+                storageName = uiState.value.storageName,
+                fileName = fileName,
+                remotePath = remotePath,
+                sourceUri = uri.toString(),
+                totalBytes = totalBytes,
+            )
+            if (taskId > 0) {
+                _events.tryEmit(
+                    StorageFileEvent.ShowToast(
+                        context.getString(R.string.upload_task_created, fileName),
+                    ),
+                )
+            } else {
+                _events.tryEmit(
+                    StorageFileEvent.ShowError(
+                        context.getString(R.string.upload_task_create_failed),
+                    ),
+                )
+            }
+        }
+    }
+
+    /** 通过 SAF 查询本地文件大小（未知则 -1）。 */
+    private fun queryUriSize(uri: android.net.Uri): Long {
+        return runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(android.provider.OpenableColumns.SIZE),
+                null, null, null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                    if (idx >= 0) cursor.getLong(idx) else -1L
+                } else -1L
+            } ?: -1L
+        }.getOrDefault(-1L)
+    }
+
+    /** 取消上传任务。 */
+    fun cancelUpload(taskId: Long) = uploadManager.cancel(taskId)
+
+    // ---- MediaStore 授权删除（系统索引媒体） ----
+
+    private var pendingConsentPaths: List<String> = emptyList()
+    private var pendingConsentFiles: List<StorageFile> = emptyList()
+
+    /**
+     * 收集需通过 [MediaStore.createDeleteRequest] 授权删除的 URI 列表。
+     *
+     * 仅本地视频库（LOCAL_STORAGE）且 API 30+ 的系统索引项（fileId>0）需要走授权流程；
+     * 其余（扩展目录/SAF/远程）直接删除即可。
+     */
+    private fun mediaConsentUris(files: List<StorageFile>): List<Uri> {
+        if (currentLibrary?.mediaType != MediaType.LOCAL_STORAGE) return emptyList()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return emptyList()
+        return files
+            .map { it as? VideoStorageFile }
+            .filterNotNull()
+            .filter { !it.isDirectory && it.fileId > 0 }
+            .map { ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, it.fileId) }
+    }
+
+    /**
+     * 系统授权删除结果回调（由 [StorageFileScreen] 的 MediaStore launcher 调用）。
+     *
+     * @param granted 用户是否允许删除（RESULT_OK）。
+     */
+    fun finalizePendingConsentDelete(granted: Boolean) {
+        val paths = pendingConsentPaths
+        val files = pendingConsentFiles
+        pendingConsentPaths = emptyList()
+        pendingConsentFiles = emptyList()
+        _fileOpProgress.value = null
+        if (paths.isEmpty()) {
+            endExclusiveFileOp()
+            return
+        }
+        viewModelScope.launch {
+            if (granted) {
+                val s = storage
+                withContext(Dispatchers.IO) {
+                    (s as? VideoStorage)?.let { runCatching { it.finalizeMediaDelete(paths) } }
+                    if (s != null) {
+                        files.forEach { file ->
+                            runCatching { thumbnailManager.deleteThumbnailsForVideo(s, storageId, file) }
+                        }
+                    }
+                }
+                _events.tryEmit(StorageFileEvent.ShowToast(
+                    context.getString(R.string.storage_file_deleted_count, paths.size),
+                ))
+            } else {
+                _events.tryEmit(StorageFileEvent.ShowToast(
+                    context.getString(R.string.storage_file_delete_cancelled),
+                ))
+            }
+            endExclusiveFileOp()
+            refreshCurrentDirectory()
+        }
+    }
+
+    /**
+     * 删除文件或目录（目录需为空或可递归删除）。
+     *
+     * @param file 待删除的文件/目录
+     */
+    fun deleteFile(file: StorageFile) {
+        val s = storage ?: return
+        // 互斥：已有文件操作在进行时拒绝删除，避免删除正在处理的文件
+        if (!beginExclusiveFileOp()) return
+        // 系统 MediaStore 索引视频：先走授权删除，成功后由 finalizePendingConsentDelete 落地
+        val consentUris = mediaConsentUris(listOf(file))
+        if (consentUris.isNotEmpty()) {
+            pendingConsentPaths = listOf(file.path)
+            pendingConsentFiles = listOf(file)
+            _events.tryEmit(StorageFileEvent.RequestMediaStoreDelete(consentUris))
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val ok = withContext(Dispatchers.IO) {
+                    runCatching { s.deleteFile(file) }.getOrDefault(false)
+                }
+                if (ok) {
+                    _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_deleted, file.name)))
+                    // 文件夹访问加密联动：目录删除时清理其前缀下的加密配置
+                    if (file.isDirectory) {
+                        encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
+                    } else {
+                        // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
+                        runCatching {
+                            thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
+                        }
+                    }
+                    refreshCurrentDirectory()
+                } else {
+                    _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_delete_failed)))
+                }
+            } finally {
+                endExclusiveFileOp()
+            }
+        }
+    }
+
+    /** 刷新当前目录文件列表（重命名/移动/删除/新建后调用）。 */
+    private fun refreshCurrentDirectory() {
+        val current = directoryStack.lastOrNull() ?: return
+        viewModelScope.launch { listDirectory(current) { } }
+    }
+
+    // ---- 排序 ----
+
+    /** 切换排序字段，持久化并立即重排当前列表。 */
+    fun setSortBy(sortBy: FileBrowserSettings.SortBy) {
+        FileBrowserSettings.setSortBy(sortBy)
+        _uiState.update {
+            it.copy(files = applyFilterAndSort(it.rawFiles))
+        }
+    }
+
+    /** 切换升降序，持久化并立即重排当前列表。 */
+    fun setSortAscending(ascending: Boolean) {
+        FileBrowserSettings.setSortAscending(ascending)
+        _uiState.update {
+            it.copy(files = applyFilterAndSort(it.rawFiles))
+        }
+    }
+
+    /** 切换"仅显示媒体文件"开关，持久化并立即刷新当前目录列表。 */
+    fun toggleShowOnlyMediaFiles() {
+        val newValue = !FileBrowserSettings.showOnlyMediaFiles
+        FileBrowserSettings.showOnlyMediaFiles = newValue
+        _uiState.update {
+            it.copy(files = applyFilterAndSort(it.rawFiles))
+        }
+    }
+
+    /** 切换"显示隐藏文件"开关，持久化并立即刷新当前目录列表。 */
+    fun toggleShowHiddenFiles() {
+        val newValue = !FileBrowserSettings.showHiddenFiles
+        FileBrowserSettings.showHiddenFiles = newValue
+        _uiState.update {
+            it.copy(files = applyFilterAndSort(it.rawFiles))
+        }
+    }
+
+    /** 切换是否隐藏 .thumb 缩略图文件夹，持久化并立即刷新当前目录列表。 */
+    fun toggleHideThumbFolder() {
+        val newValue = !FileBrowserSettings.hideThumbFolder
+        FileBrowserSettings.hideThumbFolder = newValue
+        _uiState.update {
+            it.copy(files = applyFilterAndSort(it.rawFiles))
+        }
+    }
+
+    /** 设置文件类型过滤，持久化并立即刷新当前目录列表。 */
+    fun setMediaFilter(filter: FileBrowserSettings.MediaFilter) {
+        FileBrowserSettings.mediaFilter = filter
+        _uiState.update {
+            it.copy(files = applyFilterAndSort(it.rawFiles))
+        }
+    }
+
+    /**
+     * 过滤 + 排序：先按 [FileBrowserSettings.showHiddenFiles] 过滤隐藏文件，
+     * 再按 [FileBrowserSettings.showOnlyMediaFiles] 过滤非媒体文件，
+     * 再按 [FileBrowserSettings.mediaFilter] 过滤媒体类型，最后按 [FileBrowserSettings] 排序。
+     *
+     * 排序规则：目录始终在前；同类型内按 [SortConfig.sortBy] 排序，
+     * [SortConfig.ascending] 控制升降序。名称排序用自然排序（不区分大小写，
+     * 连续数字按数值比较，如 "2" < "10"）。
+     */
+    private fun applyFilterAndSort(files: List<StorageFile>): List<StorageFile> {
+        val config = FileBrowserSettings.sortFlow.value
+        // 始终过滤应用生成的 .thumb 缩略图文件夹（即便开启显示隐藏文件也不展示，可通过开关放行）
+        val thumbFiltered = if (config.hideThumbFolder) {
+            files.filter { it.name != ".thumb" }
+        } else {
+            files
+        }
+        val hiddenFiltered = if (config.showHiddenFiles) {
+            thumbFiltered
+        } else {
+            thumbFiltered.filter { !it.name.startsWith('.') && !it.isHidden }
+        }
+        val mediaFiltered = if (config.showOnlyMediaFiles) {
+            hiddenFiltered.filter { it.isDirectory || isMediaFile(it) }
+        } else {
+            hiddenFiltered
+        }
+        val typeFiltered = when (config.mediaFilter) {
+            FileBrowserSettings.MediaFilter.ALL -> mediaFiltered
+            FileBrowserSettings.MediaFilter.VIDEO ->
+                mediaFiltered.filter { it.isDirectory || MediaFileTypes.isVideoFile(it.name) }
+            FileBrowserSettings.MediaFilter.AUDIO ->
+                mediaFiltered.filter { it.isDirectory || MediaFileTypes.isAudioFile(it.name) }
+            FileBrowserSettings.MediaFilter.IMAGE ->
+                mediaFiltered.filter { it.isDirectory || MediaFileTypes.isImageFile(it.name) }
+        }
+
+        val comparator = when (config.sortBy) {
+            // 名称用自然排序：连续数字按数值比较，避免 "10.mp4" 排在 "2.mp4" 前
+            FileBrowserSettings.SortBy.NAME -> Comparator<StorageFile> { a, b ->
+                naturalOrderCompare(a.name, b.name)
+            }
+            FileBrowserSettings.SortBy.MODIFIED -> compareBy<StorageFile> { it.lastModified }
+            FileBrowserSettings.SortBy.SIZE -> compareBy<StorageFile> { it.length }
+            FileBrowserSettings.SortBy.TYPE -> compareBy<StorageFile> {
+                val dot = it.name.lastIndexOf('.')
+                if (dot < 0 || dot == it.name.length - 1) "" else it.name.substring(dot + 1).lowercase()
+            }
+        }
+        // 目录始终在前（不受升降序影响），同类型内按 comparator 排序
+        val dirFirst = Comparator<StorageFile> { a, b ->
+            val aDir = if (a.isDirectory) 0 else 1
+            val bDir = if (b.isDirectory) 0 else 1
+            aDir.compareTo(bDir)
+        }
+        val effective = if (config.ascending) comparator else comparator.reversed()
+        return typeFiltered.sortedWith(dirFirst.then(effective))
+    }
+
+    /**
+     * 判断文件是否为媒体文件（视频/音频/图片），排除 sidecar 缩略图文件。
+     *
+     * BUG-T-m9 修复：当"仅显示媒体文件"开启时，侧车缩略图文件（如 `{name}-thumb.jpg`、
+     * `{name}-cover.jpg`）仅扩展名是图片但实际是缩略图缓存，不应显示在文件列表中。
+     */
+    private fun isMediaFile(file: StorageFile): Boolean =
+        !isSidecarThumbnailFile(file.name) && (
+            MediaFileTypes.isVideoFile(file.name) ||
+                MediaFileTypes.isAudioFile(file.name) ||
+                MediaFileTypes.isImageFile(file.name)
+            )
+
+    /**
+     * 判断文件名是否为 sidecar 缩略图/封面文件。
+     *
+     * 匹配 [ThumbnailManager.uploadThumbnail] / [ThumbnailManager.uploadAudioCover]
+     * 生成的服务端缓存文件名模式：
+     * - 视频缩略图：`{视频去扩展名}-thumb.jpg` / `-thumb.jpeg`
+     * - 音频封面：`{完整文件名}-cover.jpg` / `-cover.jpeg`
+     */
+    private fun isSidecarThumbnailFile(name: String): Boolean {
+        val lower = name.lowercase()
+        return lower.endsWith("-thumb.jpg") || lower.endsWith("-thumb.jpeg") ||
+            lower.endsWith("-cover.jpg") || lower.endsWith("-cover.jpeg")
+    }
+
+    override fun onCleared() {
+        stopHeartbeat()
+        val s = storage ?: return
+        // BUG-X2 修复：close() 涉及网络 IO（SMB logout+disconnect），不能在主线程执行。
+        // 原实现用裸 Thread 非守护，app 退出时 JVM 会等待该线程结束，
+        // SMB close 涉及 share/session/connection 三层 close 可能耗时数秒，导致 app 卡死。
+        // 改为守护线程（isDaemon=true），JVM 退出时不再等待，立即终止。
+        // BUG-07 适配：close() 改为 suspend（需获取 connectMutex），用 runBlocking 在后台线程调用。
+        Thread {
+            try { kotlinx.coroutines.runBlocking { s.close() } } catch (_: Exception) { }
+        }.apply { isDaemon = true }.start()
+    }
+
+    private companion object {
+        /** 批量提交缩略图结果的间隔（ms）。降低 StateFlow emit 次数，减少 Compose 重组。 */
+        const val FLUSH_INTERVAL_MS = 250L
+        /** 进度按 5% 步进 emit，避免每个文件完成都触发进度 StateFlow 更新。 */
+        const val PROGRESS_STEP = 5
+        /** 远程存储心跳检测间隔（ms）。30 秒检测一次，平衡实时性与网络开销。 */
+        const val HEARTBEAT_INTERVAL_MS = 30_000L
+    }
+}
+
+/** 文件浏览页 UI 状态。 */
+/** 一个进行中的上传任务（用于进度条展示）。fraction <0 表示未知总长（不确定进度）。 */
+data class ActiveUpload(
+    val taskId: Long,
+    val fileName: String,
+    val fraction: Float,
+    /** 实时上传速度（bytes/sec，0 = 未知）。 */
+    val speedBytesPerSec: Long,
+)
+
+/** 批量文件操作类型（用于进度条文案）。 */
+enum class FileOpType {
+    MOVE, COPY, DELETE,
+}
+
+/** 批量文件操作进度（移动/复制/删除）。[done]/[total] 为已处理项数/总项数，[currentName] 为当前处理项名。 */
+data class FileOpProgress(
+    val total: Int,
+    val done: Int,
+    val currentName: String,
+    val type: FileOpType,
+)
+
+/** 移动/复制冲突的解决方式（由冲突弹窗让用户选择）。 */
+enum class TransferConflictMode {
+    /** 跳过目标已有同名项的源文件。 */
+    SKIP_DUPLICATES,
+    /** 覆盖目标同名项。采用安全覆盖：先把目标重命名为备份、迁移成功后删备份，失败则还原，不预删目标。 */
+    OVERWRITE,
+}
+
+/** 移动/复制冲突挂起数据：目标目录已存在同名文件/目录。 */
+data class TransferConflict(
+    val files: List<StorageFile>,
+    val target: StorageFile,
+    val isCopy: Boolean,
+    val isBatch: Boolean,
+    /** 源文件中与目标目录同名、构成冲突的子集。 */
+    val duplicateFiles: List<StorageFile>,
+)
+
+data class StorageFileUiState(
+    val storageName: String = "",
+    /** 原始文件列表（未过滤未排序），用于排序/过滤变更时重新计算 [files]。 */
+    val rawFiles: List<StorageFile> = emptyList(),
+    /** 当前展示的文件列表（已过滤 + 已排序）。 */
+    val files: List<StorageFile> = emptyList(),
+    val currentPath: String = "",
+    val isLoading: Boolean = false,
+    val canGoUp: Boolean = false,
+    /** 列目录时的持续错误（加载失败显示）。播放错误走 [StorageFileEvent.ShowError]。 */
+    val error: String? = null,
+    /** 返回上级目录后需要滚动到的目标索引（-1 表示不滚动）。UI 消费后调用 [clearScrollTarget]。 */
+    val scrollTargetIndex: Int = -1,
+    /** 当前存储源是否为远程（SMB/WebDAV），远程文件可下载，本地文件不需要下载。 */
+    val isRemoteStorage: Boolean = false,
+)
+
+/** 一次性事件（导航、Toast），由 [StorageFileScreen] collect。 */
+sealed class StorageFileEvent {
+    /** 播放源已就绪，携带音频标记以便直接分流到视频/音频播放页。 */
+    data class NavigateToPlayer(val isAudio: Boolean) : StorageFileEvent()
+
+    /** 图片请求已就绪，导航到 [com.nichx.niplayer.navigation.Routes.ImageViewer.VIEWER]。 */
+    object NavigateToImageViewer : StorageFileEvent()
+
+    /** 播放源构造失败，显示错误提示。 */
+    data class ShowError(val message: String) : StorageFileEvent()
+
+    /** 长按/⋮ 打开单文件操作菜单，UI 弹出 FileActionsSheet。 */
+    data class OpenFileActions(
+        val file: StorageFile,
+        val isFavorited: Boolean,
+    ) : StorageFileEvent()
+
+    /** 拉起系统 [android.provider.MediaStore.createDeleteRequest] 授权删除系统索引媒体。 */
+    data class RequestMediaStoreDelete(val uris: List<Uri>) : StorageFileEvent()
+
+    /** 简短提示（添加/移除成功）。 */
+    data class ShowToast(val message: String) : StorageFileEvent()
+}
+
+/**
+ * 自然排序比较：连续数字按数值比较（如 "2" < "10"），非数字部分不区分大小写按字符比较。
+ * 修复纯字符串比较导致 "10.mp4" 排在 "2.mp4" 前的问题。
+ */
+private fun naturalOrderCompare(a: String, b: String): Int {
+    var i = 0
+    var j = 0
+    val al = a.length
+    val bl = b.length
+    while (i < al && j < bl) {
+        val ca = a[i]
+        val cb = b[j]
+        if (ca.isDigit() && cb.isDigit()) {
+            // 去掉前导 0 后再按位数（数值大小）比较
+            var x = i
+            var y = j
+            while (x < al && a[x] == '0') x++
+            while (y < bl && b[y] == '0') y++
+            val nx = x
+            val ny = y
+            while (x < al && a[x].isDigit()) x++
+            while (y < bl && b[y].isDigit()) y++
+            val lenA = x - nx
+            val lenB = y - ny
+            // 位数不同则位数多者数值大（已去前导 0，如 "10" 2 位 > "2" 1 位）
+            if (lenA != lenB) return lenA.compareTo(lenB)
+            for (k in 0 until lenA) {
+                val da = a[nx + k]
+                val db = b[ny + k]
+                if (da != db) return da.compareTo(db)
+            }
+            i = x
+            j = y
+        } else {
+            val la = ca.lowercaseChar()
+            val lb = cb.lowercaseChar()
+            if (la != lb) return la.compareTo(lb)
+            i++
+            j++
+        }
+    }
+    return (al - i).compareTo(bl - j)
+}
