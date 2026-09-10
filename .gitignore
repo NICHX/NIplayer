@@ -19,3 +19,5 @@ keystore.properties
 gradle/gradle-daemon-jvm.properties
 /legado-with-MD3
 /.trae/documents
+BUG_REPORT.md
+/icons
