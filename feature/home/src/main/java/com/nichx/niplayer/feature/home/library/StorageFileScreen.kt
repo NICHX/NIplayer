@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.net.Uri
 import android.app.Activity
+import android.os.Build
 import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -491,8 +492,12 @@ fun FileBrowserScreen(
                 is StorageFileEvent.OpenFileActions ->
                     fileMenu = event.file to event.isFavorited
                 is StorageFileEvent.RequestMediaStoreDelete -> {
-                    val request = MediaStore.createDeleteRequest(context.contentResolver, event.uris)
-                    mediaDeleteLauncher.launch(IntentSenderRequest.Builder(request).build())
+                    // createDeleteRequest 仅 API 30+ 可用；事件由 ViewModel 在 API 30 以上才触发，
+                    // 此处仍显式做版本守卫以满足 lint 的 NewApi 检查
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        val request = MediaStore.createDeleteRequest(context.contentResolver, event.uris)
+                        mediaDeleteLauncher.launch(IntentSenderRequest.Builder(request).build())
+                    }
                 }
             }
         }
