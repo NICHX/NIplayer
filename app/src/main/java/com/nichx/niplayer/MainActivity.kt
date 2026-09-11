@@ -102,6 +102,7 @@ import com.nichx.niplayer.feature.home.settings.PlaybackStatsScreen
 import com.nichx.niplayer.feature.home.settings.PlayerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.ScanManagerScreen
 import com.nichx.niplayer.feature.home.settings.ThemeScreen
+import com.nichx.niplayer.feature.home.settings.IconScreen
 import com.nichx.niplayer.feature.home.update.UpdateDialogHost
 import com.nichx.niplayer.feature.home.update.UpdateViewModel
 import com.nichx.niplayer.feature.player.AudioPlaybackManager
@@ -389,6 +390,11 @@ class MainActivity : ComponentActivity() {
                             route = Routes.User.SWITCH_THEME,
                             ) {
                             ThemeScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = Routes.User.ICON,
+                            ) {
+                            IconScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             route = Routes.User.LANGUAGE,

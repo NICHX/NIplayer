@@ -56,6 +56,7 @@ object Routes {
         const val SCAN_MANAGER = "user/scan_manager"
         const val CACHE_MANAGER = "user/cache_manager"
         const val SWITCH_THEME = "user/switch_theme"
+        const val ICON = "user/icon"
         const val LANGUAGE = "user/language"
         const val EXPERIMENTAL = "user/experimental"
         const val ABOUT = "user/about"

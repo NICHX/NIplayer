@@ -13,6 +13,7 @@ import com.nichx.niplayer.common.crash.CrashHandler
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.datastore.IconSettings
 import com.nichx.niplayer.datastore.PlayHistorySyncSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.sync.PlayHistorySyncManager
@@ -63,6 +64,8 @@ class NiApplication : Application(), SingletonImageLoader.Factory {
         MMKV.initialize(this)
         // 主动触发 ThemeSettings 初始化，确保 MMKV 就绪后才加载主题模式配置
         ThemeSettings.themeFlow.value
+        // 将 manifest 中 activity-alias 的启停状态校正为当前所选图表，保证桌面图标一致
+        IconSettings.apply(this)
         checkPreviousCrash()
         appScope.launch { ensureLocalStorageExists() }
         // 启动时自动同步播放历史（若启用自动同步）；延迟等待数据库就绪

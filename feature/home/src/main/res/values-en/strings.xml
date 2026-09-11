@@ -303,6 +303,8 @@
     <string name="settings_entry_backup_sub">Export or restore settings</string>
     <string name="settings_entry_theme">Theme</string>
     <string name="settings_entry_theme_sub">Appearance and color scheme</string>
+    <string name="settings_entry_icon">App icon</string>
+    <string name="settings_entry_icon_sub">Change launcher icon</string>
     <string name="settings_entry_language">Language</string>
     <string name="settings_entry_language_sub">App interface language</string>
     <string name="settings_entry_experimental_vr">VR playback</string>
@@ -564,6 +566,18 @@
     <string name="theme_mode_light_desc">Use the light appearance</string>
     <string name="theme_mode_dark">Dark</string>
     <string name="theme_mode_dark_desc">Use the dark appearance</string>
+    <string name="app_icon_title">App icon</string>
+    <string name="app_icon_current">Current icon</string>
+    <string name="app_icon_presets">Presets</string>
+    <string name="app_icon_swit_hint">Tap an icon below to change the launcher icon immediately</string>
+    <string name="app_icon_default">Default</string>
+    <string name="app_icon_cream">Cream</string>
+    <string name="app_icon_sage">Sage</string>
+    <string name="app_icon_steel">Steel</string>
+    <string name="app_icon_text">Text</string>
+    <string name="app_icon_text2">Text 2</string>
+    <string name="app_icon_play">Play</string>
+    <string name="app_icon_emoji">Emoji</string>
     <string name="theme_color_scheme">Color scheme</string>
     <string name="theme_scheme_misty_desc">Misty blue, calm and airy</string>
     <string name="theme_scheme_blueberry_desc">Blueberry night, deep and serene</string>

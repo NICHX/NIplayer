@@ -536,7 +536,7 @@ enum class SettingsGroup(
     ),
     APPEARANCE(
         labelRes = R.string.settings_group_appearance,
-        entries = listOf(SettingsEntry.THEME, SettingsEntry.LANGUAGE),
+        entries = listOf(SettingsEntry.THEME, SettingsEntry.ICON, SettingsEntry.LANGUAGE),
     ),
     EXPERIMENTAL(
         labelRes = R.string.settings_group_experimental,
@@ -622,6 +622,13 @@ enum class SettingsEntry(
         subtitleRes = R.string.settings_entry_theme_sub,
         icon = Icons.Filled.Palette,
         iconBg = Color(0xFF00ACC1),
+    ),
+    ICON(
+        route = Routes.User.ICON,
+        titleRes = R.string.settings_entry_icon,
+        subtitleRes = R.string.settings_entry_icon_sub,
+        icon = Icons.Filled.GridView,
+        iconBg = Color(0xFF7E57C2),
     ),
     LANGUAGE(
         route = Routes.User.LANGUAGE,

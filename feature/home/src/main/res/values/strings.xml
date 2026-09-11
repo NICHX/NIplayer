@@ -303,6 +303,8 @@
     <string name="settings_entry_backup_sub">导出或恢复配置</string>
     <string name="settings_entry_theme">主题</string>
     <string name="settings_entry_theme_sub">外观与配色</string>
+    <string name="settings_entry_icon">应用图标</string>
+    <string name="settings_entry_icon_sub">切换桌面图标</string>
     <string name="settings_entry_language">语言</string>
     <string name="settings_entry_language_sub">应用界面语言</string>
     <string name="settings_entry_experimental_vr">VR 播放</string>
@@ -564,6 +566,18 @@
     <string name="theme_mode_light_desc">使用浅色外观</string>
     <string name="theme_mode_dark">深色</string>
     <string name="theme_mode_dark_desc">使用深色外观</string>
+    <string name="app_icon_title">应用图标</string>
+    <string name="app_icon_current">当前图标</string>
+    <string name="app_icon_presets">预设</string>
+    <string name="app_icon_swit_hint">点击下方图标，立即切换桌面图标</string>
+    <string name="app_icon_default">默认</string>
+    <string name="app_icon_cream">奶油</string>
+    <string name="app_icon_sage">鼠尾草</string>
+    <string name="app_icon_steel">钢铁蓝</string>
+    <string name="app_icon_text">N 字标</string>
+    <string name="app_icon_text2">N 字标 2</string>
+    <string name="app_icon_play">播放</string>
+    <string name="app_icon_emoji">Emoji</string>
     <string name="theme_color_scheme">配色方案</string>
     <string name="theme_scheme_misty_desc">雾蓝静谧 · 蓝灰雾感，宁静通透</string>
     <string name="theme_scheme_blueberry_desc">蓝莓之夜 · 蓝靛交织，深邃沉静</string>
