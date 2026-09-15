@@ -385,9 +385,9 @@ fun PlayerScreen(
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
-    // 进入播放器前的系统亮度（0~1）。退出时显式写回该值恢复原亮度：
-    // 部分设备/ROM 对 BRIGHTNESS_OVERRIDE_NONE 不会真正清除窗口覆盖（退出后仍停留在播放器
-    // 调整后的亮度），而显式写入具体亮度值是生效的，故退出时写回进入前亮度而非 NONE。
+    // 进入播放器前的系统亮度（0~1），仅作为"手动亮度模式下实时读值失败"时的兜底值。
+    // 退出时不再无脑写回这个快照：自动亮度下它往往是过时/偏低的残留值，强行写回会让
+    // 共享窗口（含返回后的目录页）瞬时压暗。恢复逻辑见下方 restoreBrightnessOnExit。
     val preEntryBrightness = remember {
         val sys = try {
             Settings.System.getInt(
@@ -400,16 +400,25 @@ fun PlayerScreen(
         }
         (sys / 255f).coerceIn(0.02f, 1f)
     }
-    val capturedBack: () -> Unit = {
-        // 立即恢复系统亮度：一触发返回亮度马上回到系统值（不等待抓帧/动画），
-        // 让退出过渡全程以系统亮度呈现。写回进入前亮度值：BRIGHTNESS_OVERRIDE_NONE
-        // 在本设备不生效（保持播放器内亮度），必须显式写回具体亮度值。
-        // PixelCopy 读的是 surface 像素、不受窗口亮度设置影响，提前恢复不影响退出贴图。
+    // 退出时恢复进入播放器前的亮度（显式写回具体值，而非 BRIGHTNESS_OVERRIDE_NONE：
+    // 部分设备/ROM 对 NONE 不会真正清除窗口覆盖，退出后仍停留在播放器内亮度）。
+    // 关键守卫：仅当窗口存在亮度覆盖（用户手势/OSD 调节过，screenBrightness >= 0）时才写回。
+    // 若窗口本就是 NONE（未调节，跟随系统/自动亮度），硬写 preEntryBrightness 会把自动亮度
+    // 下过时的手动档残留值强行顶上，造成"退出瞬暗再恢复"的闪变——这正是原上报 bug 的根因。
+    val restoreBrightnessOnExit: () -> Unit = {
         window?.let { w ->
             val attrs = w.attributes
-            attrs.screenBrightness = preEntryBrightness
-            w.attributes = attrs
+            if (attrs.screenBrightness >= 0f) {
+                attrs.screenBrightness = preEntryBrightness
+                w.attributes = attrs
+            }
         }
+    }
+    val capturedBack: () -> Unit = {
+        // 立即恢复系统亮度：一触发返回亮度马上恢复（不等待抓帧/动画），让退出过渡全程以
+        // 系统亮度呈现。仅在用户调节过亮度时才写回（见 restoreBrightnessOnExit）。
+        // PixelCopy 读的是 surface 像素、不受窗口亮度设置影响，提前恢复不影响退出贴图。
+        restoreBrightnessOnExit()
         captureThumbnailOnExit()
 
         val doExit: () -> Unit = {
@@ -742,13 +751,9 @@ fun PlayerScreen(
             // capturedBack 已提前还原方向，此处幂等兜底（系统返回/异常路径仍会走到这里）
             activity?.requestedOrientation = originalOrientation
 
-            // 兜底恢复系统亮度：主恢复已提前到 capturedBack 入口；
-            // 此处兜底覆盖未走 capturedBack 的异常路径。写回进入前亮度值（NONE 在本设备不生效）。
-            window?.let { w ->
-                val attrs = w.attributes
-                attrs.screenBrightness = preEntryBrightness
-                w.attributes = attrs
-            }
+            // 兜底恢复系统亮度：主恢复已提前到 capturedBack 入口；此处兜底覆盖未走
+            // capturedBack 的异常路径。仅在用户调节过亮度时才写回（见 restoreBrightnessOnExit）。
+            restoreBrightnessOnExit()
             activity?.window?.let { w ->
                 val controller = WindowCompat.getInsetsController(w, w.decorView)
                 controller.show(WindowInsetsCompat.Type.systemBars())
