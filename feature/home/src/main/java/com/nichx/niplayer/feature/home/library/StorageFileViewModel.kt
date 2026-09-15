@@ -1834,7 +1834,7 @@ class StorageFileViewModel @Inject constructor(
                     playHistoryDao.getPlayHistory(uniqueKey, library.id)?.resumeStartPositionMs() ?: 0L
                 }
 
-                // 构造同目录播放列表（仅视频文件，按当前排序顺序）
+                // 构造同目录播放列表（按当前排序顺序）
                 val playlist = buildPlaylist(file)
                 val startIndex = playlist.indexOfFirst { it.filePath == file.path }
                 if (startIndex >= 0) {
@@ -1868,10 +1868,11 @@ class StorageFileViewModel @Inject constructor(
     }
 
     /**
-     * 构造同目录视频文件播放列表。
+     * 构造同目录媒体文件播放列表。
      *
-     * 从当前 [StorageFileUiState.rawFiles] 筛选视频文件（按扩展名），转换为
-     * [PlaylistItem] 列表。若当前目录无其他视频，返回空列表。
+     * 从当前 [StorageFileUiState.files]（已按文件浏览排序配置过滤 + 排序）筛选与
+     * 当前点击文件同类型的媒体文件，转换为 [PlaylistItem] 列表。若当前目录无其他
+     * 同类媒体文件，返回空列表。
      */
     private fun buildPlaylist(currentFile: StorageFile): List<PlaylistItem> {
         val library = currentLibrary ?: return emptyList()
@@ -1879,7 +1880,9 @@ class StorageFileViewModel @Inject constructor(
         // 改为按"当前点击文件类型"过滤——点击音频则构建音频播放列表，点击视频则构建视频列表，
         // 避免音视频混播（用户在音频页点击下一首切到视频文件会导致 UI 错乱）
         val isAudio = MediaFileTypes.isAudioFile(currentFile.name)
-        return _uiState.value.rawFiles
+        // 排序修复：原实现用 rawFiles（未排序，SMB/WebDAV 返回服务端任意顺序），
+        // 导致播放列表顺序与文件浏览页显示顺序不一致。改用已按排序配置排好的 files。
+        return _uiState.value.files
             .filter { sf ->
                 !sf.isDirectory && (
                     (isAudio && MediaFileTypes.isAudioFile(sf.name)) ||
@@ -2409,26 +2412,7 @@ class StorageFileViewModel @Inject constructor(
                 mediaFiltered.filter { it.isDirectory || MediaFileTypes.isImageFile(it.name) }
         }
 
-        val comparator = when (config.sortBy) {
-            // 名称用自然排序：连续数字按数值比较，避免 "10.mp4" 排在 "2.mp4" 前
-            FileBrowserSettings.SortBy.NAME -> Comparator<StorageFile> { a, b ->
-                naturalOrderCompare(a.name, b.name)
-            }
-            FileBrowserSettings.SortBy.MODIFIED -> compareBy<StorageFile> { it.lastModified }
-            FileBrowserSettings.SortBy.SIZE -> compareBy<StorageFile> { it.length }
-            FileBrowserSettings.SortBy.TYPE -> compareBy<StorageFile> {
-                val dot = it.name.lastIndexOf('.')
-                if (dot < 0 || dot == it.name.length - 1) "" else it.name.substring(dot + 1).lowercase()
-            }
-        }
-        // 目录始终在前（不受升降序影响），同类型内按 comparator 排序
-        val dirFirst = Comparator<StorageFile> { a, b ->
-            val aDir = if (a.isDirectory) 0 else 1
-            val bDir = if (b.isDirectory) 0 else 1
-            aDir.compareTo(bDir)
-        }
-        val effective = if (config.ascending) comparator else comparator.reversed()
-        return typeFiltered.sortedWith(dirFirst.then(effective))
+        return typeFiltered.sortedWith(storageFileComparator(config))
     }
 
     /**
@@ -2564,10 +2548,43 @@ sealed class StorageFileEvent {
 }
 
 /**
+ * 按文件浏览排序配置构造 [StorageFile] 比较器。
+ *
+ * 目录始终在前（不受升降序影响），同类型内按 [SortConfig.sortBy] 排序，
+ * [SortConfig.ascending] 控制升降序。名称排序用自然排序（不区分大小写，
+ * 连续数字按数值比较，如 "2" < "10"）。
+ *
+ * 文件浏览列表与播放列表（文件浏览 / 历史恢复）共用此比较器，保证播放列表
+ * 顺序与用户看到的文件列表顺序一致。
+ */
+internal fun storageFileComparator(config: SortConfig): Comparator<StorageFile> {
+    val comparator = when (config.sortBy) {
+        // 名称用自然排序：连续数字按数值比较，避免 "10.mp4" 排在 "2.mp4" 前
+        FileBrowserSettings.SortBy.NAME -> Comparator<StorageFile> { a, b ->
+            naturalOrderCompare(a.name, b.name)
+        }
+        FileBrowserSettings.SortBy.MODIFIED -> compareBy<StorageFile> { it.lastModified }
+        FileBrowserSettings.SortBy.SIZE -> compareBy<StorageFile> { it.length }
+        FileBrowserSettings.SortBy.TYPE -> compareBy<StorageFile> {
+            val dot = it.name.lastIndexOf('.')
+            if (dot < 0 || dot == it.name.length - 1) "" else it.name.substring(dot + 1).lowercase()
+        }
+    }
+    // 目录始终在前（不受升降序影响），同类型内按 comparator 排序
+    val dirFirst = Comparator<StorageFile> { a, b ->
+        val aDir = if (a.isDirectory) 0 else 1
+        val bDir = if (b.isDirectory) 0 else 1
+        aDir.compareTo(bDir)
+    }
+    val effective = if (config.ascending) comparator else comparator.reversed()
+    return dirFirst.then(effective)
+}
+
+/**
  * 自然排序比较：连续数字按数值比较（如 "2" < "10"），非数字部分不区分大小写按字符比较。
  * 修复纯字符串比较导致 "10.mp4" 排在 "2.mp4" 前的问题。
  */
-private fun naturalOrderCompare(a: String, b: String): Int {
+internal fun naturalOrderCompare(a: String, b: String): Int {
     var i = 0
     var j = 0
     val al = a.length

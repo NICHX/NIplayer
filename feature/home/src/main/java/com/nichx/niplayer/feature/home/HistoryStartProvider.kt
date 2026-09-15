@@ -1,8 +1,10 @@
 package com.nichx.niplayer.feature.home
 
 import com.nichx.niplayer.feature.home.R
+import com.nichx.niplayer.feature.home.library.storageFileComparator
 import android.content.Context
 import com.nichx.niplayer.common.coroutine.AppCoroutineScope
+import com.nichx.niplayer.datastore.FileBrowserSettings
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
@@ -160,8 +162,12 @@ class HistoryStartProvider @Inject constructor(
             } else {
                 { name -> MediaFileTypes.isVideoFile(name) }
             }
+            // 排序修复：原实现未排序，SMB/WebDAV listFiles 返回服务端任意顺序，
+            // 导致历史/快速访问恢复播放后，连播与播放列表面板顺序与文件浏览页不一致。
+            // 改为与文件浏览页共用排序配置。
             val items = files
                 .filter { !it.isDirectory && filter(it.name) }
+                .sortedWith(storageFileComparator(FileBrowserSettings.sortFlow.value))
                 .map {
                     PlaylistItem(
                         libraryId = library.id,
