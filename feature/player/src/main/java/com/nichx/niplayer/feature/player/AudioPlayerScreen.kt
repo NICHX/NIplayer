@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -58,6 +59,7 @@ import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
+import com.nichx.niplayer.designsystem.components.NiDialogItem
 import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
 import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
@@ -141,6 +143,11 @@ fun AudioPlayerScreen(
     // 本地文件（已下载/缓存直链）来源时隐藏下载按钮
     val isLocalSource by audioPlaybackManager?.isLocalSource?.collectAsStateWithLifecycle()
         ?: remember { mutableStateOf(false) }
+    // 睡眠定时剩余秒数（由 AudioPlaybackManager 常驻协程维护，后台播放仍生效）
+    val sleepTimerRemaining by audioPlaybackManager?.sleepTimerRemaining?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf<Int?>(null) }
+    val sleepTimerText = sleepTimerRemaining?.let { formatSleepTimer(it) } ?: ""
+    var showSleepTimerDialog by rememberSaveable { mutableStateOf(false) }
 
     val hasActiveContent = title.isNotEmpty()
 
@@ -234,6 +241,8 @@ fun AudioPlayerScreen(
                 currentSpeedIndex = speedIndex,
                 onSpeedSelect = { speedIndex = it },
                 showDownload = !isLocalSource,
+                sleepTimerText = sleepTimerText,
+                onSleepTimer = { showSleepTimerDialog = true },
             )
         } else {
             PortraitLayout(
@@ -268,6 +277,8 @@ fun AudioPlayerScreen(
                 currentSpeedIndex = speedIndex,
                 onSpeedSelect = { speedIndex = it },
                 showDownload = !isLocalSource,
+                sleepTimerText = sleepTimerText,
+                onSleepTimer = { showSleepTimerDialog = true },
             )
         }
 
@@ -288,6 +299,24 @@ fun AudioPlayerScreen(
                 onDownloadToPath = { path, dirName, setAsPreset ->
                     viewModel.downloadToPath(path, dirName, setAsPreset)
                 },
+            )
+        }
+
+        if (showSleepTimerDialog) {
+            val items = buildList {
+                add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_minutes, 15), onClick = { audioPlaybackManager?.startSleepTimer(15); showSleepTimerDialog = false }))
+                add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_minutes, 30), onClick = { audioPlaybackManager?.startSleepTimer(30); showSleepTimerDialog = false }))
+                add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_minutes, 60), onClick = { audioPlaybackManager?.startSleepTimer(60); showSleepTimerDialog = false }))
+                add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_minutes, 90), onClick = { audioPlaybackManager?.startSleepTimer(90); showSleepTimerDialog = false }))
+                add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_minutes, 120), onClick = { audioPlaybackManager?.startSleepTimer(120); showSleepTimerDialog = false }))
+                if (sleepTimerRemaining != null) {
+                    add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_off), onClick = { audioPlaybackManager?.cancelSleepTimer(); showSleepTimerDialog = false }))
+                }
+            }
+            PlayerListDialog(
+                title = stringResource(R.string.player_sleep_timer),
+                items = items,
+                onDismiss = { showSleepTimerDialog = false },
             )
         }
 
@@ -378,6 +407,8 @@ private fun PortraitLayout(
     currentSpeedIndex: Int = 0,
     onSpeedSelect: (Int) -> Unit = {},
     showDownload: Boolean = true,
+    sleepTimerText: String = "",
+    onSleepTimer: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
 
@@ -395,6 +426,8 @@ private fun PortraitLayout(
             currentSpeedIndex = currentSpeedIndex,
             onSpeedSelect = onSpeedSelect,
             showDownload = showDownload,
+            sleepTimerText = sleepTimerText,
+            onSleepTimer = onSleepTimer,
         )
 
         Box(
@@ -566,6 +599,8 @@ private fun LandscapeLayout(
     currentSpeedIndex: Int = 0,
     onSpeedSelect: (Int) -> Unit = {},
     showDownload: Boolean = true,
+    sleepTimerText: String = "",
+    onSleepTimer: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     // 大屏（平板/大屏手机横屏）下歌词行数更多，配合 LyricsView 内部字号/行高自适应放大
@@ -690,6 +725,8 @@ private fun LandscapeLayout(
                             onSpeedSelect = onSpeedSelect,
                             onMenuOpenChange = { menuOpen = it },
                             showDownload = showDownload,
+                            sleepTimerText = sleepTimerText,
+                            onSleepTimer = onSleepTimer,
                         )
                     }
 
@@ -867,7 +904,7 @@ private fun ControlColumn(
 }
 
 /**
- * 顶栏操作按钮组：更多（内含倍速二级菜单 / 均衡器 / 下载）。
+ * 顶栏操作按钮组：更多（内含倍速二级菜单 / 均衡器 / 睡眠定时 / 下载）。
  * 竖屏 TopBar 与横屏顶部行共用，保证按钮与菜单样式一致。
  */
 @Composable
@@ -879,6 +916,8 @@ private fun TopBarActions(
     onSpeedSelect: (Int) -> Unit,
     onMenuOpenChange: (Boolean) -> Unit = {},
     showDownload: Boolean = true,
+    sleepTimerText: String = "",
+    onSleepTimer: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
@@ -901,7 +940,19 @@ private fun TopBarActions(
     val menuItemPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        // 更多：倍速（二级菜单）/ 均衡器 / 下载 收进溢出菜单，保持顶栏简洁
+        // 睡眠定时进行中：顶栏显示剩余时间，点击直接打开定时设置
+        if (sleepTimerText.isNotEmpty()) {
+            Text(
+                text = sleepTimerText,
+                color = Color(0xFFFFAB40),
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .padding(horizontal = 4.dp)
+                    .clip(CircleShape)
+                    .clickable { onSleepTimer() },
+            )
+        }
+        // 更多：倍速（二级菜单）/ 均衡器 / 睡眠定时 / 下载 收进溢出菜单，保持顶栏简洁
         Box(
             modifier = Modifier.onGloballyPositioned { coords ->
                 // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
@@ -998,6 +1049,33 @@ private fun TopBarActions(
                         onEqualizer()
                     },
                 )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    thickness = 0.5.dp,
+                    color = onSurface.copy(alpha = 0.08f),
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = stringResource(R.string.player_sleep_timer),
+                            fontSize = 14.sp,
+                            color = onSurface,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.Bedtime,
+                            contentDescription = null,
+                            tint = onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                    contentPadding = menuItemPadding,
+                    onClick = {
+                        showMoreMenu = false
+                        onSleepTimer()
+                    },
+                )
                 if (showDownload) {
                     DropdownMenuItem(
                         text = {
@@ -1084,6 +1162,8 @@ private fun TopBar(
     currentSpeedIndex: Int = 0,
     onSpeedSelect: (Int) -> Unit = {},
     showDownload: Boolean = true,
+    sleepTimerText: String = "",
+    onSleepTimer: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     Row(
@@ -1129,6 +1209,8 @@ private fun TopBar(
             currentSpeedIndex = currentSpeedIndex,
             onSpeedSelect = onSpeedSelect,
             showDownload = showDownload,
+            sleepTimerText = sleepTimerText,
+            onSleepTimer = onSleepTimer,
         )
     }
 }
@@ -1410,4 +1492,11 @@ private fun formatSpeedLabel(speed: Float): String {
     } else {
         "${speed}x"
     }
+}
+
+/** 睡眠定时剩余时间显示：- mm:ss。 */
+private fun formatSleepTimer(seconds: Int): String {
+    val minutes = seconds / 60
+    val secs = seconds % 60
+    return String.format(Locale.ROOT, "- %d:%02d", minutes, secs)
 }

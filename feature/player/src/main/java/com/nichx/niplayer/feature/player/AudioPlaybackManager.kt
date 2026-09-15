@@ -1031,6 +1031,41 @@ class AudioPlaybackManager @Inject constructor(
         }
     }
 
+    /** 睡眠定时剩余秒数，null = 未启用。音频退出页面后（MusicBar 后台播放）仍生效。 */
+    private val _sleepTimerRemaining = MutableStateFlow<Int?>(null)
+    val sleepTimerRemaining: StateFlow<Int?> = _sleepTimerRemaining.asStateFlow()
+
+    private var sleepTimerJob: Job? = null
+
+    /**
+     * 启动睡眠定时：倒计时归零后自动暂停播放。
+     *
+     * 挂在 Manager 常驻协程上，不依赖 UI 层（PlayerViewModel / AudioPlayerScreen）存活，
+     * 切到 MusicBar / 关闭页面后定时仍生效。
+     */
+    fun startSleepTimer(minutes: Int) {
+        sleepTimerJob?.cancel()
+        _sleepTimerRemaining.value = minutes * 60
+        sleepTimerJob = scope.launch {
+            val deadlineMs = System.currentTimeMillis() + minutes * 60_000L
+            while (true) {
+                val remainMs = deadlineMs - System.currentTimeMillis()
+                if (remainMs <= 0) break
+                _sleepTimerRemaining.value = ((remainMs + 999) / 1000).toInt()
+                delay(1000)
+            }
+            pausePlayback()
+            _sleepTimerRemaining.value = null
+        }
+    }
+
+    /** 取消睡眠定时。 */
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        _sleepTimerRemaining.value = null
+    }
+
     fun pausePlayback() {
         exoPlayer?.pause()
     }
@@ -1052,6 +1087,10 @@ class AudioPlaybackManager @Inject constructor(
         currentHistory = null
         _lrcText.value = null
         _playbackError.value = null
+        // 播放停止后睡眠定时失去意义，一并清除，避免残留定时暂停后续会话
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        _sleepTimerRemaining.value = null
         closeStorageAsync()
         stopService()
     }
