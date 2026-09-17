@@ -199,6 +199,8 @@ fun LrcApiSettingsScreen(
     }
 
     if (showClearDialog) {
+        // 在 Composable 作用域预取消息字符串，避免在 onClick 内用 LocalContext 查资源触发 lint 告警
+        val clearDoneMessage = stringResource(R.string.lrcapi_clear_done)
         NiInfoDialog(
             title = stringResource(R.string.lrcapi_clear_confirm_title),
             onDismiss = { showClearDialog = false },
@@ -207,7 +209,7 @@ fun LrcApiSettingsScreen(
                 TextButton(onClick = {
                     OnlineMatchCache.clearAll(context)
                     showClearDialog = false
-                    messageController.post(NiMessage.info(context.getString(R.string.lrcapi_clear_done)))
+                    messageController.post(NiMessage.info(clearDoneMessage))
                 }) { Text(stringResource(R.string.confirm)) }
             },
         ) {
