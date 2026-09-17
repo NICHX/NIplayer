@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.HorizontalDivider
@@ -37,11 +38,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.datastore.LrcApiSettings
+import com.nichx.niplayer.datastore.OnlineMatchCache
+import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTextField
@@ -59,6 +64,9 @@ fun LrcApiSettingsScreen(
     var showApiUrlDialog by remember { mutableStateOf(false) }
     var showApiAuthDialog by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
+    var showClearDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val messageController = LocalAppMessageController.current
 
     NiScaffold(
         topBar = {
@@ -173,7 +181,41 @@ fun LrcApiSettingsScreen(
                     )
                 }
             }
+
+            SettingsGroupSection(
+                title = stringResource(R.string.lrcapi_clear_title),
+                icon = Icons.Filled.Delete,
+                iconBg = Color(0xFFF44336),
+            ) {
+                SettingClickRow(
+                    label = stringResource(R.string.lrcapi_clear_label),
+                    value = stringResource(R.string.lrcapi_clear_hint),
+                    onClick = { showClearDialog = true },
+                )
+            }
+
             Spacer(Modifier.height(padding.calculateBottomPadding()))
+        }
+    }
+
+    if (showClearDialog) {
+        NiInfoDialog(
+            title = stringResource(R.string.lrcapi_clear_confirm_title),
+            onDismiss = { showClearDialog = false },
+            actions = {
+                TextButton(onClick = { showClearDialog = false }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = {
+                    OnlineMatchCache.clearAll(context)
+                    showClearDialog = false
+                    messageController.post(NiMessage.info(context.getString(R.string.lrcapi_clear_done)))
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+        ) {
+            Text(
+                stringResource(R.string.lrcapi_clear_confirm_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
         }
     }
 

@@ -106,6 +106,7 @@ fun HomeTabScreen(
     onNavigateToQuickAccess: () -> Unit,
     onNavigateToStorageFile: (Int, String) -> Unit,
     onPlayVideo: (Boolean) -> Unit,
+    onNavigateToImageViewer: () -> Unit = {},
     onNavigateToTheme: () -> Unit = {},
     viewModel: HomeTabViewModel = hiltViewModel(),
 ) {
@@ -127,6 +128,7 @@ fun HomeTabScreen(
             when (event) {
                 is HomeTabEvent.NavigateToPlayer -> onPlayVideo(event.isAudio)
                 is HomeTabEvent.NavigateToStorageFile -> onNavigateToStorageFile(event.libraryId, event.relativePath)
+                is HomeTabEvent.NavigateToImageViewer -> onNavigateToImageViewer()
                 is HomeTabEvent.ShowError -> messageController.post(NiMessage.error(event.message))
             }
         }

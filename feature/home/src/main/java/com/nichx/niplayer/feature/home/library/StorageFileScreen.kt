@@ -85,6 +85,7 @@ import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -191,6 +192,8 @@ import kotlinx.coroutines.launch
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.ExperimentalSettings
 import com.nichx.niplayer.datastore.FileBrowserSettings
+import com.nichx.niplayer.datastore.OnlineMatchBlacklist
+import com.nichx.niplayer.datastore.OnlineMatchCache
 import com.nichx.niplayer.designsystem.components.NiAutoSizeText
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
@@ -757,6 +760,11 @@ fun FileBrowserScreen(
                                 checked = sortConfig.showHiddenFiles,
                                 onCheckedChange = viewModel::toggleShowHiddenFiles,
                             )
+                            SortToggleRow(
+                                label = stringResource(R.string.storage_file_menu_hide_no_media_folders),
+                                checked = sortConfig.hideNoMediaFolders,
+                                onCheckedChange = viewModel::toggleHideNoMediaFolders,
+                            )
                         }
                     }
                     // 可展开收起 ⋮：默认折叠成单个 ⋮，点击展开更多按钮；再点 ✕ 收起
@@ -1222,6 +1230,14 @@ fun FileBrowserScreen(
             onShowInfo = {
                 fileMenu = null
                 showFileInfo = file
+            },
+            onClearIgnoreLyrics = {
+                fileMenu = null
+                // 与播放器 matchKeyFor 一致：远程/媒体库文件 `sid:<storageId>:<path>`
+                val matchKey = "sid:$storageId:${file.path}"
+                OnlineMatchCache.removeLrc(context, matchKey)
+                OnlineMatchBlacklist.skip(OnlineMatchBlacklist.Kind.LYRICS, matchKey)
+                messageController.post(NiMessage.info(context.getString(R.string.storage_file_action_clear_ignore_lyrics_done)))
             },
             onRename = {
                 fileMenu = null
@@ -3209,6 +3225,7 @@ private fun FileActionsSheet(
     onDownload: () -> Unit,
     onToggleQuickAccess: () -> Unit,
     onShowInfo: () -> Unit,
+    onClearIgnoreLyrics: () -> Unit = {},
     onRename: () -> Unit = {},
     onMove: () -> Unit = {},
     onDelete: () -> Unit = {},
@@ -3249,6 +3266,14 @@ private fun FileActionsSheet(
                     icon = Icons.Rounded.Download,
                     text = stringResource(R.string.storage_file_action_download),
                     onClick = onDownload,
+                )
+            }
+            // 仅音频文件：手动清除该曲在线歌词（含误匹配的有声书）
+            if (!file.isDirectory && MediaFileTypes.isAudioFile(file.name)) {
+                ActionRow(
+                    icon = Icons.Rounded.Block,
+                    text = stringResource(R.string.storage_file_action_clear_ignore_lyrics),
+                    onClick = onClearIgnoreLyrics,
                 )
             }
             ActionRow(

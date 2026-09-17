@@ -84,6 +84,7 @@ import com.nichx.niplayer.feature.home.MediaFileTypes
 fun QuickAccessScreen(
     onNavigateToStorageFile: (Int, String) -> Unit = { _, _ -> },
     onNavigateToPlayer: (Boolean) -> Unit = {},
+    onNavigateToImageViewer: () -> Unit = {},
     viewModel: QuickAccessViewModel = hiltViewModel(),
 ) {
     val items by viewModel.items.collectAsStateWithLifecycle()
@@ -92,7 +93,7 @@ fun QuickAccessScreen(
     var isEditing by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<QuickAccessUiItem?>(null) }
 
-    // 一次性事件路由：文件播放 / 文件夹跳文件浏览 / 错误提示
+    // 一次性事件路由：文件播放 / 文件夹跳文件浏览 / 图片跳图片查看 / 错误提示
     val messageController = LocalAppMessageController.current
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -100,6 +101,7 @@ fun QuickAccessScreen(
                 is QuickAccessEvent.NavigateToPlayer -> onNavigateToPlayer(event.isAudio)
                 is QuickAccessEvent.NavigateToStorageFile ->
                     onNavigateToStorageFile(event.libraryId, event.relativePath)
+                is QuickAccessEvent.NavigateToImageViewer -> onNavigateToImageViewer()
                 is QuickAccessEvent.ShowError -> messageController.post(NiMessage.error(event.message))
             }
         }

@@ -264,6 +264,7 @@ private fun HomeTabContent(
                         onNavigateToQuickAccess = onNavigateToQuickAccess,
                         onNavigateToStorageFile = onOpenFileBrowser,
                         onPlayVideo = onPlayVideo,
+                        onNavigateToImageViewer = onNavigateToImageViewer,
                         onNavigateToTheme = { onNavigateToGlobal(Routes.User.SWITCH_THEME) },
                     )
                 }

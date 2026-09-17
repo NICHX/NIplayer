@@ -30,6 +30,7 @@ object FileBrowserSettings {
     private const val KEY_SHOW_ONLY_MEDIA = "show_only_media_files"
     private const val KEY_SHOW_HIDDEN_FILES = "show_hidden_files"
     private const val KEY_HIDE_THUMB_FOLDER = "hide_thumb_folder"
+    private const val KEY_HIDE_NO_MEDIA_FOLDERS = "hide_no_media_folders"
     private const val KEY_MEDIA_FILTER = "file_media_filter"
     private const val KEY_VIEW_MODE = "file_browser_view_mode"
     // 旧版布尔视图模式 key（true=网格, false=列表），首次读取新枚举时做一次迁移
@@ -115,6 +116,19 @@ object FileBrowserSettings {
             _sortFlow.value = _sortFlow.value.copy(hideThumbFolder = value)
         }
 
+    /**
+     * 是否隐藏不含媒体文件的文件夹，默认关闭。
+     *
+     * 开启后文件夹内（含各级子目录）没有任何视频/音频/图片时该文件夹不展示，
+     * 判定结果由文件浏览 ViewModel 异步扫描并按路径缓存。
+     */
+    var hideNoMediaFolders: Boolean
+        get() = mmkv.decodeBool(KEY_HIDE_NO_MEDIA_FOLDERS, false)
+        set(value) {
+            mmkv.encode(KEY_HIDE_NO_MEDIA_FOLDERS, value)
+            _sortFlow.value = _sortFlow.value.copy(hideNoMediaFolders = value)
+        }
+
     /** 文件浏览视图模式，默认列表。 */
     var viewMode: ViewMode
         get() {
@@ -158,8 +172,9 @@ object FileBrowserSettings {
         val showOnlyMediaFiles = mmkv.decodeBool(KEY_SHOW_ONLY_MEDIA, false)
         val showHiddenFiles = mmkv.decodeBool(KEY_SHOW_HIDDEN_FILES, false)
         val hideThumbFolder = mmkv.decodeBool(KEY_HIDE_THUMB_FOLDER, true)
+        val hideNoMediaFolders = mmkv.decodeBool(KEY_HIDE_NO_MEDIA_FOLDERS, false)
         val mediaFilter = MediaFilter.fromValue(mmkv.decodeInt(KEY_MEDIA_FILTER, MediaFilter.ALL.value))
-        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, hideThumbFolder, mediaFilter, viewMode)
+        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, hideThumbFolder, hideNoMediaFolders, mediaFilter, viewMode)
     }
 }
 
@@ -173,6 +188,8 @@ data class SortConfig(
     val showHiddenFiles: Boolean = false,
     /** 隐藏应用生成的 .thumb 缩略图文件夹，默认为 true。 */
     val hideThumbFolder: Boolean = true,
+    /** 隐藏不含媒体文件的文件夹（含子目录），默认为 false。 */
+    val hideNoMediaFolders: Boolean = false,
     /** 文件类型过滤，默认为全部。 */
     val mediaFilter: FileBrowserSettings.MediaFilter = FileBrowserSettings.MediaFilter.ALL,
     /** 文件浏览视图模式：列表/网格/画廊，默认列表。 */

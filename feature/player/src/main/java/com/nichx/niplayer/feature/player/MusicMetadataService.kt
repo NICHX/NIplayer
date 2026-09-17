@@ -149,4 +149,10 @@ class MusicMetadataService @Inject constructor() {
     }
 
     fun isConfigured(): Boolean = LrcApiSettings.isConfigured
+
+    /** 在线歌词匹配是否启用（已配置 API 且开关打开）。 */
+    fun isLyricsEnabled(): Boolean = LrcApiSettings.isConfigured && LrcApiSettings.lyricsMatchEnabled
+
+    /** 在线封面匹配是否启用（已配置 API 且开关打开）。 */
+    fun isCoverEnabled(): Boolean = LrcApiSettings.isConfigured && LrcApiSettings.coverMatchEnabled
 }

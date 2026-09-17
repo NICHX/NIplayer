@@ -74,6 +74,7 @@ fun MediaLibrarySettingsScreen(
     var showOnlyMediaFiles by remember { mutableStateOf(FileBrowserSettings.showOnlyMediaFiles) }
     var showHiddenFiles by remember { mutableStateOf(FileBrowserSettings.showHiddenFiles) }
     var hideThumbFolder by remember { mutableStateOf(FileBrowserSettings.hideThumbFolder) }
+    var hideNoMediaFolders by remember { mutableStateOf(FileBrowserSettings.hideNoMediaFolders) }
     var showFramePositionDialog by remember { mutableStateOf(false) }
     var showStorageHelpDialog by remember { mutableStateOf(false) }
     var showGenerationModeDialog by remember { mutableStateOf(false) }
@@ -273,6 +274,16 @@ fun MediaLibrarySettingsScreen(
                     onCheckedChange = {
                         hideThumbFolder = it
                         FileBrowserSettings.hideThumbFolder = it
+                    },
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SettingSwitchRow(
+                    label = stringResource(R.string.player_hide_no_media_folders),
+                    description = stringResource(R.string.player_hide_no_media_folders_desc),
+                    checked = hideNoMediaFolders,
+                    onCheckedChange = {
+                        hideNoMediaFolders = it
+                        FileBrowserSettings.hideNoMediaFolders = it
                     },
                 )
             }

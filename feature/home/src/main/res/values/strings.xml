@@ -369,6 +369,7 @@
     <string name="storage_file_sort_modified">修改时间</string>
     <string name="storage_file_menu_media_only">仅显示媒体</string>
     <string name="storage_file_menu_show_hidden">显示隐藏文件</string>
+    <string name="storage_file_menu_hide_no_media_folders">隐藏无媒体文件夹</string>
     <string name="storage_file_filter_title">类型过滤</string>
     <string name="storage_file_filter_all">全部</string>
     <string name="storage_file_filter_video">视频</string>
@@ -449,6 +450,8 @@
     <string name="storage_file_type_file_ext">文件 · %1$s</string>
     <string name="storage_file_action_play">播放</string>
     <string name="storage_file_action_download">下载</string>
+    <string name="storage_file_action_clear_ignore_lyrics">清除并忽略该曲歌词</string>
+    <string name="storage_file_action_clear_ignore_lyrics_done">已清除并忽略该曲在线歌词</string>
     <string name="storage_file_action_rename">重命名</string>
     <string name="storage_file_action_move">移动</string>
     <string name="storage_file_action_delete">删除</string>
@@ -741,6 +744,8 @@
     <string name="player_show_hidden_desc">显示以 . 开头的隐藏文件和文件夹，如 .thumb/、.DS_Store 等</string>
     <string name="player_hide_thumb_folder">隐藏 .thumb 文件夹</string>
     <string name="player_hide_thumb_folder_desc">默认隐藏文件浏览中的 .thumb 缩略图文件夹，即便开启显示隐藏文件也不展示</string>
+    <string name="player_hide_no_media_folders">隐藏无媒体文件夹</string>
+    <string name="player_hide_no_media_folders_desc">文件夹内（含子目录）没有任何视频、音频或图片时，在文件浏览中隐藏该文件夹</string>
     <string name="player_frame_position_title">取帧位置</string>
     <string name="player_assrt_token_title">设置 ASSRT Token</string>
     <string name="player_assrt_token_hint">在 assrt.net 注册获取 API Token，用于字幕搜索。</string>
@@ -804,6 +809,12 @@
     <string name="lrcapi_guide_desc">lrcapi 是自建的歌词 / 封面元数据服务，点击下方链接了解如何搭建。</string>
     <string name="lrcapi_guide_link">github.com/HisAtri/LrcApi</string>
     <string name="lrcapi_guide_open">打开项目</string>
+    <string name="lrcapi_clear_title">数据管理</string>
+    <string name="lrcapi_clear_label">清空在线匹配缓存与忽略列表</string>
+    <string name="lrcapi_clear_hint">删除所有在线匹配的歌词 / 封面缓存，并重置「忽略」列表</string>
+    <string name="lrcapi_clear_confirm_title">清空在线匹配数据</string>
+    <string name="lrcapi_clear_confirm_body">将删除所有在线匹配的歌词与封面缓存，并重置忽略列表。本地文件或同目录歌词不受影响。确定继续吗？</string>
+    <string name="lrcapi_clear_done">已清空在线匹配缓存与忽略列表</string>
 
     <!-- 下载管理页面（DownloadManagerScreen） -->
     <string name="download_manager_title">下载管理</string>

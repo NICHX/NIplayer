@@ -11,6 +11,8 @@ import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.PlayStartResult
 import com.nichx.niplayer.feature.home.PlayStarter
+import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequest
+import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequestHolder
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessUiItem
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -41,7 +43,7 @@ import javax.inject.Inject
  *
  * 打开行为与既有页面保持一致：
  * - 历史记录 → [PlayStarter.startFromHistory] 续播
- * - 快速访问 → 复用 [QuickAccessViewModel.openItem] 同款分流（文件夹 / 文件）
+ * - 快速访问 → 复用 [QuickAccessViewModel.openItem] 同款分流（文件夹 / 图片 / 其余文件）
  */
 @HiltViewModel
 class SearchViewModel @Inject constructor(
@@ -51,6 +53,7 @@ class SearchViewModel @Inject constructor(
     private val mediaLibraryDao: MediaLibraryDao,
     private val thumbnailManager: ThumbnailManager,
     private val playStarter: PlayStarter,
+    private val imageViewerRequestHolder: ImageViewerRequestHolder,
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -146,7 +149,7 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    /** 打开快速访问书签：文件夹跳文件浏览，文件跳播放（与快速访问页行为一致）。 */
+    /** 打开快速访问书签：文件夹跳文件浏览，图片跳图片查看页，其余文件跳播放（与快速访问页行为一致）。 */
     fun openQuickAccess(item: QuickAccessUiItem) {
         val entity = item.entity
         viewModelScope.launch {
@@ -156,6 +159,16 @@ class SearchViewModel @Inject constructor(
             }
             if (entity.isDirectory) {
                 _events.tryEmit(SearchEvent.NavigateToStorageFile(entity.libraryId, entity.storagePath))
+            } else if (MediaFileTypes.isImageFile(entity.name)) {
+                // 图片走图片查看页（与文件浏览页 openImageFile 一致），目录取 storagePath 的父目录
+                imageViewerRequestHolder.set(
+                    ImageViewerRequest(
+                        storageId = entity.libraryId,
+                        directoryPath = entity.storagePath.substringBeforeLast('/', missingDelimiterValue = ""),
+                        initialFilePath = entity.storagePath,
+                    )
+                )
+                _events.tryEmit(SearchEvent.NavigateToImageViewer)
             } else {
                 when (val result = playStarter.startFromQuickAccess(entity)) {
                     is PlayStartResult.Success ->
@@ -199,6 +212,9 @@ sealed class SearchEvent {
 
     /** 打开文件浏览页（快速访问文件夹 / 存储源根目录）。 */
     data class NavigateToStorageFile(val libraryId: Int, val relativePath: String = "") : SearchEvent()
+
+    /** 图片书签打开，导航到图片查看页。 */
+    data object NavigateToImageViewer : SearchEvent()
 
     /** 打开 / 续播失败，显示错误提示。 */
     data class ShowError(val message: String) : SearchEvent()

@@ -20,6 +20,8 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import com.nichx.niplayer.datastore.OnlineMatchBlacklist
+import com.nichx.niplayer.datastore.OnlineMatchCache
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.database.dao.MediaLibraryDao
@@ -49,11 +51,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -161,13 +165,22 @@ class AudioPlaybackManager @Inject constructor(
 
     /**
      * 为当前曲目异步加载 LRC 歌词，结果写入 [lrcText]。
-     * 优先级：同目录 .lrc（远程走 Storage 流，本地走 File）→ lrcapi 兜底。
+     * 优先级：同目录 .lrc（远程走 Storage 流，本地走 File）→ 应用内匹配缓存 → lrcapi 兜底。
      * 与封面一致，挂在 Manager 常驻协程上，不依赖 UI 层存活，切歌即加载。
+     *
+     * lrcapi 兜底受三重门控：设置开关 → 在线匹配黑名单（文件/目录级）→
+     * 有声书识别（时长门控 + 文件名启发式，防止大量误匹配）。匹配缓存（含手动
+     * 重新匹配的结果）不受开关与黑名单影响，始终优先展示。
+     *
+     * @param force 手动「重新匹配」时为 true：跳过缓存读取与黑名单/有声书门控，
+     * 强制再从 API 获取一次，用于误判时的人工兜底。
      */
-    fun loadLrcForCurrentSong() {
+    fun loadLrcForCurrentSong(force: Boolean = false) {
         val history = currentHistory ?: return
         val storageId = history.storageId
         val filePath = history.storagePath ?: return
+        val matchKey = matchKeyFor(history, filePath)
+        if (force) OnlineMatchCache.removeLrc(context, matchKey)
         scope.launch(Dispatchers.IO) {
             try {
                 val fileName = filePath.substringAfterLast('/')
@@ -180,7 +193,6 @@ class AudioPlaybackManager @Inject constructor(
                 }
 
                 // 优先级1: 同目录本地/远程 LRC 文件
-                var found = false
                 if (nameWithoutExt.isNotEmpty() && nameWithoutExt != fileName) {
                     if (storageId != null) {
                         // Remote storage (SMB/WebDAV): read LRC via Storage.openInputStream
@@ -192,7 +204,6 @@ class AudioPlaybackManager @Inject constructor(
                                 val text = input.bufferedReader().readText()
                                 if (text.isNotBlank()) {
                                     _lrcText.value = text
-                                    found = true
                                     return@launch
                                 }
                             }
@@ -205,29 +216,45 @@ class AudioPlaybackManager @Inject constructor(
                         if (lrcFile.exists()) {
                             val text = lrcFile.readText()
                             _lrcText.value = text
-                            found = true
                             return@launch
                         }
                     }
                 }
 
-                // 优先级2: 从 lrcapi 远程获取歌词（仅在已配置时启用）
-                if (!found && musicMetadataService.isConfigured() && nameWithoutExt.isNotEmpty()) {
+                // 优先级2: 应用内匹配缓存（此前 API 匹配成功 / 手动重新匹配的结果）。
+                // force（重新匹配）时跳过缓存，直接从 API 再取。
+                if (!force) {
+                    OnlineMatchCache.readLrc(context, matchKey)?.let { cached ->
+                        _lrcText.value = cached
+                        return@launch
+                    }
+                }
+
+                // 优先级3: lrcapi 远程获取（统一准入：黑名单 + 有声书启发式 + 时长门控）
+                // force 时绕过门控，允许人工强制重试。
+                if (musicMetadataService.isLyricsEnabled() &&
+                    nameWithoutExt.isNotEmpty() &&
+                    shouldFetchOnline(
+                        OnlineMatchBlacklist.Kind.LYRICS,
+                        matchKey,
+                        fileName,
+                        force,
+                    )
+                ) {
+                    val (matchTitle, matchArtist) = parseTitleArtist(nameWithoutExt)
                     val localFilePath = if (filePath.startsWith("/")) filePath else ""
                     val result = musicMetadataService.fetchLyrics(
-                        title = nameWithoutExt,
-                        artist = "",
+                        title = matchTitle,
+                        artist = matchArtist,
                         path = localFilePath,
                     )
-                    if (result.isSuccess) {
-                        val content = result.getOrNull()
-                        if (!content.isNullOrBlank()) {
-                            saveLrcToCache(nameWithoutExt, content)
-                            _lrcText.value = content
-                            android.util.Log.i(TAG, "从API加载歌词成功: $nameWithoutExt, 长度: ${content.length}")
-                            onMessage?.invoke(context.getString(R.string.player_lyrics_fetched, nameWithoutExt))
-                            return@launch
-                        }
+                    val content = result.getOrNull()
+                    if (result.isSuccess && !content.isNullOrBlank()) {
+                        OnlineMatchCache.saveLrc(context, matchKey, content)
+                        _lrcText.value = content
+                        android.util.Log.i(TAG, "从API加载歌词成功: $nameWithoutExt, 长度: ${content.length}")
+                        onMessage?.invoke(context.getString(R.string.player_lyrics_fetched, nameWithoutExt))
+                        return@launch
                     } else {
                         android.util.Log.w(TAG, "从API加载歌词失败: ${result.exceptionOrNull()?.message}")
                     }
@@ -241,11 +268,177 @@ class AudioPlaybackManager @Inject constructor(
         }
     }
 
-    private fun saveLrcToCache(nameWithoutExt: String, content: String) {
-        val lrcDir = File(context.cacheDir, "lrc_cache")
-        if (!lrcDir.exists()) lrcDir.mkdirs()
-        val lrcFile = File(lrcDir, "$nameWithoutExt.lrc")
-        lrcFile.writeText(content)
+    /** 在线匹配键：远程/媒体库文件 `sid:<storageId>:<path>`，本地文件 `local:<uri>`。 */
+    private fun matchKeyFor(history: HistoryDescriptor, pathOverride: String? = null): String {
+        val path = pathOverride ?: history.storagePath ?: history.url
+        return if (history.storageId != null) {
+            "sid:${history.storageId}:$path"
+        } else {
+            "local:${(_currentSource as? NxMediaSource.Local)?.uri?.toString() ?: path}"
+        }
+    }
+
+    /**
+     * 等待当前曲目时长就绪（STATE_READY 后 [durationMs] 才有值）。
+     * 超时返回 0，按未知处理：不再把未知时长当作短歌放行有声书（由文件名启发式兜底），
+     * 但也不阻断正常音乐的匹配，时长未知仅在已知超阈值时才跳过。
+     */
+    private suspend fun awaitDurationForMatch(): Long =
+        withTimeoutOrNull(MATCH_DURATION_WAIT_MS) { durationMs.first { it > 0 } } ?: 0L
+
+    /**
+     * 统一的在线匹配准入判断（歌词 / 封面共用）：
+     * 只有「未进对应黑名单 && 非有声书（文件名启发式） &&（时长未知或未超长阈值）」才允许调 API。
+     * force（手动强制）时直接放行，绕过黑名单与有声书门控，用于人工兜底。
+     */
+    private suspend fun shouldFetchOnline(
+        kind: OnlineMatchBlacklist.Kind,
+        matchKey: String,
+        fileName: String,
+        force: Boolean,
+    ): Boolean {
+        if (force) return true
+        if (OnlineMatchBlacklist.isSkipped(kind, matchKey)) return false
+        if (isLikelyAudiobook(fileName)) return false
+        val trackDurationMs = awaitDurationForMatch()
+        return trackDurationMs == 0L || trackDurationMs <= AUDIOBOOK_LIKE_DURATION_MS
+    }
+
+    /** 当前曲目在线匹配键，null 表示无当前曲目。供「清除/重新匹配」等手动纠正使用。 */
+    private fun currentMatchKey(): String? {
+        val history = currentHistory ?: return null
+        val path = history.storagePath ?: return null
+        return matchKeyFor(history, path)
+    }
+
+    /**
+     * 清除并忽略当前曲目歌词：删除该曲在线歌词缓存 + 加入歌词与封面黑名单 + 立即清空显示。
+     * 用于 API 匹配错误时手动兜底，命中则会黑名单自动拦截该曲（含目录级）。
+     */
+    fun clearIgnoreCurrentLyrics() {
+        val matchKey = currentMatchKey() ?: return
+        // 歌词：清缓存 + 入黑名单
+        OnlineMatchCache.removeLrc(context, matchKey)
+        OnlineMatchBlacklist.skip(OnlineMatchBlacklist.Kind.LYRICS, matchKey)
+        _lrcText.value = null
+        // 封面：删 API 封面缓存 + 入 COVER 黑名单 + 清空显示（避免有声书封面继续被错误匹配）
+        val apiCoverFile = File(context.cacheDir, "audio_covers/api_${md5(matchKey)}.jpg")
+        apiCoverFile.delete()
+        OnlineMatchBlacklist.skip(OnlineMatchBlacklist.Kind.COVER, matchKey)
+        val cover = _audioCoverPath.value
+        if (cover != null && cover.contains("audio_covers/api_")) {
+            _audioCoverPath.value = null
+            updateCoverPath(null)
+            setCoverBitmap(null)
+        }
+        onMessage?.invoke(context.getString(R.string.player_lyrics_ignored))
+    }
+
+    /**
+     * 重新匹配当前曲目（歌词与封面）：清除缓存并绕过黑名单/有声书门控，强制再从 API
+     * 获取一次。用于有声书启发式误判或 API 修复后的手动重试。
+     */
+    fun forceRematchLyrics() {
+        loadLrcForCurrentSong(force = true)
+        // 同时强制重新获取封面（绕过 COVER 黑名单/有声书门控）
+        forceRematchCurrentCover()
+    }
+
+    /** 强制重新获取当前曲目封面（绕过 COVER 黑名单/有声书门控），用于「重新匹配」。 */
+    private fun forceRematchCurrentCover() {
+        val history = currentHistory ?: return
+        val filePath = history.storagePath ?: return
+        val fileName = filePath.substringAfterLast('/')
+        val matchKey = matchKeyFor(history, filePath)
+        // 先清掉可能存在的旧 API 封面缓存，再强制重取
+        val oldCover = File(context.cacheDir, "audio_covers/api_${md5(matchKey)}.jpg")
+        oldCover.delete()
+        fetchAudioCoverFromApi(fileName, matchKey, force = true)
+    }
+
+    /**
+     * 手动匹配当前曲目（歌词与封面）：用用户显式输入的歌名/歌手作为查询词调用 API，
+     * 绕过文件名解析、黑名单与有声书门控，结果写入该曲在线匹配缓存并立即展示。
+     * 用于文件命名不规范导致自动解析 / 匹配出错时的人工精确兜底。
+     */
+    fun manualMatchLyrics(title: String, artist: String) {
+        val history = currentHistory ?: return
+        val filePath = history.storagePath ?: return
+        val matchKey = matchKeyFor(history, filePath)
+        OnlineMatchCache.removeLrc(context, matchKey)
+        val trimmedTitle = title.trim()
+        val trimmedArtist = artist.trim()
+        // 封面同样用输入词手动匹配（绕过 COVER 门控），与歌词一并精确兜底
+        val fileName = filePath.substringAfterLast('/')
+        fetchAudioCoverFromApi(
+            fileName = fileName,
+            matchKey = matchKey,
+            force = true,
+            titleOverride = trimmedTitle,
+            artistOverride = trimmedArtist,
+        )
+        scope.launch(Dispatchers.IO) {
+            try {
+                val result = musicMetadataService.fetchLyrics(
+                    title = trimmedTitle,
+                    artist = trimmedArtist,
+                    path = if (filePath.startsWith("/")) filePath else "",
+                )
+                val content = result.getOrNull()
+                if (result.isSuccess && !content.isNullOrBlank()) {
+                    OnlineMatchCache.saveLrc(context, matchKey, content)
+                    _lrcText.value = content
+                    onMessage?.invoke(context.getString(R.string.player_lyrics_manual_done, trimmedTitle))
+                } else {
+                    onMessage?.invoke(context.getString(R.string.player_lyrics_manual_failed))
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                onMessage?.invoke(context.getString(R.string.player_lyrics_manual_failed))
+            }
+        }
+    }
+
+    /**
+     * 文件名启发式：判断是否疑似有声书/播客等长音频，是则跳过在线歌词匹配。
+     * 规则偏保守，强关键词直接判定；章节标记需「非 歌手-歌名」结构才判定，降低误伤
+     * 正常歌曲。若误判，可用「重新匹配」手动强制获取。
+     */
+    private fun isLikelyAudiobook(fileName: String): Boolean {
+        val lower = fileName.lowercase()
+        val strongKeywords = listOf(
+            "有声书", "有声小说", "audio book", "audiobook", "播客", "podcast",
+            "相声", "评书", "脱口秀", "广播剧", "小说连播",
+        )
+        if (strongKeywords.any { lower.contains(it) }) return true
+        // 章节 / 分集标记：`第X章/回/集` 或 `chapter/episode/season N`
+        val chapterLike = Regex(
+            "第[0-9零一二两三四五六七八九十百千]*[章节回集卷话课部分]",
+            RegexOption.IGNORE_CASE,
+        ).containsMatchIn(fileName) ||
+            Regex("\\b(chapter|episode|season)\\s*\\d+\\b", RegexOption.IGNORE_CASE).containsMatchIn(fileName)
+        if (chapterLike) {
+            // 「歌手 - 歌名」结构一般是音乐，不判为有声书（守护正常歌曲触发识别）
+            return !fileName.contains(" - ")
+        }
+        return false
+    }
+
+    /**
+     * 从文件名拆分「歌手 - 歌曲名」供在线匹配使用。
+     * 约定：以最后一个 ` - ` 为分隔符，其后为歌名，其前为歌手。
+     * 无数组合（含歌手名本身带 ` - `）或只有单个「歌手-歌名」块时，整名作为歌名、歌手留空，
+     * 交由 lrcapi 自行解析，避免按整名搜索因带括号/后缀片段导致误配。
+     */
+    private fun parseTitleArtist(nameWithoutExt: String): Pair<String, String> {
+        val idx = nameWithoutExt.lastIndexOf(" - ")
+        return if (idx > 0) {
+            val title = nameWithoutExt.substring(idx + 3).trim()
+            val artist = nameWithoutExt.substring(0, idx).trim()
+            Pair(title.ifEmpty { nameWithoutExt.trim() }, artist)
+        } else {
+            Pair(nameWithoutExt.trim(), "")
+        }
     }
 
     private var _currentSource: NxMediaSource? = null
@@ -929,8 +1122,8 @@ class AudioPlaybackManager @Inject constructor(
                             _audioCoverPath.value = path
                             updateCoverPath(path)
                         } else {
-                            // 本地封面提取失败，尝试从 API 获取
-                            fetchAudioCoverFromApi(fileName)
+                            // 本地封面提取失败，尝试从 API 获取（含有声书/黑名单准入）
+                            fetchAudioCoverFromApi(fileName, "sid:$sid:$filePath")
                         }
                     }
                 } finally {
@@ -975,11 +1168,10 @@ class AudioPlaybackManager @Inject constructor(
                             updateCoverPath(path)
                         }
                     } else {
-                        // 本地无嵌入封面，尝试从 API 获取
-                        val nameWithoutExt = source.uri.pathSegments.lastOrNull()
-                            ?.substringBeforeLast('.') ?: ""
-                        if (nameWithoutExt.isNotEmpty()) {
-                            fetchAudioCoverFromApi(nameWithoutExt)
+                        // 本地无嵌入封面，尝试从 API 获取（含有声书/黑名单准入）
+                        val fileName = source.uri.pathSegments.lastOrNull() ?: ""
+                        if (fileName.isNotEmpty()) {
+                            fetchAudioCoverFromApi(fileName, "local:${source.uri}")
                         } else {
                             _audioCoverPath.value = null
                             updateCoverPath(null)
@@ -997,17 +1189,37 @@ class AudioPlaybackManager @Inject constructor(
     }
 
     /** 从 lrcapi 获取封面并缓存到本地（本地封面提取失败时的兜底）。 */
-    private fun fetchAudioCoverFromApi(nameWithoutExt: String) {
-        if (!musicMetadataService.isConfigured()) return
+    private fun fetchAudioCoverFromApi(
+        fileName: String,
+        matchKey: String,
+        force: Boolean = false,
+        titleOverride: String = "",
+        artistOverride: String = "",
+    ) {
+        // 与歌词共用统一准入：封面开关 + COVER 黑名单 + 有声书启发式 + 时长门控
+        if (!musicMetadataService.isCoverEnabled()) return
+        val title = titleOverride.ifBlank { fileName.substringBeforeLast('.').ifEmpty { fileName } }
         scope.launch(Dispatchers.IO) {
             try {
-                val result = musicMetadataService.fetchCover(title = nameWithoutExt)
+                if (!shouldFetchOnline(
+                        OnlineMatchBlacklist.Kind.COVER,
+                        matchKey,
+                        fileName,
+                        force,
+                    )
+                ) {
+                    return@launch
+                }
+                val result = musicMetadataService.fetchCover(
+                    title = title,
+                    artist = artistOverride,
+                )
                 if (result.isSuccess) {
                     val coverBytes = result.getOrNull()
                     if (coverBytes != null && coverBytes.isNotEmpty()) {
                         val coverDir = File(context.cacheDir, "audio_covers")
                         if (!coverDir.exists()) coverDir.mkdirs()
-                        val coverFile = File(coverDir, "api_${md5(nameWithoutExt)}.jpg")
+                        val coverFile = File(coverDir, "api_${md5(matchKey)}.jpg")
                         coverFile.writeBytes(coverBytes)
                         val path = coverFile.absolutePath
                         _audioCoverPath.value = path
@@ -1196,6 +1408,15 @@ class AudioPlaybackManager @Inject constructor(
 
         /** 周期保存：后续保存间隔（s）。 */
         private const val PROGRESS_SAVE_INTERVAL_S = 30
+
+        /** 在线歌词匹配等待时长就绪的超时（ms）。超过则认为时长未知，不阻断匹配。 */
+        private const val MATCH_DURATION_WAIT_MS = 2000L
+
+        /**
+         * 疑似有声书时长阈值（ms）。超过此值时按歌曲名在线搜索歌词必然错配，
+         * 直接跳过在线匹配。取 15 分钟，覆盖绝大多数歌曲曲长。
+         */
+        private const val AUDIOBOOK_LIKE_DURATION_MS = 15 * 60 * 1000L
 
         /**
          * 音频播放倍速档位（0.5x / 1.0x / 1.5x / 2.0x 四档）。

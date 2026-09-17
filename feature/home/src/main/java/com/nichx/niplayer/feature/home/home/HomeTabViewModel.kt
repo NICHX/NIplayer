@@ -14,6 +14,8 @@ import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.MediaFileTypes.isImageFile
 import com.nichx.niplayer.feature.home.PlayStartResult
 import com.nichx.niplayer.feature.home.PlayStarter
+import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequest
+import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequestHolder
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessUiItem
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.RemoteThumbnailRequest
@@ -55,7 +57,8 @@ import javax.inject.Inject
  * [HomeTabEvent.NavigateToPlayer] 供 UI 导航。
  *
  * 快速访问打开（P1）：[openQuickAccessItem] 按类型分流——文件夹 emit
- * [HomeTabEvent.NavigateToStorageFile]，文件委托 [PlayStarter.startFromQuickAccess]。
+ * [HomeTabEvent.NavigateToStorageFile]，图片写入 [ImageViewerRequestHolder] 后 emit
+ * [HomeTabEvent.NavigateToImageViewer]，其余文件委托 [PlayStarter.startFromQuickAccess]。
  */
 @HiltViewModel
 class HomeTabViewModel @Inject constructor(
@@ -67,6 +70,7 @@ class HomeTabViewModel @Inject constructor(
     private val storageFactory: StorageFactory,
     private val thumbnailManager: ThumbnailManager,
     private val videoDao: VideoDao,
+    private val imageViewerRequestHolder: ImageViewerRequestHolder,
 ) : ViewModel() {
 
     private val recentFlow = playHistoryDao.getRecentFlow(RECENT_WINDOW)
@@ -517,7 +521,7 @@ class HomeTabViewModel @Inject constructor(
         }
     }
 
-    /** 打开快速访问书签：文件夹跳文件浏览页，文件跳播放页。 */
+    /** 打开快速访问书签：文件夹跳文件浏览页，图片跳图片查看页，其余文件跳播放页。 */
     fun openQuickAccessItem(item: QuickAccessUiItem) {
         val entity = item.entity
         viewModelScope.launch {
@@ -532,6 +536,16 @@ class HomeTabViewModel @Inject constructor(
                     return@launch
                 }
                 _events.tryEmit(HomeTabEvent.NavigateToStorageFile(entity.libraryId, entity.storagePath))
+            } else if (MediaFileTypes.isImageFile(entity.name)) {
+                // 图片书签：走图片查看页（与文件浏览页 openImageFile 一致），目录取父目录
+                imageViewerRequestHolder.set(
+                    ImageViewerRequest(
+                        storageId = entity.libraryId,
+                        directoryPath = entity.storagePath.substringBeforeLast('/', missingDelimiterValue = ""),
+                        initialFilePath = entity.storagePath,
+                    )
+                )
+                _events.tryEmit(HomeTabEvent.NavigateToImageViewer)
             } else {
                 // 文件书签：存储源级预检，不可达直接拦截，避免进入播放器卡加载。
                 if (!isStorageReachableNow(item.entity.libraryId)) {
@@ -624,6 +638,9 @@ sealed class HomeTabEvent {
 
     /** 文件夹书签打开，导航到文件浏览页。 */
     data class NavigateToStorageFile(val libraryId: Int, val relativePath: String = "") : HomeTabEvent()
+
+    /** 图片书签打开，导航到图片查看页。 */
+    data object NavigateToImageViewer : HomeTabEvent()
 
     /** 续播 / 打开失败，显示错误提示。 */
     data class ShowError(val message: String) : HomeTabEvent()

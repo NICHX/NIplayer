@@ -369,6 +369,7 @@
     <string name="storage_file_sort_modified">Modified</string>
     <string name="storage_file_menu_media_only">Media only</string>
     <string name="storage_file_menu_show_hidden">Show hidden</string>
+    <string name="storage_file_menu_hide_no_media_folders">Hide folders without media</string>
     <string name="storage_file_filter_title">Type filter</string>
     <string name="storage_file_filter_all">All</string>
     <string name="storage_file_filter_video">Video</string>
@@ -449,6 +450,8 @@
     <string name="storage_file_type_file_ext">File · %1$s</string>
     <string name="storage_file_action_play">Play</string>
     <string name="storage_file_action_download">Download</string>
+    <string name="storage_file_action_clear_ignore_lyrics">Clear &amp; ignore this track\'s lyrics</string>
+    <string name="storage_file_action_clear_ignore_lyrics_done">Cleared &amp; ignored online lyrics for this track</string>
     <string name="storage_file_action_rename">Rename</string>
     <string name="storage_file_action_move">Move</string>
     <string name="storage_file_action_delete">Delete</string>
@@ -741,6 +744,8 @@
     <string name="player_show_hidden_desc">Show hidden files and folders starting with a dot, such as .thumb/, .DS_Store, etc.</string>
     <string name="player_hide_thumb_folder">Hide .thumb folders</string>
     <string name="player_hide_thumb_folder_desc">Hide the .thumb thumbnail folder in the file browser by default, even when showing hidden files</string>
+    <string name="player_hide_no_media_folders">Hide folders without media</string>
+    <string name="player_hide_no_media_folders_desc">Hide folders that contain no video, audio or images (including subfolders) in the file browser</string>
     <string name="player_frame_position_title">Frame position</string>
     <string name="player_assrt_token_title">Set ASSRT token</string>
     <string name="player_assrt_token_hint">Register on assrt.net to get an API token for subtitle search.</string>
@@ -804,6 +809,12 @@
     <string name="lrcapi_guide_desc">lrcapi is a self-hosted lyrics / cover metadata service. Tap the link below to learn how to set it up.</string>
     <string name="lrcapi_guide_link">github.com/HisAtri/LrcApi</string>
     <string name="lrcapi_guide_open">Open project</string>
+    <string name="lrcapi_clear_title">Data management</string>
+    <string name="lrcapi_clear_label">Clear online-match cache &amp; ignore list</string>
+    <string name="lrcapi_clear_hint">Delete all online-matched lyrics/cover caches and reset the ignore list</string>
+    <string name="lrcapi_clear_confirm_title">Clear online-match data</string>
+    <string name="lrcapi_clear_confirm_body">This deletes all online-matched lyrics and cover caches and resets the ignore list. Local files and same-directory lyrics are unaffected. Continue?</string>
+    <string name="lrcapi_clear_done">Online-match cache &amp; ignore list cleared</string>
 
     <!-- Download manager page (DownloadManagerScreen) -->
     <string name="download_manager_title">Download manager</string>

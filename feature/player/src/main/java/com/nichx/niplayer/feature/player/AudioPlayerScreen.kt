@@ -33,9 +33,11 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.ImportContacts
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -62,10 +64,15 @@ import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
 import com.nichx.niplayer.designsystem.components.NiDialogItem
 import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
 import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
+import com.nichx.niplayer.designsystem.components.NiAutoFocusAndShowKeyboard
+import com.nichx.niplayer.designsystem.components.NiTextField
+import com.nichx.niplayer.designsystem.components.NiListItemDialog
+import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
 import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -76,6 +83,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -107,6 +116,9 @@ import kotlinx.coroutines.delay
 
 /** 横屏沉浸模式：无操作自动隐藏控件的延时（ms）。 */
 private const val AUTO_HIDE_DELAY_MS = 3000L
+
+/** 播放器顶栏"更多"下拉菜单的页面态（单一玻璃菜单原地切换，避免子菜单开合时闪烁）。 */
+private enum class MoreMenuPage { Idle, Main, Speed, Metadata }
 
 @Composable
 fun AudioPlayerScreen(
@@ -148,6 +160,7 @@ fun AudioPlayerScreen(
         ?: remember { mutableStateOf<Int?>(null) }
     val sleepTimerText = sleepTimerRemaining?.let { formatSleepTimer(it) } ?: ""
     var showSleepTimerDialog by rememberSaveable { mutableStateOf(false) }
+    var showManualMatchDialog by rememberSaveable { mutableStateOf(false) }
 
     val hasActiveContent = title.isNotEmpty()
 
@@ -243,6 +256,9 @@ fun AudioPlayerScreen(
                 showDownload = !isLocalSource,
                 sleepTimerText = sleepTimerText,
                 onSleepTimer = { showSleepTimerDialog = true },
+                onRematchLyrics = { audioPlaybackManager?.forceRematchLyrics() },
+                onClearIgnoreLyrics = { audioPlaybackManager?.clearIgnoreCurrentLyrics() },
+                onManualMatchLyrics = { showManualMatchDialog = true },
             )
         } else {
             PortraitLayout(
@@ -279,6 +295,9 @@ fun AudioPlayerScreen(
                 showDownload = !isLocalSource,
                 sleepTimerText = sleepTimerText,
                 onSleepTimer = { showSleepTimerDialog = true },
+                onRematchLyrics = { audioPlaybackManager?.forceRematchLyrics() },
+                onClearIgnoreLyrics = { audioPlaybackManager?.clearIgnoreCurrentLyrics() },
+                onManualMatchLyrics = { showManualMatchDialog = true },
             )
         }
 
@@ -313,14 +332,75 @@ fun AudioPlayerScreen(
                     add(NiDialogItem(label = stringResource(R.string.player_sleep_timer_off), onClick = { audioPlaybackManager?.cancelSleepTimer(); showSleepTimerDialog = false }))
                 }
             }
-            PlayerListDialog(
+            NiListItemDialog(
                 title = stringResource(R.string.player_sleep_timer),
                 items = items,
                 onDismiss = { showSleepTimerDialog = false },
             )
         }
 
+        if (showManualMatchDialog) {
+            ManualMatchLyricsDialog(
+                onDismiss = { showManualMatchDialog = false },
+                onConfirm = { t, a ->
+                    showManualMatchDialog = false
+                    audioPlaybackManager?.manualMatchLyrics(t, a)
+                },
+            )
         }
+
+        }
+}
+
+/** 手动输入歌名/歌手进行在线歌词精确匹配的对话框。 */
+@Composable
+private fun ManualMatchLyricsDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (title: String, artist: String) -> Unit,
+) {
+    var titleQuery by remember { mutableStateOf("") }
+    var artistQuery by remember { mutableStateOf("") }
+    val titleFocus = remember { FocusRequester() }
+    NiInfoDialog(
+        title = stringResource(R.string.player_lyrics_manual_title),
+        onDismiss = onDismiss,
+        actions = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.player_cancel))
+            }
+            TextButton(
+                onClick = {
+                    if (titleQuery.isNotBlank()) onConfirm(titleQuery, artistQuery)
+                },
+                enabled = titleQuery.isNotBlank(),
+            ) {
+                Text(stringResource(R.string.player_confirm))
+            }
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = stringResource(R.string.player_lyrics_manual_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            NiTextField(
+                value = titleQuery,
+                onValueChange = { titleQuery = it },
+                label = stringResource(R.string.player_lyrics_manual_title_label),
+                placeholder = stringResource(R.string.player_lyrics_manual_title_label),
+                modifier = Modifier.focusRequester(titleFocus),
+            )
+            // 输入框挂载后（延迟渲染的浮层内容）自动聚焦并拉起输入法
+            NiAutoFocusAndShowKeyboard(titleFocus)
+            NiTextField(
+                value = artistQuery,
+                onValueChange = { artistQuery = it },
+                label = stringResource(R.string.player_lyrics_manual_artist_label),
+                placeholder = stringResource(R.string.player_lyrics_manual_artist_label),
+            )
+        }
+    }
 }
 
 @Composable
@@ -409,6 +489,9 @@ private fun PortraitLayout(
     showDownload: Boolean = true,
     sleepTimerText: String = "",
     onSleepTimer: () -> Unit = {},
+    onRematchLyrics: () -> Unit = {},
+    onClearIgnoreLyrics: () -> Unit = {},
+    onManualMatchLyrics: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
 
@@ -428,6 +511,9 @@ private fun PortraitLayout(
             showDownload = showDownload,
             sleepTimerText = sleepTimerText,
             onSleepTimer = onSleepTimer,
+            onRematchLyrics = onRematchLyrics,
+            onClearIgnoreLyrics = onClearIgnoreLyrics,
+            onManualMatchLyrics = onManualMatchLyrics,
         )
 
         Box(
@@ -601,6 +687,9 @@ private fun LandscapeLayout(
     showDownload: Boolean = true,
     sleepTimerText: String = "",
     onSleepTimer: () -> Unit = {},
+    onRematchLyrics: () -> Unit = {},
+    onClearIgnoreLyrics: () -> Unit = {},
+    onManualMatchLyrics: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     // 大屏（平板/大屏手机横屏）下歌词行数更多，配合 LyricsView 内部字号/行高自适应放大
@@ -727,6 +816,9 @@ private fun LandscapeLayout(
                             showDownload = showDownload,
                             sleepTimerText = sleepTimerText,
                             onSleepTimer = onSleepTimer,
+                            onRematchLyrics = onRematchLyrics,
+                            onClearIgnoreLyrics = onClearIgnoreLyrics,
+                            onManualMatchLyrics = onManualMatchLyrics,
                         )
                     }
 
@@ -918,19 +1010,21 @@ private fun TopBarActions(
     showDownload: Boolean = true,
     sleepTimerText: String = "",
     onSleepTimer: () -> Unit = {},
+    onRematchLyrics: () -> Unit = {},
+    onClearIgnoreLyrics: () -> Unit = {},
+    onManualMatchLyrics: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
     val primary = MaterialTheme.colorScheme.primary
-    var showSpeedMenu by remember { mutableStateOf(false) }
-    var showMoreMenu by remember { mutableStateOf(false) }
-    // 更多/倍速下拉菜单锚点（More 按钮屏幕坐标，供玻璃菜单定位）
+    var menuPage by remember { mutableStateOf(MoreMenuPage.Idle) }
+    // 更多/子菜单锚点（More 按钮屏幕坐标，供玻璃菜单定位）
     var moreMenuAnchor by remember { mutableStateOf(Offset.Zero) }
     val safeSpeedIndex = currentSpeedIndex.coerceIn(0, speedOptions.lastIndex)
 
     // 任意下拉菜单展开/收起时通知外层（横屏用于暂停自动隐藏计时）
-    LaunchedEffect(showSpeedMenu, showMoreMenu) {
-        onMenuOpenChange(showSpeedMenu || showMoreMenu)
+    LaunchedEffect(menuPage) {
+        onMenuOpenChange(menuPage != MoreMenuPage.Idle)
     }
 
     // 菜单卡片样式：与 NiPopupMenu 统一的磨砂风格（20dp 大圆角 + 不透明磨砂底色 + 细边框 + 阴影）
@@ -960,7 +1054,7 @@ private fun TopBarActions(
                 moreMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
             },
         ) {
-            IconButton(onClick = { showMoreMenu = true }) {
+            IconButton(onClick = { menuPage = MoreMenuPage.Main }) {
                 Box(
                     modifier = Modifier
                         .size(40.dp)
@@ -975,177 +1069,290 @@ private fun TopBarActions(
                     )
                 }
             }
+            // 更多：单一玻璃菜单，按 menuPage 原地切换页面（主菜单/倍速/元数据），
+            // 切换时同一 overlay 就地更新内容，避免「旧菜单退场 + 新菜单进场」在锚点重叠闪烁
             NiGlassDropdownMenu(
-                expanded = showMoreMenu,
-                onDismissRequest = { showMoreMenu = false },
+                expanded = menuPage != MoreMenuPage.Idle,
+                onDismissRequest = { menuPage = MoreMenuPage.Idle },
                 anchor = IntOffset(moreMenuAnchor.x.toInt(), moreMenuAnchor.y.toInt()),
+                contentVersion = menuPage,
             ) {
-                // 倍速：子菜单入口，尾部显示当前档位 + 展开箭头
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = stringResource(R.string.player_speed_icon),
-                            fontSize = 14.sp,
-                            color = onSurface,
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Speed,
-                            contentDescription = null,
-                            tint = onSurfaceVariant,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    },
-                    trailingIcon = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            Text(
-                                text = formatSpeedLabel(speedOptions[safeSpeedIndex]),
-                                color = onSurfaceVariant,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                            )
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                contentDescription = null,
-                                tint = onSurfaceVariant.copy(alpha = 0.7f),
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                    },
-                    contentPadding = menuItemPadding,
-                    onClick = {
-                        showMoreMenu = false
-                        showSpeedMenu = true
-                    },
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    thickness = 0.5.dp,
-                    color = onSurface.copy(alpha = 0.08f),
-                )
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = stringResource(R.string.player_equalizer),
-                            fontSize = 14.sp,
-                            color = onSurface,
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Equalizer,
-                            contentDescription = null,
-                            tint = onSurfaceVariant,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    },
-                    contentPadding = menuItemPadding,
-                    onClick = {
-                        showMoreMenu = false
-                        onEqualizer()
-                    },
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    thickness = 0.5.dp,
-                    color = onSurface.copy(alpha = 0.08f),
-                )
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = stringResource(R.string.player_sleep_timer),
-                            fontSize = 14.sp,
-                            color = onSurface,
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Bedtime,
-                            contentDescription = null,
-                            tint = onSurfaceVariant,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    },
-                    contentPadding = menuItemPadding,
-                    onClick = {
-                        showMoreMenu = false
-                        onSleepTimer()
-                    },
-                )
-                if (showDownload) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = stringResource(R.string.player_download_icon),
-                                fontSize = 14.sp,
-                                color = onSurface,
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Rounded.Download,
-                                contentDescription = null,
-                                tint = onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        },
-                        contentPadding = menuItemPadding,
-                        onClick = {
-                            showMoreMenu = false
-                            onDownload()
-                        },
-                    )
-                }
-            }
-            // 倍速二级菜单：磨砂卡片 + 标题头，选择后自动关闭
-            NiGlassDropdownMenu(
-                expanded = showSpeedMenu,
-                onDismissRequest = { showSpeedMenu = false },
-                anchor = IntOffset(moreMenuAnchor.x.toInt(), moreMenuAnchor.y.toInt()),
-            ) {
-                // 菜单标题（本版本无 DropdownMenuHeader，用普通文本行代替）
-                Text(
-                    text = stringResource(R.string.player_speed_menu_title),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-                    thickness = 0.5.dp,
-                    color = onSurface.copy(alpha = 0.08f),
-                )
-                speedOptions.forEachIndexed { idx, speed ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = formatSpeedLabel(speed),
-                                fontSize = 14.sp,
-                                color = if (idx == safeSpeedIndex) primary else onSurface,
-                                fontWeight = if (idx == safeSpeedIndex) FontWeight.SemiBold else FontWeight.Normal,
-                            )
-                        },
-                        contentPadding = menuItemPadding,
-                        onClick = {
-                            showSpeedMenu = false
-                            onSpeedSelect(idx)
-                        },
-                        trailingIcon = if (idx == safeSpeedIndex) {
-                            {
+                when (menuPage) {
+                    MoreMenuPage.Main -> {
+                        // 倍速：子菜单入口，尾部显示当前档位 + 展开箭头
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.player_speed_icon),
+                                    fontSize = 14.sp,
+                                    color = onSurface,
+                                )
+                            },
+                            leadingIcon = {
                                 Icon(
-                                    imageVector = Icons.Rounded.Check,
-                                    contentDescription = stringResource(R.string.player_current_speed),
-                                    tint = primary,
+                                    imageVector = Icons.Rounded.Speed,
+                                    contentDescription = null,
+                                    tint = onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            trailingIcon = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        text = formatSpeedLabel(speedOptions[safeSpeedIndex]),
+                                        color = onSurfaceVariant,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = onSurfaceVariant.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            },
+                            contentPadding = menuItemPadding,
+                            onClick = { menuPage = MoreMenuPage.Speed },
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            thickness = 0.5.dp,
+                            color = onSurface.copy(alpha = 0.08f),
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.player_equalizer),
+                                    fontSize = 14.sp,
+                                    color = onSurface,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Equalizer,
+                                    contentDescription = null,
+                                    tint = onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            contentPadding = menuItemPadding,
+                            onClick = {
+                                menuPage = MoreMenuPage.Idle
+                                onEqualizer()
+                            },
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            thickness = 0.5.dp,
+                            color = onSurface.copy(alpha = 0.08f),
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.player_sleep_timer),
+                                    fontSize = 14.sp,
+                                    color = onSurface,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Bedtime,
+                                    contentDescription = null,
+                                    tint = onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            contentPadding = menuItemPadding,
+                            onClick = {
+                                menuPage = MoreMenuPage.Idle
+                                onSleepTimer()
+                            },
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            thickness = 0.5.dp,
+                            color = onSurface.copy(alpha = 0.08f),
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.player_metadata),
+                                    fontSize = 14.sp,
+                                    color = onSurface,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.ImportContacts,
+                                    contentDescription = null,
+                                    tint = onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = onSurfaceVariant.copy(alpha = 0.7f),
                                     modifier = Modifier.size(18.dp),
                                 )
-                            }
-                        } else null,
-                    )
+                            },
+                            contentPadding = menuItemPadding,
+                            onClick = { menuPage = MoreMenuPage.Metadata },
+                        )
+                        if (showDownload) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.player_download_icon),
+                                        fontSize = 14.sp,
+                                        color = onSurface,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Download,
+                                        contentDescription = null,
+                                        tint = onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                },
+                                contentPadding = menuItemPadding,
+                                onClick = {
+                                    menuPage = MoreMenuPage.Idle
+                                    onDownload()
+                                },
+                            )
+                        }
+                    }
+                    MoreMenuPage.Speed -> {
+                        // 菜单标题（本版本无 DropdownMenuHeader，用普通文本行代替）
+                        Text(
+                            text = stringResource(R.string.player_speed_menu_title),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                            thickness = 0.5.dp,
+                            color = onSurface.copy(alpha = 0.08f),
+                        )
+                        speedOptions.forEachIndexed { idx, speed ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = formatSpeedLabel(speed),
+                                        fontSize = 14.sp,
+                                        color = if (idx == safeSpeedIndex) primary else onSurface,
+                                        fontWeight = if (idx == safeSpeedIndex) FontWeight.SemiBold else FontWeight.Normal,
+                                    )
+                                },
+                                contentPadding = menuItemPadding,
+                                onClick = {
+                                    menuPage = MoreMenuPage.Idle
+                                    onSpeedSelect(idx)
+                                },
+                                trailingIcon = if (idx == safeSpeedIndex) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = stringResource(R.string.player_current_speed),
+                                            tint = primary,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                } else null,
+                            )
+                        }
+                    }
+                    MoreMenuPage.Metadata -> {
+                        // 菜单标题
+                        Text(
+                            text = stringResource(R.string.player_metadata),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                            thickness = 0.5.dp,
+                            color = onSurface.copy(alpha = 0.08f),
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.player_lyrics_rematch),
+                                    fontSize = 14.sp,
+                                    color = onSurface,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = null,
+                                    tint = onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            contentPadding = menuItemPadding,
+                            onClick = {
+                                menuPage = MoreMenuPage.Idle
+                                onRematchLyrics()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.player_lyrics_manual_match),
+                                    fontSize = 14.sp,
+                                    color = onSurface,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.ImportContacts,
+                                    contentDescription = null,
+                                    tint = onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            contentPadding = menuItemPadding,
+                            onClick = {
+                                menuPage = MoreMenuPage.Idle
+                                onManualMatchLyrics()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.player_lyrics_clear_ignore),
+                                    fontSize = 14.sp,
+                                    color = onSurface,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Block,
+                                    contentDescription = null,
+                                    tint = onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            contentPadding = menuItemPadding,
+                            onClick = {
+                                menuPage = MoreMenuPage.Idle
+                                onClearIgnoreLyrics()
+                            },
+                        )
+                    }
+                    MoreMenuPage.Idle -> {}
                 }
             }
         }
@@ -1164,6 +1371,9 @@ private fun TopBar(
     showDownload: Boolean = true,
     sleepTimerText: String = "",
     onSleepTimer: () -> Unit = {},
+    onRematchLyrics: () -> Unit = {},
+    onClearIgnoreLyrics: () -> Unit = {},
+    onManualMatchLyrics: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     Row(
@@ -1211,6 +1421,9 @@ private fun TopBar(
             showDownload = showDownload,
             sleepTimerText = sleepTimerText,
             onSleepTimer = onSleepTimer,
+            onRematchLyrics = onRematchLyrics,
+            onClearIgnoreLyrics = onClearIgnoreLyrics,
+            onManualMatchLyrics = onManualMatchLyrics,
         )
     }
 }

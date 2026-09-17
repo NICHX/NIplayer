@@ -24,13 +24,16 @@ fun NiGlassDropdownMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     anchor: IntOffset = IntOffset.Zero,
+    contentVersion: Any? = null,
     content: @Composable () -> Unit,
 ) {
     val overlayId = remember { "dropdown_${Uuid.random()}" }
 
-    LaunchedEffect(expanded, anchor) {
+    // expanded/anchor 控制展开与位置；contentVersion 变化时（如同一菜单内原地切换页面）
+    // 重新经 showOrUpdate 投递，令根宿主用最新 [content] 就地刷新，避免「旧内容退场 + 新内容进场」闪烁。
+    LaunchedEffect(expanded, anchor, contentVersion) {
         if (expanded) {
-            NiGlassOverlay.show(
+            NiGlassOverlay.showOrUpdate(
                 NiGlassOverlayRequest(
                     id = overlayId,
                     kind = NiGlassOverlayKind.Dropdown,

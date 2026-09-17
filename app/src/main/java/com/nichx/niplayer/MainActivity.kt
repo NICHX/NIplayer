@@ -354,6 +354,9 @@ class MainActivity : ComponentActivity() {
                                     navController.popBackStack(Routes.Home.ROOT, inclusive = false)
                                 },
                                 onNavigateToPlayer = navigateToPlayer,
+                                onNavigateToImageViewer = {
+                                    navController.navigate(Routes.ImageViewer.VIEWER)
+                                },
                             )
                         }
                         composable(
@@ -366,6 +369,9 @@ class MainActivity : ComponentActivity() {
                                     // 交给 Home 在媒体库 tab 子栈打开文件浏览，返回栈回到搜索页
                                     pendingFileBrowser = storageId to path
                                     navController.popBackStack(Routes.Home.ROOT, inclusive = false)
+                                },
+                                onNavigateToImageViewer = {
+                                    navController.navigate(Routes.ImageViewer.VIEWER)
                                 },
                             )
                         }

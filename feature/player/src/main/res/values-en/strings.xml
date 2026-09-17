@@ -58,6 +58,7 @@
     <string name="player_black_bar_crop_off">Smart black bar crop: Off</string>
     <string name="player_long_press_speed">Long-press speed</string>
     <string name="player_sleep_timer">Sleep timer</string>
+    <string name="player_metadata">Metadata</string>
     <string name="player_sleep_timer_minutes">%1$d min</string>
     <string name="player_sleep_timer_off">Turn off timer</string>
     <string name="player_media_info">Media info</string>
@@ -78,6 +79,16 @@
     <string name="player_download_no_permission">Please grant "All files access" first</string>
     <string name="player_added_to_download_queue">Added to download queue</string>
     <string name="player_lyrics_fetched">Lyrics fetched via API: %1$s</string>
+    <string name="player_lyrics_ignored">Cleared and ignored online lyrics for this track</string>
+    <string name="player_lyrics_rematch">Re-match lyrics &amp; cover</string>
+    <string name="player_lyrics_clear_ignore">Clear &amp; ignore lyrics &amp; cover</string>
+    <string name="player_lyrics_manual_match">Manual match lyrics &amp; cover</string>
+    <string name="player_lyrics_manual_title">Manual match</string>
+    <string name="player_lyrics_manual_hint">If auto matching fails due to messy filenames, enter the song title and artist to precisely match lyrics and cover</string>
+    <string name="player_lyrics_manual_title_label">Title</string>
+    <string name="player_lyrics_manual_artist_label">Artist</string>
+    <string name="player_lyrics_manual_done">Lyrics matched manually for "%1$s"</string>
+    <string name="player_lyrics_manual_failed">Manual match failed. Check your input or network.</string>
     <string name="player_scale_fit">Fit</string>
     <string name="player_scale_crop">Crop</string>
     <string name="player_scale_stretch">Stretch</string>

@@ -11,6 +11,8 @@ import com.nichx.niplayer.feature.home.MediaFileTypes
 import com.nichx.niplayer.feature.home.MediaFileTypes.isImageFile
 import com.nichx.niplayer.feature.home.PlayStartResult
 import com.nichx.niplayer.feature.home.PlayStarter
+import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequest
+import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequestHolder
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.RemoteThumbnailRequest
 import com.nichx.niplayer.thumbnail.ThumbnailManager
@@ -44,7 +46,9 @@ import javax.inject.Inject
  * 打开逻辑：
  * - 文件夹 → emit [QuickAccessEvent.NavigateToStorageFile]，由 UI 跳转文件浏览页
  *   （当前仅跳到存储源根目录，深层定位待 Storage.pathFile 增强后补齐）
- * - 文件 → 委托 [PlayStarter.startFromQuickAccess] 构造 PlaybackRequest，emit
+ * - 图片 → 写入 [ImageViewerRequestHolder]，emit [QuickAccessEvent.NavigateToImageViewer]，
+ *   由 UI 跳转图片查看页
+ * - 其余文件 → 委托 [PlayStarter.startFromQuickAccess] 构造 PlaybackRequest，emit
  *   [QuickAccessEvent.NavigateToPlayer]
  *
  * 若关联存储源已删除（libraryValid=false），打开时 emit 错误提示。
@@ -57,6 +61,7 @@ class QuickAccessViewModel @Inject constructor(
     private val playStarter: PlayStarter,
     private val storageFactory: StorageFactory,
     private val thumbnailManager: ThumbnailManager,
+    private val imageViewerRequestHolder: ImageViewerRequestHolder,
 ) : ViewModel() {
 
     /** 快速访问列表，关联存储源显示名；WhileSubscribed(5000) 避免配置变更重启 Flow。 */
@@ -204,7 +209,7 @@ class QuickAccessViewModel @Inject constructor(
         }
     }
 
-    /** 打开书签：文件夹跳文件浏览页，文件跳播放页。 */
+    /** 打开书签：文件夹跳文件浏览页，图片跳图片查看页，其余文件跳播放页。 */
     fun openItem(item: QuickAccessUiItem) {
         val entity = item.entity
         viewModelScope.launch {
@@ -214,6 +219,16 @@ class QuickAccessViewModel @Inject constructor(
             }
             if (entity.isDirectory) {
                 _events.tryEmit(QuickAccessEvent.NavigateToStorageFile(entity.libraryId, entity.storagePath))
+            } else if (isImageFile(entity.name)) {
+                // 图片走图片查看页（与文件浏览页 openImageFile 一致），目录取 storagePath 的父目录
+                imageViewerRequestHolder.set(
+                    ImageViewerRequest(
+                        storageId = entity.libraryId,
+                        directoryPath = entity.storagePath.substringBeforeLast('/', missingDelimiterValue = ""),
+                        initialFilePath = entity.storagePath,
+                    )
+                )
+                _events.tryEmit(QuickAccessEvent.NavigateToImageViewer)
             } else {
                 when (val result = playStarter.startFromQuickAccess(entity)) {
                     is PlayStartResult.Success ->
@@ -253,5 +268,6 @@ data class QuickAccessUiItem(
 sealed class QuickAccessEvent {
     data class NavigateToPlayer(val isAudio: Boolean) : QuickAccessEvent()
     data class NavigateToStorageFile(val libraryId: Int, val relativePath: String = "") : QuickAccessEvent()
+    data object NavigateToImageViewer : QuickAccessEvent()
     data class ShowError(val message: String) : QuickAccessEvent()
 }

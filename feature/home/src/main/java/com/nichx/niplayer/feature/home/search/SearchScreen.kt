@@ -80,6 +80,7 @@ fun SearchScreen(
     onBack: () -> Unit,
     onNavigateToPlayVideo: (Boolean) -> Unit,
     onNavigateToStorageFile: (Int, String) -> Unit,
+    onNavigateToImageViewer: () -> Unit = {},
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -94,6 +95,7 @@ fun SearchScreen(
                 is SearchEvent.NavigateToStorageFile ->
                     onNavigateToStorageFile(event.libraryId, event.relativePath)
 
+                is SearchEvent.NavigateToImageViewer -> onNavigateToImageViewer()
                 is SearchEvent.ShowError -> messageController.post(NiMessage.error(event.message))
             }
         }

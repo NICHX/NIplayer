@@ -13,7 +13,6 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import com.nichx.niplayer.database.enums.MediaType
-import com.nichx.niplayer.datastore.LrcApiSettings
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.player.kernel.MediaFileTypes
@@ -39,11 +38,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
-import okhttp3.OkHttpClient
-import okhttp3.Request
 
 /** 缩略图生成结果。 */
 sealed class ThumbnailResult {
@@ -114,13 +110,6 @@ class ThumbnailManager @Inject constructor(
     private val audioCacheDir = File(context.cacheDir, "audio_cover")
     private val imageCacheDir = File(context.cacheDir, "image_thumb")
     private val seekCacheDir = File(context.cacheDir, "seek_preview")
-
-    /** lrcapi 音乐元数据 HTTP 客户端。 */
-    private val apiClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build()
 
     /**
      * 缩略图更新事件：保存缩略图后发出对应缓存文件路径。
@@ -551,74 +540,76 @@ class ThumbnailManager @Inject constructor(
     }
 
     /**
-     * 通过 lrcapi 远程获取音频封面。
+     * 将在线匹配（lrcapi）获得的封面写入统一音频封面缓存槽位。
      *
-     * 在本地提取（内嵌封面、目录封面、头部读取）均失败时调用。
-     * 成功时保存到本地缓存，后续走缓存路径。
+     * 播放期在线兜底与手动"重新匹配"成功后调用，与本地提取封面共用同一
+     * MD5 key 槽位，后续 [getCachedAudioCoverPath] 直接命中。写入
+     * `.api_cover` 标记来源，并清除 no_cover 系列标记让封面立即可见。
      *
-     * @param storageId 媒体库 id，用于清除 no_cover 标记
-     * @param file 目标音频文件
-     * @param cacheFile 本地缓存文件（已按 MD5 命名）
-     * @return 本地缓存路径，或 null 表示 API 未配置或获取失败
+     * @return 本地缓存路径，写入失败返回 null
      */
-    private suspend fun fetchAudioCoverFromApi(
-        storageId: Int,
-        file: StorageFile,
-        cacheFile: File,
-    ): String? = withContext(Dispatchers.IO) {
-        if (!LrcApiSettings.isConfigured) return@withContext null
-        val apiUrl = LrcApiSettings.apiUrl
-        if (apiUrl.isEmpty()) return@withContext null
-
-        val nameWithoutExt = file.name.substringBeforeLast('.')
-        if (nameWithoutExt.isEmpty()) return@withContext null
-
-        var apiAttempted = false
-        try {
-            val params = "title=${java.net.URLEncoder.encode(nameWithoutExt, "UTF-8")}"
-            val url = "$apiUrl/cover?$params"
-
-            Log.i(TAG, "fetchAudioCoverFromApi: $url")
-
-            val requestBuilder = Request.Builder().url(url).get()
-                .header("Accept", "image/*")
-
-            val apiAuth = LrcApiSettings.apiAuth
-            if (apiAuth.isNotEmpty()) {
-                requestBuilder.header("Authorization", apiAuth)
-                requestBuilder.header("Authentication", apiAuth)
-            }
-
-            val response = apiClient.newCall(requestBuilder.build()).execute()
-            apiAttempted = true
-            if (response.isSuccessful) {
-                val bytes = response.body?.bytes() ?: return@withContext null
-                if (bytes.isNotEmpty()) {
-                    cacheFile.parentFile?.mkdirs()
-                    FileOutputStream(cacheFile).use { out ->
-                        out.write(bytes)
-                    }
-                    if (cacheFile.exists() && cacheFile.length() > 0) {
-                        Log.i(TAG, "API封面获取成功: $nameWithoutExt, 大小: ${bytes.size} bytes")
-                        // 清除可能存在的 no_cover / no_cover_api 标记，刷新后可见新封面
-                        val baseKey = md5("$storageId-${file.path}")
-                        File(audioCacheDir, "${baseKey}.no_cover").delete()
-                        File(audioCacheDir, "${baseKey}.no_cover_api").delete()
-                        return@withContext cacheFile.absolutePath
-                    }
-                }
+    fun writeApiAudioCover(storageId: Int, filePath: String, bytes: ByteArray): String? {
+        if (bytes.isEmpty()) return null
+        return try {
+            audioCacheDir.mkdirs()
+            val baseKey = md5("$storageId-$filePath")
+            val cacheFile = File(audioCacheDir, "$baseKey.jpg")
+            FileOutputStream(cacheFile).use { out -> out.write(bytes) }
+            if (cacheFile.exists() && cacheFile.length() > 0) {
+                File(audioCacheDir, "$baseKey.no_cover").delete()
+                File(audioCacheDir, "$baseKey.no_cover_api").delete()
+                File(audioCacheDir, "$baseKey.api_cover").createNewFile()
+                cacheFile.absolutePath
             } else {
-                Log.w(TAG, "API封面请求失败: HTTP ${response.code}")
+                null
             }
         } catch (e: Exception) {
-            Log.w(TAG, "API封面请求异常: ${e.message}")
-            apiAttempted = true
+            Log.w(TAG, "writeApiAudioCover failed: ${e.message}")
+            null
         }
-        // 实际尝试了 API 但失败 → 标记 no_cover_api，避免下次重复请求
-        if (apiAttempted) {
-            markApiNoCover(storageId, file.path)
+    }
+
+    /**
+     * 清除指定音频文件的全部本地封面缓存与标记（含 API 封面与 no_cover 标记）。
+     *
+     * 手动"清除封面"时调用；内嵌封面下次播放/扫描会重新提取，
+     * API 封面则依赖在线匹配黑名单阻止其再次写入。
+     */
+    fun clearAudioCover(storageId: Int, filePath: String) {
+        val baseKey = md5("$storageId-$filePath")
+        listOf(
+            "$baseKey.jpg",
+            "$baseKey.no_cover",
+            "$baseKey.no_cover_api",
+            "$baseKey.api_cover",
+            "$baseKey.tmp.jpg",
+        ).forEach { suffix ->
+            runCatching { File(audioCacheDir, suffix).delete() }
         }
-        return@withContext null
+    }
+
+    /**
+     * 删除服务端 `.cover/` 中指定音频文件已上传的封面。
+     *
+     * 历史版本会把在线匹配到的封面上传到服务端，手动清除封面时一并
+     * 删除服务端副本，避免下次浏览经 [preloadAudioCovers] 又下载回来。
+     */
+    suspend fun deleteServerAudioCover(storage: Storage, file: StorageFile) = withContext(Dispatchers.IO) {
+        try {
+            val coverDirPath = buildCoverDirPath(file.path)
+            val coverPath = "$coverDirPath/${file.name}-cover.jpg"
+            if (storage.fileExists(coverPath)) {
+                val coverStorageFile = object : AbstractStorageFile(
+                    path = coverPath,
+                    name = "${file.name}-cover.jpg",
+                    isDirectory = false,
+                ) {}
+                storage.deleteFile(coverStorageFile)
+                Log.i(TAG, "deleteServerAudioCover: 已删除服务端封面 $coverPath")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "deleteServerAudioCover failed: ${e.message}")
+        }
     }
 
     /**
@@ -1694,11 +1685,10 @@ class ThumbnailManager @Inject constructor(
             }
             if (viaHeader != null) return@withLock viaHeader
 
-            // 4. API 远程获取封面（本地提取均失败时回退）
-            val apiCover = fetchAudioCoverFromApi(storageId, file, cacheFile)
-            if (apiCover != null) return@withLock apiCover
-
-            // 5. 所有方式均失败，标记 no_cover 避免下次重复尝试
+            // 4. 本地提取均失败，标记 no_cover 避免下次重复尝试。
+            //    在线匹配（lrcapi）已上移至播放期由 AudioPlaybackManager 执行：
+            //    浏览/扫描期拿不到音频时长，无法用时长门控排除有声书，
+            //    按文件名盲目匹配会批量产生错误封面（有声书章节名必然搜出无关歌曲）。
             markNoCover(storageId, file.path)
             return@withLock null
         }

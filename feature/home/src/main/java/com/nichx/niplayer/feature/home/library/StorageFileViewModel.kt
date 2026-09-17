@@ -51,6 +51,8 @@ import com.nichx.niplayer.storage.impl.VideoStorage
 import com.nichx.niplayer.storage.impl.VideoStorageFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -73,6 +75,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.Collections
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
@@ -82,6 +85,12 @@ private const val DIRECTORY_LOAD_TIMEOUT_MS = 10_000L
 
 /** 平铺列表展开目录加载/缩略图生成的并发上限。 */
 private const val TREE_LOAD_CONCURRENCY = 2
+
+/** 无媒体文件夹判定的子目录递归深度上限，防止异常存储（如 WebDAV 索引）无限下钻。 */
+private const val VERDICT_MAX_DEPTH = 8
+
+/** 无媒体文件夹判定的并发列目录上限。 */
+private const val VERDICT_SCAN_CONCURRENCY = 4
 
 /**
  * 文件浏览页 ViewModel。
@@ -313,6 +322,90 @@ class StorageFileViewModel @Inject constructor(
 
     /** 平铺列表展开目录加载/缩略图生成的并发限流信号量。 */
     private val treeLoadSemaphore = Semaphore(TREE_LOAD_CONCURRENCY)
+
+    // ---- 隐藏无媒体文件夹 ----
+
+    /**
+     * 文件夹"是否含媒体"判定缓存：路径 → true(含媒体)/false(无媒体)。
+     *
+     * 跨目录导航复用（子目录判定作为父目录扫描的副产物已被缓存，下钻时即时生效）；
+     * 刷新/文件操作后由 [clearFolderVerdicts] 清空以保证正确性。
+     * 仅在 `FileBrowserSettings.hideNoMediaFolders` 开启时参与过滤。
+     */
+    private val folderMediaVerdicts = ConcurrentHashMap<String, Boolean>()
+
+    /** 无媒体文件夹扫描 Job，目录切换或开关关闭时取消。 */
+    private var verdictScanJob: Job? = null
+
+    /** 无媒体文件夹判定的并发限流信号量。 */
+    private val verdictScanSemaphore = Semaphore(VERDICT_SCAN_CONCURRENCY)
+
+    /** 清空文件夹媒体判定缓存（内容可能已变更的刷新场景调用）。 */
+    private fun clearFolderVerdicts() {
+        folderMediaVerdicts.clear()
+    }
+
+    /**
+     * 扫描当前目录列表中各文件夹是否含媒体（含子目录递归），渐进式隐藏无媒体文件夹。
+     *
+     * 每个顶层文件夹判定完成后立即从 [StorageFileUiState.files] 移除（无媒体时），
+     * 列表先完整展示再逐个收敛，避免网络存储下长时间白屏等待。
+     */
+    private fun startFolderVerdictScan(s: Storage, files: List<StorageFile>) {
+        verdictScanJob?.cancel()
+        val folders = files.filter { it.isDirectory }
+        if (folders.isEmpty()) return
+        verdictScanJob = viewModelScope.launch {
+            coroutineScope {
+                folders.forEach { folder ->
+                    launch {
+                        val hasMedia = resolveFolderHasMedia(s, folder, 0)
+                        if (!hasMedia) {
+                            val path = folder.path.trimEnd('/')
+                            _uiState.update { st ->
+                                st.copy(files = st.files.filterNot { it.isDirectory && it.path.trimEnd('/') == path })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 递归判定文件夹内是否含媒体文件：直接子项有媒体 → true；
+     * 否则并发递归各子目录，任一子目录含媒体即 true。
+     *
+     * 结果写入 [folderMediaVerdicts] 缓存；列目录失败/超时按"含媒体"兜底（fail-open），
+     * 避免网络抖动导致误隐藏。
+     */
+    private suspend fun resolveFolderHasMedia(s: Storage, folder: StorageFile, depth: Int): Boolean {
+        val path = folder.path.trimEnd('/')
+        folderMediaVerdicts[path]?.let { return it }
+        val verdict = try {
+            val children = loadTreeChildrenWithTimeout(s, folder)
+            val hasDirectMedia = children.any { !it.isDirectory && isMediaFile(it) }
+            val hasMediaInSubtree = !hasDirectMedia && depth < VERDICT_MAX_DEPTH &&
+                children.any { it.isDirectory } &&
+                coroutineScope {
+                    children.filter { it.isDirectory }
+                        .map { child ->
+                            async {
+                                verdictScanSemaphore.withPermit { resolveFolderHasMedia(s, child, depth + 1) }
+                            }
+                        }
+                        .awaitAll()
+                        .any { it }
+                }
+            hasDirectMedia || hasMediaInSubtree
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            true
+        }
+        folderMediaVerdicts[path] = verdict
+        return verdict
+    }
 
     /**
      * 当前可见的全部可选择文件：当前目录文件 + 平铺列表已展开子目录的所有子项。
@@ -1292,6 +1385,10 @@ class StorageFileViewModel @Inject constructor(
         thumbnailJob = viewModelScope.launch(Dispatchers.IO) {
             generateThumbnailUrls(s, files, gen)
         }
+        // 隐藏无媒体文件夹开启时，异步扫描当前目录各文件夹的媒体判定并渐进式过滤
+        if (FileBrowserSettings.sortFlow.value.hideNoMediaFolders) {
+            startFolderVerdictScan(s, files)
+        }
     }
 
     /**
@@ -1328,6 +1425,8 @@ class StorageFileViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
+                // 内容可能已被外部修改，清空文件夹媒体判定缓存，列表重载后重新扫描
+                folderMediaVerdicts.clear()
                 // 本地视频库下拉刷新：强制触发一次增量重扫，使新下载视频立即可见
                 if (currentLibrary?.mediaType == MediaType.LOCAL_STORAGE) {
                     withContext(Dispatchers.IO) {
@@ -2319,6 +2418,8 @@ class StorageFileViewModel @Inject constructor(
     /** 刷新当前目录文件列表（重命名/移动/删除/新建后调用）。 */
     private fun refreshCurrentDirectory() {
         val current = directoryStack.lastOrNull() ?: return
+        // 内容可能已变更，清空文件夹媒体判定缓存，列表重载后重新扫描
+        folderMediaVerdicts.clear()
         viewModelScope.launch { listDirectory(current) { } }
     }
 
@@ -2367,6 +2468,26 @@ class StorageFileViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 切换"隐藏无媒体文件夹"开关，持久化并立即刷新当前目录列表。
+     *
+     * 开启：先按已有判定缓存过滤，再异步扫描缺失判定并渐进式隐藏；
+     * 关闭：取消扫描并立即恢复展示全部文件夹。
+     */
+    fun toggleHideNoMediaFolders() {
+        val newValue = !FileBrowserSettings.hideNoMediaFolders
+        FileBrowserSettings.hideNoMediaFolders = newValue
+        val s = storage
+        if (newValue && s != null) {
+            startFolderVerdictScan(s, _uiState.value.rawFiles)
+        } else if (!newValue) {
+            verdictScanJob?.cancel()
+        }
+        _uiState.update {
+            it.copy(files = applyFilterAndSort(it.rawFiles))
+        }
+    }
+
     /** 设置文件类型过滤，持久化并立即刷新当前目录列表。 */
     fun setMediaFilter(filter: FileBrowserSettings.MediaFilter) {
         FileBrowserSettings.mediaFilter = filter
@@ -2378,7 +2499,12 @@ class StorageFileViewModel @Inject constructor(
     /**
      * 过滤 + 排序：先按 [FileBrowserSettings.showHiddenFiles] 过滤隐藏文件，
      * 再按 [FileBrowserSettings.showOnlyMediaFiles] 过滤非媒体文件，
-     * 再按 [FileBrowserSettings.mediaFilter] 过滤媒体类型，最后按 [FileBrowserSettings] 排序。
+     * 再按 [FileBrowserSettings.mediaFilter] 过滤媒体类型，
+     * 再按 [FileBrowserSettings.hideNoMediaFolders] 过滤无媒体文件夹，
+     * 最后按 [FileBrowserSettings] 排序。
+     *
+     * 无媒体文件夹过滤依赖 ViewModel 异步扫描的判定缓存：已知"无媒体"的文件夹移除，
+     * 未判定的保留（fail-open），扫描完成后由 [startFolderVerdictScan] 渐进式移除。
      *
      * 排序规则：目录始终在前；同类型内按 [SortConfig.sortBy] 排序，
      * [SortConfig.ascending] 控制升降序。名称排序用自然排序（不区分大小写，
@@ -2411,8 +2537,13 @@ class StorageFileViewModel @Inject constructor(
             FileBrowserSettings.MediaFilter.IMAGE ->
                 mediaFiltered.filter { it.isDirectory || MediaFileTypes.isImageFile(it.name) }
         }
+        val verdictFiltered = if (config.hideNoMediaFolders) {
+            typeFiltered.filter { !it.isDirectory || folderMediaVerdicts[it.path.trimEnd('/')] != false }
+        } else {
+            typeFiltered
+        }
 
-        return typeFiltered.sortedWith(storageFileComparator(config))
+        return verdictFiltered.sortedWith(storageFileComparator(config))
     }
 
     /**

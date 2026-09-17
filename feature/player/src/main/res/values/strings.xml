@@ -58,6 +58,7 @@
     <string name="player_black_bar_crop_off">智能去黑边：已关闭</string>
     <string name="player_long_press_speed">长按倍速</string>
     <string name="player_sleep_timer">睡眠定时</string>
+    <string name="player_metadata">元数据</string>
     <string name="player_sleep_timer_minutes">%1$d 分钟</string>
     <string name="player_sleep_timer_off">关闭定时</string>
     <string name="player_media_info">媒体信息</string>
@@ -78,6 +79,16 @@
     <string name="player_download_no_permission">请先授予「所有文件访问权限」</string>
     <string name="player_added_to_download_queue">已添加到下载队列</string>
     <string name="player_lyrics_fetched">已通过 API 获取歌词：%1$s</string>
+    <string name="player_lyrics_ignored">已清除并忽略该曲在线歌词</string>
+    <string name="player_lyrics_rematch">重新匹配歌词与封面</string>
+    <string name="player_lyrics_clear_ignore">清除并忽略歌词与封面</string>
+    <string name="player_lyrics_manual_match">手动匹配歌词与封面</string>
+    <string name="player_lyrics_manual_title">手动匹配</string>
+    <string name="player_lyrics_manual_hint">文件命名不规范导致匹配出错时，可手动输入歌名与作者精确匹配歌词与封面</string>
+    <string name="player_lyrics_manual_title_label">歌名</string>
+    <string name="player_lyrics_manual_artist_label">歌手</string>
+    <string name="player_lyrics_manual_done">已按「%1$s」手动匹配歌词</string>
+    <string name="player_lyrics_manual_failed">手动匹配失败，请检查输入或网络</string>
     <string name="player_scale_fit">适应</string>
     <string name="player_scale_crop">裁剪</string>
     <string name="player_scale_stretch">拉伸</string>
