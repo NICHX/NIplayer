@@ -27,6 +27,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          # 新版 runner 镜像无 tools 包且已预装 platform-tools，跳过显式安装包，
+          # 让 AGP 在接受许可下按需自动下载缺失的 platform/build-tools
+          packages: ''
 
       - name: Ensure NDK & CMake
         run: |
@@ -79,6 +83,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          # 新版 runner 镜像无 tools 包且已预装 platform-tools，跳过显式安装包，
+          # 让 AGP 在接受许可下按需自动下载缺失的 platform/build-tools
+          packages: ''
 
       - name: Ensure NDK & CMake
         run: |
