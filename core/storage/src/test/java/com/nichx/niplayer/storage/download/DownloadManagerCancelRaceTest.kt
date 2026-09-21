@@ -90,9 +90,17 @@ class DownloadManagerCancelRaceTest {
         val manager = newManager(task)
         val targetFile = File(cacheDir, "download/movie.mkv")
 
-        // 等调度循环拾取任务并进入下载
-        awaitUntil("任务未进入 DOWNLOADING", timeoutMs = 10_000) {
-            synchronized(stateWrites) { stateWrites.any { it.first == DownloadState.DOWNLOADING } }
+        // 等调度循环拾取任务、进入下载，**并已真正建出目标文件**。
+        //
+        // ⚠️ 不能只等「状态写入 DOWNLOADING」就断言文件已存在：DownloadManager 里
+        // `updateState(DOWNLOADING)`（DownloadManager.kt:335）发生在
+        // `targetFile.createNewFile()`（同文件 :422）**之前**，两者之间存在窗口期。
+        // 本机快、CI 慢 —— CI 上会在窗口内撞到 AssertionError（实测 CI run 130）。
+        // 把「文件已存在」并入等待条件即可消除该时序假设，且语义更强：本用例要保证的是
+        // 「取消发生在**写入循环进行中**」，而不只是「状态字段已更新」。
+        awaitUntil("任务未进入 DOWNLOADING 或目标文件未创建", timeoutMs = 10_000) {
+            synchronized(stateWrites) { stateWrites.any { it.first == DownloadState.DOWNLOADING } } &&
+                targetFile.exists()
         }
         assertTrue("目标文件应已创建", targetFile.exists())
 
