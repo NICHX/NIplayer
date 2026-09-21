@@ -740,7 +740,10 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(speedIndex) {
+        // 持久化上次倍速索引，并在进入/切换倍速时把该档速度真正应用到播放内核，
+        // 否则重新进入播放器只会恢复 UI 索引（显示对），实际播放仍为默认 1x。
         PlayerSettings.lastSpeedIndex = speedIndex
+        viewModel.nxPlayer.setSpeed(SPEED_VALUES[speedIndex])
     }
 
     LaunchedEffect(Unit) {
