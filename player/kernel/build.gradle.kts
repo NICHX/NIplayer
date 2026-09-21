@@ -34,7 +34,8 @@ dependencies {
     // 现改为由上层经 EqualizerConfigProvider 注入配置，该依赖已删除。
 
     // 模块依赖：共享 :core:network 的 OkHttpClient（替代旧 NxMedia3Player 内部 new OkHttpClient）
-    implementation(project(":core:network"))
+    // :core:network 原先在此声明但**全模块零引用**（仅 KDoc 提及；OkHttpClient 类型经
+    // libs.media3.datasource.okhttp 传递获得）。A5 同类清理，2026-09-21。
 
     // 模块依赖：MediaSourceBuilder 桥接 Storage + NxMediaSource（播放列表连播重建播放源）
     implementation(project(":core:storage"))

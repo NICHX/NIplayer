@@ -1,6 +1,5 @@
 package com.nichx.niplayer.navigation
 
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -17,9 +16,6 @@ private const val PAGE_TRANSITION_MS = 300
 // 视频播放器已迁移为独立 Activity（PlayerActivity），其退出转场（黑色亮度蒙层）已交由
 // 该 Activity 的窗口过渡处理。导航内仅剩音频播放器（AUDIO_PLAYER），仍走纯 fade 过渡。
 private const val FromPlayerTransitionMs = 750
-// 蒙层缓动：ease-in 型（起点慢），开头多保持暗色、缓缓揭示，比 tween 默认的
-// 快速启动缓动观感更舒缓，不会"唰"地一下变亮
-private val ExitMaskEasing = CubicBezierEasing(0.45f, 0f, 0.8f, 1f)
 // 返回页(首页)淡入起点：从很暗透明度起步，配合播放器黑底淡出形成连续的亮度渐变；
 // 若取 0 会在播放器淡出末期先暴露白色 window 底
 private const val ReturnFadeInInitialAlpha = 0.25f

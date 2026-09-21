@@ -1,5 +1,9 @@
 package com.nichx.niplayer.feature.home.search
 
+import com.nichx.niplayer.feature.home.mediaTypeLabel
+
+import com.nichx.niplayer.feature.home.formatPlayTime
+
 import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,7 +51,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
-import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.NiScaffold
@@ -61,9 +64,6 @@ import com.nichx.niplayer.designsystem.iconstyle.NiIconStyleSpec
 import com.nichx.niplayer.designsystem.iconstyle.NiStyleIcon
 import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessUiItem
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.delay
 
 /**
@@ -394,19 +394,4 @@ private fun SearchResultRow(
             )
         }
     }
-}
-
-@Composable
-private fun mediaTypeLabel(type: MediaType): String = when (type) {
-    MediaType.LOCAL_STORAGE -> stringResource(R.string.storage_type_local)
-    MediaType.EXTERNAL_STORAGE -> stringResource(R.string.storage_type_device)
-    MediaType.SMB_SERVER -> "SMB"
-    MediaType.WEBDAV_SERVER -> "WebDAV"
-    MediaType.QUICK_ACCESS -> stringResource(R.string.storage_type_quick)
-    MediaType.OTHER_STORAGE -> stringResource(R.string.storage_type_other)
-}
-
-private fun formatPlayTime(date: Date): String {
-    val sdf = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
-    return sdf.format(date)
 }

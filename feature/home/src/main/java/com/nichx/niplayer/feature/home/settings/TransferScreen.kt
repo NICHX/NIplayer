@@ -338,30 +338,30 @@ private fun UploadTaskCard(
         ) {
             when (state) {
                 DownloadState.WAITING, DownloadState.DOWNLOADING -> {
-                    UploadActionIconButton(
+                    ActionIconButton(
                         icon = Icons.Filled.Pause,
                         label = stringResource(R.string.download_manager_pause),
                         onClick = onPause,
                     )
-                    UploadActionIconButton(
+                    ActionIconButton(
                         icon = Icons.Filled.Clear,
                         label = stringResource(R.string.transfer_upload_cancel),
                         onClick = onCancel,
                     )
                 }
                 DownloadState.PAUSED -> {
-                    UploadActionIconButton(
+                    ActionIconButton(
                         icon = Icons.Filled.PlayArrow,
                         label = stringResource(R.string.download_manager_resume),
                         onClick = onResume,
                     )
-                    UploadActionIconButton(
+                    ActionIconButton(
                         icon = Icons.Filled.Clear,
                         label = stringResource(R.string.transfer_upload_cancel),
                         onClick = onCancel,
                     )
                 }
-                else -> UploadActionIconButton(
+                else -> ActionIconButton(
                     icon = Icons.Filled.Delete,
                     label = stringResource(R.string.transfer_upload_delete),
                     onClick = onDelete,
@@ -388,34 +388,6 @@ private fun UploadStateBadge(state: Int) {
         color = color,
         fontWeight = FontWeight.Medium,
     )
-}
-
-@Composable
-private fun UploadActionIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.width(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
 }
 
 private fun formatBytes(bytes: Long): String {

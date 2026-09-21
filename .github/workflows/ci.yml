@@ -19,11 +19,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      # 必须用 JDK 21，不能用 17。
+      #
+      # 根因：`:core:database` 的 MigrationTest 走 Robolectric，而 Robolectric 在
+      # emulated SDK 37（= targetSdk）下要求**运行它的 JVM ≥ Java 21**，否则在创建
+      # sandbox 时直接抛：
+      #   UnsupportedOperationException: Failed to create a Robolectric sandbox:
+      #   Android SDK 37 requires Java 21 (have Java 17)
+      #
+      # 为什么本地不暴露：`gradle/gradle-daemon-jvm.properties` 声明了
+      # `toolchainVersion=21`，Gradle 会据此为**守护进程**自动下载并切换到 JDK 21。
+      # 但该文件在 `.gitignore` 里，**CI 的干净检出没有它** ——
+      # 守护进程只能退回用 workflow 提供的 JDK，于是 17 就炸了。
+      #
+      # 即「本地全绿、CI 挂」的成因是**构建环境隐式依赖一个未入库的文件**。
+      # 这里显式给 21 消除该差异；lint job 同样需要 21（见其自带注释）。
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4

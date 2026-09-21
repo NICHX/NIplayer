@@ -47,7 +47,8 @@ dependencies {
     // VideoScanner 读取 VideoExtensionSettings 判断视频扩展名
     implementation(project(":core:datastore"))
     // 共享 :core:network 的 OkHttpClient（WebDavStorage 注入）
-    implementation(project(":core:network"))
+    // :core:network 原先在此声明但**全模块零引用**（OkHttpClient 类型来自下面的 libs.okhttp，
+    // 而 Hilt 的 OkHttpClient 绑定由 :app 组合根消费）。A5 同类清理，2026-09-21。
 
     // 协议实现依赖（SMB 协议客户端 codelibs/jcifs，WebDAV 使用 OkHttp 原生实现）
     implementation(libs.jcifs) {

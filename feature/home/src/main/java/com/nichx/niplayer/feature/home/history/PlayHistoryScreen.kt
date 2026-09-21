@@ -2,38 +2,28 @@ package com.nichx.niplayer.feature.home.history
 
 import com.nichx.niplayer.feature.home.R
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CloudDone
-import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -44,17 +34,6 @@ import androidx.compose.material3.TextButton
 import com.nichx.niplayer.designsystem.components.NiGlassOverlay
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayKind
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayRequest
-import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
-import com.nichx.niplayer.designsystem.components.niGlassBorderColor
-import com.nichx.niplayer.designsystem.components.niGlassPanelSurfaceColor
-import androidx.compose.animation.core.LinearEasing
-import coil3.compose.AsyncImage
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -68,34 +47,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
-import android.content.Context
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
-import com.nichx.niplayer.database.entity.SyncConflictEntity
-import com.nichx.niplayer.common.media.MediaFileTypes
-import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.NiSectionHeader
-import com.nichx.niplayer.designsystem.components.NiSkeletonBox
-import com.nichx.niplayer.designsystem.components.NiSkeletonLine
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
-import com.nichx.niplayer.designsystem.components.NiThumbCard
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.sync.SyncUiState
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 private enum class HistoryFilter(@StringRes val labelRes: Int) {
         ALL(R.string.history_filter_all),
@@ -538,366 +505,4 @@ fun PlayHistoryScreen(
             )
         }
     }
-}
-
-@Composable
-private fun HistoryItem(
-    item: PlayHistoryEntity,
-    thumbPath: String?,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit = {},
-) {
-    val progress = if (item.videoDuration > 0)
-        item.videoPosition.toFloat() / item.videoDuration.toFloat() else 0f
-    val isAudio = MediaFileTypes.isAudioFile(item.videoName)
-
-    NiThumbCard(
-        title = item.videoName,
-        durationText = "",
-        thumbnailModel = thumbPath,
-        progressFraction = progress,
-        contentScale = if (isAudio) ContentScale.Fit else ContentScale.Crop,
-        onClick = onClick,
-        onLongClick = onLongClick,
-        horizontal = true,
-        subtitleText = formatPlayTime(item.playTime),
-        mediaLabel = mediaTypeLabel(item.mediaType),
-        squareCover = isAudio,
-    )
-    Spacer(Modifier.height(8.dp))
-}
-
-@Composable
-private fun FolderGroupHeader(
-    name: String,
-    count: Int,
-    thumbPath: String?,
-    expanded: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(niGlassPanelSurfaceColor())
-            .border(NiGlassHairWidth, niGlassBorderColor(), RoundedCornerShape(14.dp))
-            .clickable(
-                onClick = onClick,
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() },
-            )
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainer),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (thumbPath != null) {
-                AsyncImage(
-                    model = thumbPath,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Outlined.Folder,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.tertiary,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-        }
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = name,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = count.toString(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .padding(horizontal = 9.dp, vertical = 3.dp),
-        )
-        Spacer(Modifier.width(6.dp))
-        Icon(
-            imageVector = Icons.Filled.KeyboardArrowDown,
-            contentDescription = null,
-            tint = if (expanded) MaterialTheme.colorScheme.onSurface
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .size(20.dp)
-                .graphicsLayer { rotationZ = if (expanded) 180f else 0f },
-        )
-    }
-    Spacer(Modifier.height(8.dp))
-}
-
-/** 分组方式切换：液玻璃胶囊分段控件（按日期 / 按文件夹）。 */
-@Composable
-private fun HistoryGroupToggle(
-    selectedFolderMode: Boolean,
-    onSelectDate: () -> Unit,
-    onSelectFolder: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(niGlassPanelSurfaceColor())
-            .border(NiGlassHairWidth, niGlassBorderColor(), RoundedCornerShape(50))
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        HistoryGroupToggleOption(
-            text = stringResource(R.string.history_group_by_date),
-            selected = !selectedFolderMode,
-            onClick = onSelectDate,
-        )
-        HistoryGroupToggleOption(
-            text = stringResource(R.string.history_group_by_folder),
-            selected = selectedFolderMode,
-            onClick = onSelectFolder,
-        )
-    }
-}
-
-@Composable
-private fun RowScope.HistoryGroupToggleOption(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .weight(1f)
-            .clip(RoundedCornerShape(50))
-            .background(
-                if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
-            )
-            .clickable(
-                onClick = onClick,
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() },
-            )
-            .padding(vertical = 7.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
-    }
-}
-
-@Composable
-private fun mediaTypeLabel(type: MediaType): String = when (type) {
-    MediaType.LOCAL_STORAGE -> stringResource(R.string.storage_type_local)
-    MediaType.EXTERNAL_STORAGE -> stringResource(R.string.storage_type_device)
-    MediaType.SMB_SERVER -> "SMB"
-    MediaType.WEBDAV_SERVER -> "WebDAV"
-    MediaType.QUICK_ACCESS -> stringResource(R.string.storage_type_quick)
-    MediaType.OTHER_STORAGE -> stringResource(R.string.storage_type_other)
-}
-
-private fun formatPlayTime(date: Date): String {
-    val sdf = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
-    return sdf.format(date)
-}
-
-private fun formatDateGroup(dateKey: String, context: Context): String {
-    // dateKey is yyyy-MM-dd
-    val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-    val yesterday = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(
-        Date(System.currentTimeMillis() - 86400000)
-    )
-    return when (dateKey) {
-        today -> context.getString(R.string.play_history_today)
-        yesterday -> context.getString(R.string.play_history_yesterday)
-        else -> dateKey
-    }
-}
-
-@Composable
-private fun HistoryItemSkeleton() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        NiSkeletonBox(width = 64.dp, height = 56.dp, shape = RoundedCornerShape(8.dp))
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            NiSkeletonLine(widthFraction = 0.8f)
-            Spacer(Modifier.height(6.dp))
-            NiSkeletonLine(widthFraction = 0.5f)
-        }
-    }
-    Spacer(Modifier.height(8.dp))
-}
-
-@Composable
-private fun SyncIndicator(
-    state: SyncUiState,
-    onSyncClick: () -> Unit,
-    onErrorClick: () -> Unit,
-    successContentDescription: String,
-    idleContentDescription: String,
-) {
-    val isSyncing = state is SyncUiState.Syncing
-    val isError = state is SyncUiState.Done && !state.success
-    val isSuccess = !isSyncing && !isError
-    // 同步中：同步图标绕中心持续旋转，隐喻"进行中"
-    val rotation = rememberInfiniteTransition(label = "sync_rotation").animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "sync_rotate",
-    )
-    // 状态配色：就绪/成功=绿色、失败=error、同步中=primary
-    val stateColor = when {
-        isSuccess -> Color(0xFF4CAF50)
-        isError -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.primary
-    }
-    // 图标：就绪/成功=cloud_done、失败=cloud_off、同步中=sync（旋转）
-    val icon = when {
-        isError -> Icons.Outlined.CloudOff
-        isSyncing -> Icons.Outlined.Sync
-        else -> Icons.Outlined.CloudDone
-    }
-    // 同步中不可点击；就绪可点击重新同步；失败可点击弹错误窗
-    val onClick = when {
-        isError -> onErrorClick
-        else -> onSyncClick
-    }
-    IconButton(onClick = onClick, enabled = !isSyncing) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(stateColor.copy(alpha = 0.14f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = if (isError) idleContentDescription else successContentDescription,
-                tint = stateColor,
-                modifier = Modifier
-                    .size(18.dp)
-                    .graphicsLayer {
-                        rotationZ = if (isSyncing) rotation.value else 0f
-                    },
-            )
-        }
-    }
-}
-
-@Composable
-private fun ConflictItem(
-    conflict: SyncConflictEntity,
-    onKeepLocal: () -> Unit,
-    onKeepRemote: () -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
-        Text(
-            text = conflict.videoName,
-            style = MaterialTheme.typography.titleMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(8.dp))
-        Row {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.play_history_local),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text = stringResource(R.string.play_history_progress, formatPositionMs(conflict.localVideoPosition), formatPositionMs(conflict.localVideoDuration)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = stringResource(R.string.play_history_updated_at, formatPlayTime(Date(conflict.localPlayTime))),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.play_history_remote),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.tertiary,
-                )
-                Text(
-                    text = stringResource(R.string.play_history_progress, formatPositionMs(conflict.remoteVideoPosition), formatPositionMs(conflict.remoteVideoDuration)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = stringResource(R.string.play_history_updated_at, formatPlayTime(Date(conflict.remoteUpdatedAt))),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Spacer(Modifier.height(4.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = onKeepLocal) { Text(stringResource(R.string.play_history_keep_local)) }
-            TextButton(onClick = onKeepRemote) { Text(stringResource(R.string.play_history_keep_remote)) }
-        }
-    }
-}
-
-private fun formatPositionMs(ms: Long): String {
-    if (ms <= 0) return "--:--"
-    val totalSeconds = ms / 1000
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) {
-        String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
-    }
-}
-
-/** 文件夹分组键：存储源 + 存储内父目录。 */
-private data class FolderKey(val storageId: Int?, val folder: String) {
-    val stableKey: String get() = "${storageId ?: "local"}_$folder"
-}
-
-/** 按文件夹聚合的播放历史组。 */
-private data class HistoryFolderGroup(
-    val key: FolderKey,
-    val displayName: String,
-    val items: List<PlayHistoryEntity>,
-)
-
-/** 从存储内相对路径提取父目录；无目录（文件在存储根下）返回空串。 */
-private fun folderDirOf(path: String?): String {
-    if (path.isNullOrEmpty()) return ""
-    val idx = path.lastIndexOf('/')
-    return if (idx <= 0) "" else path.substring(0, idx)
 }

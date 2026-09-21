@@ -712,7 +712,7 @@ class WebDavStorage(
         }
     }
 
-    private fun resourceUrl(path: String, isDirectory: Boolean = false): HttpUrl {
+    internal fun resourceUrl(path: String, isDirectory: Boolean = false): HttpUrl {
         val trimmed = path.trim('/')
         val builder = baseUrl.newBuilder()
         if (trimmed.isNotEmpty()) {
@@ -922,7 +922,7 @@ class WebDavStorage(
         }
     }
 
-    private fun computeRelativePath(href: String): String? {
+    internal fun computeRelativePath(href: String): String? {
         val basePath = baseUrl.encodedPath.trimEnd('/') + "/"
         val hrefPath = when {
             href.startsWith("http://") || href.startsWith("https://") -> {
