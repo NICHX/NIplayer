@@ -16,6 +16,7 @@ import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.storage.StorageFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -173,6 +174,8 @@ class StoragePlusViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(isTesting = false, testResult = ok)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("StoragePlusVM", "testConnection error", e)
                 _uiState.update {
@@ -213,6 +216,8 @@ class StoragePlusViewModel @Inject constructor(
                 applyThumbnailOverrides(state, library)
                 _events.tryEmit(StoragePlusEvent.Saved)
                 _events.tryEmit(StoragePlusEvent.NavigateBack)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("StoragePlusVM", "save error", e)
                 _uiState.update { it.copy(isSaving = false) }
@@ -236,6 +241,8 @@ class StoragePlusViewModel @Inject constructor(
                     mediaLibraryDao.deleteById(storageId)
                 }
                 _events.tryEmit(StoragePlusEvent.NavigateBack)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("StoragePlusVM", "delete error", e)
                 _events.tryEmit(StoragePlusEvent.ShowError(e.message ?: context.getString(R.string.storage_plus_delete_failed)))

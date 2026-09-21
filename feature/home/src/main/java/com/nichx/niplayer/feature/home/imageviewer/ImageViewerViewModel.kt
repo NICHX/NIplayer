@@ -13,6 +13,7 @@ import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.storage.StorageFile
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -118,6 +119,8 @@ class ImageViewerViewModel @Inject constructor(
                         isLoading = false,
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, error = e.message ?: context.getString(R.string.image_viewer_load_failed))
@@ -154,6 +157,8 @@ class ImageViewerViewModel @Inject constructor(
                     bytesCache.put(file.path, bytes)
                     ImageModel.Bytes(bytes)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 null
             }

@@ -22,6 +22,7 @@ import com.nichx.niplayer.thumbnail.RemoteThumbnailRequest
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
@@ -347,6 +348,8 @@ class HomeTabViewModel @Inject constructor(
                             // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
                             withContext(NonCancellable) { storage.close() }
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (_: Exception) { continue }
                 }
             } finally {
@@ -427,6 +430,8 @@ class HomeTabViewModel @Inject constructor(
                             // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
                             withContext(NonCancellable) { storage.close() }
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (_: Exception) { continue }
                 }
             } finally {
@@ -482,6 +487,8 @@ class HomeTabViewModel @Inject constructor(
                             withContext(NonCancellable) { storage.close() }
                         }
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     false
                 }

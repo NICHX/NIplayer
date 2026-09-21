@@ -18,6 +18,7 @@ import com.nichx.niplayer.network.update.GitHubApi
 import com.nichx.niplayer.network.update.GitHubAsset
 import com.nichx.niplayer.network.update.GitHubRelease
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -88,6 +89,8 @@ class UpdateManager @Inject constructor(
                     asset = asset,
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             UpdateCheckOutcome.Error(e.message ?: context.getString(R.string.update_network_error))
         }

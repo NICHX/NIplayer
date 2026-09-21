@@ -85,15 +85,21 @@ coroutines:
     active: true
   SleepInsteadOfDelay:
     active: true
-# SuspendFunInFinallySection：**11 处已全部修复**（2026-09-21），但暂不启用 —— 与下一条成对评估（见下）。
+# SuspendFunInFinallySection：**已修复并启用**（2026-09-21，11 处全部处理完毕）。
+#   修法：finally 里的 suspend 清理包进**裸** `withContext(NonCancellable) { suspendCall() }`；
+#   对「必须吞掉 close 失败」或「必须指定 IO 调度器」的 2 处，改为把清理**移出 finally**
+#   （前提：同一 try 的 catch 都不重抛，故清理必然执行）。
   SuspendFunInFinallySection:
-    active: false
-# SuspendFunSwallowedCancellation：**部分修复**（2026-09-21：89 处中已修 34 处），暂不启用。
-#   已修：core/thumbnail（14）、core/storage 的 SmbStorage/VideoStorage/DownloadManager 读流与写文件路径、
-#         core/sync（1）、以及 feature 两模块里 11 处 finally 清理的配套改造。
-#   仍剩 55 处：feature/home 约 37（无 src/test）、feature/player 约 16（**有** src/test，见 LrcParserTest），
-#         外加 core 的 2 处「任务边界有意吞掉取消」（DownloadManager.processTask / UploadManager.processTask，
-#         与已用变异测试固化的 cancel/pause 竞态设计耦合，需先确认可否改写再动）。
+    active: true
+# SuspendFunSwallowedCancellation：**已修复并启用**（2026-09-21，89 处全部处理完毕）。
+#   已修 87 处：core/thumbnail 14 · core/storage 8 · core/sync 1 · feature/player 16（有 src/test）
+#         · feature/home 37（`StorageFileViewModel` 的 13 处 runCatching 统一改用新增的
+#         `runCatchingSuspending` 帮助函数）· 以及两模块 11 处 finally 清理的配套改造。
+#   另有 2 处**显式豁免**（`@Suppress("SuspendFunSwallowedCancellation")`，理由写在调用点）：
+#         DownloadManager.processTask / UploadManager.processTask —— 在**任务边界有意吞掉取消**
+#         （把取消转成任务的 CANCELLED / PAUSED 终态），与已被 DownloadManagerCancelRaceTest
+#         变异验证过的 cancel/pause 竞态设计耦合；改成「首条语句重抛」会丢掉
+#         cancellingTasks.remove(...) 等非 suspend 副作用。
 #   ⚠️ 规则语义（2026-09-21 用探针实测，非文档推测）：
 #     重抛必须是**独立 catch 子句的首条语句**。以下写法**都会被报**：
 #       · `catch (e: Exception) { if (e is CancellationException) throw e; … }`（守卫式，非首条）
@@ -107,7 +113,7 @@ coroutines:
 #     结论：凡「必须吞掉 close 失败」或「必须指定 IO 调度器」的清理，正确做法是把清理**移出 finally**
 #     （前提是同一 try 的 catch 都不重抛，故清理必然执行）。
   SuspendFunSwallowedCancellation:
-    active: false
+    active: true
   SuspendFunWithCoroutineScopeReceiver:
     active: true
   SuspendFunWithFlowReturnType:

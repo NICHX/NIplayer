@@ -10,6 +10,7 @@ import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -92,6 +93,8 @@ object PrePlayAspectReader {
                 retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
             } else 0
             return if (rotation % 180 == 0) width.toFloat() / height else height.toFloat() / width
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             return null
         } finally {

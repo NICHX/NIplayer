@@ -10,6 +10,7 @@ import com.nichx.niplayer.network.subtitle.AssrtSubDetail
 import com.nichx.niplayer.network.subtitle.AssrtSubFile
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -79,6 +80,8 @@ class SubtitleSearchViewModel @Inject constructor(
                 if (results.isEmpty()) {
                     _events.value = SubtitleSearchEvent.NoResults
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -125,6 +128,8 @@ class SubtitleSearchViewModel @Inject constructor(
                         )
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -154,6 +159,8 @@ class SubtitleSearchViewModel @Inject constructor(
                 _uiState.update { it.copy(isDownloading = false) }
                 _events.value = SubtitleSearchEvent.DownloadSuccess(fileUri)
                 onSubtitleDownloaded?.invoke(fileUri, mimeTypeForExt(ext))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(

@@ -308,6 +308,8 @@ class BackupViewModel @Inject constructor(
                     Log.w(TAG, "删除旧备份 ${stale.name} 失败: ${e.message}")
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "清理旧备份失败（不影响本次备份）: ${e.message}")
         }

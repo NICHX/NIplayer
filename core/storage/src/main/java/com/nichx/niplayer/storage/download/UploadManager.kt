@@ -198,6 +198,11 @@ class UploadManager @Inject constructor(
         uploadTaskDao.deleteByState(DownloadState.FAILED)
     }
 
+    // 任务边界的**有意**吞掉取消：取消/暂停在此被转换成任务的终态（CANCELLED / PAUSED），
+    // 而不是向上传播 —— 这是与 cancelTask / pauseTask 配合的既定竞态设计，已由
+    // DownloadManagerCancelRaceTest 变异验证。按规则改成「首条语句重抛」会丢掉
+    // cancellingTasks.remove(...) 等非 suspend 副作用，故此处显式豁免。
+    @Suppress("SuspendFunSwallowedCancellation")
     private suspend fun processTask(task: UploadTaskEntity) {
         val storageId = task.storageId
         var lastProgressEmit = 0L

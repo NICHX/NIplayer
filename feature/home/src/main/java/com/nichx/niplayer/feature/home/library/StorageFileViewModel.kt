@@ -49,6 +49,7 @@ import android.os.Build
 import android.provider.MediaStore
 import com.nichx.niplayer.storage.impl.VideoStorage
 import com.nichx.niplayer.storage.impl.VideoStorageFile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -594,13 +595,13 @@ class StorageFileViewModel @Inject constructor(
                 withContext(Dispatchers.IO) {
                     directFiles.forEach { file ->
                         _fileOpProgress.value = FileOpProgress(selected.size, done, file.name, type)
-                        if (runCatching { s.deleteFile(file) }.getOrDefault(false)) {
+                        if (runCatchingSuspending { s.deleteFile(file) }.getOrDefault(false)) {
                             okCount++
                             if (file.isDirectory) {
                                 encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
                             } else {
                                 // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
-                                runCatching {
+                                runCatchingSuspending {
                                     thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
                                 }
                             }
@@ -755,6 +756,8 @@ class StorageFileViewModel @Inject constructor(
             val targetFiles = s.listFiles(if (target.path.isEmpty()) StorageFactory.ROOT else target)
             val targetNames = targetFiles.map { it.name }.toHashSet()
             files.filter { it.name in targetNames }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // 目标目录列不出来交给传输本身决定成败，不因检测失败阻断
             emptyList()
@@ -791,14 +794,14 @@ class StorageFileViewModel @Inject constructor(
                 val needOverwrite = file.path in overwritePaths
                 // 安全覆盖：先备份目标（重命名），失败则跳过该项以避免数据丢失
                 val backupName = if (needOverwrite) backupTarget(s, file, target) ?: continue else null
-                val success = runCatching {
+                val success = runCatchingSuspending {
                     if (isCopy) s.copy(file, target) else s.move(file, target)
                 }.getOrDefault(false)
                 if (success) {
                     okCount++
                     if (backupName != null) {
                         // 传输成功，删除旧备份（尽力而为，失败不阻断）
-                        runCatching { deleteBackup(s, target, backupName, file.isDirectory) }
+                        runCatchingSuspending { deleteBackup(s, target, backupName, file.isDirectory) }
                     }
                     // 移动成功后处理旧缩略图（复制不处理：源文件保留，缩略图仍有效）：
                     // - 本地缓存按旧路径失效，新位置下次浏览自动重建
@@ -818,7 +821,7 @@ class StorageFileViewModel @Inject constructor(
                     }
                 } else if (backupName != null) {
                     // 传输失败：还原备份，保证用户原目标文件不丢失
-                    runCatching {
+                    runCatchingSuspending {
                         val backupPath = if (target.path.isEmpty()) backupName
                         else "${target.path}/${backupName}"
                         val backupFile = object : AbstractStorageFile(backupPath, backupName, file.isDirectory) {}
@@ -844,6 +847,8 @@ class StorageFileViewModel @Inject constructor(
             val backupName = uniqueBackupName(s, target, file)
             val targetFile = object : AbstractStorageFile(targetPath, file.name, file.isDirectory) {}
             if (s.rename(targetFile, backupName)) backupName else null
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             null
         }
@@ -967,7 +972,7 @@ class StorageFileViewModel @Inject constructor(
         val s = storage ?: return emptyList()
         val dir = makeDirectory(dirPath)
         return withContext(Dispatchers.IO) {
-            runCatching { s.listFiles(dir).filter { it.isDirectory } }.getOrDefault(emptyList())
+            runCatchingSuspending { s.listFiles(dir).filter { it.isDirectory } }.getOrDefault(emptyList())
         }
     }
 
@@ -1077,6 +1082,8 @@ class StorageFileViewModel @Inject constructor(
                 }
                 // 远程存储启用心跳检测
                 startHeartbeat()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // W-C2 修复：原 catch 仅捕获 UnsupportedOperationException，
                 // 但 WebDavStorage 构造时对非法 URL 抛 IllegalArgumentException，
@@ -1430,7 +1437,7 @@ class StorageFileViewModel @Inject constructor(
                 // 本地视频库下拉刷新：强制触发一次增量重扫，使新下载视频立即可见
                 if (currentLibrary?.mediaType == MediaType.LOCAL_STORAGE) {
                     withContext(Dispatchers.IO) {
-                        runCatching { (storage as? VideoStorage)?.forceRefresh() }
+                        runCatchingSuspending { (storage as? VideoStorage)?.forceRefresh() }
                     }
                 }
                 listDirectory(directoryStack.last()) { }
@@ -1464,6 +1471,8 @@ class StorageFileViewModel @Inject constructor(
                 try {
                     val healthy = withContext(Dispatchers.IO) { s.ping() }
                     _connectionHealthy.value = healthy
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     _connectionHealthy.value = false
                 }
@@ -1679,6 +1688,8 @@ class StorageFileViewModel @Inject constructor(
                                     synchronized(batchLock) { batchAccumulator[audioPath] = coverPath }
                                 },
                             )
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (_: Exception) {
                         }
                     }
@@ -1783,6 +1794,8 @@ class StorageFileViewModel @Inject constructor(
                                 },
                                 sameDirFiles = files,
                             )
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (_: Exception) {
                         }
                     }
@@ -1958,6 +1971,8 @@ class StorageFileViewModel @Inject constructor(
                     )
                 )
                 _events.tryEmit(StorageFileEvent.NavigateToPlayer(isAudioFile(file.name)))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _events.tryEmit(StorageFileEvent.ShowError(e.message ?: context.getString(R.string.play_error_open_failed)))
             } finally {
@@ -2190,7 +2205,7 @@ class StorageFileViewModel @Inject constructor(
         if (newName.isBlank() || newName == file.name) return
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) {
-                runCatching { s.rename(file, newName.trim()) }.getOrDefault(false)
+                runCatchingSuspending { s.rename(file, newName.trim()) }.getOrDefault(false)
             }
             if (ok) {
                 withContext(Dispatchers.IO) {
@@ -2241,7 +2256,7 @@ class StorageFileViewModel @Inject constructor(
         else "${currentDir.path}/${name.trim()}"
         viewModelScope.launch {
             val ok = withContext(Dispatchers.IO) {
-                runCatching { s.createDirectory(newPath) }.getOrDefault(false)
+                runCatchingSuspending { s.createDirectory(newPath) }.getOrDefault(false)
             }
             if (ok) {
                 _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_folder_created, name.trim())))
@@ -2352,10 +2367,10 @@ class StorageFileViewModel @Inject constructor(
             if (granted) {
                 val s = storage
                 withContext(Dispatchers.IO) {
-                    (s as? VideoStorage)?.let { runCatching { it.finalizeMediaDelete(paths) } }
+                    (s as? VideoStorage)?.let { runCatchingSuspending { it.finalizeMediaDelete(paths) } }
                     if (s != null) {
                         files.forEach { file ->
-                            runCatching { thumbnailManager.deleteThumbnailsForVideo(s, storageId, file) }
+                            runCatchingSuspending { thumbnailManager.deleteThumbnailsForVideo(s, storageId, file) }
                         }
                     }
                 }
@@ -2392,7 +2407,7 @@ class StorageFileViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val ok = withContext(Dispatchers.IO) {
-                    runCatching { s.deleteFile(file) }.getOrDefault(false)
+                    runCatchingSuspending { s.deleteFile(file) }.getOrDefault(false)
                 }
                 if (ok) {
                     _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_deleted, file.name)))
@@ -2401,7 +2416,7 @@ class StorageFileViewModel @Inject constructor(
                         encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
                     } else {
                         // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
-                        runCatching {
+                        runCatchingSuspending {
                             thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
                         }
                     }
@@ -2754,3 +2769,19 @@ internal fun naturalOrderCompare(a: String, b: String): Int {
     }
     return (al - i).compareTo(bl - j)
 }
+
+/**
+ * [runCatching] 的 suspend 版本：额外**立即重抛 `CancellationException`**。
+ *
+ * `kotlin.runCatching` 捕获 `Throwable`，会把协程取消一并吞掉，破坏结构化并发
+ * （detekt `SuspendFunSwallowedCancellation`）。本函数语义与它完全一致，
+ * 仅把取消异常原样抛出。仅可用于 suspend 上下文。
+ */
+private suspend fun <T> runCatchingSuspending(block: suspend () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        Result.failure(e)
+    }

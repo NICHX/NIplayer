@@ -263,8 +263,9 @@ class AudioPlaybackManager @Inject constructor(
                 }
 
                 _lrcText.value = null
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
                 _lrcText.value = null
             }
         }
@@ -394,8 +395,9 @@ class AudioPlaybackManager @Inject constructor(
                 } else {
                     onMessage?.invoke(context.getString(R.string.player_lyrics_manual_failed))
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
                 onMessage?.invoke(context.getString(R.string.player_lyrics_manual_failed))
             }
         }
@@ -715,7 +717,11 @@ class AudioPlaybackManager @Inject constructor(
                 if (playedSeconds >= nextSaveAt) {
                     nextSaveAt = playedSeconds + PROGRESS_SAVE_INTERVAL_S
                     if (p.isPlaying) {
-                        runCatching { saveCurrentProgress() }.onFailure { e ->
+                        try {
+                            saveCurrentProgress()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
                             android.util.Log.w(TAG, "周期性保存进度失败: ${e.message}", e)
                         }
                     }
@@ -1132,8 +1138,9 @@ class AudioPlaybackManager @Inject constructor(
                     // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
                     withContext(NonCancellable) { storage.close() }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is CancellationException) throw e
                 _audioCoverPath.value = null
                 updateCoverPath(null)
             }
@@ -1229,8 +1236,9 @@ class AudioPlaybackManager @Inject constructor(
                         updateCoverPath(path)
                     }
                 }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
             }
         }
     }
@@ -1385,7 +1393,12 @@ class AudioPlaybackManager @Inject constructor(
         val storage = currentStorage ?: return
         currentStorage = null
         closeScope.launch {
-            try { storage.close() } catch (_: Exception) {}
+            try {
+                storage.close()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
         }
     }
 

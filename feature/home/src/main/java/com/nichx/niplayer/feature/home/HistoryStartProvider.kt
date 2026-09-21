@@ -22,6 +22,7 @@ import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -123,6 +124,8 @@ class HistoryStartProvider @Inject constructor(
             }
 
             PlayStartResult.Success
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             PlayStartResult.Error(e.message ?: context.getString(R.string.play_error_restore_failed))
         }
@@ -181,6 +184,8 @@ class HistoryStartProvider @Inject constructor(
             if (startIndex >= 0) {
                 playlistHolder.set(items, startIndex)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             // 播放列表构造失败不中断播放流程
         }
@@ -244,6 +249,8 @@ class HistoryStartProvider @Inject constructor(
                 )
             )
             PlayStartResult.Success
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             PlayStartResult.Error(e.message ?: context.getString(R.string.play_error_open_failed))
         }
@@ -261,6 +268,8 @@ class HistoryStartProvider @Inject constructor(
         return withContext(Dispatchers.IO) {
             try {
                 storage.testConnection()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 false
             }

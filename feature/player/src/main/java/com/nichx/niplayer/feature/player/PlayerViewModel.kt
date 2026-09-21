@@ -1299,7 +1299,12 @@ class PlayerViewModel @Inject constructor(
         if (old != null && old !== newStorage) {
             // 用 closeScope 关闭，避免 onCleared 中 viewModelScope 已取消时无法执行
             closeScope.launch {
-                try { old.close() } catch (_: Exception) {}
+                try {
+                    old.close()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
             }
         }
     }
@@ -1623,9 +1628,9 @@ class PlayerViewModel @Inject constructor(
 
                 // 解析成功后持久化字幕到内部存储，并更新历史记录
                 persistSubtitle(tempFile, mimeType)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                // CancellationException 必须重新抛出，遵守结构化并发
-                if (e is kotlinx.coroutines.CancellationException) throw e
                 // 解析失败时静默忽略，避免崩溃；后续可加错误提示
             } finally {
                 tempFile.delete()
@@ -1655,9 +1660,9 @@ class PlayerViewModel @Inject constructor(
         try {
             tempFile.copyTo(persistentFile, overwrite = true)
             playHistoryDao.updateSubtitle(history.uniqueKey, storageId, persistentFile.absolutePath)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            // CancellationException 必须重新抛出，遵守结构化并发
-            if (e is kotlinx.coroutines.CancellationException) throw e
             // 持久化失败不影响当前播放，仅无法恢复字幕
         }
     }
@@ -1679,9 +1684,9 @@ class PlayerViewModel @Inject constructor(
                 }
                 // 同 addSubtitle：装载必须回到主线程，避免与主线程的 update() 并发读写引擎内部容器
                 withContext(Dispatchers.Main) { subtitleEngine.load(tto, file.name) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                // CancellationException 必须重新抛出，遵守结构化并发
-                if (e is kotlinx.coroutines.CancellationException) throw e
                 // 恢复失败静默忽略
             }
         }
@@ -1907,6 +1912,8 @@ class PlayerViewModel @Inject constructor(
                     // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
                     if (!storageTransferred) withContext(NonCancellable) { storage.close() }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // 缩略图生成失败不影响主流程
             }
@@ -1918,12 +1925,12 @@ class PlayerViewModel @Inject constructor(
                 withTimeoutOrNull(UPLOAD_TIMEOUT_MS) {
                     thumbnailManager.uploadThumbnail(storage, file)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {
             } finally {
                 // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
-                withContext(NonCancellable) {
-                    try { storage.close() } catch (_: Exception) {}
-                }
+                withContext(NonCancellable) { storage.close() }
             }
         }
     }
@@ -1956,7 +1963,12 @@ class PlayerViewModel @Inject constructor(
         currentStorage = null
         if (storageToClose != null) {
             closeScope.launch(NonCancellable) {
-                try { storageToClose.close() } catch (_: Exception) {}
+                try {
+                    storageToClose.close()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
             }
         }
 
