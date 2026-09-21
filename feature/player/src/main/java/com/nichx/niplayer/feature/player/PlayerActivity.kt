@@ -25,6 +25,7 @@ import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassTopBarOpacity
+import com.nichx.niplayer.designsystem.theme.NiScheme
 import com.nichx.niplayer.designsystem.theme.NiTheme
 import com.nichx.niplayer.player.kernel.PlaybackState
 import com.nichx.niplayer.player.kernel.VideoSize
@@ -79,7 +80,7 @@ class PlayerActivity : ComponentActivity() {
                 ThemeSettings.Mode.DARK -> true
                 ThemeSettings.Mode.SYSTEM -> isSystemInDarkTheme()
             }
-            NiTheme(darkTheme = darkTheme, scheme = themeConfig.scheme) {
+            NiTheme(darkTheme = darkTheme, scheme = NiScheme.fromOrdinal(themeConfig.schemeOrdinal)) {
                 CompositionLocalProvider(
                     LocalNiGlassOpacity provides glassOpacity,
                     LocalNiGlassTopBarOpacity provides glassTopBarOpacity,

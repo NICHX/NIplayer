@@ -52,6 +52,17 @@ enum class NiScheme(@StringRes val labelRes: Int, @StringRes val categoryRes: In
     ALMOND(R.string.color_scheme_almond, R.string.color_scheme_category_morandi),
     MAUVE(R.string.color_scheme_mauve, R.string.color_scheme_category_morandi),
     SAGE(R.string.color_scheme_sage, R.string.color_scheme_category_morandi);
+
+    companion object {
+        /**
+         * 按序数还原配色方案，越界回落到 [MISTY]。
+         *
+         * A1 架构修复（2026-09-21）：:core:datastore 原先直接持有本枚举类型，使**数据层依赖
+         * UI 层**（:core:designsystem）。现由 datastore 只暴露序号，UI 层在边界处调用本方法还原。
+         * MMKV 里的存储格式本来就是 ordinal，故无数据迁移。
+         */
+        fun fromOrdinal(ordinal: Int): NiScheme = entries.getOrElse(ordinal) { MISTY }
+    }
 }
 
 /**

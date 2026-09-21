@@ -37,6 +37,8 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.documentfile)
+    // MediaFileTypes：音频扩展名判断（DownloadManager 不再本地复制一份扩展名表）
+    implementation(project(":core:common"))
 
     // 模块依赖
     // api：Storage.library 返回 MediaLibraryEntity，依赖 :core:storage 的模块

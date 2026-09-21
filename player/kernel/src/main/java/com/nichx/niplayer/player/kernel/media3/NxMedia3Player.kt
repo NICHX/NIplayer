@@ -40,6 +40,7 @@ import com.nichx.niplayer.player.kernel.PlaybackState
 import com.nichx.niplayer.player.kernel.R
 import com.nichx.niplayer.player.kernel.SubtitleTrackInfo
 import com.nichx.niplayer.player.kernel.VideoSize
+import com.nichx.niplayer.player.kernel.audio.EqualizerConfigProvider
 import com.nichx.niplayer.player.kernel.audio.NiEqualizer
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -78,6 +79,8 @@ class NxMedia3Player @Inject constructor(
     @ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient,
     private val mediaCache: SimpleCache,
+    // A1 修复：均衡器配置由上层注入，内核不再直接读 :core:datastore 的 AudioSettings
+    private val equalizerConfigProvider: EqualizerConfigProvider,
 ) : NxPlayer, Player.Listener {
 
     // region 数据源与渲染：headers 通过 OkHttpDataSource 注入
@@ -772,7 +775,7 @@ class NxMedia3Player @Inject constructor(
      * 此回调在 audioSessionId 变化时触发，是挂载 Equalizer 的正确时机。
      */
     override fun onAudioSessionIdChanged(audioSessionId: Int) {
-        _equalizer.attach(audioSessionId)
+        _equalizer.attach(audioSessionId, equalizerConfigProvider.current())
     }
 
     override fun onTracksChanged(tracks: Tracks) {

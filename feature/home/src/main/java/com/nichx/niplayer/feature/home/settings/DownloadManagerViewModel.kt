@@ -14,7 +14,7 @@ import com.nichx.niplayer.database.entity.DownloadTaskEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.datastore.DownloadDirInfo
 import com.nichx.niplayer.datastore.DownloadSettings
-import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequest
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequestHolder
 import com.nichx.niplayer.player.kernel.HistoryDescriptor

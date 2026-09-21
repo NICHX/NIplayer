@@ -35,7 +35,8 @@ dependencies {
     implementation(project(":core:common"))
     // 阶段 3 接入 :player:kernel（NxPlayer 抽象 + NxMedia3Player 实现）
     implementation(project(":player:kernel"))
-    // 阶段 2 接入 :core:navigation（路由常量 Routes.Player / 音频导航路由）
+    // A2 聚合层：本模块自注册音频播放页导航图（PlayerNavGraph），需要 Routes 路由常量
+    // 与 NavGraphBuilder（由 :core:navigation 经 api 暴露）
     implementation(project(":core:navigation"))
     // 阶段 5 P1 接入 :core:database（PlayHistoryDao 注入，PlayerViewModel 记录/更新播放历史）
     implementation(project(":core:database"))

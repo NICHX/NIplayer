@@ -40,7 +40,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import java.util.Locale
 import kotlin.math.absoluteValue
 
 /** 歌词物理行固定高度。 */
@@ -64,13 +63,6 @@ private data class LyricRow(
     val lineIndexInSentence: Int,
     val text: String,
 )
-
-private fun formatTime(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format(Locale.ROOT, "%d:%02d", minutes, seconds)
-}
 
 /**
  * 同步歌词视图。
@@ -240,7 +232,7 @@ fun LyricsView(
                             isCurrent = row.sentenceIndex == currentSentenceIndex,
                             isPending = pendingSentenceIndex == row.sentenceIndex,
                             timeLabel = if (row.lineIndexInSentence == 0) {
-                                formatTime(lrcLines[row.sentenceIndex].timeMs)
+                                formatDurationShort(lrcLines[row.sentenceIndex].timeMs)
                             } else null,
                             onClick = {
                                 val sentenceIndex = row.sentenceIndex

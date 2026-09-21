@@ -17,11 +17,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowCompat
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,15 +43,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavType
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.common.message.AppMessageController
@@ -75,31 +66,13 @@ import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.CompositionLocalProvider
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
+import com.nichx.niplayer.designsystem.theme.NiScheme
 import com.nichx.niplayer.designsystem.theme.NiTheme
-import com.nichx.niplayer.feature.home.HomeScreen
-import com.nichx.niplayer.feature.home.history.PlayHistoryScreen
-import com.nichx.niplayer.feature.home.imageviewer.ImageViewerScreen
-import com.nichx.niplayer.feature.home.library.StoragePlusScreen
-import com.nichx.niplayer.feature.home.quickaccess.QuickAccessScreen
-import com.nichx.niplayer.feature.home.search.SearchScreen
-import com.nichx.niplayer.feature.home.settings.AboutScreen
-import com.nichx.niplayer.feature.home.settings.BackupScreen
-import com.nichx.niplayer.feature.home.settings.CacheManagerScreen
-import com.nichx.niplayer.feature.home.settings.TransferScreen
-import com.nichx.niplayer.feature.home.settings.EqualizerSettingsScreen
-import com.nichx.niplayer.feature.home.settings.ExperimentalScreen
-import com.nichx.niplayer.feature.home.settings.LrcApiSettingsScreen
-import com.nichx.niplayer.feature.home.settings.LanguageScreen
-import com.nichx.niplayer.feature.home.settings.MediaLibrarySettingsScreen
-import com.nichx.niplayer.feature.home.settings.PlaybackStatsScreen
-import com.nichx.niplayer.feature.home.settings.PlayerSettingsScreen
-import com.nichx.niplayer.feature.home.settings.ScanManagerScreen
-import com.nichx.niplayer.feature.home.settings.ThemeScreen
-import com.nichx.niplayer.feature.home.settings.IconScreen
-import com.nichx.niplayer.feature.home.update.UpdateDialogHost
-import com.nichx.niplayer.feature.home.update.UpdateViewModel
+import com.nichx.niplayer.feature.home.homeNavGraph
+import com.nichx.niplayer.feature.home.rememberHomeNavGraphState
+import com.nichx.niplayer.feature.home.update.UpdateHost
+import com.nichx.niplayer.feature.player.playerNavGraph
 import com.nichx.niplayer.feature.player.AudioPlaybackManager
-import com.nichx.niplayer.feature.player.AudioPlayerScreen
 import com.nichx.niplayer.feature.player.MusicBar
 import com.nichx.niplayer.feature.player.PlayerActivity
 import com.nichx.niplayer.navigation.NiNavHost
@@ -142,7 +115,8 @@ class MainActivity : ComponentActivity() {
             }
             NiTheme(
                 darkTheme = darkTheme,
-                scheme = themeConfig.scheme,
+                // A1 修复：datastore 只存序号，在 UI 边界还原为配色方案枚举
+                scheme = NiScheme.fromOrdinal(themeConfig.schemeOrdinal),
             ) {
                 // O-12：上次崩溃日志提示，启动时读取一次（消费即清除）
                 var crashLog by remember {
@@ -201,12 +175,9 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
-                // 版本检测：启动自动检查（24h 节流，静默失败），有更新时弹窗提示
-                val updateViewModel: UpdateViewModel = hiltViewModel()
-                LaunchedEffect(Unit) {
-                    updateViewModel.checkUpdate(auto = true)
-                }
-                UpdateDialogHost(viewModel = updateViewModel)
+                // 版本检测：启动自动检查（24h 节流，静默失败），有更新时弹窗提示。
+                // A2 修复：宿主逻辑自持于 :feature:home，:app 不再 import UpdateViewModel / UpdateDialogHost
+                UpdateHost()
 
                 val bgColor = MaterialTheme.colorScheme.background.toArgb()
                 val activityWindow = window
@@ -228,9 +199,9 @@ class MainActivity : ComponentActivity() {
                         startActivity(Intent(this, PlayerActivity::class.java))
                     }
                 }
-                // 外部页（搜索/快速访问）请求在媒体库 tab 打开文件浏览的待办状态，
-                // 回到 Home 根路由后由 HomeScreen 消费（切入媒体库子栈）
-                var pendingFileBrowser by remember { mutableStateOf<Pair<Int, String>?>(null) }
+                // A2 修复：外部页（搜索/快速访问）请求在媒体库 tab 打开文件浏览的待办状态，
+                // 已下沉到 :feature:home 的 HomeNavGraphState（跨路由存活）
+                val homeNavState = rememberHomeNavGraphState()
                 val currentBackStackEntry by navController.currentBackStackEntryAsState()
                 val isPlayerScreen =
                     currentBackStackEntry?.destination?.route == Routes.Player.AUDIO_PLAYER ||
@@ -270,213 +241,24 @@ class MainActivity : ComponentActivity() {
                             .drawBehind { if (prewarmStep != 0) {} }
                             .layerBackdrop(glassBackdrop),
                     ) {
+                    // A2 架构修复：路由由各 feature 自己注册（homeNavGraph / playerNavGraph），
+                    // :app 只负责装配与提供宿主侧能力，不再逐个 import feature 的屏幕
                     NiNavHost(
                         navController = navController,
                     ) {
-                        composable(
-                            route = Routes.Home.ROOT,
-                        ) {
-                            HomeScreen(
-                                onNavigateToGlobal = { route -> navController.navigate(route) },
-                                onNavigateToSearch = {
-                                    navController.navigate(Routes.Local.SEARCH)
-                                },
-                                onNavigateToPlayHistory = { filter ->
-                                    navController.navigate(Routes.Local.playHistoryRoute(filter))
-                                },
-                                onNavigateToQuickAccess = {
-                                    navController.navigate(Routes.Local.QUICK_ACCESS)
-                                },
-                                onPlayVideo = navigateToPlayer,
-                                onNavigateToStoragePlus = { type, storageId ->
-                                    val route = if (type != null) {
-                                        Routes.Stream.storagePlusRoute(type)
-                                    } else {
-                                        Routes.Stream.storagePlusEditRoute(storageId)
-                                    }
-                                    navController.navigate(route)
-                                },
-                                onNavigateToImageViewer = {
-                                    navController.navigate(Routes.ImageViewer.VIEWER)
-                                },
-                                onNavigateToDownloadManager = {
-                                    navController.navigate(Routes.Stream.DOWNLOAD_MANAGER)
-                                },
-                                pendingFileBrowser = pendingFileBrowser,
-                                onPendingFileBrowserConsumed = { pendingFileBrowser = null },
-                                onFileBrowserMultiSelectChanged = { fileBrowserMultiSelect = it },
-                            )
-                        }
-                        composable(
-                            route = Routes.Stream.STORAGE_PLUS_ROUTE,
-                            arguments = listOf(
-                                navArgument("type") {
-                                    type = NavType.StringType
-                                    defaultValue = ""
-                                },
-                                navArgument("storageId") {
-                                    type = NavType.IntType
-                                    defaultValue = 0
-                                },
-                            ),
-                            ) {
-                            StoragePlusScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.Local.PLAY_HISTORY_ROUTE,
-                            arguments = listOf(
-                                navArgument("filter") {
-                                    type = NavType.IntType
-                                    defaultValue = 0
-                                },
-                            ),
-                            ) { backStackEntry ->
-                            PlayHistoryScreen(
-                                initialFilterOrdinal = backStackEntry.arguments?.getInt("filter") ?: 0,
-                                onNavigateToPlayVideo = navigateToPlayer,
-                            )
-                        }
-                        composable(
-                            route = Routes.Local.QUICK_ACCESS,
-                            ) {
-                            QuickAccessScreen(
-                                onNavigateToStorageFile = { storageId, path ->
-                                    // 交给 Home 在媒体库 tab 子栈打开文件浏览，返回栈回到快速访问页
-                                    pendingFileBrowser = storageId to path
-                                    navController.popBackStack(Routes.Home.ROOT, inclusive = false)
-                                },
-                                onNavigateToPlayer = navigateToPlayer,
-                                onNavigateToImageViewer = {
-                                    navController.navigate(Routes.ImageViewer.VIEWER)
-                                },
-                            )
-                        }
-                        composable(
-                            route = Routes.Local.SEARCH,
-                            ) {
-                            SearchScreen(
-                                onBack = { navController.popBackStack() },
-                                onNavigateToPlayVideo = navigateToPlayer,
-                                onNavigateToStorageFile = { storageId, path ->
-                                    // 交给 Home 在媒体库 tab 子栈打开文件浏览，返回栈回到搜索页
-                                    pendingFileBrowser = storageId to path
-                                    navController.popBackStack(Routes.Home.ROOT, inclusive = false)
-                                },
-                                onNavigateToImageViewer = {
-                                    navController.navigate(Routes.ImageViewer.VIEWER)
-                                },
-                            )
-                        }
-                        composable(
-                            route = Routes.Player.AUDIO_PLAYER,
-                            enterTransition = {
-                                slideInVertically(tween(350)) { it } + fadeIn(tween(350))
-                            },
-                            exitTransition = {
-                                slideOutVertically(tween(350)) { it } + fadeOut(tween(350))
-                            },
-                            popEnterTransition = { fadeIn(tween(0)) },
-                            popExitTransition = { fadeOut(tween(0)) },
-                        ) {
-                            AudioPlayerScreen(
-                                onBack = { navController.popBackStack() },
-                                onEqualizer = { navController.navigate(Routes.User.EQUALIZER) },
-                                audioPlaybackManager = audioPlaybackManager,
-                            )
-                        }
-                        composable(
-                            route = Routes.User.SWITCH_THEME,
-                            ) {
-                            ThemeScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.ICON,
-                            ) {
-                            IconScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.LANGUAGE,
-                            ) {
-                            LanguageScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.EXPERIMENTAL,
-                            ) {
-                            ExperimentalScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.SETTING_PLAYER,
-                            ) {
-                            PlayerSettingsScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.MEDIA_LIBRARY,
-                            ) {
-                            MediaLibrarySettingsScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.EQUALIZER,
-                            ) {
-                            EqualizerSettingsScreen(
-                                onBack = { navController.popBackStack() },
-                                onApplyToPlayer = {
-                                    audioPlaybackManager.applyEqualizerSettings()
-                                },
-                                onApplyLiveToPlayer = {
-                                    audioPlaybackManager.applyEqualizerLive()
-                                },
-                            )
-                        }
-                        composable(
-                            route = Routes.User.PLAYBACK_STATS,
-                            ) {
-                            PlaybackStatsScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.BACKUP,
-                            ) {
-                            BackupScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.LRCAPI,
-                            ) {
-                            LrcApiSettingsScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.CACHE_MANAGER,
-                            ) {
-                            CacheManagerScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.SCAN_MANAGER,
-                            ) {
-                            ScanManagerScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.User.ABOUT,
-                            ) {
-                            AboutScreen(onBack = { navController.popBackStack() })
-                        }
-                        composable(
-                            route = Routes.Stream.DOWNLOAD_MANAGER,
-                            ) {
-                            TransferScreen(
-                                onBack = { navController.popBackStack() },
-                                onPlayVideo = navigateToPlayer,
-                                onNavigateToImageViewer = {
-                                    navController.navigate(Routes.ImageViewer.VIEWER)
-                                },
-                            )
-                        }
-                        composable(
-                            route = Routes.ImageViewer.VIEWER,
-                            enterTransition = { fadeIn(tween(300)) },
-                            exitTransition = { fadeOut(tween(300)) },
-                            // 与普通子页一致：显式 pop 退出（淡出，无缩放），避免回退到内置 scaleOut
-                            popExitTransition = { fadeOut(tween(300)) },
-                        ) {
-                            ImageViewerScreen(onBack = { navController.popBackStack() })
-                        }
+                        homeNavGraph(
+                            navController = navController,
+                            state = homeNavState,
+                            onFileBrowserMultiSelectChanged = { fileBrowserMultiSelect = it },
+                            onPlayMedia = navigateToPlayer,
+                            onApplyEqualizerToPlayer = { audioPlaybackManager.applyEqualizerSettings() },
+                            onApplyEqualizerLive = { audioPlaybackManager.applyEqualizerLive() },
+                        )
+                        playerNavGraph(
+                            navController = navController,
+                            audioPlaybackManager = audioPlaybackManager,
+                            onOpenEqualizer = { navController.navigate(Routes.User.EQUALIZER) },
+                        )
                     }
 
                     MusicBar(

@@ -1,16 +1,19 @@
-package com.nichx.niplayer.player.kernel
+package com.nichx.niplayer.common.media
 
 /**
  * 媒体文件类型判断（基于扩展名）。
  *
- * BUG-1 修复：v2 原存在三套独立的扩展名表（[PlaybackRequestHolder] 内部 private、
- * :feature:home 的 `MediaFileTypes`、:core:thumbnail 的 `VIDEO_EXTENSIONS`），
+ * BUG-1 修复：v2 原存在三套独立的扩展名表（`:player:kernel` 的 PlaybackRequestHolder 内部
+ * private、`:feature:home` 的 `MediaFileTypes`、`:core:thumbnail` 的 `VIDEO_EXTENSIONS`），
  * 其中 `amr`/`m4s`/`vob`/`f4v`/`m2ts` 在不同表里存在性不一致，导致：
  * - `.amr`/`.m4s` 文件路由到错误的播放页（AudioPlayerScreen vs PlayerScreen）
  * - `.vob`/`.f4v`/`.m2ts` 文件不预加载服务端缩略图
  *
- * 此对象作为唯一权威来源，放在 :player:kernel（被 :feature:home / :feature:player
- * / :core:thumbnail 共同依赖的方向）。其他模块的 `MediaFileTypes` 应委托到此处。
+ * 此对象作为**唯一权威来源**。
+ *
+ * A1 架构修复（2026-09-21）：原放在 `:player:kernel`，使 `:core:thumbnail` 不得不依赖
+ * `:player:kernel`（core 层依赖 player 层的**依赖倒置**）。现下移到 `:core:common` ——
+ * 本模块无任何工程依赖，是各层唯一都能看到的最低点，倒置随之消除。
  *
  * **注意**：`m4s`（分片 MP4 流）实为视频，从音频扩展名表中移除；
  * `pcm` 在音频表中保留（无压缩音频）。

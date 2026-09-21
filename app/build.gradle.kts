@@ -102,27 +102,30 @@ android {
 }
 
 dependencies {
-    // 项目模块：
-    // - 阶段 1 接入 :core:database（含 Hilt Module 提供 5 表 Dao 注入）
-    // - 阶段 2 接入 :core:navigation（统一导航宿主）
-    // - 阶段 3 接入 :player:kernel（media3 单一内核，取代 exo/ijk/vlc 三套实现）
-    // - 阶段 3 接入 :feature:player（PlayerViewModel + PlayerScreen，端到端验证 NxPlayer 注入链路）
-    // - 阶段 4 接入 :core:storage（Storage 抽象 + 4 套协议实现 Local/WebDAV/SMB/FTP）
-    // - 阶段 5 接入 :core:designsystem（NiTheme / NiColorScheme / NiTypography）
-    // - 阶段 5 接入 :feature:home（主页底部导航 + 三 Tab Composable）
-    implementation(project(":core:subtitle"))
-    implementation(project(":core:database"))
+    // 项目模块：仅声明 :app 源码**真正直接 import 类型**的 9 个。
+    // - :core:common（AppCoroutineScope / CrashHandler / AppMessageController）
+    // - :core:database（NiApplication 校验本地媒体库：MediaLibraryDao / MediaLibraryEntity）
+    // - :core:datastore（ThemeSettings / GlassSettings / LanguageSettings / IconSettings）
+    // - :core:navigation（NiNavHost / Routes）
+    // - :core:sync（PlayHistorySyncManager）
+    // - :core:designsystem（NiTheme 与全部玻璃组件 / CompositionLocal）
+    // - :player:kernel（di/AudioWiringModule 装配 EqualizerConfigProvider，A1 修复引入）
+    // - :feature:home / :feature:player（两个功能模块的 UI 入口）
+    //
+    // A2 修复（2026-09-21）：原先还直接声明 :core:network / :core:storage / :core:subtitle /
+    // :core:thumbnail 共 4 个「全模块零 import」的依赖，它们已由上面各模块传递引入，删除后
+    // 经 assembleDebug / assembleRelease 与 Hilt 组件树比对验证，注入图未受影响。
+    // （:player:kernel 起初一并删除，随即被 :app:kspDebugKotlin 报出 EqualizerConfigProvider
+    //   无法解析 —— 编译期验证确实拦住了这次误删，故保留。）
     implementation(project(":core:common"))
-    implementation(project(":core:network"))
+    implementation(project(":core:database"))
     implementation(project(":core:datastore"))
     implementation(project(":core:navigation"))
-    implementation(project(":core:storage"))
-    implementation(project(":core:designsystem"))
-    implementation(project(":core:thumbnail"))
     implementation(project(":core:sync"))
+    implementation(project(":core:designsystem"))
     implementation(project(":player:kernel"))
-    implementation(project(":feature:player"))
     implementation(project(":feature:home"))
+    implementation(project(":feature:player"))
 
     // Core / Lifecycle
     implementation(libs.androidx.core.ktx)

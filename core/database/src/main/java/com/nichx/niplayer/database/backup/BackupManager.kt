@@ -1,5 +1,7 @@
 package com.nichx.niplayer.database.backup
 
+import com.nichx.niplayer.common.backup.BackupItem
+import com.nichx.niplayer.common.backup.RestoreMode
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import org.json.JSONObject

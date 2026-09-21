@@ -20,6 +20,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import com.nichx.niplayer.datastore.AudioSettings
 import com.nichx.niplayer.datastore.OnlineMatchBlacklist
 import com.nichx.niplayer.datastore.OnlineMatchCache
 import com.nichx.niplayer.datastore.PlayerSettings
@@ -34,6 +35,7 @@ import com.nichx.niplayer.player.kernel.HistoryDescriptor
 import com.nichx.niplayer.player.kernel.MediaSourceBuilder
 import com.nichx.niplayer.player.kernel.NxMediaSource
 import com.nichx.niplayer.player.kernel.PlaylistItem
+import com.nichx.niplayer.player.kernel.audio.EqualizerConfig
 import com.nichx.niplayer.player.kernel.audio.NiEqualizer
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.ThumbnailManager
@@ -501,6 +503,19 @@ class AudioPlaybackManager @Inject constructor(
     fun getEqualizer(): NiEqualizer = equalizer
 
     /**
+     * 从设置层读取当前均衡器配置。
+     *
+     * A1 架构修复（2026-09-21）：:player:kernel 不再直接读 `AudioSettings`，改为由本层
+     * （已依赖 :core:datastore）组装成纯数据 [EqualizerConfig] 后传入。
+     * 频段数量按 [AudioSettings.BAND_COUNT] 取满，与内核逐 band 读取的语义一致。
+     */
+    private fun currentEqualizerConfig(): EqualizerConfig = EqualizerConfig(
+        enabled = AudioSettings.equalizerEnabled,
+        presetIndex = AudioSettings.equalizerPresetIndex,
+        bandLevelsMb = List(AudioSettings.BAND_COUNT) { AudioSettings.getBandLevel(it) },
+    )
+
+    /**
      * 应用均衡器设置（开关切换路径）。
      *
      * 关闭均衡器的爆响根源是 [android.media.audiofx.Equalizer] 的 enabled 切换触发
@@ -511,7 +526,7 @@ class AudioPlaybackManager @Inject constructor(
     fun applyEqualizerSettings() {
         eqFadeJob?.cancel()
         val player = exoPlayer ?: run {
-            equalizer.applySettings()
+            equalizer.applySettings(currentEqualizerConfig())
             return
         }
         eqFadeJob = scope.launch {
@@ -522,7 +537,7 @@ class AudioPlaybackManager @Inject constructor(
                 fadeVolume(player, originalVolume, 0f)
                 fadedOut = true
             }
-            equalizer.applySettings()
+            equalizer.applySettings(currentEqualizerConfig())
             if (fadedOut && originalVolume > 0f) {
                 fadeVolume(player, 0f, originalVolume)
             }
@@ -536,7 +551,7 @@ class AudioPlaybackManager @Inject constructor(
      * 若对每次拖动都做淡入淡出，会打断音乐造成明显卡顿。
      */
     fun applyEqualizerLive() {
-        equalizer.applySettings()
+        equalizer.applySettings(currentEqualizerConfig())
     }
 
     /** 将 [player] 音量从 [from] 平滑过渡到 [to]（约 100ms，10 步 × 10ms）。 */
@@ -597,7 +612,7 @@ class AudioPlaybackManager @Inject constructor(
         }
 
         override fun onAudioSessionIdChanged(audioSessionId: Int) {
-            equalizer.attach(audioSessionId)
+            equalizer.attach(audioSessionId, currentEqualizerConfig())
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {

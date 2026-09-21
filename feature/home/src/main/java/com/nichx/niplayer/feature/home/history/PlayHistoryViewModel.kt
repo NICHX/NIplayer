@@ -16,7 +16,7 @@ import com.nichx.niplayer.database.isSyncableBase
 import com.nichx.niplayer.database.syncKey
 import com.nichx.niplayer.datastore.PlayHistorySyncConfig
 import com.nichx.niplayer.datastore.PlayHistorySyncSettings
-import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.feature.home.PlayStartResult
 import com.nichx.niplayer.feature.home.PlayStarter
 import com.nichx.niplayer.sync.PlayHistorySyncManager

@@ -2,6 +2,7 @@ package com.nichx.niplayer.player.kernel
 
 import android.view.Surface
 import androidx.media3.common.text.Cue
+import com.nichx.niplayer.player.kernel.audio.EqualizerConfig
 import com.nichx.niplayer.player.kernel.audio.NiEqualizer
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -145,7 +146,7 @@ interface NxPlayer {
      * 均衡器实例（F-02）。
      *
      * 在 audioSessionId 就绪后内部自动 attach。UI 通过此引用读取频段信息、
-     * 并在修改 [com.nichx.niplayer.datastore.AudioSettings] 后调用 [NiEqualizer.applySettings] 实时生效。
+     * 并在修改均衡器设置后调用 [NiEqualizer.applySettings]（传入最新 [EqualizerConfig]）实时生效。
      */
     val equalizer: NiEqualizer
 

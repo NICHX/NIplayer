@@ -27,9 +27,11 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    // MediaFileTypes：媒体扩展名权威来源（A1 修复后由 :core:common 提供）
+    implementation(project(":core:common"))
 
-    // F-02：AudioSettings（均衡器配置持久化）
-    implementation(project(":core:datastore"))
+    // A1 修复：原先为读 AudioSettings 而依赖 :core:datastore（内核 → 设置持久化层的依赖倒置）。
+    // 现改为由上层经 EqualizerConfigProvider 注入配置，该依赖已删除。
 
     // 模块依赖：共享 :core:network 的 OkHttpClient（替代旧 NxMedia3Player 内部 new OkHttpClient）
     implementation(project(":core:network"))

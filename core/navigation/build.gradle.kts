@@ -37,7 +37,9 @@ dependencies {
     implementation(libs.compose.material3)
 
     // Navigation
-    implementation(libs.navigation.compose)
+    // api：各 feature 模块要用 NavGraphBuilder / NavHostController 自注册导航图（A2 聚合层），
+    // 若用 implementation 则下游看不到这些类型，会迫使每个 feature 重复声明同一依赖
+    api(libs.navigation.compose)
 
     testImplementation(libs.junit)
 }

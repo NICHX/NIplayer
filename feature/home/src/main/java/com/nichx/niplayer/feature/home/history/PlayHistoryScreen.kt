@@ -80,7 +80,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.entity.SyncConflictEntity
-import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState

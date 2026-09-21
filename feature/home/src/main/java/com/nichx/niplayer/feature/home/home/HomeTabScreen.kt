@@ -54,7 +54,7 @@ import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.designsystem.theme.NiSpacings
 import com.nichx.niplayer.designsystem.theme.NiWindowHeightSizeClass
 import com.nichx.niplayer.designsystem.theme.NiWindowWidthSizeClass
-import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.common.media.MediaFileTypes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Folder

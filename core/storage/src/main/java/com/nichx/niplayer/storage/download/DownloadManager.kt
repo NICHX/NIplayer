@@ -1,6 +1,7 @@
 package com.nichx.niplayer.storage.download
 
 import android.content.Context
+import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.database.dao.DownloadTaskDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.DownloadState
@@ -514,15 +515,13 @@ class DownloadManager @Inject constructor(
         }
     }
 
-    /** 音频文件扩展名判断（:core:storage 不依赖 :player:kernel，本地维护一份）。 */
-    private fun isAudioFile(name: String): Boolean {
-        val dot = name.lastIndexOf('.')
-        return if (dot > 0 && dot < name.length - 1) {
-            name.substring(dot + 1).lowercase() in AUDIO_EXTENSIONS
-        } else {
-            false
-        }
-    }
+    /**
+     * 音频文件扩展名判断。
+     *
+     * A1 架构修复（2026-09-21）：原在此本地复制一份扩展名表（注释自称「与 :player:kernel
+     * MediaFileTypes 保持一致」），属重复定义。扩展名表已下移到 :core:common，改为直接委托。
+     */
+    private fun isAudioFile(name: String): Boolean = MediaFileTypes.isAudioFile(name)
 
     /**
      * 写入循环：读输入流 → 写输出流，节流刷新进度。
@@ -626,11 +625,5 @@ class DownloadManager @Inject constructor(
         const val FLUSH_BYTE_THRESHOLD = 8 * 1024 * 1024L
         // 流 flush 字节阈值：每 32MB 才触发一次 fsync，降低停顿频率提升吞吐
         const val STREAM_FLUSH_BYTE_THRESHOLD = 32 * 1024 * 1024L
-
-        /** 音频文件扩展名集合（与 :player:kernel MediaFileTypes 保持一致）。 */
-        val AUDIO_EXTENSIONS: Set<String> = setOf(
-            "mp3", "wav", "flac", "ogg", "aac", "ape", "wma", "ac3",
-            "m4a", "opus", "amr", "pcm",
-        )
     }
 }

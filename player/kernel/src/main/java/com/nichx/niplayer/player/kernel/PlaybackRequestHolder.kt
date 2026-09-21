@@ -1,5 +1,6 @@
 package com.nichx.niplayer.player.kernel
 
+import com.nichx.niplayer.common.media.MediaFileTypes
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -44,8 +45,8 @@ data class PlaybackRequest(
  * 判断文件名/路径是否为音频文件（按扩展名）。
  *
  * BUG-1 修复：原 private AUDIO_EXTENSIONS 与 :feature:home 的 MediaFileTypes 不一致
- * （缺 `amr`，且曾误含 `m4s`）。改为委托到 [com.nichx.niplayer.player.kernel
- * .MediaFileTypes.isAudioFile]，扩展名表统一管理。
+ * （缺 `amr`，且曾误含 `m4s`）。改为委托到
+ * [com.nichx.niplayer.common.media.MediaFileTypes.isAudioFile]，扩展名表统一管理。
  *
  * 各入口据此 [isAudio] 决定路由到 [com.nichx.niplayer.feature.player.PlayerScreen]
  *（视频）或 [com.nichx.niplayer.feature.player.AudioPlayerScreen]（音频）。

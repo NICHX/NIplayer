@@ -1,7 +1,7 @@
-package com.nichx.niplayer.database.backup.settings
+package com.nichx.niplayer.datastore.backup
 
-import com.nichx.niplayer.database.backup.BackupItem
-import com.nichx.niplayer.database.backup.RestoreMode
+import com.nichx.niplayer.common.backup.BackupItem
+import com.nichx.niplayer.common.backup.RestoreMode
 import com.nichx.niplayer.datastore.AudioSettings
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.FileBrowserSettings
@@ -24,8 +24,13 @@ import javax.inject.Inject
 /**
  * 应用设置备份项（v2 格式）。
  *
- * 统一处理所有 MMKV 用户偏好设置的备份/恢复，替代旧版 [com.nichx.niplayer.database.backup.BackupManager]
- * 中 `AppSettingsData` 的导出/恢复逻辑。
+ * 统一处理所有 MMKV 用户偏好设置的备份/恢复，替代旧版 BackupManager 中
+ * `AppSettingsData` 的导出/恢复逻辑。
+ *
+ * **A1 架构修复（2026-09-21）**：本类原先位于 :core:database，使 Room 模块不得不依赖
+ * :core:datastore（仅为导出 MMKV 设置）。备份 SPI 下移到 :core:common 后，本类随设置层
+ * 迁入 :core:datastore 并自行 @IntoSet 注册，:core:database 的该依赖随之删除。
+ * 备份 key 与全部 JSON 字段名**保持不变**，磁盘格式与旧版完全兼容。
  *
  * v2 变更：原顶层字段 `lrcApiUrl` / `lrcApiAuth` / `assrtToken` 并入 appSettings，
  * 不再作为 BackupData 顶层字段。v1 → v2 兼容由 BackupManager 处理。

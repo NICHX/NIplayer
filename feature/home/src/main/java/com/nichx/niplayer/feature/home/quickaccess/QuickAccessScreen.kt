@@ -77,7 +77,7 @@ import com.nichx.niplayer.designsystem.components.NiSectionHeader
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
-import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.common.media.MediaFileTypes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

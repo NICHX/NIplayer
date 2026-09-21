@@ -35,8 +35,9 @@ dependencies {
     implementation(project(":core:database"))
     // ThumbnailSettings：缩略图开关（generateForVideo/saveInSameDir 等）
     implementation(project(":core:datastore"))
-    // MediaFileTypes：媒体扩展名权威来源（ARCH-3 require 断言用）
-    implementation(project(":player:kernel"))
+    // MediaFileTypes：媒体扩展名权威来源（A1 修复后位于 :core:common，
+    // 从而消除「:core:thumbnail 依赖 :player:kernel」的 core→player 依赖倒置）
+    implementation(project(":core:common"))
 
     // Hilt
     implementation(libs.hilt.android)

@@ -9,7 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.backup.BackupManager
 import com.nichx.niplayer.database.backup.BackupSummary
-import com.nichx.niplayer.database.backup.RestoreMode
+import com.nichx.niplayer.common.backup.RestoreMode
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType

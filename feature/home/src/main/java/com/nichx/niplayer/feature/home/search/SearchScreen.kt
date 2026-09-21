@@ -59,7 +59,7 @@ import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
 import com.nichx.niplayer.designsystem.iconstyle.NiIconStyleSpec
 import com.nichx.niplayer.designsystem.iconstyle.NiStyleIcon
-import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessUiItem
 import java.text.SimpleDateFormat
 import java.util.Date

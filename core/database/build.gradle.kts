@@ -64,8 +64,10 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
 
-    // MMKV 设置持久化（备份/恢复需导出 LRC API、Assrt 等设置）
-    implementation(project(":core:datastore"))
+    // A1 修复：原先为导出 MMKV 设置而依赖 :core:datastore（Room 模块反向依赖设置层）。
+    // AppSettingsBackup 已迁至 :core:datastore 并自注册，该依赖已删除；
+    // 这里只需备份 SPI（BackupItem / RestoreMode）。
+    implementation(project(":core:common"))
 
     // Room
     implementation(libs.room.runtime)

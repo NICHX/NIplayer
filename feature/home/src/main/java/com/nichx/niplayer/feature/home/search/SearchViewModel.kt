@@ -8,7 +8,7 @@ import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
-import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.feature.home.PlayStartResult
 import com.nichx.niplayer.feature.home.PlayStarter
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequest

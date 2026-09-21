@@ -1,8 +1,12 @@
-package com.nichx.niplayer.database.backup
+package com.nichx.niplayer.common.backup
 
 /**
  * 备份项接口。每个需要备份的数据源（数据库表 / MMKV 设置组）实现此接口，
- * 通过 Hilt @IntoSet 多绑定自动注册到 [BackupManager]，新增备份项无需改动 BackupManager。
+ * 通过 Hilt @IntoSet 多绑定自动注册到 BackupManager，新增备份项无需改动 BackupManager。
+ *
+ * **A1 架构修复（2026-09-21）**：本 SPI 原先位于 :core:database，导致「设置组」类备份项
+ * （AppSettingsBackup）必须留在 Room 模块里，进而使 :core:database 反向依赖 :core:datastore。
+ * SPI 下移到无任何工程依赖的 :core:common 后，两边各自实现并注册，该倒置消除。
  *
  * 设计要点（Moshi 风格，无 JsonElement DOM）：
  * - [snapshot] / [restore] 基于 [Any]（松散 Java 对象，Moshi 的 toJsonValue/fromJsonValue 天然支持），

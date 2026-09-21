@@ -6,7 +6,7 @@ import com.tencent.mmkv.MMKV
  * 视频扩展名白名单配置（MMKV）。
  *
  * 用于本地扫描（MediaStore + 扩展目录）时识别视频文件。音频/图片/字幕扩展名
- * 仍硬编码在 [com.nichx.niplayer.feature.home.MediaFileTypes]，仅视频扩展名
+ * 仍硬编码在 com.nichx.niplayer.common.media.MediaFileTypes，仅视频扩展名
  * 支持用户配置。
  *
  * 通过 `@MMKVKotlinClass` 注解生成 `VideoExtension` 对象，这里改为手动

@@ -104,7 +104,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
-import java.util.Locale
 import kotlinx.coroutines.delay
 
 /** 横屏沉浸模式：无操作自动隐藏控件的延时（ms）。 */
@@ -1464,12 +1463,12 @@ private fun ProgressSection(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = formatTime(displayMs),
+            text = formatDurationShort(displayMs),
             style = MaterialTheme.typography.bodySmall,
             color = onSurface.copy(alpha = 0.6f),
         )
         Text(
-            text = formatTime(durationMs),
+            text = formatDurationShort(durationMs),
             style = MaterialTheme.typography.bodySmall,
             color = onSurface.copy(alpha = 0.6f),
         )
@@ -1680,13 +1679,6 @@ private fun PlaybackErrorState(
     }
 }
 
-private fun formatTime(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format(Locale.ROOT, "%d:%02d", minutes, seconds)
-}
-
 /** 倍速文字标签：整数档省略小数（1.0x、1.25x）。 */
 private fun formatSpeedLabel(speed: Float): String {
     return if (speed % 1f == 0f) {
@@ -1696,9 +1688,3 @@ private fun formatSpeedLabel(speed: Float): String {
     }
 }
 
-/** 睡眠定时剩余时间显示：- mm:ss。 */
-private fun formatSleepTimer(seconds: Int): String {
-    val minutes = seconds / 60
-    val secs = seconds % 60
-    return String.format(Locale.ROOT, "- %d:%02d", minutes, secs)
-}

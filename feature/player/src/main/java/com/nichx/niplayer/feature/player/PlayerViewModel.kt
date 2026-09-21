@@ -751,7 +751,7 @@ class PlayerViewModel @Inject constructor(
     fun setAbLoopPointA() {
         val pos = player.positionMs.value
         _abLoopA.value = pos
-        _abLoopEvent.tryEmit(appContext.getString(R.string.player_ab_loop_a_set_osd, formatTime(pos)))
+        _abLoopEvent.tryEmit(appContext.getString(R.string.player_ab_loop_a_set_osd, formatDuration(pos)))
         if (_abLoopB.value != null && _abLoopA.value != null) {
             startAbLoop()
         }
@@ -761,7 +761,7 @@ class PlayerViewModel @Inject constructor(
     fun setAbLoopPointB() {
         val pos = player.positionMs.value
         _abLoopB.value = pos
-        _abLoopEvent.tryEmit(appContext.getString(R.string.player_ab_loop_b_set_osd, formatTime(pos)))
+        _abLoopEvent.tryEmit(appContext.getString(R.string.player_ab_loop_b_set_osd, formatDuration(pos)))
         if (_abLoopA.value != null && _abLoopB.value != null) {
             startAbLoop()
         }
@@ -2046,18 +2046,6 @@ private val SCALE_MODES = listOf(
     NxVideoScaleMode.Stretch,
     NxVideoScaleMode.Ratio16_9,
 )
-
-private fun formatTime(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) {
-        String.format(java.util.Locale.ROOT, "%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format(java.util.Locale.ROOT, "%d:%02d", minutes, seconds)
-    }
-}
 
 /**
  * 周期性保存播放进度的时间间隔。

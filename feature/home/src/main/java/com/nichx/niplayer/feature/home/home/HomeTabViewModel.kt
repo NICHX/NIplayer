@@ -10,8 +10,8 @@ import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.dao.VideoDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.enums.MediaType
-import com.nichx.niplayer.feature.home.MediaFileTypes
-import com.nichx.niplayer.feature.home.MediaFileTypes.isImageFile
+import com.nichx.niplayer.common.media.MediaFileTypes
+import com.nichx.niplayer.common.media.MediaFileTypes.isImageFile
 import com.nichx.niplayer.feature.home.PlayStartResult
 import com.nichx.niplayer.feature.home.PlayStarter
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequest

@@ -64,6 +64,9 @@ fun ThemeScreen(
     onBack: () -> Unit = {},
 ) {
     val themeConfig by ThemeSettings.themeFlow.collectAsStateWithLifecycle()
+    // A1 修复：datastore 只存配色方案序号（数据层不依赖 UI 层的 NiScheme 类型），
+    // 在此边界还原为枚举
+    val currentScheme = NiScheme.fromOrdinal(themeConfig.schemeOrdinal)
     // 生效深浅色：跟随系统模式下用 isSystemInDarkTheme 实时判断，使预览正确随系统切换
     val systemDark = isSystemInDarkTheme()
     val effectiveDark = when (themeConfig.mode) {
@@ -78,7 +81,7 @@ fun ThemeScreen(
 
     // 选中的配色分类：默认定位到当前方案所属分类
     var selectedCategoryRes by remember {
-        mutableIntStateOf(themeConfig.scheme.categoryRes)
+        mutableIntStateOf(currentScheme.categoryRes)
     }
 
     NiScaffold(
@@ -137,8 +140,8 @@ fun ThemeScreen(
                     row.forEach { scheme ->
                         SchemeCard(
                             scheme = scheme,
-                            isSelected = themeConfig.scheme == scheme,
-                            onClick = { ThemeSettings.setThemeScheme(scheme) },
+                            isSelected = currentScheme == scheme,
+                            onClick = { ThemeSettings.setThemeScheme(scheme.ordinal) },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -152,7 +155,7 @@ fun ThemeScreen(
 
             // ── 当前主题说明 ──
             Text(
-                text = stringResource(themeConfig.scheme.descriptionRes()),
+                text = stringResource(currentScheme.descriptionRes()),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier
@@ -190,7 +193,7 @@ fun ThemeScreen(
 
             // ── 组合预览：主题配色 + 玻璃不透明度（置于底部，紧跟滑条便于实时查看） ──
             ThemePreviewCard(
-                scheme = themeConfig.scheme,
+                scheme = currentScheme,
                 dark = effectiveDark,
                 opacity = glassOpacity,
                 topBarOpacity = glassTopBarOpacity,

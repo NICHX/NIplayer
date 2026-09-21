@@ -20,7 +20,7 @@ import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SortConfig
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
-import com.nichx.niplayer.feature.home.MediaFileTypes
+import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.feature.home.PrePlayAspectReader
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequest
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequestHolder
