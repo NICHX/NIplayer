@@ -98,7 +98,7 @@ object NiGlassOverlay {
 
     /** 关闭栈顶浮层（供返回键 / 外部调用）。 */
     fun dismissTop() {
-        stack.lastOrNull()?.let { it.onDismiss() }
+        stack.lastOrNull()?.onDismiss()
     }
 }
 

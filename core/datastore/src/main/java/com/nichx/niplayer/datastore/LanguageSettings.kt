@@ -58,10 +58,12 @@ object LanguageSettings {
     fun wrap(context: Context): Context {
         val mode = _languageFlow.value
         if (mode == Mode.SYSTEM) return context
+        // 枚举穷尽化：SYSTEM 已在上方提前返回，此处仍显式列出 ——
+        // 新增语言模式时编译器会强制补齐分支，避免静默落进 else 而跟随系统语言
         val locale = when (mode) {
             Mode.SIMPLIFIED_CHINESE -> Locale.SIMPLIFIED_CHINESE
             Mode.ENGLISH -> Locale.ENGLISH
-            else -> return context
+            Mode.SYSTEM -> return context
         }
         Locale.setDefault(locale)
         val config = Configuration(context.resources.configuration)

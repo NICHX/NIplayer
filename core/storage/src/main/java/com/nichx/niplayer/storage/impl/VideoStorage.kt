@@ -134,7 +134,13 @@ class VideoStorage(
             deleted = runCatching { File(path).delete() }.getOrDefault(false)
         }
         if (deleted) {
-            runCatching { videoDao.deleteByPath(path) }
+            try {
+                videoDao.deleteByPath(path)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // 清除 DB 记录失败不影响文件删除结果
+            }
         }
         return deleted
     }
@@ -146,7 +152,13 @@ class VideoStorage(
     suspend fun finalizeMediaDelete(paths: List<String>) {
         val valid = paths.filter { it.isNotEmpty() }
         if (valid.isNotEmpty()) {
-            runCatching { videoDao.deleteByPaths(valid) }
+            try {
+                videoDao.deleteByPaths(valid)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // 清除 DB 记录失败不影响调用方流程
+            }
         }
     }
 

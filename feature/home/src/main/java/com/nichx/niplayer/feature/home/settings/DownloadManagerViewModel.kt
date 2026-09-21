@@ -33,7 +33,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -417,7 +416,7 @@ class DownloadManagerViewModel @Inject constructor(
     }
 
     private fun formatSpeed(bytesPerSec: Long): String = when {
-        bytesPerSec >= 1000 * 1000 -> "${"%.1f".format(bytesPerSec / (1000.0 * 1000.0))} MB/s"
+        bytesPerSec >= 1000 * 1000 -> "${String.format(Locale.ROOT, "%.1f", bytesPerSec / (1000.0 * 1000.0))} MB/s"
         bytesPerSec >= 1000 -> "${bytesPerSec / 1000} KB/s"
         else -> "${bytesPerSec} B/s"
     }

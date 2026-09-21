@@ -12,11 +12,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -32,7 +30,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -82,9 +79,13 @@ fun SubtitleSearchDialog(
     }
 
     LaunchedEffect(events) {
-        when (val event = events) {
+        when (events) {
             is SubtitleSearchEvent.NeedToken -> viewModel.showTokenDialog()
-            else -> Unit
+            // 枚举穷尽化：无结果 / 下载成功由 ViewModel 内部状态驱动 UI，此处无需额外处理
+            is SubtitleSearchEvent.NoResults,
+            is SubtitleSearchEvent.DownloadSuccess -> Unit
+            // 事件流初值为 null（尚未产生事件）
+            null -> Unit
         }
         viewModel.consumeEvent()
     }

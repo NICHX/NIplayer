@@ -14,6 +14,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -24,10 +25,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -74,6 +78,17 @@ class DownloadManager @Inject constructor(
 
     /** 用户主动取消（区别于暂停）的任务集合，用于 CancellationException 处理分支。 */
     private val cancellingTasks = ConcurrentHashMap<Long, Boolean>()
+
+    /**
+     * [addTask] 去重串行化锁。
+     *
+     * `download_task` 表的 `unique_key` **没有唯一索引**，且 `insert` 使用自增主键 +
+     * `OnConflictStrategy.REPLACE`，重复的 `unique_key` 不会触发冲突、不会报错，只会多出一行。
+     * 而 [addTask] 是 query-then-insert（先查重再插入），批量添加时各协程并发进入会互相看不到
+     * 对方尚未提交的插入，从而产生重复任务，进而导致两个 [processTask] 并发写同一目标文件。
+     * 此处用互斥锁把「查重 + 插入」变成原子操作。
+     */
+    private val addTaskMutex = Mutex()
 
     init {
         startDispatchLoop()
@@ -126,38 +141,51 @@ class DownloadManager @Inject constructor(
         targetStorageName: String? = null,
     ) {
         scope.launch {
-            val existing = downloadTaskDao.getByUniqueKeyAndTarget(uniqueKey, storageId, targetStorageUrl)
-            if (existing != null) {
-                if (existing.state in listOf(
-                        DownloadState.COMPLETED,
-                        DownloadState.CANCELLED,
-                        DownloadState.FAILED,
-                    )
-                ) {
-                    downloadTaskDao.deleteById(existing.id)
-                } else {
-                    return@launch
+            // 去重必须原子：查重与插入之间不能插入其它 addTask（见 [addTaskMutex] 说明）
+            addTaskMutex.withLock {
+                val existing = downloadTaskDao.getByUniqueKeyAndTarget(uniqueKey, storageId, targetStorageUrl)
+                if (existing != null) {
+                    if (existing.state in listOf(
+                            DownloadState.COMPLETED,
+                            DownloadState.CANCELLED,
+                            DownloadState.FAILED,
+                        )
+                    ) {
+                        downloadTaskDao.deleteById(existing.id)
+                    } else {
+                        return@withLock
+                    }
                 }
-            }
-            downloadTaskDao.insert(
-                DownloadTaskEntity(
-                    storageId = storageId,
-                    fileName = fileName,
-                    filePath = filePath,
-                    uniqueKey = uniqueKey,
-                    totalBytes = totalBytes,
-                    state = DownloadState.WAITING,
-                    targetStorageUrl = targetStorageUrl,
-                    targetStorageName = targetStorageName,
+                downloadTaskDao.insert(
+                    DownloadTaskEntity(
+                        storageId = storageId,
+                        fileName = fileName,
+                        filePath = filePath,
+                        uniqueKey = uniqueKey,
+                        totalBytes = totalBytes,
+                        state = DownloadState.WAITING,
+                        targetStorageUrl = targetStorageUrl,
+                        targetStorageName = targetStorageName,
+                    )
                 )
-            )
+            }
         }
     }
 
     /** 暂停任务：取消协程 + 置 PAUSED（保留已下载文件供续传）。 */
     fun pauseTask(taskId: Long) {
-        activeJobs[taskId]?.cancel()
-        scope.launch { downloadTaskDao.updateState(taskId, DownloadState.PAUSED) }
+        val job = activeJobs[taskId]
+        job?.cancel()
+        scope.launch {
+            // 先落 PAUSED 保证 UI 立即响应
+            downloadTaskDao.updateState(taskId, DownloadState.PAUSED)
+            // 等协程真正退出后再落一次：processTask 在取消生效**之前**已发起的那次
+            // updateProgress(..., DOWNLOADING) 仍可能落库（挂起调用的取消检查发生在调用入口，
+            // 已通过检查的调用会继续完成），从而覆盖上面的 PAUSED。若此时进程被杀，
+            // 任务会永久停留在 DOWNLOADING，而调度循环只拾取 WAITING → 无法恢复。
+            job?.join()
+            downloadTaskDao.updateState(taskId, DownloadState.PAUSED)
+        }
     }
 
     /** 恢复任务：仅 PAUSED 态可恢复，置 WAITING 后调度循环自动接管。 */
@@ -169,14 +197,45 @@ class DownloadManager @Inject constructor(
         }
     }
 
-    /** 取消任务：取消协程 + 删除已下载文件 + 置 CANCELLED。 */
+    /**
+     * 取消任务：置 CANCELLED + 等待活跃协程退出 + 删除已下载文件。
+     *
+     * **关于「状态与文件的先后顺序」**：原实现是「删文件 → 置 CANCELLED」，若进程恰好在这两步
+     * 之间死亡，会留下「任务停在 DOWNLOADING 但文件已消失」的僵死状态 —— 调度循环只拾取
+     * WAITING，该任务永远无法恢复。现在把状态写入提到删除之前，并等活跃协程完全退出后再删，
+     * 由 [DownloadManagerCancelRaceTest] 锁定该顺序（已用变异测试确认该断言可捕获反序）。
+     *
+     * **关于 [processTask] 的 catch**：它虽以 `cancellingTasks.remove()` 区分「取消/暂停」，
+     * 但**其状态写入实际不会生效** —— Room 的 suspend DAO 内部走 `withContext(...)`
+     * （`DBUtil.android.kt`），而 `withContext` 会 `ensureActive()`，在已取消的协程里调用会直接
+     * 抛 CancellationException。因此终态实际只由本方法与 [pauseTask] 各自（未取消的）协程写入。
+     * 标记仍按原语义保留，是为了让 [processTask] 的分支判断保持可读、并在未来若该写入路径
+     * 变为有效时仍然正确。
+     */
     fun cancelTask(taskId: Long) {
         cancellingTasks[taskId] = true
-        activeJobs[taskId]?.cancel()
+        val job = activeJobs[taskId]
+        job?.cancel()
         scope.launch {
-            val task = downloadTaskDao.getById(taskId)
-            if (task != null) deleteTaskFile(task)
+            // 已完成的任务不再取消：避免误删用户已下载完成的文件
+            if (downloadTaskDao.getById(taskId)?.state == DownloadState.COMPLETED) {
+                cancellingTasks.remove(taskId)
+                return@launch
+            }
+            // 先落 CANCELLED：调度循环只查 WAITING，可确保尚未启动的任务不会被拾取；
+            // 同时保证「状态已终结」先于「文件被删除」，避免进程在两者之间死亡时
+            // 留下「任务停在 DOWNLOADING 但文件已消失」的僵死状态（调度循环只拾取 WAITING）。
+            // 该顺序由 DownloadManagerCancelRaceTest 锁定（已用变异测试确认可捕获反序）。
             downloadTaskDao.updateState(taskId, DownloadState.CANCELLED)
+            // 等活跃协程完全退出，消除「文件已删但协程仍在写入」的窗口
+            job?.join()
+            val task = downloadTaskDao.getById(taskId)
+            // 等待期间下载可能刚好完成（用户点取消与下载收尾同时发生）→ 保留成品
+            if (task != null && task.state != DownloadState.COMPLETED) {
+                deleteTaskFile(task)
+                // 再落一次：processTask 若在取消前已进入，可能用 DOWNLOADING 覆盖首次写入
+                downloadTaskDao.updateState(taskId, DownloadState.CANCELLED)
+            }
             cancellingTasks.remove(taskId)
         }
     }
@@ -184,8 +243,11 @@ class DownloadManager @Inject constructor(
     /** 删除任务：取消协程 + 删除文件 + 删除数据库记录。 */
     fun deleteTask(taskId: Long) {
         cancellingTasks[taskId] = true
-        activeJobs[taskId]?.cancel()
+        val job = activeJobs[taskId]
+        job?.cancel()
         scope.launch {
+            // 与 [cancelTask] 一致：先等协程退出再删文件，避免「文件已删但仍在写入」的窗口
+            job?.join()
             val task = downloadTaskDao.getById(taskId)
             if (task != null) deleteTaskFile(task)
             downloadTaskDao.deleteById(taskId)
@@ -260,21 +322,33 @@ class DownloadManager @Inject constructor(
             length = task.totalBytes,
         ) {}
 
-        var totalBytes = task.totalBytes
-        if (totalBytes <= 0) {
-            // totalBytes 未知时无法计算百分比，但下载仍可进行
-            // WebDAV/SMB 的 StorageFile.length 在 listFiles 时已填充，正常情况不会为 0
-        }
+        // totalBytes 未知（<=0）时无法计算百分比，但下载仍可进行。
+        // WebDAV/SMB 的 StorageFile.length 在 listFiles 时已填充，正常情况不会为 0。
+        val totalBytes = task.totalBytes
 
         downloadTaskDao.updateState(task.id, DownloadState.DOWNLOADING)
 
         // 断点续传：优先用 offset 重载打开流；不支持时回退到完整下载
         var actualOffset = task.downloadedBytes
+        // 续传前必须校验本地文件的实际长度与记录的偏移一致。二者不一致时（上次 flush 未落盘、
+        // 进程被杀、文件被手动改动或删除、取消竞态遗留），append 模式会从文件真实末尾继续追加，
+        // 写入位置与远程 offset 错位，产出的文件从错位点起全是垃圾数据且仍被标记 COMPLETED。
+        // 此处直接丢弃本地残片、重置偏移从 0 重下（本地残片无复用价值，重新下载才安全）。
+        val localFile = localTargetFile(task)
+        if (DownloadPolicy.shouldResetResumeOffset(actualOffset, localFile?.length() ?: 0L)) {
+            localFile?.delete()
+            actualOffset = 0L
+            downloadTaskDao.updateProgress(task.id, 0, DownloadState.DOWNLOADING)
+        }
         val inputStream: InputStream = try {
             if (actualOffset > 0) {
                 val offsetStream = try {
                     storage.openInputStream(storageFile, actualOffset)
-                } catch (_: Exception) { null }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
                 if (offsetStream != null) {
                     offsetStream
                 } else {
@@ -314,9 +388,12 @@ class DownloadManager @Inject constructor(
             downloadTaskDao.updateState(task.id, DownloadState.FAILED, e.message ?: context.getString(R.string.download_error_failed))
         } finally {
             try { inputStream.close() } catch (_: Exception) {}
-            try { storage.close() } catch (_: Exception) {}
             _taskProgress.update { it.toMutableMap().apply { remove(task.id) } }
         }
+        // storage 清理**移出 finally**：finally 里的 suspend 调用在协程取消时会被直接跳过（资源泄漏），
+        // 而 detekt 只接受「finally 里裸 withContext(NonCancellable)」，那样又无法吞掉 close 失败。
+        // 上面两个 catch 均不重抛，故此处必然执行。
+        withContext(NonCancellable) { storage.close() }
     }
 
     /** 下载到应用缓存目录 `<cache>/download/<fileName>`。 */
@@ -328,20 +405,26 @@ class DownloadManager @Inject constructor(
     ) {
         val targetFile = File(context.cacheDir, "download/${task.fileName}")
         targetFile.parentFile?.mkdirs()
-        if (offset > 0) {
-            if (!targetFile.exists()) targetFile.createNewFile()
-        } else {
-            targetFile.delete()
-            targetFile.createNewFile()
-        }
         try {
+            // 兜底：上游 [processTask] 已校验「本地文件长度 == offset」，此处再防御一次。
+            // 不一致时拒绝追加写入并抛错（由 processTask 置 FAILED），而不是静默写出错位文件。
+            if (offset > 0 && targetFile.length() != offset) {
+                throw IOException(context.getString(R.string.download_error_resume_mismatch))
+            }
+            if (offset == 0L) {
+                targetFile.delete()
+                targetFile.createNewFile()
+            }
             FileOutputStream(targetFile, offset > 0).use { fos ->
                 BufferedOutputStream(fos, BUFFER_SIZE).use {
                     pipelinedWriteLoop(task.id, it, inputStream, offset, totalBytes)
                 }
             }
+        } catch (e: CancellationException) {
+            // 取消时立即重抛：不留半成品（原实现靠 `e !is CancellationException` 短路达到同样效果）
+            throw e
         } catch (e: Exception) {
-            if (e !is CancellationException && targetFile.exists()) targetFile.delete()
+            if (targetFile.exists()) targetFile.delete()
             throw e
         }
     }
@@ -356,20 +439,25 @@ class DownloadManager @Inject constructor(
         val dirPath = task.targetStorageUrl!!.removePrefix("file://")
         val targetFile = File(dirPath, task.fileName)
         targetFile.parentFile?.mkdirs()
-        if (offset > 0) {
-            if (!targetFile.exists()) targetFile.createNewFile()
-        } else {
-            targetFile.delete()
-            targetFile.createNewFile()
-        }
         try {
+            // 兜底：与 [processToCache] 一致，拒绝以错误的追加位置写出损坏文件
+            if (offset > 0 && targetFile.length() != offset) {
+                throw IOException(context.getString(R.string.download_error_resume_mismatch))
+            }
+            if (offset == 0L) {
+                targetFile.delete()
+                targetFile.createNewFile()
+            }
             FileOutputStream(targetFile, offset > 0).use { fos ->
                 BufferedOutputStream(fos, BUFFER_SIZE).use {
                     pipelinedWriteLoop(task.id, it, inputStream, offset, totalBytes)
                 }
             }
+        } catch (e: CancellationException) {
+            // 取消时立即重抛：不留半成品（原实现靠 `e !is CancellationException` 短路达到同样效果）
+            throw e
         } catch (e: Exception) {
-            if (e !is CancellationException && targetFile.exists()) targetFile.delete()
+            if (targetFile.exists()) targetFile.delete()
             throw e
         }
     }
@@ -438,7 +526,8 @@ class DownloadManager @Inject constructor(
      * - **DB 进度**：每 [DB_FLUSH_INTERVAL_MS] 或 [FLUSH_BYTE_THRESHOLD] 刷新一次（断电恢复用）
      * - **流 flush**：仅按 [STREAM_FLUSH_BYTE_THRESHOLD] 字节阈值触发，不再与 DB 写入绑定，
      *   避免 fsync 停顿拖慢下载吞吐（SAF content:// 路径尤其明显）
-     * - **完成**：flush 输出流 + DB 置 COMPLETED + 移除 taskProgress 条目
+     * - **完成**：flush 输出流 → 校验 `totalRead >= totalBytes`（未知长度时跳过）→
+     *   DB 置 COMPLETED。短读（提前 EOF）改判 FAILED 并抛 [IOException]，不再伪装成功
      */
     private suspend fun pipelinedWriteLoop(
         taskId: Long,
@@ -486,27 +575,42 @@ class DownloadManager @Inject constructor(
             }
         }
         outputStream.flush()
+        // 提前 EOF（连接中断 / 服务端 Range 响应不完整 / 文件被截断）不得判定为完成。
+        // 原实现只要流返回 -1 就置 COMPLETED，会把截断的文件伪装成下载成功，用户无法感知。
+        // 此处置 FAILED 并抛错：错误文案由 processTask 的 catch 补上；本地残片由
+        // processToCache / processToDirectPath 的 catch 清理，重试时经长度校验从 0 重新下载。
+        if (!DownloadPolicy.isFullyDownloaded(totalRead, totalBytes)) {
+            downloadTaskDao.updateProgress(taskId, totalRead, DownloadState.FAILED)
+            throw IOException(context.getString(R.string.download_error_incomplete))
+        }
         downloadTaskDao.updateProgress(taskId, totalRead, DownloadState.COMPLETED)
+    }
+
+    /**
+     * 解析任务对应的本地目标文件。
+     *
+     * 规则与写入路径（[processToCache] / [processToDirectPath]）严格一致，供续传长度校验与删除复用：
+     * - `targetStorageUrl == null`（缓存模式）：`<cache>/download/<fileName>`
+     * - `file://` 前缀（直 path 模式）：`<dirPath>/<fileName>`
+     * - 其它（遗留 content:// 等不支持的目标）：返回 null
+     */
+    private fun localTargetFile(task: DownloadTaskEntity): File? {
+        val storageUrl = task.targetStorageUrl
+        return when {
+            storageUrl == null -> File(context.cacheDir, "download/${task.fileName}")
+            storageUrl.startsWith("file://") -> File(storageUrl.removePrefix("file://"), task.fileName)
+            else -> null
+        }
     }
 
     /**
      * 删除任务已下载的文件。
      *
-     * 按目标模式分发：
-     * - null（缓存）：删 `<cache>/download/<fileName>`
-     * - file://：删直 path 文件
+     * 按目标模式分发（见 [localTargetFile]）：缓存模式删 `<cache>/download/<fileName>`，
+     * 直 path 模式删对应文件；不支持的目标不做任何操作。
      */
     private fun deleteTaskFile(task: DownloadTaskEntity) {
-        val storageUrl = task.targetStorageUrl
-        when {
-            storageUrl == null -> {
-                File(context.cacheDir, "download/${task.fileName}").delete()
-            }
-            else -> {
-                val dirPath = storageUrl.removePrefix("file://")
-                File(dirPath, task.fileName).takeIf { it.exists() }?.delete()
-            }
-        }
+        localTargetFile(task)?.takeIf { it.exists() }?.delete()
     }
 
     private companion object {

@@ -42,18 +42,12 @@ import com.nichx.niplayer.player.kernel.SubtitleTrackInfo
 import com.nichx.niplayer.player.kernel.VideoSize
 import com.nichx.niplayer.player.kernel.audio.NiEqualizer
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicBoolean
@@ -185,6 +179,14 @@ class NxMedia3Player @Inject constructor(
 
     // region 网速采集
 
+    /**
+     * 两次采样之间累计的字节数。
+     *
+     * 由 media3 的加载线程在 [speedListener.onBytesTransferred] 中累加，由主线程在
+     * [positionTicker] 中读取并清零，因此必须用 [Volatile] 保证跨线程可见性 ——
+     * 否则主线程可能读到过期值（网速显示为 0 或滞后），且清零操作可能丢失累加结果。
+     */
+    @Volatile
     private var bytesSinceLastTick = 0L
 
     private val speedListener = object : TransferListener {
@@ -539,7 +541,7 @@ class NxMedia3Player @Inject constructor(
     }
 
     override fun selectAudioTrack(index: Int) {
-        val currentTracks = exoPlayer.currentTracks ?: return
+        val currentTracks = exoPlayer.currentTracks
         val audioGroups = currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
 
         val builder = exoPlayer.trackSelectionParameters
@@ -562,12 +564,13 @@ class NxMedia3Player @Inject constructor(
 
     override fun selectSubtitleTrack(index: Int) {
         val builder = exoPlayer.trackSelectionParameters.buildUpon()
-        // 先清除字幕禁用状态与已有覆盖
+        // 先清除字幕禁用状态与已有覆盖（三个分支都以此为共同前提）
         builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
         builder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
 
         when (index) {
-            -1 -> Unit // 自动选择：不清除禁用、不加覆盖
+            // 自动选择：上面已解除禁用并清空覆盖，这正是「自动」的语义，无需再加任何覆盖
+            -1 -> Unit
             -2 -> builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true) // 关闭字幕
             else -> {
                 val subtitleGroups = exoPlayer.currentTracks.groups

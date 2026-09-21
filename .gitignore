@@ -21,3 +21,15 @@ gradle/gradle-daemon-jvm.properties
 /.trae/documents
 BUG_REPORT.md
 /icons
+
+# 审计 / 修复文档：只在本地保留，不入库。
+# 与 /docs、BUG_REPORT.md 同样处理 —— 这些是一次性分析的产物，不是随代码演进的资产。
+# 2026-09-21：5 份分散文档（BUG_AUDIT / BUG_AUDIT_REVIEW / ARCHITECTURE_ENGINEERING_REVIEW / FIX_LOG×2）
+# 已合并为 UNCOMMITTED_CHANGES_*.md 并删除原件。下方前三条规则保留，以备后续重新发起审计时同样不入库。
+/BUG_AUDIT_*.md
+/ARCHITECTURE_ENGINEERING_REVIEW_*.md
+/FIX_LOG_*.md
+/UNCOMMITTED_CHANGES_*.md
+
+# 工具会话记忆目录：与代码演进无关的本地状态，不入库。
+/.workbuddy-ai/

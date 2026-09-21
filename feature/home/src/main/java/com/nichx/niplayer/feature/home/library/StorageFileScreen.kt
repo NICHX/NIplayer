@@ -4,7 +4,6 @@ import com.nichx.niplayer.feature.home.R
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
-import android.net.Uri
 import android.app.Activity
 import android.os.Build
 import android.provider.MediaStore
@@ -22,11 +21,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.BorderStroke
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,8 +66,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.ArrowDownward
@@ -93,7 +87,6 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Lock
@@ -103,7 +96,6 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PhotoLibrary
 
-import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
@@ -119,7 +111,6 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.SortByAlpha
 import androidx.compose.material.icons.rounded.SwapVerticalCircle
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import com.nichx.niplayer.designsystem.components.DownloadDialogShell
@@ -135,7 +126,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
@@ -147,7 +137,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -186,8 +175,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.ExperimentalSettings
@@ -197,7 +184,6 @@ import com.nichx.niplayer.datastore.OnlineMatchCache
 import com.nichx.niplayer.designsystem.components.NiAutoSizeText
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
-import com.nichx.niplayer.designsystem.components.NiProgressTrack
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
@@ -223,6 +209,7 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.Shadow
+import java.util.Locale
 
 // 主 FAB 底部偏移，与媒体库页"新增媒体库"按钮位置保持一致
 // （该值已包含对应用底部导航栏 NiBottomBar 的避让）
@@ -3393,7 +3380,8 @@ private fun formatFileSize(bytes: Long): String {
         size /= 1024
         unitIndex++
     }
-    return if (unitIndex == 0) "${bytes} B" else String.format("%.1f %s", size, units[unitIndex])
+    // Locale.ROOT：容量展示与区域无关，保持小数点恒为 "."（与 feature:player 一致）
+    return if (unitIndex == 0) "${bytes} B" else String.format(Locale.ROOT, "%.1f %s", size, units[unitIndex])
 }
 
 /**
@@ -4421,7 +4409,7 @@ private fun ActionBarItem(
 }
 
 private fun formatUploadSpeed(bytesPerSec: Long): String = when {
-    bytesPerSec >= 1000 * 1000 -> String.format("%.1f MB/s", bytesPerSec / (1000.0 * 1000.0))
+    bytesPerSec >= 1000 * 1000 -> String.format(Locale.ROOT, "%.1f MB/s", bytesPerSec / (1000.0 * 1000.0))
     bytesPerSec >= 1000 -> "${bytesPerSec / 1000} KB/s"
     else -> "$bytesPerSec B/s"
 }

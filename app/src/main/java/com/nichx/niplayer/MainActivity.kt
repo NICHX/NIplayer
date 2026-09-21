@@ -20,20 +20,14 @@ import androidx.core.view.WindowCompat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -53,7 +47,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import java.text.SimpleDateFormat
@@ -109,7 +102,6 @@ import com.nichx.niplayer.feature.player.AudioPlaybackManager
 import com.nichx.niplayer.feature.player.AudioPlayerScreen
 import com.nichx.niplayer.feature.player.MusicBar
 import com.nichx.niplayer.feature.player.PlayerActivity
-import com.nichx.niplayer.feature.player.PlayerScreen
 import com.nichx.niplayer.navigation.NiNavHost
 import com.nichx.niplayer.navigation.Routes
 import dagger.hilt.android.AndroidEntryPoint

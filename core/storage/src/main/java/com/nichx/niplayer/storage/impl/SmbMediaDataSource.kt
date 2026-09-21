@@ -2,7 +2,6 @@ package com.nichx.niplayer.storage.impl
 
 import android.media.MediaDataSource
 import android.util.Log
-import org.codelibs.jcifs.smb.CIFSContext
 import org.codelibs.jcifs.smb.SmbRandomAccess
 import org.codelibs.jcifs.smb.impl.SmbFile
 
@@ -20,13 +19,12 @@ import org.codelibs.jcifs.smb.impl.SmbFile
  * 性能：使用 [SmbRandomAccess.seek]（SMB 协议级 seek，不产生数据下载），
  * 避免 [InputStream.skip] 读取-丢弃导致的带宽浪费。
  *
- * @param context 已认证的 CIFSContext
- * @param url 文件的 smb:// 完整 URL
+ * @param fileProvider 目标文件的 [SmbFile] 工厂（重试时会重新打开，故每次调用返回新实例）。
+ *   不用 URL 字符串是因为 jcifs 拼 URL 时文件名里的 `?` 会被当作 query 截断（#12）。
  * @param fileSize 文件大小
  */
 class SmbMediaDataSource(
-    private val context: CIFSContext,
-    private val url: String,
+    private val fileProvider: () -> SmbFile,
     private val fileSize: Long,
 ) : MediaDataSource() {
 
@@ -38,10 +36,10 @@ class SmbMediaDataSource(
     private fun ensureOpen(): SmbRandomAccess {
         raf?.let { return it }
         synchronized(lock) {
-            if (raf != null) return raf!!
-            val sf = SmbFile(url, context)
-            raf = sf.openRandomAccess("r")
-            return raf!!
+            // 用局部变量做二次检查：直接 `if (raf != null) return raf!!` 会对可变属性
+            // 连续读取两次，Kotlin 无法保证两次读到同一个值（detekt NullCheckOnMutableProperty）。
+            raf?.let { return it }
+            return fileProvider().openRandomAccess("r").also { raf = it }
         }
     }
 
@@ -60,7 +58,7 @@ class SmbMediaDataSource(
         if (toRead == 0) return 0
 
         var lastError: Exception? = null
-        for (attempt in 0..MAX_READ_AT_RETRIES) {
+        repeat(MAX_READ_AT_RETRIES + 1) {
             if (Thread.currentThread().isInterrupted) {
                 Thread.currentThread().interrupt()
                 return -1

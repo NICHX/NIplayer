@@ -933,7 +933,7 @@ private fun mediaTypeLabel(type: MediaType): String = when (type) {
     MediaType.SMB_SERVER -> "SMB"
     MediaType.WEBDAV_SERVER -> "WebDAV"
     MediaType.QUICK_ACCESS -> stringResource(R.string.storage_type_quick)
-    else -> stringResource(R.string.storage_type_other)
+    MediaType.OTHER_STORAGE -> stringResource(R.string.storage_type_other)
 }
 
 private fun buildThumbnailModel(

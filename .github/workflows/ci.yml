@@ -34,8 +34,17 @@ jobs:
 
       - name: Ensure NDK & CMake
         run: |
-          if [ ! -d "$ANDROID_HOME/ndk/26.1.10909125" ] || [ ! -d "$ANDROID_HOME/cmake/3.22.1" ]; then
-            yes | sdkmanager "ndk;26.1.10909125" "cmake;3.22.1" >/dev/null
+          # NDK 版本从 gradle/libs.versions.toml 读取（与 player:ffmpeg 的 ndkVersion 同源），
+          # 避免两处各自硬编码漂移 —— 历史上此处安装的是 26.1.10909125，
+          # 而模块声明的是 28.2.13676358，该步骤等于无效。
+          NDK_VERSION=$(grep -E '^ndk[[:space:]]*=' gradle/libs.versions.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "$NDK_VERSION" ]; then
+            echo "::error::无法从 gradle/libs.versions.toml 读取 ndk 版本"
+            exit 1
+          fi
+          echo "NDK_VERSION=$NDK_VERSION"
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ] || [ ! -d "$ANDROID_HOME/cmake/3.22.1" ]; then
+            yes | sdkmanager "ndk;$NDK_VERSION" "cmake;3.22.1" >/dev/null
           fi
 
       - name: Set up Gradle
@@ -65,6 +74,54 @@ jobs:
             **/build/test-results/**
           if-no-files-found: ignore
 
+  static-analysis:
+    name: Static Analysis (detekt)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+
+      - name: Ensure NDK & CMake
+        run: |
+          NDK_VERSION=$(grep -E '^ndk[[:space:]]*=' gradle/libs.versions.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "$NDK_VERSION" ]; then
+            echo "::error::无法从 gradle/libs.versions.toml 读取 ndk 版本"
+            exit 1
+          fi
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ] || [ ! -d "$ANDROID_HOME/cmake/3.22.1" ]; then
+            yes | sdkmanager "ndk;$NDK_VERSION" "cmake;3.22.1" >/dev/null
+          fi
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # 必须用 detektMain / detektTest（带类型解析），不能用裸 `detekt`：
+      # 后者没有绑定上下文，ForbiddenMethodCall、MissingUseCall、UnusedImport 等
+      # 依赖符号解析的规则会静默地一条都不报 —— 看起来启用、实则形同虚设。
+      # 规则白名单与各条关闭理由见 config/detekt/detekt.yml 头部。
+      - name: Run detekt
+        run: ./gradlew detektMain detektTest
+
+      - name: Upload detekt reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: detekt-reports
+          path: '**/build/reports/detekt/**'
+          if-no-files-found: ignore
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -90,8 +147,17 @@ jobs:
 
       - name: Ensure NDK & CMake
         run: |
-          if [ ! -d "$ANDROID_HOME/ndk/26.1.10909125" ] || [ ! -d "$ANDROID_HOME/cmake/3.22.1" ]; then
-            yes | sdkmanager "ndk;26.1.10909125" "cmake;3.22.1" >/dev/null
+          # NDK 版本从 gradle/libs.versions.toml 读取（与 player:ffmpeg 的 ndkVersion 同源），
+          # 避免两处各自硬编码漂移 —— 历史上此处安装的是 26.1.10909125，
+          # 而模块声明的是 28.2.13676358，该步骤等于无效。
+          NDK_VERSION=$(grep -E '^ndk[[:space:]]*=' gradle/libs.versions.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "$NDK_VERSION" ]; then
+            echo "::error::无法从 gradle/libs.versions.toml 读取 ndk 版本"
+            exit 1
+          fi
+          echo "NDK_VERSION=$NDK_VERSION"
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ] || [ ! -d "$ANDROID_HOME/cmake/3.22.1" ]; then
+            yes | sdkmanager "ndk;$NDK_VERSION" "cmake;3.22.1" >/dev/null
           fi
 
       - name: Set up Gradle

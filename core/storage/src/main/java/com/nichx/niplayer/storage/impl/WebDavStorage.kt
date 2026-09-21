@@ -524,7 +524,7 @@ class WebDavStorage(
      * 3. 最后尝试 PUT 带数据的文件到目录路径（无尾部斜杠），部分服务器仅接受非空 PUT
      * 4. 三次都失败则返回 false
      */
-    private suspend fun createDirectoryViaPutFallback(path: String): Boolean {
+    private fun createDirectoryViaPutFallback(path: String): Boolean {
         val emptyBody = ByteArray(0).toRequestBody(OCTET_STREAM)
         val dummyBody = byteArrayOf(0x00).toRequestBody(OCTET_STREAM)
 
@@ -586,7 +586,7 @@ class WebDavStorage(
 
         // 诊断：发送 OPTIONS 请求查看服务器支持的方法
         try {
-            val optionsResponse = client.newCall(
+            client.newCall(
                 buildRequest(baseUrl).method("OPTIONS", null).build()
             ).execute().use { response ->
                 val allow = response.header("Allow", "N/A")
@@ -597,7 +597,7 @@ class WebDavStorage(
 
         // 诊断：PROPFIND 根目录 Depth:1 查看已有目录结构
         try {
-            val rootList = client.newCall(
+            client.newCall(
                 buildRequest(baseUrl)
                     .method("PROPFIND", newPropfindBody())
                     .header("Depth", "1")

@@ -4,6 +4,7 @@ import com.nichx.niplayer.subtitle.info.Caption
 import com.nichx.niplayer.subtitle.info.Style
 import com.nichx.niplayer.subtitle.info.Time
 import com.nichx.niplayer.subtitle.info.TimedTextObject
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -25,7 +26,7 @@ class AssOverrideParserTest {
         val m = (ms / 60_000) % 60
         val s = (ms / 1_000) % 60
         val milli = ms % 1_000
-        return "%02d:%02d:%02d,%03d".format(h, m, s, milli)
+        return String.format(Locale.ROOT, "%02d:%02d:%02d,%03d", h, m, s, milli)
     }
 
     private val tto = TimedTextObject()

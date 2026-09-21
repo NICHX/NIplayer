@@ -1,0 +1,561 @@
+# detekt 配置（工程化 E5）
+#
+# 策略：**显式白名单**，而不是「默认规则集减去噪声规则」。
+#
+# 1. `buildUponDefaultConfig = false`，本文件是唯一真相；未在此启用的规则一律关闭。
+#    这样 detekt 升级默认规则集时不会静默改变本项目的门禁范围 —— CI 的红绿只由本文件决定。
+# 2. 当前只启用**能在存量代码上全绿**的高信号规则。规则集扩充的路径是：
+#    新增一条规则 → 全量跑一次 → 修掉真实问题（或明确记录为有意豁免）→ 才允许留在白名单里。
+#    不允许「先把规则全打开、再加一堆 ignore」的写法，那等于把门禁变成噪声。
+# 3. 每条被有意关闭的规则都在下方以 `active: false` 保留，便于后续逐条评估开启成本。
+#
+# 维护：本文件由 detekt 默认配置裁剪而来，结构（规则集 / 规则名 / 配置键）与上游一一对应，
+# 因此可以直接把上游默认值粘回来作为调参起点。
+
+config:
+  validation: true
+  warningsAsErrors: false
+  checkExhaustiveness: false
+
+comments:
+  active: true
+  AbsentOrWrongFileLicense:
+    active: false
+  DeprecatedBlockTag:
+    active: false
+  DocumentationOverPrivateFunction:
+    active: false
+  DocumentationOverPrivateProperty:
+    active: false
+  EndOfSentenceFormat:
+    active: false
+  KDocReferencesNonPublicProperty:
+    active: false
+  OutdatedDocumentation:
+    active: false
+  UndocumentedPublicClass:
+    active: false
+  UndocumentedPublicFunction:
+    active: false
+  UndocumentedPublicProperty:
+    active: false
+
+complexity:
+  active: true
+  CognitiveComplexMethod:
+    active: false
+  ComplexCondition:
+    active: false
+  ComplexInterface:
+    active: false
+  CyclomaticComplexMethod:
+    active: false
+  LabeledExpression:
+    active: false
+  LargeClass:
+    active: false
+  LongMethod:
+    active: false
+  LongParameterList:
+    active: false
+  MethodOverloading:
+    active: false
+  NamedArguments:
+    active: false
+  NestedBlockDepth:
+    active: false
+  NestedScopeFunctions:
+    active: false
+  ReplaceSafeCallChainWithRun:
+    active: false
+  StringLiteralDuplication:
+    active: false
+  TooManyFunctions:
+    active: false
+
+coroutines:
+  active: true
+  CoroutineLaunchedInTestWithoutRunTest:
+    active: true
+  GlobalCoroutineUsage:
+    active: true
+  InjectDispatcher:
+    active: false
+  RedundantSuspendModifier:
+    active: true
+  SleepInsteadOfDelay:
+    active: true
+# SuspendFunInFinallySection：**11 处已全部修复**（2026-09-21），但暂不启用 —— 与下一条成对评估（见下）。
+  SuspendFunInFinallySection:
+    active: false
+# SuspendFunSwallowedCancellation：**部分修复**（2026-09-21：89 处中已修 34 处），暂不启用。
+#   已修：core/thumbnail（14）、core/storage 的 SmbStorage/VideoStorage/DownloadManager 读流与写文件路径、
+#         core/sync（1）、以及 feature 两模块里 11 处 finally 清理的配套改造。
+#   仍剩 55 处：feature/home 约 37（无 src/test）、feature/player 约 16（**有** src/test，见 LrcParserTest），
+#         外加 core 的 2 处「任务边界有意吞掉取消」（DownloadManager.processTask / UploadManager.processTask，
+#         与已用变异测试固化的 cancel/pause 竞态设计耦合，需先确认可否改写再动）。
+#   ⚠️ 规则语义（2026-09-21 用探针实测，非文档推测）：
+#     重抛必须是**独立 catch 子句的首条语句**。以下写法**都会被报**：
+#       · `catch (e: Exception) { if (e is CancellationException) throw e; … }`（守卫式，非首条）
+#       · `catch (e: Exception) { …; throw e }`（末尾无条件重抛）
+#       · `catch (e: CancellationException) { log(); throw e }`（重抛非首条）
+#     唯一被接受的写法：`catch (e: CancellationException) { throw e }` 紧随 try、位于宽 catch 之前。
+#   ⚠️ finally 里的 suspend 清理：只接受**裸** `withContext(NonCancellable) { suspendCall() }`。
+#     以下写法**仍会被报**：`Dispatchers.IO + NonCancellable`、`NonCancellable + Dispatchers.IO`、
+#     `withContext(NonCancellable) { withContext(IO) { … } }`、以及在其外包 try/catch。
+#     且在 finally 内 `throw` 会触发已启用的 ThrowingExceptionFromFinally —— 两条规则互相冲突。
+#     结论：凡「必须吞掉 close 失败」或「必须指定 IO 调度器」的清理，正确做法是把清理**移出 finally**
+#     （前提是同一 try 的 catch 都不重抛，故清理必然执行）。
+  SuspendFunSwallowedCancellation:
+    active: false
+  SuspendFunWithCoroutineScopeReceiver:
+    active: true
+  SuspendFunWithFlowReturnType:
+    active: true
+
+empty-blocks:
+  active: true
+  EmptyCatchBlock:
+    active: true
+  EmptyClassBlock:
+    active: false
+  EmptyDefaultConstructor:
+    active: false
+  EmptyDoWhileBlock:
+    active: false
+  EmptyElseBlock:
+    active: false
+  EmptyFinallyBlock:
+    active: true
+  EmptyForBlock:
+    active: false
+  EmptyFunctionBlock:
+    active: false
+  EmptyIfBlock:
+    active: false
+  EmptyInitBlock:
+    active: false
+  EmptyKotlinFile:
+    active: false
+  EmptySecondaryConstructor:
+    active: false
+  EmptyTryBlock:
+    active: true
+  EmptyWhenBlock:
+    active: false
+  EmptyWhileBlock:
+    active: false
+
+exceptions:
+  active: true
+  ErrorUsageWithThrowable:
+    active: false
+  ExceptionRaisedInUnexpectedLocation:
+    active: false
+  InstanceOfCheckForException:
+    active: true
+  NotImplementedDeclaration:
+    active: false
+  ObjectExtendsThrowable:
+    active: true
+  PrintStackTrace:
+    active: true
+  RethrowCaughtException:
+    active: true
+  ReturnFromFinally:
+    active: true
+  SwallowedException:
+    active: false
+  ThrowingExceptionFromFinally:
+    active: true
+  ThrowingExceptionInMain:
+    active: false
+  ThrowingExceptionsWithoutMessageOrCause:
+    active: false
+  ThrowingNewInstanceOfSameException:
+    active: true
+  TooGenericExceptionCaught:
+    active: false
+  TooGenericExceptionThrown:
+    active: false
+
+naming:
+  active: true
+  BooleanPropertyNaming:
+    active: false
+  ClassNaming:
+    active: false
+  ConstructorParameterNaming:
+    active: false
+  EnumNaming:
+    active: false
+  ForbiddenClassName:
+    active: false
+  FunctionNameMaxLength:
+    active: false
+  FunctionNameMinLength:
+    active: false
+  FunctionNaming:
+    active: false
+  FunctionParameterNaming:
+    active: false
+  InvalidPackageDeclaration:
+    active: false
+  LambdaParameterNaming:
+    active: false
+  MatchingDeclarationName:
+    active: false
+  MemberNameEqualsClassName:
+    active: false
+  NoNameShadowing:
+    active: false
+  NonBooleanPropertyPrefixedWithIs:
+    active: false
+  ObjectPropertyNaming:
+    active: false
+  PackageNaming:
+    active: false
+  TopLevelPropertyNaming:
+    active: false
+  VariableMaxLength:
+    active: false
+  VariableMinLength:
+    active: false
+  VariableNaming:
+    active: false
+
+performance:
+  active: true
+  ArrayPrimitive:
+    active: true
+  CouldBeSequence:
+    active: false
+  ForEachOnRange:
+    active: true
+# SpreadOperator：实测 3 处全部是 vararg API 的必需展开 ——
+#   NiSnackbarHost 的 stringResource(id, vararg Any)、ExtendFolderBackupTable / VideoScanner 的
+#   Room @Insert(vararg entity)。规则本意是「先用 toTypedArray() 再展开」造成的一次数组拷贝，
+#   但这两个场景没有 List 重载可换，属微优化而非缺陷。若要保留信号，应改为给 DAO 增加 List 重载，
+#   而不是靠这条规则报警。
+  SpreadOperator:
+    active: false
+  UnnecessaryInitOnArray:
+    active: true
+  UnnecessaryPartOfBinaryExpression:
+    active: false
+  UnnecessaryTemporaryInstantiation:
+    active: true
+  UnnecessaryTypeCasting:
+    active: true
+
+potential-bugs:
+  active: true
+  AvoidReferentialEquality:
+    active: true
+  CastNullableToNonNullableType:
+    active: true
+  CastToNullableType:
+    active: false
+  CharArrayToStringCall:
+    active: true
+  Deprecation:
+    active: false
+  DontDowncastCollectionTypes:
+    active: true
+# DoubleMutabilityForCollection：var + 可变集合（3 处）：SmbParallelInputStream 的 channels/threads、
+    # SubtitleOverlay.current 均为刻意的可变缓冲，改成不可变会破坏热路径语义，暂缓。
+  DoubleMutabilityForCollection:
+    active: false
+# ElseCaseInsteadOfExhaustiveWhen：已启用（2026-09-21）。原 22 处 enum/sealed 的 when 用 else 兜底，
+#   新增枚举值/子类时不会编译报错，属真实缺陷。已逐处改为显式列出分支，
+#   并把 SubtitleOverlay.computePosition 里三层「嵌套 when + else」提为一次穷尽 when。
+#   改动由编译器验证（漏列分支即编译失败），故不依赖新测试。
+  ElseCaseInsteadOfExhaustiveWhen:
+    active: true
+  EqualsAlwaysReturnsTrueOrFalse:
+    active: true
+  EqualsWithHashCodeExist:
+    active: true
+  ExitOutsideMain:
+    active: true
+  ExplicitGarbageCollectionCall:
+    active: true
+  HasPlatformType:
+    active: false
+  IgnoredReturnValue:
+    active: false
+# ImplicitDefaultLocale：已启用（2026-09-21）。原 21 处 String.format / "…".format 未指定 Locale，
+#   在土耳其语（i/İ 大小写映射）与阿拉伯语（数字字形）等区域会产出错误结果。
+#   逐处判定取值：十六进制摘要、SRT 时间码、文件大小·速率·时长·dB 展示 → 一律 Locale.ROOT，
+#   与区域无关、保持 ASCII 数字与 "." 小数点（与 feature:player 既有写法一致）。
+  ImplicitDefaultLocale:
+    active: true
+  ImplicitUnitReturnType:
+    active: false
+  InvalidRange:
+    active: true
+  IteratorHasNextCallsNextMethod:
+    active: true
+  IteratorNotThrowingNoSuchElementException:
+    active: true
+  LateinitUsage:
+    active: false
+  MapGetWithNotNullAssertionOperator:
+    active: true
+  MissingPackageDeclaration:
+    active: true
+  MissingSuperCall:
+    active: true
+# MissingUseCall：实测误报：Storage.openInputStream 这类「把流交给调用方关闭」的工厂函数、
+    # 以及 StringWriter（close 是空操作）都会被判为「未用 use」。规则只看调用点，看不到所有权语义。
+  MissingUseCall:
+    active: false
+  NullCheckOnMutableProperty:
+    active: true
+  NullableToStringCall:
+    active: false
+# PropertyUsedBeforeDeclaration：实测误报：VrSettings 等 mmkv 包装类里 `const val` 声明在使用点之后是合法的，
+    # 且 const 没有初始化顺序问题。规则无法区分 const 与非 const。
+  PropertyUsedBeforeDeclaration:
+    active: false
+  UnconditionalJumpStatementInLoop:
+    active: true
+  UnnamedParameterUse:
+    active: false
+  UnnecessaryNotNullCheck:
+    active: false
+  UnnecessaryNotNullOperator:
+    active: false
+  UnnecessarySafeCall:
+    active: false
+  UnreachableCatchBlock:
+    active: true
+  UnreachableCode:
+    active: true
+  UnsafeCallOnNullableType:
+    active: false
+  UnsafeCast:
+    active: true
+  UnusedUnaryOperator:
+    active: true
+  UselessPostfixExpression:
+    active: true
+  WrongEqualsTypeParameter:
+    active: true
+
+style:
+  active: true
+  AbstractClassCanBeConcreteClass:
+    active: false
+  AbstractClassCanBeInterface:
+    active: false
+  AlsoCouldBeApply:
+    active: false
+  BracesOnIfStatements:
+    active: false
+  BracesOnWhenStatements:
+    active: false
+  CanBeNonNullable:
+    active: false
+  CascadingCallWrapping:
+    active: false
+  ClassOrdering:
+    active: false
+  CollapsibleIfStatements:
+    active: false
+  DataClassContainsFunctions:
+    active: false
+  DataClassShouldBeImmutable:
+    active: false
+  DestructuringDeclarationWithTooManyEntries:
+    active: false
+  DoubleNegativeExpression:
+    active: false
+  DoubleNegativeLambda:
+    active: false
+  EqualsNullCall:
+    active: true
+  EqualsOnSignatureLine:
+    active: false
+  ExplicitCollectionElementAccessMethod:
+    active: false
+  ExplicitItLambdaMultipleParameters:
+    active: false
+  ExplicitItLambdaParameter:
+    active: false
+  ExpressionBodySyntax:
+    active: false
+  ForbiddenAnnotation:
+    active: false
+  ForbiddenComment:
+    active: true
+    comments:
+      - reason: '项目约定：技术债只进审计文档，代码里不留 TODO/FIXME/HACK 标记'
+        value: 'TODO:'
+      - reason: '同上'
+        value: 'FIXME:'
+      - reason: '同上'
+        value: 'HACK:'
+      - reason: 'STOPSHIP 是发版阻断标记，不应留在主干'
+        value: 'STOPSHIP:'
+    allowedPatterns: ''
+  ForbiddenImport:
+    active: false
+  ForbiddenMethodCall:
+    active: true
+    methods:
+      - reason: '阻塞线程。协程里用 delay()，普通线程用等待/通知机制'
+        value: 'java.lang.Thread.sleep'
+      - reason: 'Android 应用不应主动结束进程，应走 finish()/finishAffinity()'
+        value: 'java.lang.System.exit'
+      - reason: '无法配置输出流与级别，应使用 android.util.Log 或模块日志'
+        value: 'kotlin.io.print'
+      - reason: '同上'
+        value: 'kotlin.io.println'
+  ForbiddenNamedParam:
+    active: false
+  ForbiddenOptIn:
+    active: false
+  ForbiddenSuppress:
+    active: false
+  ForbiddenVoid:
+    active: false
+  FunctionOnlyReturningConstant:
+    active: false
+  LoopWithTooManyJumpStatements:
+    active: false
+  MagicNumber:
+    active: false
+  MandatoryBracesLoops:
+    active: false
+  MaxChainedCallsOnSameLine:
+    active: false
+  MaxLineLength:
+    active: false
+  MayBeConstant:
+    active: false
+  ModifierOrder:
+    active: true
+  MultilineLambdaItParameter:
+    active: false
+  MultilineRawStringIndentation:
+    active: false
+  NestedClassesVisibility:
+    active: false
+  NewLineAtEndOfFile:
+    active: true
+  NoTabs:
+    active: true
+  NullableBooleanCheck:
+    active: false
+  ObjectLiteralToLambda:
+    active: false
+  OptionalAbstractKeyword:
+    active: false
+  OptionalUnit:
+    active: false
+  ProtectedMemberInFinalClass:
+    active: false
+  RangeUntilInsteadOfRangeTo:
+    active: false
+  RedundantConstructorKeyword:
+    active: false
+  RedundantExplicitType:
+    active: false
+  RedundantHigherOrderMapUsage:
+    active: false
+  RedundantVisibilityModifier:
+    active: true
+  ReturnCount:
+    active: false
+  SafeCast:
+    active: false
+  SerialVersionUIDInSerializableClass:
+    active: false
+  SpacingAfterPackageAndImports:
+    active: false
+  StringShouldBeRawString:
+    active: false
+  ThrowsCount:
+    active: false
+  TrailingWhitespace:
+    active: true
+  TrimMultilineRawString:
+    active: false
+  UnderscoresInNumericLiterals:
+    active: false
+  UnnecessaryAny:
+    active: false
+  UnnecessaryApply:
+    active: false
+  UnnecessaryBackticks:
+    active: false
+  UnnecessaryBracesAroundTrailingLambda:
+    active: false
+  UnnecessaryFilter:
+    active: false
+  UnnecessaryFullyQualifiedName:
+    active: false
+  UnnecessaryInheritance:
+    active: false
+  UnnecessaryInnerClass:
+    active: false
+  UnnecessaryLet:
+    active: true
+  UnnecessaryParentheses:
+    active: false
+  UnnecessaryReversed:
+    active: false
+  UnusedImport:
+    active: true
+  UnusedParameter:
+    active: false
+  UnusedPrivateClass:
+    active: true
+# UnusedPrivateFunction：实测误报：ThumbnailManager.extractAudioCoverFromUrl 实际有 7 处引用仍被判为未使用。
+  UnusedPrivateFunction:
+    active: false
+# UnusedPrivateProperty：实测误报：WebDavStorage.sharedHttpClient（在 client 初始化器里被引用）、
+    # SmbAddressing.shareName（在 shareSegment 初始化器里被引用）均被误判为未使用。
+  UnusedPrivateProperty:
+    active: false
+    allowedNames: 'ignored|expected|serialVersionUID'
+  UnusedVariable:
+    active: true
+  UseAnyOrNoneInsteadOfFind:
+    active: false
+  UseArrayLiteralsInAnnotations:
+    active: false
+  UseCheckNotNull:
+    active: false
+  UseCheckOrError:
+    active: false
+  UseDataClass:
+    active: false
+  UseEmptyCounterpart:
+    active: false
+  UseIfEmptyOrIfBlank:
+    active: false
+  UseIfInsteadOfWhen:
+    active: false
+  UseIsNullOrEmpty:
+    active: false
+  UseLet:
+    active: false
+  UseOrEmpty:
+    active: false
+  UseRequire:
+    active: false
+  UseRequireNotNull:
+    active: false
+  UseSumOfInsteadOfFlatMapSize:
+    active: false
+  UselessCallOnNotNull:
+    active: true
+  UtilityClassWithPublicConstructor:
+    active: false
+  VarCouldBeVal:
+    active: true
+  WildcardImport:
+    active: true
+

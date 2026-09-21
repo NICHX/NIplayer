@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.Locale
 import javax.inject.Inject
 
 /**
@@ -268,8 +269,9 @@ class UpdateViewModel @Inject constructor(
 
     private fun formatSize(bytes: Long): String = when {
         bytes <= 0 -> ""
-        bytes >= 1000 * 1000 * 1000 -> "${"%.2f".format(bytes / (1000.0 * 1000 * 1000))} GB"
-        bytes >= 1000 * 1000 -> "${"%.1f".format(bytes / (1000.0 * 1000))} MB"
+        // Locale.ROOT：安装包体积展示与区域无关，保持小数点恒为 "."
+        bytes >= 1000 * 1000 * 1000 -> "${String.format(Locale.ROOT, "%.2f", bytes / (1000.0 * 1000 * 1000))} GB"
+        bytes >= 1000 * 1000 -> "${String.format(Locale.ROOT, "%.1f", bytes / (1000.0 * 1000))} MB"
         else -> "${bytes / 1000} KB"
     }
 }

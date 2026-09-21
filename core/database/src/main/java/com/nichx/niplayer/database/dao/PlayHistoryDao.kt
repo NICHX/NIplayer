@@ -186,20 +186,30 @@ interface PlayHistoryDao {
      * 3. `_` → `\_`
      * 配合 `ESCAPE '\'` 子句，转义后的 prefix 在 LIKE 模式下作为字面量匹配。
      *
+     * 路径边界修复：转义只解决了「元字符」问题，**没有对齐目录边界**。`storage_path` 形如
+     * `Movies/Action/x.mkv`，原 SQL 追加 `'%'` 会使屏蔽 `Movies/Action` 时连带命中
+     * `Movies/Action2/...`、`Movies/ActionExtended/...` 等兄弟目录。现改为追加 `'/%'`
+     * （并把 prefix 用 [RTRIM] 归一化，兼容调用方传入尾斜杠），只匹配真正的子路径。
+     * 边界对齐的语义与 Kotlin 侧 `EncryptedFolderManager.isWithinEncrypted` 的
+     * `normalized == root || normalized.startsWith("$root/")` 保持一致。
+     *
+     * 注：prefix 归一化后为空串时（即屏蔽存储根）本条件不匹配任何记录 —— 与旧行为不同，
+     * 但方向是安全的（不会误删），且实际调用方传入的都是非空目录路径。
+     *
      * 性能：REPLACE 嵌套对每个 storage_path 字段调用 3 次 REPLACE，storage_path 已
      * 有索引（unique_key 复合索引）时仍走全表扫描（LIKE 前缀匹配无法用索引）。
      * 此方法仅在屏蔽目录时调用（低频），全表扫描可接受。
      */
-    @Query("DELETE FROM play_history WHERE storage_path LIKE REPLACE(REPLACE(REPLACE(:prefix, '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_') || '%' ESCAPE '\\'")
+    @Query("DELETE FROM play_history WHERE storage_path LIKE REPLACE(REPLACE(REPLACE(RTRIM(:prefix, '/'), '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_') || '/%' ESCAPE '\\'")
     suspend fun deleteByStoragePathPrefix(prefix: String)
 
     /**
      * 删除指定存储源下目录前缀的播放历史（文件夹设置为加密时清理存量历史）。
      *
-     * 与 [deleteByStoragePathPrefix] 相同的 LIKE 转义逻辑，追加 [storageId] 条件，
+     * 与 [deleteByStoragePathPrefix] 相同的 LIKE 转义与路径边界逻辑，追加 [storageId] 条件，
      * 避免误删其他存储源同路径前缀的记录。
      */
-    @Query("DELETE FROM play_history WHERE storage_id = :storageId AND storage_path LIKE REPLACE(REPLACE(REPLACE(:prefix, '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_') || '%' ESCAPE '\\'")
+    @Query("DELETE FROM play_history WHERE storage_id = :storageId AND storage_path LIKE REPLACE(REPLACE(REPLACE(RTRIM(:prefix, '/'), '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_') || '/%' ESCAPE '\\'")
     suspend fun deleteByStoragePathPrefixAndStorageId(storageId: Int, prefix: String)
 
     // ==================== 云同步删除 tombstone：匹配查询 ====================
@@ -213,16 +223,16 @@ interface PlayHistoryDao {
     @Query("SELECT * FROM play_history WHERE storage_id = (:storageId)")
     suspend fun getByStorageId(storageId: Int): List<PlayHistoryEntity>
 
-    /** 目录前缀匹配的播放历史（与 [deleteByStoragePathPrefix] 一致的 LIKE 转义）。 */
+    /** 目录前缀匹配的播放历史（与 [deleteByStoragePathPrefix] 一致的 LIKE 转义与路径边界）。 */
     @Query(
-        "SELECT * FROM play_history WHERE storage_path LIKE REPLACE(REPLACE(REPLACE(:prefix, '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_') || '%' ESCAPE '\\'"
+        "SELECT * FROM play_history WHERE storage_path LIKE REPLACE(REPLACE(REPLACE(RTRIM(:prefix, '/'), '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_') || '/%' ESCAPE '\\'"
     )
     suspend fun getByStoragePathPrefix(prefix: String): List<PlayHistoryEntity>
 
-    /** 指定存储源下目录前缀匹配的播放历史。 */
+    /** 指定存储源下目录前缀匹配的播放历史（与对应 DELETE 条件严格一致）。 */
     @Query(
         "SELECT * FROM play_history WHERE storage_id = :storageId AND " +
-            "storage_path LIKE REPLACE(REPLACE(REPLACE(:prefix, '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_') || '%' ESCAPE '\\'"
+            "storage_path LIKE REPLACE(REPLACE(REPLACE(RTRIM(:prefix, '/'), '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_') || '/%' ESCAPE '\\'"
     )
     suspend fun getByStoragePathPrefixAndStorageId(storageId: Int, prefix: String): List<PlayHistoryEntity>
 

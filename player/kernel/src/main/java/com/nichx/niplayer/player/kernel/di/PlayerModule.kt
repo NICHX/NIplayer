@@ -32,8 +32,14 @@ abstract class PlayerModule {
 
     companion object {
 
-        /** 播放器 HTTP 缓存目录名（与之前的实例私有 lazy 一致，复用既有缓存数据）。 */
-        private const val EXO_MEDIA_CACHE_DIR = "exo_media_cache"
+        /**
+         * 播放器 HTTP 缓存目录名（与之前的实例私有 lazy 一致，复用既有缓存数据）。
+         *
+         * 公开供缓存管理页引用：该目录由进程级 [SimpleCache] 单例独占（内部索引 + 目录锁），
+         * 不能用「直接递归删除文件」的方式清理，否则会使 SimpleCache 的内存索引与磁盘内容不一致。
+         * 上层需按名字识别并跳过它，故此处不隐藏该常量。
+         */
+        const val EXO_MEDIA_CACHE_DIR = "exo_media_cache"
 
         /**
          * 进程级 [SimpleCache] 单例。

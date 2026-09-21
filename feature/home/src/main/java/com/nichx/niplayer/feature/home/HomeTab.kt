@@ -1,6 +1,5 @@
 package com.nichx.niplayer.feature.home
 
-import com.nichx.niplayer.feature.home.R
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home

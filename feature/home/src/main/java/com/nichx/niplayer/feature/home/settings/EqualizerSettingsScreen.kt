@@ -53,6 +53,7 @@ import com.nichx.niplayer.designsystem.components.NiGlassSwitch
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import java.util.Locale
 
 private data class EqBand(val index: Int, val freqLabel: String)
 
@@ -403,8 +404,9 @@ private fun VerticalEqBandSlider(
 private fun formatGain(levelMb: Int): String {
     val db = levelMb / 100.0
     return when {
-        db > 0 -> String.format("+%.1f", db)
-        db < 0 -> String.format("%.1f", db)
+        // Locale.ROOT：dB 数值展示与区域无关，保持小数点恒为 "."
+        db > 0 -> String.format(Locale.ROOT, "+%.1f", db)
+        db < 0 -> String.format(Locale.ROOT, "%.1f", db)
         else -> "0"
     }
 }

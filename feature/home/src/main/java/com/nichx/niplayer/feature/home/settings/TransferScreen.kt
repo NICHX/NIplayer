@@ -52,6 +52,7 @@ import com.nichx.niplayer.designsystem.components.NiProgressTrack
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import java.util.Locale
 
 /** 传输管理中心的双 tab。 */
 enum class TransferTab { DOWNLOAD, UPLOAD }
@@ -426,11 +427,12 @@ private fun formatBytes(bytes: Long): String {
         size /= 1024
         unitIndex++
     }
-    return if (unitIndex == 0) "$bytes B" else String.format("%.1f %s", size, units[unitIndex])
+    // Locale.ROOT：容量/速率/剩余时间展示与区域无关，保持小数点与数字为 ASCII
+    return if (unitIndex == 0) "$bytes B" else String.format(Locale.ROOT, "%.1f %s", size, units[unitIndex])
 }
 
 private fun formatSpeed(bytesPerSec: Long): String = when {
-    bytesPerSec >= 1000 * 1000 -> String.format("%.1f MB/s", bytesPerSec / (1000.0 * 1000.0))
+    bytesPerSec >= 1000 * 1000 -> String.format(Locale.ROOT, "%.1f MB/s", bytesPerSec / (1000.0 * 1000.0))
     bytesPerSec >= 1000 -> "${bytesPerSec / 1000} KB/s"
     else -> "$bytesPerSec B/s"
 }
@@ -446,7 +448,7 @@ private fun formatEta(item: UploadItemUi): String {
     val m = (seconds % 3600) / 60
     val s = seconds % 60
     return when {
-        h > 0 -> String.format("%d:%02d:%02d", h, m, s)
-        else -> String.format("%d:%02d", m, s)
+        h > 0 -> String.format(Locale.ROOT, "%d:%02d:%02d", h, m, s)
+        else -> String.format(Locale.ROOT, "%d:%02d", m, s)
     }
 }

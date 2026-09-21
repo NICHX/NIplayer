@@ -52,7 +52,7 @@ import com.nichx.niplayer.designsystem.theme.NiExtraColors
  * 将分散的实现合并为单一页面：顶部展示应用版本，下方按分组列出所有开源依赖及其 license。
  *
  * 依赖列表硬编码（随 libs.versions.toml 同步更新），不读 assets 文件——
- * 许可证以 Apache 2.0 为主（另有 jcifs 的 LGPL 2.1、jsoup/BouncyCastle/SLF4J 的 MIT、
+ * 许可证以 Apache 2.0 为主（另有 jcifs 的 LGPL 2.1、BouncyCastle/SLF4J 的 MIT、
  * MMKV 的 BSD 3-Clause、juniversalchardet 的 MPL 1.1），
  * 完整 license 文本可通过依赖项的 URL 在线查看。
  *
@@ -418,13 +418,6 @@ enum class LicenseGroup(
                 license = "MPL 1.1",
                 url = "https://github.com/albfernandez/juniversalchardet",
                 licenseUrl = "https://www.mozilla.org/en-US/MPL/1.1/",
-            ),
-            LicenseDependency(
-                name = "jsoup",
-                version = "1.18.3",
-                license = "MIT",
-                url = "https://github.com/jhy/jsoup",
-                licenseUrl = "https://opensource.org/licenses/MIT",
             ),
         ),
     ),

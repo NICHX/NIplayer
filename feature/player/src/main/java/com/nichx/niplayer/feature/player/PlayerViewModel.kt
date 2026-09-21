@@ -8,7 +8,6 @@ import android.os.Build
 import android.os.Environment
 import android.os.Looper
 import android.provider.MediaStore
-import androidx.media3.common.C
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.text.Cue
@@ -186,16 +185,6 @@ class PlayerViewModel @Inject constructor(
     /** 当前是否为本地文件（已下载/缓存直链）来源，UI 据此隐藏下载按钮。 */
     private val _isLocalSource = MutableStateFlow(false)
     val isLocalSource: StateFlow<Boolean> = _isLocalSource.asStateFlow()
-
-    /**
-     * onCleared 跳过 player.release 标志位。
-     *
-     * bridgeToBackgroundPlayback 启动前置 true，onCleared 检查此值决定是否释放
-     * 前台 player。NonCancellable 协程完成后置 false。
-     * 防止 onCleared → player.release() 在后台播放器就绪前中断音频输出。
-     */
-    @Volatile
-    private var transitioningToBackground = false
 
     /**
      * PixelCopy 完成信号。
@@ -922,7 +911,10 @@ class PlayerViewModel @Inject constructor(
                     is PlaybackEvent.HdrDetected -> {
                         _hdrEvent.tryEmit(event.hdrType)
                     }
-                    else -> {}
+                    // 枚举穷尽化：这两个事件在 ViewModel 侧无需处理
+                    // （RenderingStart 由 UI 层消费，VideoSizeChanged 已同步到 videoSize StateFlow）
+                    is PlaybackEvent.RenderingStart,
+                    is PlaybackEvent.VideoSizeChanged -> Unit
                 }
             }
         }
@@ -1319,7 +1311,10 @@ class PlayerViewModel @Inject constructor(
             is PlaybackState.Paused,
             is PlaybackState.Ready,
             is PlaybackState.Ended -> player.play()
-            else -> Unit
+            // 枚举穷尽化：Idle/Buffering 起播无意义（未装载或仍在缓冲），Error 需用户显式重试
+            is PlaybackState.Idle,
+            is PlaybackState.Buffering,
+            is PlaybackState.Error -> Unit
         }
     }
 
@@ -1613,12 +1608,18 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val tempFile = copyUriToTempFile(uri) ?: return@launch
             try {
+                // 解析留在 IO 线程（ASS/SRT 解析可能耗时）
                 val tto = when {
                     mimeType.contains("ssa", ignoreCase = true) ||
                         mimeType.contains("ass", ignoreCase = true) -> FormatASS().parseFile(tempFile)
                     else -> FormatSRT().parseFile(tempFile)
                 }
-                subtitleEngine.load(tto, tempFile.name)
+                // 装载必须回到主线程：SubtitleEngine 声明「所有方法假定在主线程调用」，
+                // 其内部 parsed（ArrayList）/ startMsToIndex（TreeMap）均非线程安全，
+                // 而 update() 由播放位置驱动在主线程高频遍历同一批容器。
+                // 若在此处（IO 线程）直接 load()，会与 update() 并发读写，
+                // 可能抛 ConcurrentModificationException / IndexOutOfBoundsException 或渲染出错乱字幕。
+                withContext(Dispatchers.Main) { subtitleEngine.load(tto, tempFile.name) }
 
                 // 解析成功后持久化字幕到内部存储，并更新历史记录
                 persistSubtitle(tempFile, mimeType)
@@ -1676,7 +1677,8 @@ class PlayerViewModel @Inject constructor(
                         path.endsWith(".ssa", ignoreCase = true) -> FormatASS().parseFile(file)
                     else -> FormatSRT().parseFile(file)
                 }
-                subtitleEngine.load(tto, file.name)
+                // 同 addSubtitle：装载必须回到主线程，避免与主线程的 update() 并发读写引擎内部容器
+                withContext(Dispatchers.Main) { subtitleEngine.load(tto, file.name) }
             } catch (e: Exception) {
                 // CancellationException 必须重新抛出，遵守结构化并发
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -1902,7 +1904,8 @@ class PlayerViewModel @Inject constructor(
                     uploadTask = storage to file
                     storageTransferred = true
                 } finally {
-                    if (!storageTransferred) storage.close()
+                    // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
+                    if (!storageTransferred) withContext(NonCancellable) { storage.close() }
                 }
             } catch (_: Exception) {
                 // 缩略图生成失败不影响主流程
@@ -1917,7 +1920,10 @@ class PlayerViewModel @Inject constructor(
                 }
             } catch (_: Exception) {
             } finally {
-                try { storage.close() } catch (_: Exception) {}
+                // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
+                withContext(NonCancellable) {
+                    try { storage.close() } catch (_: Exception) {}
+                }
             }
         }
     }
@@ -1937,10 +1943,10 @@ class PlayerViewModel @Inject constructor(
         // 音频走 AudioPlaybackManager 的 ExoPlayer，视频走 NxPlayer；分别读取对应进度
         val position = if (isAudioPlayback) audioPlaybackManager.positionMs.value else player.positionMs.value
         val duration = if (isAudioPlayback) audioPlaybackManager.durationMs.value else player.durationMs.value
-        // 切换后台播放时跳过 release，由 bridgeToBackgroundPlayback 暂停后台就绪后的 player
-        if (!transitioningToBackground) {
-            player.release()
-        }
+        // 单 ExoPlayer 架构下音频播放权始终在 AudioPlaybackManager，已无「切换后台播放」的交接，
+        // 因此这里无条件 release。此前的 transitioningToBackground 开关自
+        // bridgeToBackgroundPlayback 废弃后已无任何写入点，守卫恒为真（detekt VarCouldBeVal 发现）。
+        player.release()
         // 释放 SubtitleEngine 持有的字幕数据，避免大字幕文件的列表占内存
         subtitleEngine.clear()
 

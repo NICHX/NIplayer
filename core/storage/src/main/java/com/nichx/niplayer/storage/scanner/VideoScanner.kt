@@ -58,15 +58,23 @@ class VideoScanner @Inject constructor(
     /**
      * 扫描指定扩展目录并同步到 DB。
      *
-     * 用于扫描管理页添加新扩展目录时的即时入库：只扫描新目录 + MediaStore，
-     * 合并去重后增量同步。
+     * 用于扫描管理页添加新扩展目录时的即时入库。
+     *
+     * **必须把「其余已登记的扩展目录」也纳入本次同步集合**：`syncToDatabase` 是**全量比对**
+     * （删除所有不在传入列表里的行），而新目录此时尚未写入 `extend_folder` 表，因此
+     * `scanExtendFolders()` 读不到它，必须手动并入 `extendVideos`。
+     * 原实现只传「新目录 + MediaStore」，会导致**此前所有扩展目录的视频行被误删**
+     * （用户表现为：添加一个新目录后，之前添加的目录里的视频从媒体库消失，
+     * 直到下次全量 [scan] 才恢复）。
      *
      * @return 新目录中扫描到的视频数量
      */
     suspend fun scanExtendFolder(folderPath: String): Int = withContext(Dispatchers.IO) {
         val extendVideos = traverseFolder(File(folderPath))
+        // 其余已登记扩展目录的视频（新目录尚未入库，需另行并入）
+        val otherExtendVideos = scanExtendFolders()
         val mediaStoreVideos = queryMediaStore()
-        val merged = mergeAndDeduplicate(mediaStoreVideos, extendVideos)
+        val merged = mergeAndDeduplicate(mediaStoreVideos, otherExtendVideos + extendVideos)
         syncToDatabase(merged)
         extendVideos.size
     }

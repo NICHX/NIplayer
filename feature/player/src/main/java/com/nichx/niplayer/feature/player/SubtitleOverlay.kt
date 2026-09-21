@@ -16,7 +16,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.AnnotatedString
@@ -457,35 +456,35 @@ private fun computePosition(
 
     // 按 align 自动布局
     val horizontalPadding = canvasWidth * 0.05f // 左右各留 5% 边距
-    return when (caption.align) {
-        SubtitleAlign.BOTTOM_LEFT, SubtitleAlign.MIDDLE_LEFT, SubtitleAlign.TOP_LEFT -> {
-            val x = horizontalPadding
-            val y = when (caption.align) {
-                SubtitleAlign.TOP_LEFT -> canvasHeight * 0.05f
-                SubtitleAlign.MIDDLE_LEFT -> (canvasHeight - textHeight) / 2f
-                else -> canvasHeight - textHeight - bottomPaddingPx
-            }
-            x to y
-        }
-        SubtitleAlign.BOTTOM_CENTER, SubtitleAlign.MIDDLE_CENTER, SubtitleAlign.TOP_CENTER -> {
-            val x = (canvasWidth - textWidth) / 2f
-            val y = when (caption.align) {
-                SubtitleAlign.TOP_CENTER -> canvasHeight * 0.05f
-                SubtitleAlign.MIDDLE_CENTER -> (canvasHeight - textHeight) / 2f
-                else -> canvasHeight - textHeight - bottomPaddingPx
-            }
-            x to y
-        }
-        SubtitleAlign.BOTTOM_RIGHT, SubtitleAlign.MIDDLE_RIGHT, SubtitleAlign.TOP_RIGHT -> {
-            val x = canvasWidth - textWidth - horizontalPadding
-            val y = when (caption.align) {
-                SubtitleAlign.TOP_RIGHT -> canvasHeight * 0.05f
-                SubtitleAlign.MIDDLE_RIGHT -> (canvasHeight - textHeight) / 2f
-                else -> canvasHeight - textHeight - bottomPaddingPx
-            }
-            x to y
-        }
+    // 垂直位置只由 align 的垂直分量决定，与水平分量无关。
+    // 原先在三个水平分支里各嵌一层 `when + else`，现提为一次穷尽 when（9 个取值全覆盖）
+    val y = when (caption.align) {
+        SubtitleAlign.TOP_LEFT,
+        SubtitleAlign.TOP_CENTER,
+        SubtitleAlign.TOP_RIGHT -> canvasHeight * 0.05f
+
+        SubtitleAlign.MIDDLE_LEFT,
+        SubtitleAlign.MIDDLE_CENTER,
+        SubtitleAlign.MIDDLE_RIGHT -> (canvasHeight - textHeight) / 2f
+
+        SubtitleAlign.BOTTOM_LEFT,
+        SubtitleAlign.BOTTOM_CENTER,
+        SubtitleAlign.BOTTOM_RIGHT -> canvasHeight - textHeight - bottomPaddingPx
     }
+    val x = when (caption.align) {
+        SubtitleAlign.BOTTOM_LEFT,
+        SubtitleAlign.MIDDLE_LEFT,
+        SubtitleAlign.TOP_LEFT -> horizontalPadding
+
+        SubtitleAlign.BOTTOM_CENTER,
+        SubtitleAlign.MIDDLE_CENTER,
+        SubtitleAlign.TOP_CENTER -> (canvasWidth - textWidth) / 2f
+
+        SubtitleAlign.BOTTOM_RIGHT,
+        SubtitleAlign.MIDDLE_RIGHT,
+        SubtitleAlign.TOP_RIGHT -> canvasWidth - textWidth - horizontalPadding
+    }
+    return x to y
 }
 
 /** 从 SubtitleColor 转 Compose Color，null 时用默认值。 */

@@ -3,6 +3,7 @@ package com.nichx.niplayer.storage.datasource
 import android.util.Log
 import java.io.IOException
 import java.io.InputStream
+import java.util.Locale
 
 /**
  * 异步预读 [InputStream] 包装器。
@@ -102,7 +103,8 @@ class PrefetchInputStream(
             // 兜底捕获 smbj NPE 等运行时异常（file 字段并发关闭后变 null）
             Log.w(TAG, "prefetch exception: ${e.javaClass.simpleName}: ${e.message}")
             synchronized(lock) {
-                error = if (e is IOException) e else IOException(e)
+                // IOException 已由上方 catch 分支处理，此处只可能是运行时异常
+                error = IOException(e)
                 lock.notifyAll()
             }
         }
@@ -225,5 +227,6 @@ class PrefetchInputStream(
         const val PREFETCH_CHUNK_SIZE = 256 * 1024
     }
 
-    private fun Double.format(digits: Int): String = "%.${digits}f".format(this)
+    // Locale.ROOT：仅用于日志输出，必须与区域无关（否则阿拉伯语等区域会产出非 ASCII 数字）
+    private fun Double.format(digits: Int): String = String.format(Locale.ROOT, "%.${digits}f", this)
 }

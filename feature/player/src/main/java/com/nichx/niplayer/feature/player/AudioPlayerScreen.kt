@@ -3,7 +3,6 @@ package com.nichx.niplayer.feature.player
 import android.content.res.Configuration
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -24,9 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -49,7 +46,6 @@ import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Speed
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -63,14 +59,11 @@ import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
 import com.nichx.niplayer.designsystem.components.NiDialogItem
 import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
-import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
 import com.nichx.niplayer.designsystem.components.NiAutoFocusAndShowKeyboard
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiListItemDialog
 import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
-import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
-import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -1027,10 +1020,6 @@ private fun TopBarActions(
         onMenuOpenChange(menuPage != MoreMenuPage.Idle)
     }
 
-    // 菜单卡片样式：与 NiPopupMenu 统一的磨砂风格（20dp 大圆角 + 不透明磨砂底色 + 细边框 + 阴影）
-    // 菜单位于独立 Popup 窗口，底色必须不透明，否则会把窗口垫层透出来形成多余浅色矩形
-    val menuShape = RoundedCornerShape(20.dp)
-    val menuBorderColor = niGlassBorderColor()
     val menuItemPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
 
     Row(verticalAlignment = Alignment.CenterVertically) {

@@ -50,7 +50,6 @@ class StorageDataSource private constructor(
     private var inputStream: InputStream? = null
     private var uri: Uri? = null
     private var bytesRemaining: Long = 0L
-    private var opened: Boolean = false
 
     override fun open(dataSpec: DataSpec): Long {
         transferInitializing(dataSpec)
@@ -110,7 +109,6 @@ class StorageDataSource private constructor(
         // SMB 流已内置多线程并行预读（SmbParallelInputStream），无需再包装
         inputStream = stream
         uri = dataSpec.uri
-        opened = true
 
         // 计算剩余可读字节
         val specLength = dataSpec.length
@@ -148,13 +146,18 @@ class StorageDataSource private constructor(
     override fun getUri(): Uri? = uri
 
     override fun close() {
-        opened = false
+        // 与 open() 的 transferStarted() 配对：BaseDataSource 要求成对通知，
+        // 原先缺失 transferEnded() 会使 TransferListener 收不到传输结束事件。
+        // 用 wasOpen 守卫，避免「未成功 open 就 close」（open 失败 / 重复 close）时
+        // 发出没有配对起始的结束事件。
+        val wasOpen = inputStream != null
         try {
             inputStream?.close()
         } catch (_: java.io.IOException) {
             // 忽略 close 异常
         }
         inputStream = null
+        if (wasOpen) transferEnded()
     }
 
     /**

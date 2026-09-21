@@ -151,19 +151,15 @@ dependencies {
     // Media3：媒体3 实际依赖由 :player:kernel 提供，:app 仅以传递依赖形式引入
     // UI / session 等组件（如 PlayerView、MediaSession）仍由 :app 直接依赖，供后续 UI 层使用
 
-    // Network（实际使用由 :core:network 提供，:app 仅传递依赖即可；
-    // 保留是为了未来 :app 直接构造 Retrofit/OkHttp 时无需额外配置）
-    implementation(libs.okhttp)
-    implementation(libs.retrofit)
-    implementation(libs.moshi)
-    // moshi-kotlin-codegen 由 :core:network 通过 KSP 统一处理；
-    // :app 当前无 @JsonClass 类，不在本模块配置 ksp(moshi-kotlin-codegen)
-    // 以避免 moshi 的 kapt deprecation 警告（hiltJavaCompileDebug 任务触发）
+    // Network：:app 自身**不使用** OkHttp / Retrofit / Moshi（全模块无相关 import），
+    // 使用方各自声明（:core:network / :core:database / :core:sync）。
+    // 原先在此重复声明属冗余，A5 于 2026-09-21 清理。
+    // moshi-kotlin-codegen 由 :core:network 通过 KSP 统一处理。
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
-    // KV
+    // KV：:app 的 NiApplication 直接调用 MMKV.initialize()，此声明**必需**（勿删）
     implementation(libs.mmkv)
 
     // Baseline Profile：安装后由 profileinstaller / 系统（Android 15+）AOT 编译启动热路径
@@ -173,9 +169,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
     implementation(libs.coil.network.okhttp)
-
-    // Other
-    implementation(libs.jsoup)
 
     // Test
     testImplementation(libs.junit)

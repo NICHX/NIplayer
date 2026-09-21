@@ -85,20 +85,20 @@ class UiStateTest {
 
     @Test
     fun `map 保持 Loading 状态`() {
-        val mapped = UiState.Loading.map { it.toString() }
+        val mapped = UiState.Loading.map { "mapped" }
         assertTrue(mapped is UiState.Loading)
     }
 
     @Test
     fun `map 保持 Empty 状态`() {
-        val mapped = UiState.Empty.map { it.toString() }
+        val mapped = UiState.Empty.map { "mapped" }
         assertTrue(mapped is UiState.Empty)
     }
 
     @Test
     fun `map 保持 Error 状态`() {
         val error = UiState.Error(AppError.Network())
-        val mapped = error.map { it.toString() }
+        val mapped = error.map { "mapped" }
         assertTrue(mapped is UiState.Error)
         assertEquals(error.error, (mapped as UiState.Error).error)
     }

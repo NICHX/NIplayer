@@ -23,6 +23,7 @@ import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -343,7 +344,8 @@ class HomeTabViewModel @Inject constructor(
                                 batchAccumulator[url] = thumbPath
                             }
                         } finally {
-                            storage.close()
+                            // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
+                            withContext(NonCancellable) { storage.close() }
                         }
                     } catch (_: Exception) { continue }
                 }
@@ -422,7 +424,8 @@ class HomeTabViewModel @Inject constructor(
                                 batchAccumulator["$sid:$path"] = thumbPath
                             }
                         } finally {
-                            storage.close()
+                            // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
+                            withContext(NonCancellable) { storage.close() }
                         }
                     } catch (_: Exception) { continue }
                 }
@@ -475,7 +478,8 @@ class HomeTabViewModel @Inject constructor(
                         try {
                             storage.testConnection()
                         } finally {
-                            storage.close()
+                            // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
+                            withContext(NonCancellable) { storage.close() }
                         }
                     }
                 } catch (_: Exception) {

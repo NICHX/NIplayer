@@ -1492,7 +1492,7 @@ class StorageFileViewModel @Inject constructor(
      * 细粒度清理，仅删除当前目录文件对应的本地缓存。
      */
     fun refreshThumbnails() {
-        val s = storage ?: return
+        storage ?: return
         val current = directoryStack.lastOrNull() ?: return
         val libId = currentLibrary?.id ?: return
         // 当前目录的文件列表快照（在协程外捕获，避免 listDirectory 重新加载后丢失）
@@ -2175,7 +2175,7 @@ class StorageFileViewModel @Inject constructor(
             when (it) {
                 MediaType.LOCAL_STORAGE, MediaType.EXTERNAL_STORAGE,
                 MediaType.SMB_SERVER, MediaType.WEBDAV_SERVER -> true
-                else -> false
+                MediaType.OTHER_STORAGE, MediaType.QUICK_ACCESS -> false
             }
         } ?: false
 

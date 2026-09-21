@@ -60,6 +60,7 @@ import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -347,9 +348,10 @@ private fun formatMiniTime(ms: Long): String {
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
     val seconds = totalSeconds % 60
+    // Locale.ROOT：时间展示必须为 ASCII 数字与 ":" 分隔符
     return if (hours > 0) {
-        "%d:%02d:%02d".format(hours, minutes, seconds)
+        String.format(Locale.ROOT, "%d:%02d:%02d", hours, minutes, seconds)
     } else {
-        "%d:%02d".format(minutes, seconds)
+        String.format(Locale.ROOT, "%d:%02d", minutes, seconds)
     }
 }

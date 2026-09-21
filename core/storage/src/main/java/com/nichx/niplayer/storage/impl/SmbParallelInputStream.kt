@@ -1,7 +1,6 @@
 package com.nichx.niplayer.storage.impl
 
 import android.util.Log
-import org.codelibs.jcifs.smb.CIFSContext
 import org.codelibs.jcifs.smb.SmbRandomAccess
 import org.codelibs.jcifs.smb.impl.SmbFile
 import java.io.InputStream
@@ -34,16 +33,15 @@ import java.util.concurrent.locks.ReentrantLock
  * - 改用 SmbFile.openRandomAccess("r") + seek(offset) 实现高效随机定位
  * - 每个预读通道在读取前通过 seek() 定位到目标 offset（不传输数据）
  *
- * @param context 已认证的 CIFSContext
- * @param url 文件的 smb:// 完整 URL
+ * @param fileProvider 目标文件的 [SmbFile] 工厂（每个预读通道需独立句柄，故每次调用返回新实例）。
+ *   不用 URL 字符串是因为 jcifs 拼 URL 时文件名里的 `?` 会被当作 query 截断（#12）。
  * @param fileSize 文件大小（<=0 时按无限流处理，读到 EOF 为止）
  * @param parallelism 并行预读线程数
  * @param chunkSize 单次读取块大小
  * @param maxBufferedChunks 最大缓冲 chunk 数（总缓冲 = chunkSize × maxBufferedChunks）
  */
 class SmbParallelInputStream(
-    private val context: CIFSContext,
-    private val url: String,
+    private val fileProvider: () -> SmbFile,
     private val fileSize: Long,
     private val parallelism: Int = DEFAULT_PARALLELISM,
     private val chunkSize: Int = DEFAULT_CHUNK_SIZE,
@@ -88,7 +86,7 @@ class SmbParallelInputStream(
             val opened = ArrayList<PrefetchChannel>(parallelism)
             try {
                 repeat(parallelism) {
-                    val sf = SmbFile(url, context)
+                    val sf = fileProvider()
                     val raf = sf.openRandomAccess("r")
                     opened.add(PrefetchChannel(raf = raf))
                 }
@@ -290,14 +288,15 @@ class SmbParallelInputStream(
         try {
             var total = 0
             var seq = consumeChunkSeq
-            while (chunks[seq] != null) {
-                val chunk = chunks[seq]!!
+            var chunk = chunks[seq]
+            while (chunk != null) {
                 total += if (seq == consumeChunkSeq) {
                     chunk.size - consumeOffsetInChunk
                 } else {
                     chunk.size
                 }
                 seq++
+                chunk = chunks[seq]
             }
             return total
         } finally {

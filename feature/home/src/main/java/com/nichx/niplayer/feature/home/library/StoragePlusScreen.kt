@@ -179,7 +179,9 @@ fun StoragePlusScreen(
                 MediaType.EXTERNAL_STORAGE -> ExternalCard(state, extraColors) {
                     treeLauncher.launch(null)
                 }
-                else -> Text(stringResource(R.string.storage_plus_unsupported_type))
+                MediaType.LOCAL_STORAGE,
+                MediaType.OTHER_STORAGE,
+                MediaType.QUICK_ACCESS -> Text(stringResource(R.string.storage_plus_unsupported_type))
             }
 
             state.testResult?.let { ok ->
@@ -299,7 +301,9 @@ private fun StorageTypeBadge(
         MediaType.WEBDAV_SERVER -> Triple(stringResource(R.string.storage_type_webdav), Icons.Filled.CloudQueue, extraColors.storageWebdavColor)
         MediaType.SMB_SERVER -> Triple(stringResource(R.string.storage_type_smb), Icons.Filled.CloudQueue, extraColors.storageSmbColor)
         MediaType.EXTERNAL_STORAGE -> Triple(stringResource(R.string.storage_type_external), Icons.Filled.FolderOpen, extraColors.storageExternalColor)
-        else -> Triple(stringResource(R.string.storage_type_unknown), Icons.Filled.Info, Color.Gray)
+        MediaType.LOCAL_STORAGE,
+        MediaType.OTHER_STORAGE,
+        MediaType.QUICK_ACCESS -> Triple(stringResource(R.string.storage_type_unknown), Icons.Filled.Info, Color.Gray)
     }
 
     Box(

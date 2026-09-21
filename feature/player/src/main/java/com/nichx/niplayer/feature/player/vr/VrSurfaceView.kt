@@ -16,7 +16,6 @@ import android.view.WindowManager
 import com.nichx.niplayer.player.kernel.NxPlayer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.FloatBuffer
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 

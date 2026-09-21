@@ -131,6 +131,7 @@
     <string name="cache_type_image_thumb">Image thumbnails</string>
     <string name="cache_type_seek_preview">Seek previews</string>
     <string name="cache_type_subtitle">Subtitles</string>
+    <string name="cache_type_player_cache">Playback cache</string>
 
     <!-- Download management (DownloadManagerScreen / DownloadManagerViewModel) -->
     <string name="download_dir_default_name">Download directory</string>
@@ -888,10 +889,11 @@
     <string name="cache_manager_clear_confirm">Clear “%1$s”? (%2$s)</string>
     <string name="cache_manager_clear_confirm_text">Clear</string>
     <string name="cache_manager_clear_all_title">Clear all cache</string>
-    <string name="cache_manager_clear_all_confirm">This will clear all cached data (%1$s). This action cannot be undone.</string>
+    <string name="cache_manager_clear_all_confirm">This will clear all caches except the playback cache (total %1$s). This action cannot be undone.</string>
     <string name="cache_manager_clear_all_confirm_text">Clear all</string>
     <string name="cache_manager_item_info">%1$s · %2$d files</string>
     <string name="cache_manager_clear_item">Clear</string>
+    <string name="cache_manager_protected_hint">This cache is used exclusively by the player and cannot be cleared here</string>
 
     <!-- Playlist detail / Quick access / Home tab additions -->
     <string name="playlist_detail_done">Done</string>

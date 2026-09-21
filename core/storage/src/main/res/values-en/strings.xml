@@ -6,6 +6,8 @@
     <string name="download_error_open_stream">Failed to open input stream</string>
     <string name="download_error_failed">Download failed</string>
     <string name="download_error_target_unsupported">Target storage is outdated. Please reset the download directory</string>
+    <string name="download_error_resume_mismatch">Local file does not match the resume progress</string>
+    <string name="download_error_incomplete">Download incomplete. The connection may have been interrupted, please retry</string>
 
     <!-- WebDAV HTTP errors -->
     <string name="webdav_error_401">Incorrect account or password. Please edit the storage source and re-enter credentials</string>

@@ -19,7 +19,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    ndkVersion = "28.2.13676358"
+    // 版本取自 gradle/libs.versions.toml 的 ndk（单一来源，CI 也从同一处读取）
+    ndkVersion = libs.versions.ndk.get()
 
     externalNativeBuild {
         cmake {

@@ -61,8 +61,6 @@ fun SubtitleStyleDialog(
     onStyleChanged: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
-
     // 本地 state（与 SubtitleSettings 同步）：用户修改后立即写回 MMKV 并触发 onStyleChanged
     var fontFamilyKey by remember { mutableStateOf(SubtitleSettings.fontFamilyKey) }
     var textSizeFraction by remember { mutableStateOf(SubtitleSettings.textSizeFraction) }

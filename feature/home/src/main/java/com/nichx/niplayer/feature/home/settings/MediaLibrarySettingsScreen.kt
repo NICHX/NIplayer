@@ -1,12 +1,10 @@
 package com.nichx.niplayer.feature.home.settings
 
 import com.nichx.niplayer.feature.home.R
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -213,7 +211,7 @@ fun MediaLibrarySettingsScreen(
                             MediaType.WEBDAV_SERVER -> "WebDAV"
                             MediaType.LOCAL_STORAGE -> stringResource(R.string.storage_type_local)
                             MediaType.EXTERNAL_STORAGE -> "SAF"
-                            else -> ""
+                            MediaType.OTHER_STORAGE, MediaType.QUICK_ACCESS -> ""
                         }
                         val libMode = ThumbnailSettings.getLibraryGenerationMode(lib.id)
                         val libWriteBack = ThumbnailSettings.getLibraryWriteBack(lib.id)

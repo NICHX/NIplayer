@@ -22,6 +22,7 @@ import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.storage.impl.WebDavMediaDataSource
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -36,8 +37,8 @@ import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.security.MessageDigest
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -281,6 +282,8 @@ class ThumbnailManager @Inject constructor(
             if (!success) {
                 Log.d(TAG, "saveFile returned false for $thumbPath（本地存储跳过上传）")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "uploadThumbnail failed: ${e.message}")
         }
@@ -360,7 +363,9 @@ class ThumbnailManager @Inject constructor(
                 val thumbDirPath = if (dirPath.isEmpty()) ".thumb" else "$dirPath/.thumb"
                 val thumbFiles = try {
                     storage.listFiles(ThumbDirFile(thumbDirPath))
-                } catch (e: Exception) {
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
                     emptyList()
                 }
 
@@ -387,7 +392,9 @@ class ThumbnailManager @Inject constructor(
                             isDirectory = true,
                         ) {}
                     )
-                } catch (e: Exception) {
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
                     emptyList()
                 }
 
@@ -461,9 +468,17 @@ class ThumbnailManager @Inject constructor(
                 // 非缩略图命名或 removeSuffix 无变化（无 -thumb 后缀）的项不处理
                 if (matched.isEmpty() || matched == tf.name) continue
                 if (matched !in validBaseNames) {
-                    runCatching { storage.deleteFile(tf) }
+                    try {
+                        storage.deleteFile(tf)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // 清理孤立缩略图失败不影响其余项
+                    }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "cleanUpOrphanThumbs failed: ${e.message}")
         }
@@ -607,6 +622,8 @@ class ThumbnailManager @Inject constructor(
                 storage.deleteFile(coverStorageFile)
                 Log.i(TAG, "deleteServerAudioCover: 已删除服务端封面 $coverPath")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "deleteServerAudioCover failed: ${e.message}")
         }
@@ -737,7 +754,11 @@ class ThumbnailManager @Inject constructor(
                     rawResult
                 }
             }
-            else -> {
+            // 枚举穷尽化：非成功结果统一清理临时文件后原样返回，
+            // 显式列出以免新增 ThumbnailResult 子类时静默走 else
+            is ThumbnailResult.TooShort,
+            is ThumbnailResult.Failed,
+            is ThumbnailResult.PermanentFailure -> {
                 tmpFile.delete()
                 rawResult
             }
@@ -875,6 +896,8 @@ class ThumbnailManager @Inject constructor(
                         )
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "deleteThumbnailsForVideo failed: ${e.message}")
             }
@@ -1235,18 +1258,23 @@ class ThumbnailManager @Inject constructor(
         val cacheFile = File(cacheDir, "${md5("$storageId-${videoFile.path}")}.jpg")
         if (cacheFile.exists()) return cacheFile.absolutePath
 
+        var written = false
         return try {
             val input = storage.openInputStream(thumbFile)
             cacheFile.parentFile?.mkdirs()
             FileOutputStream(cacheFile).use { out ->
                 input.use { it.copyTo(out) }
             }
+            written = true
             cacheFile.absolutePath
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "downloadThumbnail failed for ${videoFile.name}: ${e.message}")
-            // 下载失败删除可能损坏的半成品文件
-            cacheFile.delete()
             null
+        } finally {
+            // 失败或取消时删除可能损坏的半成品文件（成功时保留）
+            if (!written) cacheFile.delete()
         }
     }
 
@@ -1264,7 +1292,8 @@ class ThumbnailManager @Inject constructor(
 
     private fun md5(input: String): String {
         val bytes = MessageDigest.getInstance("MD5").digest(input.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
+        // Locale.ROOT：十六进制摘要必须与区域无关
+        return bytes.joinToString("") { String.format(Locale.ROOT, "%02x", it) }
     }
 
     /** 构造视频所在目录下的 `.thumb/` 子目录路径。 */
@@ -1336,6 +1365,8 @@ class ThumbnailManager @Inject constructor(
                 ) {},
                 "$newBasename-thumb.jpg",
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "renameServerThumbnail failed: ${e.message}")
         }
@@ -1375,6 +1406,8 @@ class ThumbnailManager @Inject constructor(
             if (!success) {
                 Log.d(TAG, "saveFile returned false for $coverPath（本地存储跳过上传）")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "uploadAudioCover failed: ${e.message}")
         }
@@ -1437,7 +1470,11 @@ class ThumbnailManager @Inject constructor(
             ) {}
             val coverBytes = try {
                 storage.openInputStream(coverStorageFile)?.use { it.readBytes() }
-            } catch (_: Exception) { null } ?: continue
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } ?: continue
 
             for (file in filesInDir) {
                 val cacheFile = File(audioCacheDir, "${md5("$storageId-${file.path}")}.jpg")
@@ -1465,7 +1502,9 @@ class ThumbnailManager @Inject constructor(
                 // 让其他目录继续尝试
                 val coverFiles = try {
                     storage.listFiles(CoverDirFile(coverDirPath))
-                } catch (e: Exception) {
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
                     emptyList()
                 }
 
@@ -1506,17 +1545,23 @@ class ThumbnailManager @Inject constructor(
         val cacheFile = File(audioCacheDir, "${md5("$storageId-${audioFile.path}")}.jpg")
         if (cacheFile.exists()) return cacheFile.absolutePath
 
+        var written = false
         return try {
             val input = storage.openInputStream(coverFile)
             cacheFile.parentFile?.mkdirs()
             FileOutputStream(cacheFile).use { out ->
                 input.use { it.copyTo(out) }
             }
+            written = true
             cacheFile.absolutePath
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "downloadAudioCover failed for ${audioFile.name}: ${e.message}")
-            cacheFile.delete()
             null
+        } finally {
+            // 失败或取消时删除可能损坏的半成品文件（成功时保留）
+            if (!written) cacheFile.delete()
         }
     }
 
@@ -1546,6 +1591,8 @@ class ThumbnailManager @Inject constructor(
     ): String? {
         val headerBytes = try {
             storage.readFileBytes(file, HEADER_READ_LIMIT)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "extractAudioCoverFromHeader read failed: ${e.message}")
             null
@@ -1618,6 +1665,8 @@ class ThumbnailManager @Inject constructor(
                         return cacheFile.absolutePath
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // 单个候选文件失败不影响其他候选
             }

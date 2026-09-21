@@ -197,9 +197,10 @@ fun LyricsView(
             rows.indexOfFirst { it.sentenceIndex == currentSentenceIndex }
         }
 
-        val viewportLines = with(density) {
-            (maxHeight / rowHeight).toInt().coerceAtLeast(3)
-        }.let { minOf(it, maxVisibleLines) }
+        val viewportLines = minOf(
+            with(density) { (maxHeight / rowHeight).toInt().coerceAtLeast(3) },
+            maxVisibleLines,
+        )
 
         val viewportHeightPx = with(density) { (rowHeight * viewportLines).toPx() }
 

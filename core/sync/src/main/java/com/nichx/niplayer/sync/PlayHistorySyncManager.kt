@@ -227,12 +227,30 @@ class PlayHistorySyncManager @Inject constructor(
             val deltaByName = syncFiles.filter { it.name.endsWith(DELTA_SUFFIX) }.associateBy { it.name }
             val baseFiles = syncFiles.filter { !it.name.endsWith(DELTA_SUFFIX) }
 
+            /** 待提交的远端文件指纹（整轮成功后统一落库，见阶段 1 的说明）。 */
+            data class RemoteFingerprint(
+                val fileName: String,
+                val mtime: Long,
+                val length: Long,
+                val lastSyncedAt: Long,
+                val etag: String?,
+            )
+
             data class RemoteSnapshot(
                 val baseFile: StorageFile,
                 val snapshot: PlayHistorySyncFile?,
+                /** 本设备 base/delta 的指纹，留待整轮成功后提交。 */
+                val pendingFingerprints: List<RemoteFingerprint> = emptyList(),
             )
 
             // 阶段 1（并行，仅网络 + 解析）：指纹判定 + 下载解析 base/delta，合并为设备快照
+            //
+            // 指纹延迟提交修复：原实现在「解析成功」后立即 setRemoteFileMeta，而真正的合并、
+            // 写回本设备文件、推进游标都在其后（阶段 2 与 saveSnapshot）。若在解析成功之后、
+            // 写回之前失败（上传失败 / 网络断开 / 进程被杀），下轮同步会因 fingerprintUnchanged()
+            // 判定为「未变化」而 continue 跳过该设备 —— 它的 tombstone 不会被吸收（本机已删记录
+            // 复活），且因指纹已记为「处理过」，该状态不会自愈。
+            // 现改为只收集指纹，整轮成功后才统一提交；失败则下轮重新拉取解析。
             val snapshots: List<RemoteSnapshot> = coroutineScope {
                 baseFiles.map { baseFile ->
                     async(Dispatchers.IO) {
@@ -253,25 +271,33 @@ class PlayHistorySyncManager @Inject constructor(
                             RemoteSnapshot(baseFile, null)
                         } else {
                             val snapshot = readSnapshot(storage, baseFile, deltaFile)
-                            if (snapshot != null) {
-                                PlayHistorySyncSettings.setRemoteFileMeta(
-                                    baseFile.name,
-                                    baseFile.lastModified,
-                                    baseFile.length,
-                                    snapshot.lastSyncedAt,
-                                    baseFile.etag,
-                                )
-                                if (deltaFile != null) {
-                                    PlayHistorySyncSettings.setRemoteFileMeta(
-                                        deltaName,
-                                        deltaFile.lastModified,
-                                        deltaFile.length,
-                                        snapshot.lastSyncedAt,
-                                        deltaFile.etag,
+                            val pending = if (snapshot != null) {
+                                buildList {
+                                    add(
+                                        RemoteFingerprint(
+                                            fileName = baseFile.name,
+                                            mtime = baseFile.lastModified,
+                                            length = baseFile.length,
+                                            lastSyncedAt = snapshot.lastSyncedAt,
+                                            etag = baseFile.etag,
+                                        )
                                     )
+                                    if (deltaFile != null) {
+                                        add(
+                                            RemoteFingerprint(
+                                                fileName = deltaName,
+                                                mtime = deltaFile.lastModified,
+                                                length = deltaFile.length,
+                                                lastSyncedAt = snapshot.lastSyncedAt,
+                                                etag = deltaFile.etag,
+                                            )
+                                        )
+                                    }
                                 }
+                            } else {
+                                emptyList()
                             }
-                            RemoteSnapshot(baseFile, snapshot)
+                            RemoteSnapshot(baseFile, snapshot, pending)
                         }
                     }
                 }.awaitAll()
@@ -450,6 +476,22 @@ class PlayHistorySyncManager @Inject constructor(
             // 除回收本次开始时 unsyncedDeletes 标记的行外，也能回收 pull 阶段由远端 tombstone
             // 删除记录时写入的 synced=true 行（此前仅在本处有空列表时才跳过清理，导致其累积）。
             syncDeleteLogDao.deleteSynced()
+
+            // 7) 整轮成功后才提交远端文件指纹（延迟提交的原因见阶段 1 的说明）。
+            //    刻意放在游标推进与日志清理之后，使「指纹已记录」蕴含「本轮完整跑完」；
+            //    若在此之前任一步失败，指纹未落库 → 下轮重新拉取解析该设备，
+            //    不会像原先那样永久跳过、导致其 tombstone 不被吸收。
+            for (rs in snapshots) {
+                for (fp in rs.pendingFingerprints) {
+                    PlayHistorySyncSettings.setRemoteFileMeta(
+                        fp.fileName,
+                        fp.mtime,
+                        fp.length,
+                        fp.lastSyncedAt,
+                        fp.etag,
+                    )
+                }
+            }
             conflictCount
         }
     }
@@ -537,30 +579,7 @@ class PlayHistorySyncManager @Inject constructor(
         val delta = deltaFile?.let { readDeviceFile(storage, it.name) }
         if (deltaFile != null && delta == null) return null
         if (base == null && delta == null) return null
-        return mergeSnapshot(base ?: PlayHistorySyncFile(deviceId = delta!!.deviceId), delta)
-    }
-
-    /** 把 delta（记录 upsert + 新墓碑）合并进 base，还原为完整快照。 */
-    private fun mergeSnapshot(base: PlayHistorySyncFile, delta: PlayHistorySyncFile?): PlayHistorySyncFile {
-        if (delta == null || (delta.records.isEmpty() && delta.deletes.isEmpty())) return base
-        val records = base.records.associateBy { it.key }.toMutableMap()
-        delta.records.forEach { records[it.key] = it }
-        val deletes = base.deletes.associateBy { it.key }.toMutableMap()
-        delta.deletes.forEach { d ->
-            val old = deletes[d.key]
-            if (old == null || d.deletedAt > old.deletedAt) deletes[d.key] = d
-        }
-        val deltaUpdatedAt = maxOf(
-            delta.updatedAt,
-            delta.records.maxOfOrNull { it.updatedAt } ?: 0,
-            delta.deletes.maxOfOrNull { it.deletedAt } ?: 0,
-        )
-        return base.copy(
-            records = records.values.sortedBy { it.key },
-            deletes = deletes.values.sortedBy { it.key },
-            updatedAt = maxOf(base.updatedAt, deltaUpdatedAt),
-            lastSyncedAt = maxOf(base.lastSyncedAt, delta.lastSyncedAt),
-        )
+        return SnapshotMerger.merge(base ?: PlayHistorySyncFile(deviceId = delta!!.deviceId), delta)
     }
 
     /**
@@ -568,7 +587,8 @@ class PlayHistorySyncManager @Inject constructor(
      *
      * - delta 只增不减（记录 upsert / 新增墓碑）；墓碑 GC 等“收敛性”变化由心跳/超阈值压缩时的全量重写承载
      * - 心跳保证活动设备 base 至少每 HEARTBEAT_INTERVAL_MS 重写一次，供废弃设备判定
-     * - 压缩时先删旧 delta 再写 base；任一步失败自愈（下次同步按新 base 重新计算增量）
+     * - 压缩时先删旧 delta 再写 base。若旧 delta 因删除失败而残留，下轮 [SnapshotMerger.merge] 会把它
+     *   叠加到新 base 上，此时按 `updatedAt` / `deletedAt` 取新即可保证不回滚（不再依赖删除成功）
      */
     private suspend fun saveSnapshot(
         storage: Storage,
@@ -611,14 +631,26 @@ class PlayHistorySyncManager @Inject constructor(
         }
     }
 
-    /** best-effort 删除远端文件（不存在 / 失败均忽略）。 */
+    /**
+     * best-effort 删除远端文件（文件不存在视为成功）。
+     *
+     * 失败不再完全静默：compact 路径依赖本方法清掉旧 delta，若删除失败且无任何日志，
+     * 残留 delta 会被每轮反复合并且难以排查。删除失败只记 WARN、不中断本轮同步 ——
+     * [mergeSnapshot] 已按 `updatedAt` 取新，残留的过期 delta 不会再造成记录回滚。
+     */
     private suspend fun deleteRemoteFile(storage: Storage, fileName: String) {
         val file = object : AbstractStorageFile(
             path = "$SYNC_SUB_DIR/$fileName",
             name = fileName,
             isDirectory = false,
         ) {}
-        runCatching { storage.deleteFile(file) }
+        try {
+            storage.deleteFile(file)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "删除远端文件失败 $fileName: ${e.message}")
+        }
     }
 
     /** 确保 sync 子目录存在（MKCOL 单级，需逐级创建）。 */
@@ -642,21 +674,29 @@ class PlayHistorySyncManager @Inject constructor(
         if (!ok) throw IllegalStateException(context.getString(R.string.sync_error_upload_failed))
 
         // P2-1 上传校验：读回比对内容（Moshi 序列化顺序确定，全等比较可信）。
-        // 读回失败仅告警不阻断——瞬时网络抖动不应把一次成功上传标记为失败
-        try {
+        //
+        // 校验失效修复：原实现把 `if (readBack != json) throw IllegalStateException(...)` 放在
+        // 与 `catch (e: Exception)` 同一个 try 内，而 IllegalStateException 继承自 Exception ——
+        // 真正需要阻断的「内容不一致」被自己的 catch 立即捕获，只打一条 WARN 就正常返回，
+        // 导致云端文件被截断/损坏时同步仍报成功并推进游标，之后不再重传。
+        //
+        // 现拆分为：内层 try 只负责「读回」动作，读回失败（瞬时网络抖动）仅告警不阻断；
+        // 读回成功但内容不一致则向外抛出，阻断本轮同步。
+        val readBack: String? = try {
             val fileRef = object : AbstractStorageFile(
                 path = "$SYNC_SUB_DIR/$fileName",
                 name = fileName,
                 isDirectory = false,
             ) {}
-            val readBack = storage.openInputStream(fileRef).use { it.readBytes().toString(Charsets.UTF_8) }
-            if (readBack != json) {
-                throw IllegalStateException(context.getString(R.string.sync_error_upload_mismatch))
-            }
+            storage.openInputStream(fileRef).use { it.readBytes().toString(Charsets.UTF_8) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "上传校验读取失败: ${e.message}")
+            null
+        }
+        if (readBack != null && readBack != json) {
+            throw IllegalStateException(context.getString(R.string.sync_error_upload_mismatch))
         }
     }
 

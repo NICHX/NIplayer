@@ -58,38 +58,49 @@ class AudioPlaybackService : MediaSessionService() {
         super.onCreate()
         instance = this
         createNotificationChannel()
+        // M-37 修复：动态注册**必须**在 onDestroy 的无条件 unregisterReceiver 之前完成。
+        // 原实现把注册放在 `if (player != null)` 内，而注销无条件执行 —— 当服务被系统在
+        // 进程重建后拉起（媒体按钮 / 媒体恢复，见下方 player == null 分支说明）时 player 为 null，
+        // 该实例销毁时 onDestroy 会抛 IllegalArgumentException: Receiver not registered 而崩溃。
+        registerReceiver(
+            actionReceiver,
+            IntentFilter().apply {
+                addAction(ACTION_PLAY_PAUSE)
+                addAction(ACTION_SKIP_NEXT)
+                addAction(ACTION_SKIP_PREV)
+            },
+            RECEIVER_NOT_EXPORTED,
+        )
         val player = playbackManager.getPlayer()
-        if (player != null) {
-            val forwardingPlayer = object : ForwardingPlayer(player) {
-                override fun getAvailableCommands(): Player.Commands {
-                    return super.getAvailableCommands().buildUpon()
-                        .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
-                        .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-                        .build()
-                }
-
-                override fun hasNextMediaItem(): Boolean = playbackManager.hasNextInPlaylist()
-                override fun hasPreviousMediaItem(): Boolean = playbackManager.hasPreviousInPlaylist()
-
-                override fun seekToNextMediaItem() { playbackManager.playNext() }
-                override fun seekToPreviousMediaItem() { playbackManager.playPrevious() }
-                override fun seekToNext() { playbackManager.playNext() }
-                override fun seekToPrevious() { playbackManager.playPrevious() }
-            }
-            sessionPlayer = forwardingPlayer
-            mediaSession = MediaSession.Builder(this, forwardingPlayer).build()
-            player.addListener(notificationListener)
-            registerReceiver(
-                actionReceiver,
-                IntentFilter().apply {
-                    addAction(ACTION_PLAY_PAUSE)
-                    addAction(ACTION_SKIP_NEXT)
-                    addAction(ACTION_SKIP_PREV)
-                },
-                RECEIVER_NOT_EXPORTED,
-            )
-            startForeground(NOTIFICATION_ID, buildNotification(mediaSession!!))
+        if (player == null) {
+            // 播放器尚未就绪（典型场景：进程被回收后系统因媒体按钮/媒体恢复重新创建本服务）。
+            // 此时无法建立 MediaSession，也无法发布媒体通知。**不需要**自行进入前台兜底：
+            // media3 的 MediaSessionService.onStartCommand 在 onGetSession 返回 null 且本服务
+            // 从未被启动过时会调用 stopSelfSafely()（其注释明确写明「防止系统因未进入前台而
+            // 销毁服务并抛异常」），前台服务契约由 media3 兜住。
+            // 此处直接返回，等待播放路径（player 就绪后）重新 startService() 创建带会话的实例。
+            return
         }
+        val forwardingPlayer = object : ForwardingPlayer(player) {
+            override fun getAvailableCommands(): Player.Commands {
+                return super.getAvailableCommands().buildUpon()
+                    .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    .build()
+            }
+
+            override fun hasNextMediaItem(): Boolean = playbackManager.hasNextInPlaylist()
+            override fun hasPreviousMediaItem(): Boolean = playbackManager.hasPreviousInPlaylist()
+
+            override fun seekToNextMediaItem() { playbackManager.playNext() }
+            override fun seekToPreviousMediaItem() { playbackManager.playPrevious() }
+            override fun seekToNext() { playbackManager.playNext() }
+            override fun seekToPrevious() { playbackManager.playPrevious() }
+        }
+        sessionPlayer = forwardingPlayer
+        mediaSession = MediaSession.Builder(this, forwardingPlayer).build()
+        player.addListener(notificationListener)
+        startForeground(NOTIFICATION_ID, buildNotification(mediaSession!!))
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
@@ -179,23 +190,6 @@ class AudioPlaybackService : MediaSessionService() {
             builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         }
 
-        return builder.build()
-    }
-
-    /**
-     * 构建无 MediaSession 的占位通知，用于 player 未就绪时满足前台服务启动契约。
-     * player 就绪后由 onUpdateNotification / pushNotification 更新为完整媒体通知。
-     */
-    private fun buildPlaceholderNotification(): Notification {
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification_music)
-            .setContentTitle(getString(R.string.player_notification_playing))
-            .setShowWhen(false)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-        }
         return builder.build()
     }
 

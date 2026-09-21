@@ -2,6 +2,7 @@ package com.nichx.niplayer.datastore
 
 import android.content.Context
 import java.io.File
+import java.util.Locale
 
 /**
  * 在线匹配（歌词 / 封面）缓存目录的统一出入口。
@@ -67,7 +68,8 @@ object OnlineMatchCache {
     fun md5(input: String): String = try {
         val digest = java.security.MessageDigest.getInstance("MD5")
         val bytes = digest.digest(input.toByteArray())
-        bytes.joinToString("") { "%02x".format(it) }
+        // Locale.ROOT：十六进制摘要必须与区域无关，否则土耳其语等区域会改变字母大小写映射
+        bytes.joinToString("") { String.format(Locale.ROOT, "%02x", it) }
     } catch (_: Exception) {
         input.hashCode().toUInt().toString(16)
     }

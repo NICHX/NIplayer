@@ -21,6 +21,32 @@ android {
 
     sourceSets {
         getByName("androidTest").assets.srcDirs("$projectDir/schemas")
+        // MigrationTestHelper 从 assets 读 `<DB 类全限定名>/<version>.json`，
+        // 因此 JVM 单元测试（Robolectric）也必须把 schemas/ 挂进 test 的 assets。
+        getByName("test").assets.srcDirs("$projectDir/schemas")
+    }
+
+    testOptions {
+        unitTests {
+            // Robolectric 需要真实资源/资产：schemas 目录下的 JSON 要能被 AssetManager 打开
+            isIncludeAndroidResources = true
+
+            // Robolectric 的 AndroidInterceptors 要反射 jdk.internal.access.SharedSecrets
+            // 来设置 FileDescriptor 的原始 fd（ApplicationSharedMemory.create），
+            // JDK 17 的模块封装默认拒绝，必须显式开放。少了这一段，所有 Robolectric 用例
+            // 都会在 AndroidTestEnvironment.setUpApplicationState 阶段抛 IllegalAccessException。
+            all {
+                it.jvmArgs(
+                    "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+                    "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                    "--add-opens=java.base/java.util=ALL-UNNAMED",
+                    "--add-opens=java.base/java.io=ALL-UNNAMED",
+                    "--add-opens=java.base/java.net=ALL-UNNAMED",
+                    "--add-opens=java.base/java.text=ALL-UNNAMED",
+                    "--add-opens=java.base/java.nio=ALL-UNNAMED",
+                )
+            }
+        }
     }
 
     compileOptions {
@@ -59,4 +85,7 @@ dependencies {
 
     // Test
     testImplementation(libs.junit)
+    // Room 迁移的数据库级验证（E3）：MigrationTestHelper 在真实 SQLite 上跑迁移并校验 schema
+    testImplementation(libs.room.testing)
+    testImplementation(libs.robolectric)
 }

@@ -93,7 +93,6 @@ import com.nichx.niplayer.designsystem.components.NiThumbCard
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.sync.SyncUiState
-import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -165,7 +164,6 @@ fun PlayHistoryScreen(
                 is PlayHistoryEvent.Toast -> messageController.post(NiMessage.info(event.message))
                 is PlayHistoryEvent.NavigateToPlayer -> onNavigateToPlayVideo(event.isAudio)
                 is PlayHistoryEvent.ShowError -> messageController.post(NiMessage.error(event.message))
-                else -> {}
             }
         }
     }
@@ -714,7 +712,7 @@ private fun mediaTypeLabel(type: MediaType): String = when (type) {
     MediaType.SMB_SERVER -> "SMB"
     MediaType.WEBDAV_SERVER -> "WebDAV"
     MediaType.QUICK_ACCESS -> stringResource(R.string.storage_type_quick)
-    else -> stringResource(R.string.storage_type_other)
+    MediaType.OTHER_STORAGE -> stringResource(R.string.storage_type_other)
 }
 
 private fun formatPlayTime(date: Date): String {

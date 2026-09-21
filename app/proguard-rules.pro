@@ -78,9 +78,6 @@
 # 否则 SMB 连接抛 NoSuchAlgorithmException: MD4 / AESCMAC 或 NoClassDefFoundError。
 -keep class org.bouncycastle.** { *; }
 -dontwarn org.bouncycastle.**
-# jsoup（字幕/歌词 HTML 解析）
--keep class org.jsoup.** { *; }
--dontwarn org.jsoup.**
 # juniversalchardet（编码探测）
 -keep class org.mozilla.universalchardet.** { *; }
 -dontwarn org.mozilla.universalchardet.**

@@ -81,7 +81,17 @@ fun UpdateDialogHost(
     // 其余状态关闭即 dismiss
     val onDismiss: () -> Unit = when (state) {
         is UpdateViewModel.UpdateUiState.Downloading -> viewModel::downloadInBackground
-        else -> viewModel::dismiss
+        // 枚举穷尽化：Idle / DownloadingInBackground 已在上方提前返回，
+        // 其余状态关闭弹窗即 dismiss
+        is UpdateViewModel.UpdateUiState.Checking,
+        is UpdateViewModel.UpdateUiState.UpdateAvailable,
+        is UpdateViewModel.UpdateUiState.AlreadyLatest,
+        is UpdateViewModel.UpdateUiState.CheckFailed,
+        is UpdateViewModel.UpdateUiState.DownloadReady,
+        is UpdateViewModel.UpdateUiState.DownloadFailed,
+        is UpdateViewModel.UpdateUiState.InstallBlocked -> viewModel::dismiss
+        UpdateViewModel.UpdateUiState.Idle,
+        UpdateViewModel.UpdateUiState.DownloadingInBackground -> viewModel::dismiss
     }
     LaunchedEffect(state) {
         // state 是 delegated property 无法智能转换，先取局部快照供 when 分支使用

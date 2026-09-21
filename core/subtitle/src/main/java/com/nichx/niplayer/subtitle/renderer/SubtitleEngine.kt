@@ -1,6 +1,5 @@
 package com.nichx.niplayer.subtitle.renderer
 
-import com.nichx.niplayer.subtitle.info.Caption
 import com.nichx.niplayer.subtitle.info.Style
 import com.nichx.niplayer.subtitle.info.TimedTextObject
 import kotlinx.coroutines.flow.MutableStateFlow

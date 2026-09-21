@@ -38,9 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nichx.niplayer.database.dao.MediaTypeStat
-import com.nichx.niplayer.database.dao.StorageStat
-import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar

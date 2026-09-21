@@ -255,5 +255,110 @@ abstract class NiplayerDatabase : RoomDatabase() {
                 )
             }
         }
+
+        // ==================== 补齐缺失的迁移（v10 → v18） ====================
+        //
+        // 背景：v11 / v12 / v15 / v16 / v17 / v18 这 6 个版本跃迁此前没有对应迁移，
+        // 而 Builder 上挂着 fallbackToDestructiveMigration —— Room 找不到迁移路径时不会报错，
+        // 而是直接删除整库重建，用户会静默丢失媒体库配置、播放历史与进度、书签、加密目录记录、
+        // 下载/上传任务、云同步 tombstone 等全部数据。
+        // 下面 6 段按各版本 schema（schemas/ 目录下的 JSON）逐字补全。
+
+        // v11：新增歌单系统（playlist / playlist_item）
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `playlist` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL DEFAULT 0
+                    )"""
+                )
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `playlist_item` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `playlist_id` INTEGER NOT NULL,
+                        `library_id` INTEGER NOT NULL,
+                        `file_path` TEXT NOT NULL,
+                        `file_name` TEXT NOT NULL,
+                        `media_type` TEXT NOT NULL,
+                        `file_size` INTEGER NOT NULL,
+                        `sort_order` INTEGER NOT NULL
+                    )"""
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_playlist_item_playlist_id_file_path` " +
+                        "ON `playlist_item` (`playlist_id`, `file_path`)"
+                )
+            }
+        }
+
+        // v12：play_history 新增 playlist_id（记录来源歌单，恢复播放时还原歌单播放列表）
+        //
+        // 用 ALTER 追加即可：Room 的 schema 校验按列名匹配（TableInfo 内部是 Map<String, Column>），
+        // 不关心列的物理顺序，因此 ALTER 追加到末尾与实体声明顺序不同也不影响校验。
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `play_history` ADD COLUMN `playlist_id` INTEGER")
+            }
+        }
+
+        // v15：playlist 新增 is_pinned（歌单置顶）
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `playlist` ADD COLUMN `is_pinned` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        // v16：新增 upload_task 表（上传任务持久化）
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `upload_task` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `storage_id` INTEGER NOT NULL,
+                        `storage_name` TEXT NOT NULL,
+                        `file_name` TEXT NOT NULL,
+                        `remote_path` TEXT NOT NULL,
+                        `source_uri` TEXT NOT NULL,
+                        `total_bytes` INTEGER NOT NULL,
+                        `uploaded_bytes` INTEGER NOT NULL,
+                        `state` INTEGER NOT NULL,
+                        `error_message` TEXT,
+                        `create_time` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL DEFAULT 0
+                    )"""
+                )
+            }
+        }
+
+        // v17：playlist_item 表重建（唯一索引纳入 library_id + 新增 CASCADE 外键）
+        //
+        // 本段**刻意实现为空**，理由：
+        // 1. v17 的唯一目的是把 playlist_item 换成新结构，而 v18 紧接着把 playlist 与
+        //    playlist_item 两张表整体删除 —— 中间态在任何升级路径上都不会被观察到；
+        // 2. Room 只在**全部迁移执行完毕**后校验一次最终 schema（RoomOpenHelper.onUpgrade →
+        //    validateMigration），不会校验中间版本，因此留空不影响升级正确性；
+        // 3. schemas/ 目录缺失 17.json（v17 的 schema 未导出），无法据此复原该表的准确结构。
+        //    与其凭空猜测唯一索引的列序与约束写法，不如显式留空并说明。
+        //
+        // 若将来需要恢复歌单系统，必须先用 v17 的代码重新导出 17.json，再补全本段。
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 无操作，见上方说明
+            }
+        }
+
+        // v18：移除歌单系统
+        //
+        // play_history 的 playlist_id 列**保留**（见实体注释：仅为结构兼容，已不再写入），
+        // 因此这里只删两张歌单表。先删子表 playlist_item 再删 playlist，避免外键约束报错。
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `playlist_item`")
+                db.execSQL("DROP TABLE IF EXISTS `playlist`")
+            }
+        }
     }
 }

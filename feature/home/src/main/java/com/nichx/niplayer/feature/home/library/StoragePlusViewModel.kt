@@ -17,6 +17,7 @@ import com.nichx.niplayer.storage.StorageFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -178,9 +179,11 @@ class StoragePlusViewModel @Inject constructor(
                     it.copy(isTesting = false, testResult = false)
                 }
                 _events.tryEmit(StoragePlusEvent.ShowError(e.message ?: context.getString(R.string.storage_plus_connect_failed)))
-            } finally {
-                withContext(Dispatchers.IO) { storage?.close() }
             }
+            // BUG-10：storage 必须在任何路径下都被关闭。清理**移出 finally** —— finally 里的 suspend 调用
+            // 在协程取消时会被直接跳过，而 detekt 只接受「finally 里裸 withContext(NonCancellable)」，
+            // 那样会丢掉 Dispatchers.IO。上面 catch(Exception) 不重抛，故此处必然执行。
+            withContext(Dispatchers.IO + NonCancellable) { storage?.close() }
         }
     }
 
@@ -265,7 +268,10 @@ class StoragePlusViewModel @Inject constructor(
                 else null
             }
 
-            else -> context.getString(R.string.storage_plus_unsupported_type)
+            // 枚举穷尽化：本地视频库 / 其他 / 快捷访问不走本页新增流程
+            MediaType.LOCAL_STORAGE,
+            MediaType.OTHER_STORAGE,
+            MediaType.QUICK_ACCESS -> context.getString(R.string.storage_plus_unsupported_type)
         }
     }
 
@@ -346,13 +352,20 @@ class StoragePlusViewModel @Inject constructor(
                 )
             }
 
-            else -> error("unsupported mediaType: ${state.mediaType}")
+            MediaType.LOCAL_STORAGE,
+            MediaType.OTHER_STORAGE,
+            MediaType.QUICK_ACCESS -> error("unsupported mediaType: ${state.mediaType}")
         }
     }
 
     private fun defaultPort(type: MediaType): Int = when (type) {
         MediaType.SMB_SERVER -> 445
-        else -> 0
+        // 枚举穷尽化：仅 SMB 有隐式默认端口，其余（含 WebDAV 的 80/443 由协议前缀决定）返回 0
+        MediaType.WEBDAV_SERVER,
+        MediaType.LOCAL_STORAGE,
+        MediaType.EXTERNAL_STORAGE,
+        MediaType.OTHER_STORAGE,
+        MediaType.QUICK_ACCESS -> 0
     }
 
     private fun MediaLibraryEntity.toUiState(): StoragePlusUiState {

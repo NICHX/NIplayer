@@ -77,6 +77,7 @@ import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.storage.StorageAccess
 import com.nichx.niplayer.designsystem.components.FolderPickerDialog
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -755,7 +756,8 @@ private fun formatFileSize(bytes: Long): String {
         size /= 1024
         unitIndex++
     }
-    return if (unitIndex == 0) "${bytes} B" else String.format("%.1f %s", size, units[unitIndex])
+    // Locale.ROOT：容量展示与区域无关，保持小数点恒为 "."
+    return if (unitIndex == 0) "${bytes} B" else String.format(Locale.ROOT, "%.1f %s", size, units[unitIndex])
 }
 
 private sealed class PendingAction {

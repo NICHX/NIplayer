@@ -40,7 +40,7 @@ class SmbStorage(
     library: MediaLibraryEntity,
 ) : AbstractStorage(library) {
 
-    private val rawUrl: String = library.url.orEmpty()
+    private val rawUrl: String = library.url
     private val parsedUri: Uri = if (rawUrl.contains("://")) {
         Uri.parse(rawUrl)
     } else {
@@ -54,6 +54,9 @@ class SmbStorage(
         ?: DEFAULT_SMB_PORT
 
     private val shareName: String? = library.smbSharePath
+
+    /** 寻址（#12）：负责「共享根 + 相对名 → SmbFile」的解析，避免自己拼 URL 时 `?` 被截断。 */
+    private val address = SmbAddressing(host, port, shareName)
 
     /**
      * 构建 [CIFSContext]（替代 smbj 的 SMBClient + SmbConfig）。
@@ -128,26 +131,38 @@ class SmbStorage(
     @Volatile private var playRootPrefix: String = ""
 
     /**
-     * 构建 smb:// 完整 URL。
+     * 主线/播放线各自的共享内子目录前缀（如 `smbSharePath = "share/films"` → `"films/"`）。
+     */
+    private fun rootPrefix(isPlay: Boolean): String = if (isPlay) playRootPrefix else shareRootPrefix
+
+    /**
+     * 把共享内相对路径解析为 [SmbFile]。
      *
      * codelibs/jcifs 的 SmbFile 使用 `smb://host:port/share/path` 格式，
      * 认证信息通过 context.withCredentials() 传递，不嵌入 URL。
+     *
+     * 寻址细节（含 `?` / `:` 的边界处理）见 [SmbAddressing]：原实现此处自己拼接
+     * `smb://host:port/{share}/{path}` 字符串，文件名含 `?` 时会被 jcifs 当作 query 截断（#12）。
      *
      * - 配置了共享路径：`smb://host:port/{share}/{prefix}{path}`，path 是共享内的相对路径；
      * - 未配置共享路径（可选，[MediaLibraryEntity.smbSharePath] 为 null）：path 首段即共享名
      *   （由服务器根目录的共享枚举产生），直接 `smb://host:port/{path}`。
      */
-    private fun buildSmbUrl(path: String, isPlay: Boolean = false): String {
-        if (shareName.isNullOrBlank()) {
-            val p = path.trim('/')
-            return if (p.isEmpty()) "smb://$host:$port/" else "smb://$host:$port/$p"
-        }
-        val prefix = if (isPlay) playRootPrefix else shareRootPrefix
-        val normalizedPath = prefix + path
-        val share = shareName?.trim('/')?.split("/")?.first()?.trim()
-            ?: throw IllegalStateException("未配置 SMB 共享路径")
-        return "smb://$host:$port/$share/$normalizedPath"
-    }
+    private fun resolveSmbFile(
+        path: String,
+        ctx: CIFSContext = smbContext,
+        isPlay: Boolean = false,
+    ): SmbFile = address.resolve(ctx, rootPrefix(isPlay), path, isDirectory = false)
+
+    /**
+     * 解析**待枚举的目录**。
+     *
+     * 与 [resolveSmbFile] 分开是为了让「必须补尾随 `/`」这件事在调用点可见、无法漏传：
+     * 目录的 SmbFile 若不以 `/` 结尾，jcifs 枚举出的子项会同时丢失父段（URL 错）并把
+     * 父名粘进子名（`getName()` 返回 `filmsmovie.mkv`）—— 详见 [SmbAddressing] 类注释。
+     */
+    private fun resolveSmbDirectory(path: String): SmbFile =
+        address.resolve(smbContext, shareRootPrefix, path, isDirectory = true)
 
     /**
      * 确保主线共享已就绪（实质为设置 [shareRootPrefix]）。
@@ -159,7 +174,7 @@ class SmbStorage(
         connectMutex.withLock {
             if (shareRootPrefix.isNotEmpty()) return@withLock
             val name = shareName
-            // 未配置共享路径：以服务器根为浏览起点，前缀留空，由 buildSmbUrl 处理
+            // 未配置共享路径：以服务器根为浏览起点，前缀留空，由 SmbAddressing 处理
             // （根目录 listFiles 会枚举服务器上可用的共享）
             if (name.isNullOrBlank()) {
                 shareRootPrefix = ""
@@ -174,9 +189,9 @@ class SmbStorage(
         }
     }
 
-    private suspend fun ensurePlayShare() {
+    private fun ensurePlayShare() {
         val name = shareName
-        // 未配置共享路径的同主线处理：直接由 buildSmbUrl 处理（命令首段即共享名）
+        // 未配置共享路径的同主线处理：直接由 SmbAddressing 处理（命令首段即共享名）
         if (name.isNullOrBlank()) {
             playRootPrefix = ""
             return
@@ -216,8 +231,7 @@ class SmbStorage(
 
     private suspend fun listFilesInternal(directory: StorageFile): List<StorageFile> {
         ensureShare()
-        val url = buildSmbUrl(directory.path)
-        val dirFile = SmbFile(url, smbContext)
+        val dirFile = resolveSmbDirectory(directory.path)
 
         // 未配置共享路径时，服务器根目录（path 为空）的 exists() 因无共享会失败，
         // 因此跳过 exists 检查，直接枚举服务器上可用的共享列表。
@@ -230,11 +244,11 @@ class SmbStorage(
 
         return children
             .filter { file ->
-                val n = extractName(file)
+                val n = address.nameOf(file)
                 n != "." && n != ".." && !isSystemFile(file)
             }
             .map { file ->
-                val name = extractName(file)
+                val name = address.nameOf(file)
                 val hidden = file.isHidden()
                 object : AbstractStorageFile(
                     path = buildPath(directory.path, name),
@@ -245,11 +259,6 @@ class SmbStorage(
                     isHidden = hidden,
                 ) {}
             }
-    }
-
-    /** codelibs/jcifs SmbFile.getName() 返回从 share 根开始的完整路径，需提取最后一级。 */
-    private fun extractName(file: SmbFile): String {
-        return file.path.trimEnd('/').substringAfterLast('/')
     }
 
     private fun isSystemFile(file: SmbFile): Boolean {
@@ -288,7 +297,18 @@ class SmbStorage(
         if (offset <= 0) return null
         return try {
             val stream = openInputStreamInternal(file) as SmbParallelInputStreamWrapper
-            stream.skip(offset)
+            // 校验**实际**跳过量：[SmbParallelInputStream.skip] 会按 fileSize 夹紧并返回真实跳过的字节数，
+            // 因此 offset 超过远程文件长度时返回的值小于 offset。原实现忽略返回值，会从错误位置开始读，
+            // 而调用方（DownloadManager）是按 offset 记录进度的 —— 写出的文件从错位点起全是垃圾数据。
+            // 此处返回 null，让调用方回退到 offset = 0 完整重下。
+            //
+            // 注意：fileSize <= 0（长度未知）时 skip 不做夹紧，该场景无法校验。
+            val skipped = stream.skip(offset)
+            if (skipped < offset) {
+                Log.w(TAG, "SMB 续传偏移 ${offset} 超出文件长度（实际仅跳过 ${skipped}），放弃续传")
+                runCatching { stream.close() }
+                return null
+            }
             stream
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -299,11 +319,11 @@ class SmbStorage(
 
     private suspend fun openInputStreamInternal(file: StorageFile): InputStream {
         ensureShare()
-        val url = buildSmbUrl(file.path)
         val fileSize = file.length
         // 下载使用 SmbParallelInputStream 多线程并行预读（与播放流一致），
         // 提升千兆网吞吐 3-4 倍。fileSize<=0 时按无限流处理。
-        val stream = SmbParallelInputStream(smbContext, url, fileSize)
+        // 预读通道各自需要独立的 SmbFile 句柄，故传入工厂而非单个实例（#12：寻址交给 SmbAddressing）。
+        val stream = SmbParallelInputStream({ resolveSmbFile(file.path) }, fileSize)
         activeStreams.add(stream)
         return SmbParallelInputStreamWrapper(stream, activeStreams)
     }
@@ -311,10 +331,9 @@ class SmbStorage(
     override suspend fun readFileBytes(file: StorageFile, maxBytes: Int): ByteArray? {
         return try {
             ensureShare()
-            val url = buildSmbUrl(file.path)
             val actualSize = if (file.length > 0) minOf(maxBytes.toLong(), file.length).toInt() else maxBytes
             if (actualSize <= 0) return null
-            val sf = SmbFile(url, smbContext)
+            val sf = resolveSmbFile(file.path)
             val raf = sf.openRandomAccess("r")
             try {
                 val buffer = ByteArray(actualSize)
@@ -329,6 +348,8 @@ class SmbStorage(
             } finally {
                 try { raf.close() } catch (_: Exception) {}
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "readFileBytes failed: ${e.message}")
             null
@@ -354,11 +375,13 @@ class SmbStorage(
         }
     }
 
-    private suspend fun openPlayStreamInternal(file: StorageFile): InputStream {
+    private fun openPlayStreamInternal(file: StorageFile): InputStream {
         ensurePlayShare()
-        val url = buildSmbUrl(file.path, isPlay = true)
         val fileSize = file.length
-        val stream = SmbParallelInputStream(playContext, url, fileSize)
+        val stream = SmbParallelInputStream(
+            { resolveSmbFile(file.path, playContext, isPlay = true) },
+            fileSize,
+        )
         playActiveStreams.add(stream)
         return object : InputStream() {
             override fun read() = stream.read()
@@ -381,7 +404,9 @@ class SmbStorage(
             shareRootPrefix = ""
             try {
                 openMediaDataSourceInternal(file)
-            } catch (e: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
                 null
             }
         }
@@ -389,19 +414,17 @@ class SmbStorage(
 
     private suspend fun openMediaDataSourceInternal(file: StorageFile): SmbMediaDataSource? {
         ensureShare()
-        val url = buildSmbUrl(file.path)
         // file.length 可能为 0（播放退出时用 createVirtualFile 构造的虚拟文件未传 size），
         // 此时用 SmbFile 查询真实文件大小，避免 MediaDataSource 无法打开导致缩略图生成失败。
         val size = if (file.length > 0) file.length
-        else runCatching { SmbFile(url, smbContext).length() }.getOrDefault(-1L)
+        else runCatching { resolveSmbFile(file.path).length() }.getOrDefault(-1L)
         if (size <= 0) return null
-        return SmbMediaDataSource(smbContext, url, size)
+        return SmbMediaDataSource({ resolveSmbFile(file.path) }, size)
     }
 
     override suspend fun fileExists(path: String): Boolean {
         ensureShare()
-        val url = buildSmbUrl(path)
-        return SmbFile(url, smbContext).exists()
+        return resolveSmbFile(path).exists()
     }
 
     override suspend fun deleteFile(file: StorageFile): Boolean {
@@ -431,8 +454,7 @@ class SmbStorage(
         }
         // 长目录删除过程中支持协程取消
         currentCoroutineContext().ensureActive()
-        val url = buildSmbUrl(file.path)
-        SmbFile(url, smbContext).delete()
+        resolveSmbFile(file.path).delete()
     }
 
     override suspend fun saveFile(path: String, data: ByteArray): Boolean {
@@ -444,7 +466,9 @@ class SmbStorage(
             shareRootPrefix = ""
             try {
                 saveFileInternal(path, data)
-            } catch (e: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
                 false
             }
         }
@@ -452,26 +476,22 @@ class SmbStorage(
 
     private suspend fun saveFileInternal(path: String, data: ByteArray): Boolean {
         ensureShare()
-        val url = buildSmbUrl(path)
-        SmbFile(url, smbContext).getOutputStream().use { os ->
+        resolveSmbFile(path).getOutputStream().use { os ->
             os.write(data)
         }
         return true
     }
 
     override suspend fun createDirectory(path: String): Boolean {
-        var url: String? = null
         return try {
             ensureShare()
-            url = buildSmbUrl(path)
-            SmbFile(url, smbContext).mkdirs()
+            resolveSmbFile(path).mkdirs()
             true
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             // 目录已存在或创建失败，通过 exists() 判断
-            val resolvedUrl = url ?: return false
-            try { SmbFile(resolvedUrl, smbContext).exists() } catch (_: Exception) { false }
+            try { resolveSmbFile(path).exists() } catch (_: Exception) { false }
         }
     }
 
@@ -479,18 +499,16 @@ class SmbStorage(
      * SMB 重命名：[SmbFile.renameTo] 在同共享内支持跨目录移动（等同 MOVE）。
      *
      * jcifs 的 renameTo 要求目标与源在同一个 server:port:share 上，本实现始终满足此约束
-     *（所有 URL 由 [buildSmbUrl] 构建在同一共享内）。
+     *（所有路径都由 [SmbAddressing] 解析在同一共享内）。
      */
     override suspend fun rename(file: StorageFile, newName: String): Boolean {
         return try {
             ensureShare()
-            val srcUrl = buildSmbUrl(file.path)
             // 构建目标 path：父目录 + 新名称
             val parentPath = file.path.substringBeforeLast('/', "")
             val destPath = if (parentPath.isEmpty()) newName else "$parentPath/$newName"
-            val destUrl = buildSmbUrl(destPath)
-            val src = SmbFile(srcUrl, smbContext)
-            val dest = SmbFile(destUrl, smbContext)
+            val src = resolveSmbFile(file.path)
+            val dest = resolveSmbFile(destPath)
             src.renameTo(dest)
             true
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -503,17 +521,15 @@ class SmbStorage(
     /**
      * SMB 移动：跨目录等同于 rename（SMB renameTo 支持跨目录）。
      *
-     * 目标 URL 为 `targetDirectory.path + "/" + file.name`。
+     * 目标路径为 `targetDirectory.path + "/" + file.name`。
      */
     override suspend fun move(file: StorageFile, targetDirectory: StorageFile): Boolean {
         return try {
             ensureShare()
-            val srcUrl = buildSmbUrl(file.path)
             val destPath = if (targetDirectory.path.isEmpty()) file.name
             else "${targetDirectory.path}/${file.name}"
-            val destUrl = buildSmbUrl(destPath)
-            val src = SmbFile(srcUrl, smbContext)
-            val dest = SmbFile(destUrl, smbContext)
+            val src = resolveSmbFile(file.path)
+            val dest = resolveSmbFile(destPath)
             src.renameTo(dest)
             true
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -562,8 +578,7 @@ class SmbStorage(
     ): Boolean {
         return try {
             ensureShare()
-            val url = buildSmbUrl(remotePath)
-            val smbFile = SmbFile(url, smbContext)
+            val smbFile = resolveSmbFile(remotePath)
             if (offset > 0) {
                 uploadResume(smbFile, inputStream, offset, onProgress)
             } else {
@@ -572,7 +587,9 @@ class SmbStorage(
             true
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // 失败原因原先被完全吞掉（只返回 false），续传校验失败等场景无从排查
+            Log.w(TAG, "SMB 上传失败 remotePath=$remotePath: ${e.message}")
             false
         } finally {
             runCatching { inputStream.close() }
@@ -612,6 +629,16 @@ class SmbStorage(
                 val n = inputStream.read(skipBuf, 0, minOf(skipBuf.size.toLong(), remaining).toInt())
                 if (n < 0) break
                 remaining -= n
+            }
+            // 校验确实跳满了 offset：本地文件短于记录的已上传字节数时（典型场景：暂停期间用户
+            // 替换或截断了源文件），remaining > 0 而流已到 EOF。原实现直接 break 后继续写入，
+            // 会把本地 offset 之后的内容写到远程的 offset 位置 —— 远程文件从该点起全部错位。
+            // 此处显式失败（→ uploadFileInternal 返回 false → UploadManager 落 FAILED），
+            // 而不是产出一个内容错位的远程文件；用户重试时进度会重置为 0 走全量上传。
+            if (remaining > 0) {
+                throw IOException(
+                    "本地文件短于已上传进度（尚缺 $remaining 字节），无法续传"
+                )
             }
             uploadWriteLoop(
                 inputStream = inputStream,
@@ -664,14 +691,10 @@ class SmbStorage(
      */
     override suspend fun ping(): Boolean {
         return try {
-            val name = shareName
-            if (!name.isNullOrBlank()) {
-                val shareOnly = name.trim('/').split("/").first().trim()
-                val testUrl = "smb://$host:$port/$shareOnly/"
-                SmbFile(testUrl, smbContext).exists()
+            if (!shareName.isNullOrBlank()) {
+                SmbFile(address.shareBaseUrl(), smbContext).exists()
             } else {
-                val testUrl = "smb://$host:$port/"
-                SmbFile(testUrl, smbContext)
+                SmbFile(address.shareBaseUrl(), smbContext)
                 true
             }
         } catch (_: Exception) {
@@ -687,8 +710,7 @@ class SmbStorage(
                 throw IOException("SMB 共享名不能为空")
             }
             // 通过创建 SmbFile 并验证 exists 来测试 share 可达性
-            val testUrl = "smb://$host:$port/$shareOnly/"
-            val smbFile = SmbFile(testUrl, smbContext)
+            val smbFile = SmbFile(address.shareBaseUrl(), smbContext)
             if (!smbFile.exists()) {
                 throw IOException("无法访问共享「$shareOnly」")
             }
@@ -701,8 +723,7 @@ class SmbStorage(
         } else {
             // 无 share 配置时通过枚举服务器共享验证主机可达与凭据有效
             //（根目录 listFiles 触发 IPC$ 树连接与共享枚举，成功即登录通过）
-            val testUrl = "smb://$host:$port/"
-            SmbFile(testUrl, smbContext).listFiles()
+            SmbFile(address.shareBaseUrl(), smbContext).listFiles()
         }
         return true
     }

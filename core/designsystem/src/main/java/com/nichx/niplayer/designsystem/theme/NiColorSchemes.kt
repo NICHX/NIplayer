@@ -1084,7 +1084,7 @@ object NiSchemes {
             else -> 60f * (((r - g) / delta) + 4f)
         }.let { if (it < 0) it + 360f else it }
         return buildList {
-            (0..9).forEach { i ->
+            for (i in 0..9) {
                 val lightness = when (i) {
                     0 -> 0.02f; 1 -> 0.08f
                     in 2..6 -> 0.18f + (baseL - 0.18f) * ((i - 2) / 4f)

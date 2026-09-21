@@ -58,6 +58,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -208,7 +209,8 @@ class AudioPlaybackManager @Inject constructor(
                                 }
                             }
                         } finally {
-                            storage.close()
+                            // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
+                            withContext(NonCancellable) { storage.close() }
                         }
                     } else {
                         // Local file: try direct File access
@@ -621,7 +623,7 @@ class AudioPlaybackManager @Inject constructor(
                 }
             } else {
                 val causeMsg = error.message ?: error::class.simpleName ?: context.getString(R.string.player_unknown_error)
-                when (val cause = error.cause) {
+                when (error.cause) {
                     is java.io.FileNotFoundException -> context.getString(R.string.player_play_failed_file_not_found)
                     is java.io.IOException -> context.getString(R.string.player_play_failed_network, causeMsg)
                     else -> context.getString(R.string.player_play_failed_generic, causeMsg)
@@ -1127,7 +1129,8 @@ class AudioPlaybackManager @Inject constructor(
                         }
                     }
                 } finally {
-                    storage.close()
+                    // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
+                    withContext(NonCancellable) { storage.close() }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -1237,7 +1240,8 @@ class AudioPlaybackManager @Inject constructor(
         try {
             val digest = java.security.MessageDigest.getInstance("MD5")
             val bytes = digest.digest(input.toByteArray())
-            return bytes.joinToString("") { "%02x".format(it) }
+            // Locale.ROOT：十六进制摘要必须与区域无关
+            return bytes.joinToString("") { String.format(Locale.ROOT, "%02x", it) }
         } catch (_: Exception) {
             return input.hashCode().toUInt().toString(16)
         }

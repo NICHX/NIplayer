@@ -48,7 +48,8 @@ class StorageFactory @Inject constructor(
         MediaType.EXTERNAL_STORAGE -> DocumentFileStorage(context, library)
         MediaType.SMB_SERVER -> SmbStorage(library)
         MediaType.WEBDAV_SERVER -> WebDavStorage(library, httpClient)
-        else -> null
+        // 枚举穷尽化：这两类不需要 Storage，显式列出以便新增 mediaType 时编译器报错
+        MediaType.OTHER_STORAGE, MediaType.QUICK_ACCESS -> null
     }
 
     companion object {

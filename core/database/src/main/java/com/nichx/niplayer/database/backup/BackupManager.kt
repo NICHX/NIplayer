@@ -80,7 +80,7 @@ class BackupManager @Inject constructor(
         val root = payloadAdapter.fromJsonValue(
             // 用 org.json.JSONObject 解析以区分 v1/v2
             JSONObject(json).toMap(),
-        ) as Map<String, Any?> ?: throw IllegalArgumentException("无效的备份文件")
+        ) as? Map<String, Any?> ?: throw IllegalArgumentException("无效的备份文件")
 
         val version = (root["version"] as? Number)?.toInt()
             ?: throw IllegalArgumentException("备份文件缺少版本号")

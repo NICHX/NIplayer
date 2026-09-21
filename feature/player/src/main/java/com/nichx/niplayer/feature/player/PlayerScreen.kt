@@ -3,7 +3,6 @@ package com.nichx.niplayer.feature.player
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.PictureInPictureParams
-import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Bitmap
@@ -18,7 +17,6 @@ import android.util.Rational
 import android.view.PixelCopy
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import android.view.Window
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -58,7 +56,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
@@ -120,7 +117,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -147,7 +143,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -182,10 +177,8 @@ import com.nichx.niplayer.feature.player.vr.VrSurfaceView
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlin.math.roundToInt
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.text.Cue
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.CaptionStyleCompat
@@ -195,12 +188,7 @@ import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.database.entity.VideoBookmarkEntity
 import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
-import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiDialogItem
-import com.nichx.niplayer.designsystem.components.NiDialogItemRow
-import com.nichx.niplayer.designsystem.components.NiInfoDialog
-import com.nichx.niplayer.designsystem.components.NiListItemDialog
-import com.nichx.niplayer.player.kernel.AudioTrackInfo
 import com.nichx.niplayer.player.kernel.NxVideoScaleMode
 import com.nichx.niplayer.player.kernel.PlaybackEvent
 import com.nichx.niplayer.player.kernel.PlaybackState
@@ -485,7 +473,12 @@ fun PlayerScreen(
                     // ON_RESUME 不自动恢复播放：用户主动从后台回来时应保持暂停态
                     // 避免锁屏/后台→前台自动起播打扰用户（PiP 恢复大窗除外：PiP 中未暂停，无需恢复）
                 }
-                else -> Unit
+                // 枚举穷尽化：其余生命周期事件无需处理，显式列出以便 androidx 新增事件时编译报错
+                Lifecycle.Event.ON_CREATE,
+                Lifecycle.Event.ON_START,
+                Lifecycle.Event.ON_STOP,
+                Lifecycle.Event.ON_DESTROY,
+                Lifecycle.Event.ON_ANY -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -2655,7 +2648,6 @@ private fun PlaylistDialog(
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val onSurface = PlayerDialogColors.textPrimary
-    val outlineVariant = PlayerDialogColors.divider
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -2736,7 +2728,6 @@ private fun BookmarkListDialog(
     onDelete: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
     val onSurface = PlayerDialogColors.textPrimary
     Dialog(
         onDismissRequest = onDismiss,
@@ -3556,7 +3547,7 @@ private fun VrControlOverlay(
                     stringResource(R.string.player_vr_sensitivity_hint) + "+")
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "${stringResource(R.string.player_vr_zoom)} ${"%.1f".format(zoom)}×",
+                    text = "${stringResource(R.string.player_vr_zoom)} ${String.format(Locale.ROOT, "%.1f", zoom)}×",
                     color = Color.White,
                     fontSize = 12.sp,
                 )
@@ -3811,7 +3802,6 @@ private fun PlayerControllerLayer(
     hudButtons: List<HudButtonConfig> = emptyList(),
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
     val audioManager = remember { context.getSystemService(AudioManager::class.java) }
 
     val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT

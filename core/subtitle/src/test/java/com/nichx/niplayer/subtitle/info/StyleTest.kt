@@ -16,6 +16,21 @@ class StyleTest {
         assertEquals("0000ffff", Style.getRGBValue("name", "blue"))
     }
 
+    /**
+     * 回归测试（缺陷审计 #22）：`magenta` 常量原为 `"ff00ffff "`（**含尾随空格**，共 9 字符），
+     * 而 `SubtitleEngine.parseStyleColor` 的长度检查要求恰好 8 字符 —— 该颜色名会被静默丢弃、
+     * 回退到默认色。同义的 `fuchsia` 一直是正确的 8 字符，两者输出必须一致。
+     */
+    @Test
+    fun `magenta 与 fuchsia 必须产出相同的 8 字符色值`() {
+        val magenta = Style.getRGBValue("name", "magenta")
+        val fuchsia = Style.getRGBValue("name", "fuchsia")
+        assertEquals("ff00ffff", magenta)
+        assertEquals("ff00ffff", fuchsia)
+        assertEquals("magenta 与 fuchsia 同义，色值必须一致", fuchsia, magenta)
+        assertEquals("色值长度必须为 8（RRGGBBAA）", 8, magenta.length)
+    }
+
     @Test
     fun `未知颜色名称返回 null`() {
         assertNull(Style.getRGBValue("name", "not-a-color"))

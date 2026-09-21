@@ -23,6 +23,15 @@ android {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
     }
+
+    testOptions {
+        unitTests {
+            // 单元测试中未被 mock 的 android.jar 方法返回默认值而非抛 "not mocked"。
+            // DownloadManager 等类会接触 Context，测试通过 MockK 提供其行为，
+            // 该开关用于兜住其余间接触碰的框架方法。
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -72,4 +81,8 @@ dependencies {
 
     // Test
     testImplementation(libs.junit)
+    // 协程测试：TestScope / runTest（E1 修复 —— 此前本模块无协程测试依赖）
+    testImplementation(libs.kotlinx.coroutines.test)
+    // MockK：Context（抽象类）与 StorageFactory（final 类）无法用简单 fake 替代
+    testImplementation(libs.mockk)
 }

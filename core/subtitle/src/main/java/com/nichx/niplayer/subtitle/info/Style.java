@@ -77,7 +77,7 @@ public class Style {
 			else if (value.equals("fuchsia"))
 				color = "ff00ffff";
 			else if (value.equals("magenta"))
-				color = "ff00ffff ";
+				color = "ff00ffff";
 			else if (value.equals("green"))
 				color = "008000ff";
 			else if (value.equals("lime"))
