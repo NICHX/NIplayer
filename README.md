@@ -81,6 +81,16 @@
 
 ---
 
+## 💬 交流群
+
+欢迎扫码加入 **NI 系列交流群**（群号：659641246），与我们讨论功能建议、Bug 反馈与使用心得。
+
+<p align="center">
+  <img width="240" src="screenshots/qq-group.png" alt="NI系列交流群二维码"/>
+</p>
+
+---
+
 ## License
 
 Apache 2.0
