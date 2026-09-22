@@ -61,7 +61,6 @@ import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.BrightnessHigh
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.ScreenRotation
@@ -74,7 +73,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -175,6 +173,11 @@ fun PlayerScreen(
     val showDownloadDialog by viewModel.showDownloadDialog.collectAsStateWithLifecycle()
     // 本地文件（已下载/缓存直链）来源时隐藏下载按钮
     val isLocalSource by viewModel.isLocalSource.collectAsStateWithLifecycle()
+    // P0-1 修复（2026-09-22）：原先在 PlayerControllerLayer 的实参位置直接写
+    // `bookmarks.map { it.positionMs }`，每次重组都新建一个 List —— 既产生垃圾，
+    // 又让该实参永远"不相等"。改为 remember(bookmarks) 缓存（List 为结构比较，
+    // bookmarks 未变时命中缓存并返回同一实例）。
+    val bookmarkPositions = remember(bookmarks) { bookmarks.map { it.positionMs } }
 
     val context = LocalContext.current
     val activity = context as? Activity
@@ -1396,8 +1399,17 @@ fun PlayerScreen(
             }
             else -> null
         }
-        val ctrlEntries = PlayerControlLayout.ALL_IDS.mapIndexed { i, id ->
-            PlayerControlLayout.loadEntry(id, i, ctrlOrientation)
+        // P0-1 修复（2026-09-22）：loadEntry 内部是 MMKV decodeString（JNI + split + valueOf 反射）。
+        // 原先每次重组都重读全部 11 项，而顶层 collect 的 positionMs 每 500ms 触发一次重组
+        // → 稳态下 22 次 MMKV 读/秒，只为重建一份几乎从不变化的布局配置。
+        // 布局只在「设置 → 播放器设置 → 播放器控制自定义」写入（PlayerControlCustomizeScreen），
+        // 该页位于导航栈更底层，PlayerScreen 不可能与其同屏，故按方向缓存即可。
+        // ⚠️ ctrlOrientation 必须作为 key：PlayerActivity 声明了 configChanges=orientation，
+        //    旋转时不重建 Activity，若用无 key 的 remember 会沿用旧方向的布局。
+        val ctrlEntries = remember(ctrlOrientation) {
+            PlayerControlLayout.ALL_IDS.mapIndexed { i, id ->
+                PlayerControlLayout.loadEntry(id, i, ctrlOrientation)
+            }
         }
         // HUD 侧边按钮：配置为 左/右 列且可见的功能
         val hudButtons = ctrlEntries
@@ -1500,7 +1512,7 @@ fun PlayerScreen(
                     },
                     onPlayAtIndex = { viewModel.playAtIndex(it) },
                     onTogglePlaylistDialog = { showPlaylistDialog = true },
-                    bookmarkPositions = bookmarks.map { it.positionMs },
+                    bookmarkPositions = bookmarkPositions,
                     blackBarCropActive = autoBlackBarCrop,
                     onToggleBlackBarCrop = {
                         autoBlackBarCrop = !autoBlackBarCrop
