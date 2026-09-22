@@ -204,15 +204,6 @@
     <string name="play_history_sync_success">Sync succeeded</string>
     <string name="play_history_sync_error_detail">An error occurred during sync. Check your network or storage settings then retry.</string>
     <string name="play_history_cloud_sync">Cloud sync</string>
-    <string name="play_history_conflicts_title">Sync conflicts</string>
-    <string name="play_history_conflicts_desc">An item was modified on both this device and the cloud</string>
-    <string name="play_history_conflicts_banner">%1$d sync conflicts pending — tap to resolve</string>
-    <string name="play_history_local">This device</string>
-    <string name="play_history_remote">Cloud</string>
-    <string name="play_history_progress">Progress %1$s / %2$s</string>
-    <string name="play_history_updated_at">Updated %1$s</string>
-    <string name="play_history_keep_local">Keep local</string>
-    <string name="play_history_keep_remote">Keep cloud</string>
     <string name="play_history_empty_title">No play history</string>
     <string name="play_history_empty_hint">Pick a video or song from the library to start playing</string>
     <string name="play_history_no_match">No matching records</string>

@@ -14,7 +14,6 @@ import com.nichx.niplayer.database.dao.ExtendFolderDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
-import com.nichx.niplayer.database.dao.SyncConflictDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.dao.UploadTaskDao
 import com.nichx.niplayer.database.dao.VideoBookmarkDao
@@ -25,7 +24,6 @@ import com.nichx.niplayer.database.entity.ExtendFolderEntity
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.entity.QuickAccessEntity
-import com.nichx.niplayer.database.entity.SyncConflictEntity
 import com.nichx.niplayer.database.entity.SyncDeleteLogEntity
 import com.nichx.niplayer.database.entity.UploadTaskEntity
 import com.nichx.niplayer.database.entity.VideoBookmarkEntity
@@ -55,6 +53,7 @@ import com.nichx.niplayer.database.entity.VideoEntity
  * - v16: 新增 upload_task 表（上传任务持久化）
  * - v17: playlist_item 表重建——唯一索引纳入 library_id + 新增 CASCADE 外键
  * - v18: 移除歌单系统（playlist / playlist_item 表，play_history 遗留 playlist_id 列保留）
+ * - v19: 移除播放历史云同步冲突表 sync_conflict（同步简化为纯 LWW，不再收集冲突）
  */
 @Database(
     entities = [
@@ -67,10 +66,9 @@ import com.nichx.niplayer.database.entity.VideoEntity
         SyncDeleteLogEntity::class,
         VideoBookmarkEntity::class,
         EncryptedFolderEntity::class,
-        SyncConflictEntity::class,
         UploadTaskEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = true
 )
 @TypeConverters(
@@ -95,8 +93,6 @@ abstract class NiplayerDatabase : RoomDatabase() {
     abstract fun getQuickAccessDao(): QuickAccessDao
 
     abstract fun getSyncDeleteLogDao(): SyncDeleteLogDao
-
-    abstract fun getSyncConflictDao(): SyncConflictDao
 
     abstract fun getVideoBookmarkDao(): VideoBookmarkDao
 
@@ -358,6 +354,17 @@ abstract class NiplayerDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS `playlist_item`")
                 db.execSQL("DROP TABLE IF EXISTS `playlist`")
+            }
+        }
+
+        // v19：移除播放历史云同步冲突表
+        //
+        // 同步改用纯 LWW（时间戳大者胜，平局由确定性规则收敛），不再收集/展示冲突，
+        // 因此 sync_conflict 表整体删除。该表只存"冲突现场快照"，删除不损失播放历史本体。
+        // play_history 与 sync_delete_log 保持不动，用户历史与待发布删除零丢失。
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `sync_conflict`")
             }
         }
     }

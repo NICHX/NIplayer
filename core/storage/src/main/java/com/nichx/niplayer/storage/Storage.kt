@@ -154,6 +154,45 @@ interface Storage {
     suspend fun saveFile(path: String, data: ByteArray): Boolean = false
 
     /**
+     * 读取远端文件的**全部内容**及版本元信息（ETag / 最后修改时间）。
+     *
+     * 与 [openInputStream] 的区别：
+     * - 一次性读入内存（调用方为小数据场景，数百 KB 量级）
+     * - [RemoteFile.etag] 与 [RemoteFile.data] **来自同一次响应**，可直接作为条件写的前置条件
+     *
+     * @param path 文件路径（相对存储库根）
+     * @return 文件内容；**文件不存在时返回 null**。读取失败（网络/权限）必须抛异常 ——
+     *   调用方据此区分"云端没有这个文件"与"读不到这个文件"，后者不能当作空内容处理。
+     */
+    suspend fun readFile(path: String): RemoteFile? {
+        val file = object : AbstractStorageFile(path, path.substringAfterLast('/'), false) {}
+        if (!fileExists(path)) return null
+        val bytes = openInputStream(file).use { it.readBytes() }
+        return RemoteFile(data = bytes, etag = null, lastModified = 0L)
+    }
+
+    /**
+     * 条件写入远端文件（覆盖写入）。
+     *
+     * [precondition] 由传输层转成 HTTP 条件请求（WebDAV：`If-Match` / `If-None-Match` /
+     * `If-Unmodified-Since`），使"读到旧版本后再写"被服务器拒绝而非静默覆盖。
+     *
+     * 协议不支持条件请求时，实现应**降级为无条件写入**并返回 [WriteOutcome.Success]，
+     * 由调用方的读回校验兜底。
+     *
+     * 默认实现忽略 [precondition]（等价于 [saveFile]），适用于不支持条件请求的协议。
+     *
+     * @param path 文件路径（相对存储库根）
+     * @param data 文件内容
+     * @return 写入结果；[WriteOutcome.Conflicted] 表示前置条件不满足，调用方应重读后重试
+     */
+    suspend fun writeFile(
+        path: String,
+        data: ByteArray,
+        precondition: FilePrecondition?,
+    ): WriteOutcome = if (saveFile(path, data)) WriteOutcome.Success(null) else WriteOutcome.Failed(null)
+
+    /**
      * 创建目录（含父目录）。
      *
      * 用于创建 `.thumb/` 缩略图目录。已存在时返回 true。

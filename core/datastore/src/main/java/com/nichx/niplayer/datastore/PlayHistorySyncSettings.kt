@@ -14,7 +14,7 @@ import java.util.UUID
  * - [autoSync]：自动同步（应用启动 / 播放器退出后触发）
  * - [deviceId]：本设备唯一标识（首次启用生成 UUID）。**不随备份恢复**，跨设备恢复后重新生成，
  *   避免两台设备共享同一 deviceId 导致云端文件互相覆盖
- * - [lastSyncedAt]：增量同步游标（仅全部同步成功后推进）
+ * - [lastSyncedAt]：上次成功同步时间（仅用于自动同步的时间防抖）
  * - 上次同步结果（时间/成功/消息），供 UI 展示
  */
 object PlayHistorySyncSettings {
@@ -84,43 +84,6 @@ object PlayHistorySyncSettings {
         persist(_flow.value)
     }
 
-    private const val KEY_REMOTE_MTIME_PREFIX = "play_history_sync_remote_mtime_"
-    private const val KEY_REMOTE_LENGTH_PREFIX = "play_history_sync_remote_len_"
-    private const val KEY_REMOTE_SYNCED_AT_PREFIX = "play_history_sync_remote_synced_at_"
-    private const val KEY_REMOTE_ETAG_PREFIX = "play_history_sync_remote_etag_"
-
-    /**
-     * 读取远端设备文件的元数据快照（增量拉取跳过 / 废弃设备判定用）。
-     *
-     * 上次成功同步后记录的 [RemoteFileMeta]；未记录（首次同步 / 新设备）返回 null。
-     * 直接操作 MMKV（非 UI 配置，不进 StateFlow 快照）。
-     */
-    fun getRemoteFileMeta(fileName: String): RemoteFileMeta? {
-        val mtime = mmkv.decodeLong(KEY_REMOTE_MTIME_PREFIX + fileName, 0)
-        val length = mmkv.decodeLong(KEY_REMOTE_LENGTH_PREFIX + fileName, 0)
-        val syncedAt = mmkv.decodeLong(KEY_REMOTE_SYNCED_AT_PREFIX + fileName, 0)
-        val etag = mmkv.decodeString(KEY_REMOTE_ETAG_PREFIX + fileName, "")?.takeIf { it.isNotEmpty() }
-        if (mtime <= 0 && length <= 0 && syncedAt <= 0 && etag == null) return null
-        return RemoteFileMeta(mtime, length, syncedAt, etag)
-    }
-
-    /** 记录远端设备文件元数据快照（成功拉取解析后调用）。 */
-    fun setRemoteFileMeta(fileName: String, mtime: Long, length: Long, syncedAt: Long, etag: String?) {
-        mmkv.encode(KEY_REMOTE_MTIME_PREFIX + fileName, mtime)
-        mmkv.encode(KEY_REMOTE_LENGTH_PREFIX + fileName, length)
-        mmkv.encode(KEY_REMOTE_SYNCED_AT_PREFIX + fileName, syncedAt)
-        // MMKV 原生 encode 不接受 null String，用空串占位表示"无 ETag"
-        mmkv.encode(KEY_REMOTE_ETAG_PREFIX + fileName, etag ?: "")
-    }
-
-    /** 清除远端设备文件元数据快照（文件被判定废弃删除时调用）。 */
-    fun clearRemoteFileMeta(fileName: String) {
-        mmkv.encode(KEY_REMOTE_MTIME_PREFIX + fileName, 0L)
-        mmkv.encode(KEY_REMOTE_LENGTH_PREFIX + fileName, 0L)
-        mmkv.encode(KEY_REMOTE_SYNCED_AT_PREFIX + fileName, 0L)
-        mmkv.encode(KEY_REMOTE_ETAG_PREFIX + fileName, "")
-    }
-
     /** 确保存在设备标识，缺失时生成 UUID 并持久化。 */
     fun ensureDeviceId() {
         if (_flow.value.deviceId.isBlank()) {
@@ -132,6 +95,22 @@ object PlayHistorySyncSettings {
     /** 恢复后重新生成设备标识（避免与旧设备共享云端文件），保留其余同步配置。 */
     fun resetDeviceId() {
         _flow.value = _flow.value.copy(deviceId = UUID.randomUUID().toString())
+        persist(_flow.value)
+    }
+
+    /**
+     * 切换同步服务器后重置同步进度与上次结果。
+     *
+     * 增量游标（[lastSyncedAt]）与"上次同步"结论都只对原服务器有意义：不清掉的话，新服务器会被
+     * 自动同步的 60 秒时间防抖误判为"刚刚同步过"而跳过，UI 也会继续展示上一个服务器的结果。
+     */
+    fun resetSyncProgress() {
+        _flow.value = _flow.value.copy(
+            lastSyncedAt = 0,
+            lastSyncTime = 0,
+            lastSyncSuccess = true,
+            lastSyncMessage = "",
+        )
         persist(_flow.value)
     }
 
@@ -170,14 +149,4 @@ data class PlayHistorySyncConfig(
     val lastSyncTime: Long,
     val lastSyncSuccess: Boolean,
     val lastSyncMessage: String,
-)
-
-/** 远端设备文件的元数据快照（增量拉取跳过 / 废弃设备判定用）。 */
-data class RemoteFileMeta(
-    val mtime: Long,
-    val length: Long,
-    /** 该设备文件内记录的最后同步时间（心跳），0 表示旧格式文件。 */
-    val syncedAt: Long,
-    /** 该设备文件的服务端 ETag（内容强校验指纹），WebDAV 未提供时为 null。 */
-    val etag: String?,
 )

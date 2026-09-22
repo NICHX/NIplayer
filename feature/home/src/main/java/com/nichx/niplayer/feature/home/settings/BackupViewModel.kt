@@ -100,6 +100,9 @@ class BackupViewModel @Inject constructor(
 
     /** 选择 WebDAV 服务器：写入共享配置，并自动启用播放历史云同步。 */
     fun selectWebDavServer(libraryId: Int) {
+        // 换服务器时清掉同步游标与上次结果：它们只对原服务器有意义（否则新服务器会被
+        // 自动同步的 60s 防抖误判为"刚同步过"，UI 也会继续显示旧服务器的结果）
+        if (WebDavSettings.libraryId != libraryId) PlayHistorySyncSettings.resetSyncProgress()
         WebDavSettings.setLibraryId(libraryId)
         _selectedWebDavId.value = libraryId
         PlayHistorySyncSettings.enabled = true

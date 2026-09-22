@@ -9,7 +9,6 @@ import com.nichx.niplayer.database.dao.ExtendFolderDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
-import com.nichx.niplayer.database.dao.SyncConflictDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.dao.UploadTaskDao
 import com.nichx.niplayer.database.dao.VideoBookmarkDao
@@ -26,7 +25,7 @@ import javax.inject.Singleton
  *
  * 提供 [NiplayerDatabase] 单例与各 Dao。
  *
- * 迁移策略：注册 v6 → v18 的**完整**迁移链（见 [NiplayerDatabase] 的 companion object），
+ * 迁移策略：注册 v6 → v19 的**完整**迁移链（见 [NiplayerDatabase] 的 companion object），
  * 并只在 DB 版本 1~5 上允许破坏性重建。
  */
 @Module
@@ -50,6 +49,7 @@ object DatabaseModule {
                 NiplayerDatabase.MIGRATION_15_16,
                 NiplayerDatabase.MIGRATION_16_17,
                 NiplayerDatabase.MIGRATION_17_18,
+                NiplayerDatabase.MIGRATION_18_19,
             )
             // 破坏性回退范围收窄：原先的无参 fallbackToDestructiveMigration(true) 允许 Room 在
             // **任何**找不到迁移路径的情况下静默删除整库重建 —— 只要将来某次 DB 版本提升忘记补迁移，
@@ -88,9 +88,6 @@ object DatabaseModule {
 
     @Provides
     fun provideSyncDeleteLogDao(db: NiplayerDatabase): SyncDeleteLogDao = db.getSyncDeleteLogDao()
-
-    @Provides
-    fun provideSyncConflictDao(db: NiplayerDatabase): SyncConflictDao = db.getSyncConflictDao()
 
     @Provides
     fun provideVideoBookmarkDao(db: NiplayerDatabase): VideoBookmarkDao = db.getVideoBookmarkDao()

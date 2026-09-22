@@ -7,9 +7,12 @@ import androidx.annotation.StringRes
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.storage.AbstractStorage
 import com.nichx.niplayer.storage.AbstractStorageFile
+import com.nichx.niplayer.storage.FilePrecondition
 import com.nichx.niplayer.storage.R
+import com.nichx.niplayer.storage.RemoteFile
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.storage.StorageFile
+import com.nichx.niplayer.storage.WriteOutcome
 import okhttp3.Credentials
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -277,14 +280,20 @@ class WebDavStorage(
      */
     override suspend fun saveFile(path: String, data: ByteArray): Boolean {
         return try {
-            httpPut(path, data)
+            val ok = httpPut(path, data)
+            // 失效父目录缓存：与 deleteFile/uploadFile 保持一致，否则紧随其后的 listFiles
+            // 会命中 10s 内的旧目录快照（内容已变但条目元信息仍是旧的）
+            if (ok) invalidateParentCache(path)
+            ok
         } catch (e: WebDavHttpException) {
             Log.w(TAG, "WebDAV saveFile HTTP 失败: ${e.message}")
             false
         } catch (e: IOException) {
             Log.w(TAG, "WebDAV saveFile 网络异常，重试: ${e.message}", e)
             try {
-                httpPut(path, data)
+                val ok = httpPut(path, data)
+                if (ok) invalidateParentCache(path)
+                ok
             } catch (e2: kotlinx.coroutines.CancellationException) {
                 throw e2
             } catch (e2: Exception) {
@@ -292,6 +301,126 @@ class WebDavStorage(
                 false
             }
         }
+    }
+
+    /**
+     * 单次 GET 同时取回内容与版本元信息。
+     *
+     * 关键点：[RemoteFile.etag] 必须与 [RemoteFile.data] 来自**同一次响应**。若改用
+     * `PROPFIND` 拿 etag 再另发 GET 取 body，两者之间文件可能已被他人修改，条件写就会
+     * 基于一个与 body 不匹配的 etag（TOCTOU）；此外 [listFiles] 有 10s 内存缓存，会让重试
+     * 循环反复拿到同一个陈旧 etag，导致 `If-Match` 永远 412。
+     *
+     * 404/410 视为"文件不存在"返回 null；其他错误码抛 [WebDavHttpException]，**不**降级为
+     * null —— 调用方必须能区分"云端没有该文件"与"读不到该文件"。
+     */
+    override suspend fun readFile(path: String): RemoteFile? {
+        val url = resourceUrl(path)
+        val request = buildRequest(url).get().build()
+        return client.newCall(request).execute().use { response ->
+            if (response.code == 404 || response.code == 410) return null
+            if (!response.isSuccessful) {
+                throw WebDavHttpException(response.code, "GET ${url} -> ${response.code} ${response.message}")
+            }
+            val body = response.body ?: throw IOException("GET empty body from $url")
+            RemoteFile(
+                data = body.bytes(),
+                etag = response.header("ETag"),
+                lastModified = parseHttpDate(response.header("Last-Modified")) ?: 0L,
+            )
+        }
+    }
+
+    /**
+     * 条件写入：把 [precondition] 转成 HTTP 条件请求头，让服务器拒绝"基于旧版本的写入"。
+     *
+     * 降级链：强 ETag 的 `If-Match` → `If-Unmodified-Since`（弱前置，秒级）→ 无条件 PUT。
+     * 服务器明确拒绝条件请求（400/428/501）时自动重发无条件 PUT，由调用方的读回校验兜底。
+     *
+     * 注意：`If-Match` 与 `If-None-Match` 互斥，不可同时发送。
+     */
+    override suspend fun writeFile(
+        path: String,
+        data: ByteArray,
+        precondition: FilePrecondition?,
+    ): WriteOutcome {
+        val url = resourceUrl(path)
+        val first = putOnce(url, data, precondition)
+        val result = if (first == PutResult.PreconditionRejected) {
+            Log.w(TAG, "服务器未接受条件写，降级为无条件 PUT: $url")
+            putOnce(url, data, null)
+        } else {
+            first
+        }
+        return when (result) {
+            is PutResult.Ok -> {
+                invalidateParentCache(path)
+                WriteOutcome.Success(result.etag)
+            }
+
+            PutResult.Conflict -> WriteOutcome.Conflicted
+            PutResult.PreconditionRejected -> WriteOutcome.Failed("precondition rejected by $url")
+            is PutResult.Error -> WriteOutcome.Failed(result.message)
+        }
+    }
+
+    /** 发一次 PUT 并归类结果，不做任何降级（降级由 [writeFile] 决定）。 */
+    private fun putOnce(url: HttpUrl, data: ByteArray, precondition: FilePrecondition?): PutResult {
+        val builder = buildRequest(url)
+            .put(data.toRequestBody(OCTET_STREAM))
+            .header("Overwrite", "T")
+        applyPrecondition(builder, precondition)
+        return client.newCall(builder.build()).execute().use { response ->
+            when {
+                response.isSuccessful -> PutResult.Ok(response.header("ETag"))
+                response.code == 412 -> PutResult.Conflict
+                response.code in PRECONDITION_REJECTED_CODES -> PutResult.PreconditionRejected
+                else -> PutResult.Error("PUT $url -> ${response.code} ${response.message}")
+            }
+        }
+    }
+
+    /**
+     * 附加条件请求头。
+     *
+     * `If-Match` 必须用**强验证符**：弱验证符（`W/"..."`）在强比较下与任何值都不匹配
+     * （RFC 7232 §2.3），发出去必然 412，因此检出后直接退回无条件写入。
+     */
+    private fun applyPrecondition(builder: Request.Builder, precondition: FilePrecondition?) {
+        when (precondition) {
+            null -> Unit
+
+            FilePrecondition.MustNotExist -> builder.header("If-None-Match", "*")
+
+            is FilePrecondition.MatchesEtag -> {
+                if (precondition.etag.isStrongEtag()) {
+                    builder.header("If-Match", precondition.etag)
+                } else {
+                    Log.w(TAG, "ETag 非强验证符，退回无条件写入: ${precondition.etag}")
+                }
+            }
+
+            is FilePrecondition.UnmodifiedSince -> builder.header(
+                "If-Unmodified-Since",
+                formatHttpDate(precondition.epochMillis),
+            )
+        }
+    }
+
+    /** 强验证符：带引号包裹且不是弱验证符（RFC 7232 §2.3）。 */
+    private fun String.isStrongEtag(): Boolean =
+        length > 2 && startsWith("\"") && endsWith("\"") && !startsWith("W/", ignoreCase = true)
+
+    /** 单次 PUT 的归类结果，[writeFile] 据此决定是否降级重发。 */
+    private sealed interface PutResult {
+        data class Ok(val etag: String?) : PutResult
+
+        data object Conflict : PutResult
+
+        /** 服务器不支持/拒绝条件请求（400/428/501），应重发无条件 PUT。 */
+        data object PreconditionRejected : PutResult
+
+        data class Error(val message: String) : PutResult
     }
 
     override suspend fun createDirectory(path: String): Boolean {
@@ -1012,6 +1141,26 @@ class WebDavStorage(
                 init(null, arrayOf<TrustManager>(TRUST_ALL_MANAGER), SecureRandom())
             }
         }
+
+        /**
+         * 服务器不认条件请求时返回的状态码，命中则降级为无条件 PUT。
+         *
+         * - 400：部分服务器对无法解析的 etag 直接报 Bad Request
+         * - 428：Precondition Required —— 说明前置条件没被接受
+         * - 501：不支持该条件头
+         */
+        private val PRECONDITION_REJECTED_CODES = setOf(400, 428, 501)
+
+        private val HTTP_DATE_FORMAT = object : ThreadLocal<SimpleDateFormat>() {
+            override fun initialValue(): SimpleDateFormat =
+                SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("GMT")
+                }
+        }
+
+        /** 格式化为 HTTP-date（秒级粒度，RFC 7231）；[epochMillis] 向下截断到整秒。 */
+        private fun formatHttpDate(epochMillis: Long): String =
+            HTTP_DATE_FORMAT.get()!!.format(java.util.Date(epochMillis / 1000 * 1000))
 
         private val DATE_FORMATS = object : ThreadLocal<List<SimpleDateFormat>>() {
             override fun initialValue(): List<SimpleDateFormat> = listOf(

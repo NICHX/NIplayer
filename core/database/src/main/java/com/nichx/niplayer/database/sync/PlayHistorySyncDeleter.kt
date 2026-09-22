@@ -14,14 +14,17 @@ import javax.inject.Singleton
 /**
  * 播放历史删除 + 云同步 tombstone 的统一入口。
  *
- * 供所有"删除历史但并非从播放历史列表页发起"的路径复用（移除存储源 / 屏蔽目录 / 目录加密 /
- * 删除媒体库），保证删除在云同步里正确传播：
- *   1) 先为每条将被删除且属于可同步存储（SMB/WebDAV/Other）的记录写一条删除 tombstone，
- *      其 record_key 为设备无关的 [syncKey]（归一化存储地址 + 存储内相对路径）；
- *   2) 再执行真正的删除。
+ * 云同步的墓碑是本机**永久账本**（[SyncDeleteLogDao] 中的行不再在发布后被清空）：只要墓碑还在，
+ * 晚联网的设备就不会把已删记录"复活"。因此删除历史必须经过本类，保证墓碑与删除动作一起发生。
  *
- * tombstone 用 [SyncDeleteLogDao.insertOrReplace]，同一 record_key 已存在则以新删除时间覆盖，
- * 避免"删除→重扫→再删"时旧 tombstone 时间过旧导致远端记录复活。
+ * 两类调用方：
+ *  1. **历史列表页**的删除 / 清空 —— 自己落库，只需先写墓碑（用 [tombstoneFor]）；
+ *  2. **非历史页发起**的删除（移除存储源 / 屏蔽目录 / 目录加密 / 删除媒体库）—— 先写墓碑再删，
+ *     由本类的 deleteBy* 方法一次完成。
+ *
+ * 墓碑的 record_key 使用设备无关的 [syncKey]（归一化存储地址 + 存储内相对路径），本地自增的
+ * storageId / uniqueKey 跨设备无意义。只有可同步的远端存储（SMB/WebDAV/Other）才写墓碑：
+ * LOCAL / EXTERNAL / QUICK_ACCESS 的同路径不代表同一文件。
  *
  * 位于 :core:database 而非 :core:sync：目录加密删除（EncryptedFolderManager）在 :core:database
  * 内，为避免 :core:database 反向依赖 :core:sync 而选择放于此处，复用 RecordKeys 中的 syncKey。
@@ -32,6 +35,27 @@ class PlayHistorySyncDeleter @Inject constructor(
     private val mediaLibraryDao: MediaLibraryDao,
     private val syncDeleteLogDao: SyncDeleteLogDao,
 ) {
+
+    /**
+     * 为一条记录写删除墓碑（**不删除记录本身**）。
+     *
+     * 供"自己负责落库"的调用方复用（历史列表页的单条删除 / 清空），保证墓碑写入逻辑与
+     * [deleteByStorageId] 等路径完全一致。
+     */
+    suspend fun tombstoneFor(entity: PlayHistoryEntity, deletedAt: Long = System.currentTimeMillis()) {
+        tombstoneFor(listOf(entity), deletedAt)
+    }
+
+    /** 为多条记录批量写墓碑（存储库地址映射只查一次）。 */
+    suspend fun tombstoneFor(entities: List<PlayHistoryEntity>, deletedAt: Long = System.currentTimeMillis()) {
+        val baseUrlByLibrary = mediaLibraryDao.getAllSuspend()
+            .filter { it.mediaType.isSyncableBase() }
+            .associate { it.id to normalizeBaseUrl(it.url) }
+        entities.forEach { entity ->
+            val baseUrl = entity.storageId?.let { baseUrlByLibrary[it] } ?: return@forEach
+            recordTombstone(entity, baseUrl, deletedAt)
+        }
+    }
 
     /** 删除某存储源全部播放历史（移除存储源 / 删除媒体库）。 */
     suspend fun deleteByStorageId(storageId: Int) {
@@ -82,7 +106,6 @@ class PlayHistorySyncDeleter @Inject constructor(
                 tableName = TABLE_PLAY_HISTORY,
                 recordKey = syncKey(baseUrl, path),
                 deletedAt = deletedAt,
-                synced = false,
             ),
         )
     }

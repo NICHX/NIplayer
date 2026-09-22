@@ -1,7 +1,6 @@
 package com.nichx.niplayer.feature.home.history
 
 import com.nichx.niplayer.feature.home.R
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,10 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.FilterChip
@@ -47,7 +44,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -120,8 +116,6 @@ fun PlayHistoryScreen(
     val messageController = LocalAppMessageController.current
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val syncConfig by viewModel.syncConfig.collectAsStateWithLifecycle()
-    val conflicts by viewModel.conflicts.collectAsStateWithLifecycle()
-    var showConflicts by remember { mutableStateOf(false) }
     var errorContent: String? by remember { mutableStateOf(null) }
     val context = LocalContext.current
 
@@ -212,33 +206,6 @@ fun PlayHistoryScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            if (conflicts.isNotEmpty()) {
-                item(key = "conflicts_banner") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f))
-                            .clickable { showConflicts = true }
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.CloudSync,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                        Text(
-                            text = stringResource(R.string.play_history_conflicts_banner, conflicts.size),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
             if (hasHistory) {
                 item(key = "filter_chips") {
                     Column(
@@ -391,50 +358,6 @@ fun PlayHistoryScreen(
                                 text = stringResource(R.string.play_history_delete_record),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    }
-                },
-            )
-        }
-    }
-
-    if (showConflicts) {
-        val sheetId = "play_history_conflicts"
-        val conflictsTitle = stringResource(R.string.play_history_conflicts_title)
-        DisposableEffect(Unit) {
-            onDispose { NiGlassOverlay.dismiss(sheetId) }
-        }
-        LaunchedEffect(sheetId) {
-            NiGlassOverlay.show(
-                NiGlassOverlayRequest(
-                    id = sheetId,
-                    kind = NiGlassOverlayKind.BottomSheet,
-                    title = conflictsTitle,
-                    onDismiss = { showConflicts = false },
-                ) {
-                    Column(modifier = Modifier.padding(bottom = 32.dp)) {
-                        Text(
-                            text = stringResource(R.string.play_history_conflicts_desc),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        conflicts.forEachIndexed { index, conflict ->
-                            if (index > 0) {
-                                HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp))
-                            }
-                            ConflictItem(
-                                conflict = conflict,
-                                onKeepLocal = {
-                                    viewModel.resolveConflictKeepLocal(conflict)
-                                    if (conflicts.size == 1) showConflicts = false
-                                },
-                                onKeepRemote = {
-                                    viewModel.resolveConflictKeepRemote(conflict)
-                                    if (conflicts.size == 1) showConflicts = false
-                                },
                             )
                         }
                     }
