@@ -143,9 +143,21 @@ fun PlayerScreen(
     viewModel: PlayerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val positionMs by viewModel.positionMs.collectAsStateWithLifecycle()
     val durationMs by viewModel.durationMs.collectAsStateWithLifecycle()
-    val bufferedMs by viewModel.bufferedMs.collectAsStateWithLifecycle()
+    // P0-1 结构改造（2026-09-22）：原先在此顶层 collect positionMs / bufferedMs / networkSpeed，
+    // 三者都是每 500ms 变化的高频值（NxMedia3Player 的 positionTicker）。顶层读取意味着
+    // **整个 PlayerScreen 函数体每秒重跑 2 次**，连带重建 hudButtons / moreActions 两个 List
+    // （由局部 @Composable ctrlButtonUnit 产出，无法 remember），使 PlayerControllerLayer 的
+    // 这两个参数引用永不相等 —— 整层因此无法跳过重组（compose 报告可证）。
+    // 现改为：
+    // - 事件处理（键盘 / 双击 / 横滑 / 快进快退）按需读 viewModel.nxPlayer.positionMs.value，
+    //   即事件发生时的实时值；
+    // - 展示层（进度条、网速文字）由 PlayerControllerLayer 内部自行 collect 对应 StateFlow，
+    //   使重组范围收敛到那几个叶子组件。
+    //
+    // ⚠️ 事件处理必须读 nxPlayer.positionMs（原始 MutableStateFlow），**不能**读
+    //    viewModel.positionMs —— 后者是 stateIn(WhileSubscribed(5000))，无人订阅时上游会停，
+    //    `.value` 将冻结在最后一次发射值，导致 seek 基准错误。
     val videoSize by viewModel.videoSize.collectAsStateWithLifecycle()
     val effectiveVideoSize by viewModel.effectiveVideoSize.collectAsStateWithLifecycle()
     val preReadAspectRatio by viewModel.preReadAspectRatio.collectAsStateWithLifecycle()
@@ -168,7 +180,6 @@ fun PlayerScreen(
     val inLockZone by viewModel.inLockZone.collectAsStateWithLifecycle()
     val abLoopA by viewModel.abLoopA.collectAsStateWithLifecycle()
     val abLoopB by viewModel.abLoopB.collectAsStateWithLifecycle()
-    val networkSpeed by viewModel.networkSpeed.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val showDownloadDialog by viewModel.showDownloadDialog.collectAsStateWithLifecycle()
     // 本地文件（已下载/缓存直链）来源时隐藏下载按钮
@@ -610,11 +621,12 @@ fun PlayerScreen(
             when (keyEvent.key) {
                 Key.Spacebar, Key.K, Key.Enter -> { viewModel.togglePlayPause(); true }
                 Key.DirectionRight, Key.L -> {
-                    val t = (positionMs + 10_000).coerceAtMost(durationMs.coerceAtLeast(1L))
+                    val t = (viewModel.nxPlayer.positionMs.value + 10_000)
+                        .coerceAtMost(durationMs.coerceAtLeast(1L))
                     viewModel.seekTo(t); true
                 }
                 Key.DirectionLeft, Key.J -> {
-                    val t = (positionMs - 10_000).coerceAtLeast(0L)
+                    val t = (viewModel.nxPlayer.positionMs.value - 10_000).coerceAtLeast(0L)
                     viewModel.seekTo(t); true
                 }
                 Key.DirectionUp -> { adjustVolume(audioManager, +1); true }
@@ -1105,12 +1117,16 @@ fun PlayerScreen(
                                             val third = size.width / 3f
                                             when {
                                                 startX < third -> {
-                                                    viewModel.seekTo((positionMs - doubleTapStepMs).coerceAtLeast(0L))
+                                                    viewModel.seekTo(
+                                                        (viewModel.nxPlayer.positionMs.value - doubleTapStepMs)
+                                                            .coerceAtLeast(0L),
+                                                    )
                                                     infoOsd = context.getString(R.string.player_seek_backward_seconds, doubleTapStepMs / 1000)
                                                 }
                                                 startX > size.width * 2f / 3f -> {
                                                     viewModel.seekTo(
-                                                        (positionMs + doubleTapStepMs).coerceAtMost(durationMs.coerceAtLeast(1L)),
+                                                        (viewModel.nxPlayer.positionMs.value + doubleTapStepMs)
+                                                            .coerceAtMost(durationMs.coerceAtLeast(1L)),
                                                     )
                                                     infoOsd = context.getString(R.string.player_seek_forward_seconds, doubleTapStepMs / 1000)
                                                 }
@@ -1172,7 +1188,7 @@ fun PlayerScreen(
                                         val pxToMs = if (size.width > 0) {
                                             durationMsValue.toFloat() / (size.width * seekSensitivity)
                                         } else 0f
-                                        val target = (positionMs + (dx * pxToMs).toLong())
+                                        val target = (viewModel.nxPlayer.positionMs.value + (dx * pxToMs).toLong())
                                             .coerceIn(0L, durationMsValue.coerceAtLeast(1L))
                                         viewModel.seekTo(target)
                                         change.consume()
@@ -1449,10 +1465,10 @@ fun PlayerScreen(
                 PlayerControllerLayer(
                     title = title,
                     state = state,
-                    positionMs = positionMs,
+                    positionMsFlow = viewModel.positionMs,
                     durationMs = durationMs,
-                    bufferedMs = bufferedMs,
-                    networkSpeed = networkSpeed,
+                    bufferedMsFlow = viewModel.bufferedMs,
+                    networkSpeedFlow = viewModel.networkSpeed,
                     speedIndex = speedIndex,
                     abLoopA = abLoopA,
                     abLoopB = abLoopB,
@@ -1488,11 +1504,11 @@ fun PlayerScreen(
                     onSkipPrevious = { viewModel.playPrevious() },
                     onSkipNext = { viewModel.playNext() },
                     onRewind = {
-                        val target = (positionMs - 10_000).coerceAtLeast(0L)
+                        val target = (viewModel.nxPlayer.positionMs.value - 10_000).coerceAtLeast(0L)
                         viewModel.seekTo(target)
                     },
                     onForward = {
-                        val target = (positionMs + 10_000)
+                        val target = (viewModel.nxPlayer.positionMs.value + 10_000)
                             .coerceAtMost(durationMs.coerceAtLeast(1L))
                         viewModel.seekTo(target)
                     },
@@ -1864,14 +1880,14 @@ fun PlayerScreen(
         }
 
         if (showAbLoopDialog) {
-            AbLoopDialog(
+            // P0-1 结构改造：AbLoopDialog 需要「实时当前位置」显示。
+            // 原先由 PlayerScreen 顶层 collect 后传入 —— 那会让整个屏幕每秒重跑 2 次。
+            // 现由宿主组件自行 collect，把每 500ms 的重组限制在弹窗内部。
+            AbLoopDialogHost(
+                viewModel = viewModel,
                 abLoopA = abLoopA,
                 abLoopB = abLoopB,
                 durationMs = durationMs,
-                positionMs = positionMs,
-                onSetPointA = { viewModel.setAbLoopPointA() },
-                onSetPointB = { viewModel.setAbLoopPointB() },
-                onClearAbLoop = { viewModel.clearAbLoop() },
                 onDismiss = { showAbLoopDialog = false },
             )
         }
@@ -1915,4 +1931,34 @@ fun PlayerScreen(
             )
         }
     }
+}
+
+
+/**
+ * AB 循环弹窗宿主（P0-1 结构改造，2026-09-22）。
+ *
+ * 单独抽出的唯一目的：让 [PlayerScreen] 顶层不必再 collect `positionMs`。
+ * 该弹窗需要实时位置，而位置每 500ms 变化 —— 若在 PlayerScreen 顶层读取，
+ * 整个屏幕（含 HUD、菜单、字幕层）都会跟着每秒重组 2 次。
+ * 把订阅收敛到本组件后，高频重组被限制在弹窗自身的作用域内。
+ */
+@Composable
+private fun AbLoopDialogHost(
+    viewModel: PlayerViewModel,
+    abLoopA: Long?,
+    abLoopB: Long?,
+    durationMs: Long,
+    onDismiss: () -> Unit,
+) {
+    val positionMs by viewModel.positionMs.collectAsStateWithLifecycle()
+    AbLoopDialog(
+        abLoopA = abLoopA,
+        abLoopB = abLoopB,
+        durationMs = durationMs,
+        positionMs = positionMs,
+        onSetPointA = { viewModel.setAbLoopPointA() },
+        onSetPointB = { viewModel.setAbLoopPointB() },
+        onClearAbLoop = { viewModel.clearAbLoop() },
+        onDismiss = onDismiss,
+    )
 }

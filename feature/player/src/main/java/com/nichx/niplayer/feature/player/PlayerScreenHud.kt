@@ -87,9 +87,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.player.kernel.PlaybackState
 import com.nichx.niplayer.player.kernel.PlaylistItem
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 
 
 internal val AbLoopColorA = Color(0xFFFFAB40)
@@ -432,10 +434,14 @@ internal fun PlayerHudButton(
 internal fun PlayerControllerLayer(
     title: String,
     state: PlaybackState,
-    positionMs: Long,
+    // P0-1 结构改造（2026-09-22）：下面三个是每 500ms 变化的播放进度 / 缓冲 / 网速。
+    // 原先以 Long 直接传入，本层每次重组都会收到新值 —— 即便其余参数全等也永远无法跳过，
+    // 于是播放中整层（全部 HUD 按钮、菜单、OSD）每秒被重组 2 次。
+    // 改为传 StateFlow，由内部叶子组件自行 collect，把高频重组收敛到那几个组件。
+    positionMsFlow: StateFlow<Long>,
     durationMs: Long,
-    bufferedMs: Long,
-    networkSpeed: Long,
+    bufferedMsFlow: StateFlow<Long>,
+    networkSpeedFlow: StateFlow<Long>,
     speedIndex: Int,
     abLoopA: Long?,
     abLoopB: Long?,
@@ -567,14 +573,12 @@ internal fun PlayerControllerLayer(
                 )
             }
 
-            if (networkSpeed > 0L && !isPortrait) {
-                Text(
-                    text = formatNetworkSpeed(networkSpeed),
-                    color = Color.White.copy(alpha = 0.65f),
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(horizontal = 6.dp),
-                )
-            }
+            // P0-1 结构改造：网速每 500ms 变化，订阅收敛到本组件内部，
+            // 避免把整个 PlayerControllerLayer 拖成每 500ms 重组一次。
+            NetworkSpeedLabel(
+                networkSpeedFlow = networkSpeedFlow,
+                visible = !isPortrait,
+            )
 
             Box(
                 modifier = Modifier.width(48.dp).padding(horizontal = 4.dp),
@@ -655,41 +659,19 @@ internal fun PlayerControllerLayer(
                 .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Bottom))
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         ) {
-            // 拖动进度条时记录预览位置（fraction），时间文本跟随显示目标时间
-            var dragFractionPreview by remember { mutableStateOf<Float?>(null) }
-            PlayerProgressBar(
-                positionFraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
-                bufferedFraction = if (durationMs > 0) bufferedMs.toFloat() / durationMs else 0f,
+            // P0-1 结构改造：进度条与时间文本是播放器里唯一必须每 500ms 刷新的部分。
+            // 订阅收敛到 PlayerProgressSection 内部，使本层其余内容（HUD 按钮、菜单、OSD）
+            // 不再因进度变化而重组。
+            PlayerProgressSection(
+                positionMsFlow = positionMsFlow,
+                bufferedMsFlow = bufferedMsFlow,
                 durationMs = durationMs,
                 abLoopA = abLoopA,
                 abLoopB = abLoopB,
                 onSeek = onSeek,
                 onSeekFinished = onSeekFinished,
-                onDragFractionChange = { dragFractionPreview = it },
                 bookmarkPositions = bookmarkPositions,
             )
-
-            Spacer(Modifier.height(2.dp))
-
-            val previewPos = dragFractionPreview?.let { (it * durationMs).toLong() } ?: positionMs
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = formatDuration(previewPos),
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
-                Text(
-                    text = "-${formatDuration((durationMs - previewPos).coerceAtLeast(0L))}",
-                    color = Color.White.copy(alpha = 0.6f),
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
 
             Spacer(Modifier.height(6.dp))
 
@@ -994,3 +976,84 @@ internal fun PlayerControllerLayer(
     }
 }
 
+/**
+ * 网速标签（P0-1 结构改造，2026-09-22）。
+ *
+ * 单独抽出，把 [networkSpeedFlow] 的每 500ms 订阅收敛在本组件作用域内。
+ * 若直接在 [PlayerControllerLayer] 主体读取，整层（HUD 按钮、菜单、OSD）都会被拖成
+ * 每秒重组 2 次。本地文件源下速度恒为 0，本组件不渲染任何内容。
+ */
+@Composable
+private fun NetworkSpeedLabel(
+    networkSpeedFlow: StateFlow<Long>,
+    visible: Boolean,
+) {
+    val networkSpeed by networkSpeedFlow.collectAsStateWithLifecycle()
+    if (networkSpeed > 0L && visible) {
+        Text(
+            text = formatNetworkSpeed(networkSpeed),
+            color = Color.White.copy(alpha = 0.65f),
+            fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 6.dp),
+        )
+    }
+}
+
+/**
+ * 进度条 + 时间文本区块（P0-1 结构改造，2026-09-22）。
+ *
+ * 这是播放器里唯一**必须**每 500ms 刷新的部分。把两个高频 StateFlow 的订阅收敛到本组件，
+ * 使 [PlayerControllerLayer] 的参数不再包含高频值，从而在稳态下可被 Compose 跳过重组。
+ *
+ * 拖动预览逻辑（dragFractionPreview）原本就在这一区块内，一并迁入，语义逐字未变。
+ */
+@Composable
+private fun PlayerProgressSection(
+    positionMsFlow: StateFlow<Long>,
+    bufferedMsFlow: StateFlow<Long>,
+    durationMs: Long,
+    abLoopA: Long?,
+    abLoopB: Long?,
+    onSeek: (Float) -> Unit,
+    onSeekFinished: () -> Unit,
+    bookmarkPositions: List<Long>,
+) {
+    val positionMs by positionMsFlow.collectAsStateWithLifecycle()
+    val bufferedMs by bufferedMsFlow.collectAsStateWithLifecycle()
+
+    // 拖动进度条时记录预览位置（fraction），时间文本跟随显示目标时间
+    var dragFractionPreview by remember { mutableStateOf<Float?>(null) }
+    PlayerProgressBar(
+        positionFraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
+        bufferedFraction = if (durationMs > 0) bufferedMs.toFloat() / durationMs else 0f,
+        durationMs = durationMs,
+        abLoopA = abLoopA,
+        abLoopB = abLoopB,
+        onSeek = onSeek,
+        onSeekFinished = onSeekFinished,
+        onDragFractionChange = { dragFractionPreview = it },
+        bookmarkPositions = bookmarkPositions,
+    )
+
+    Spacer(Modifier.height(2.dp))
+
+    val previewPos = dragFractionPreview?.let { (it * durationMs).toLong() } ?: positionMs
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = formatDuration(previewPos),
+            color = Color.White.copy(alpha = 0.8f),
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+        )
+        Text(
+            text = "-${formatDuration((durationMs - previewPos).coerceAtLeast(0L))}",
+            color = Color.White.copy(alpha = 0.6f),
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+        )
+    }
+}
