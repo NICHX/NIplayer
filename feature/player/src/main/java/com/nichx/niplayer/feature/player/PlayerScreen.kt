@@ -90,6 +90,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -100,6 +101,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -192,6 +194,10 @@ fun PlayerScreen(
 
     val context = LocalContext.current
     val activity = context as? Activity
+    // UX-2 修复（2026-09-22）：播放器手势（双击快进/后退、长按倍速）没有可见按钮，
+    // 震动是用户唯一可靠的触发确认 —— 尤其在横屏全屏、手指遮挡画面时。
+    // 全仓原先 0 处触觉反馈（performHapticFeedback / LocalHapticFeedback 均无命中）。
+    val haptic = LocalHapticFeedback.current
     // M-26 修复：activity 为 null 时（嵌入非 Activity 宿主）记录降级提示，
     // 强制横屏/亮度/PiP/系统 bar 控制等会静默失效，用户感知"功能没了"。
     // 此处不阻断渲染（UI 仍可播放），仅在需要 activity 的操作处检查 null 并给 OSD 提示。
@@ -1115,6 +1121,8 @@ fun PlayerScreen(
                                         lastTapTimeMs = 0L
                                         if (doubleTapStepMs > 0) {
                                             val third = size.width / 3f
+                                            // UX-2：双击手势无可见按钮，震动作为触发确认
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             when {
                                                 startX < third -> {
                                                     viewModel.seekTo(
@@ -1160,6 +1168,8 @@ fun PlayerScreen(
                                 && state is PlaybackState.Playing
                             ) {
                                 longPressTriggered = true
+                                // UX-2：长按倍速生效时给一次确认
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 viewModel.applyLongPressSpeed()
                             }
 

@@ -7,4 +7,6 @@
     <string name="crash_log_saved">已保存崩溃日志</string>
     <string name="crash_dialog_copy">复制</string>
     <string name="crash_dialog_save_as_txt">保存为txt</string>
+    <!-- 通知权限（UX-1）：仅在用户拒绝后提示一次 -->
+    <string name="audio_notification_permission_denied">未获得通知权限，后台播放的通知栏与锁屏控制将不可用。可在系统设置中开启。</string>
 </resources>

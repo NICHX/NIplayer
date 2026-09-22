@@ -8,4 +8,6 @@
     <string name="crash_log_saved">Crash log saved</string>
     <string name="crash_dialog_copy">Copy</string>
     <string name="crash_dialog_save_as_txt">Save as txt</string>
+    <!-- Notification permission (UX-1): shown once, only if the user denies -->
+    <string name="audio_notification_permission_denied">Notification permission not granted — background playback controls in the notification shade and lock screen won\'t be available. You can enable it in system settings.</string>
 </resources>

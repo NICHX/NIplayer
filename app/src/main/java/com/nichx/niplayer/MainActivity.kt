@@ -31,6 +31,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -175,6 +176,40 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+                // UX-1 修复（2026-09-22）：POST_NOTIFICATIONS 此前**只在 manifest 声明、
+                // 从未在运行时请求** —— Android 13+ 上用户从未被询问，系统默认视为拒绝，
+                // 于是后台音频播放时通知栏与锁屏**不显示媒体控制卡**。
+                // 前台服务本身能跑（不会崩），但「后台可控」这一核心能力对用户是隐形的。
+                //
+                // 请求时机刻意**不放在启动时**：用户刚打开 App 就被要权限、且无理由说明，
+                // 正是本报告批评的反模式。改为**首次真正开始播放音频时**请求 ——
+                // 此刻「后台播放控制」的需求对用户是自明的。
+                // 被拒后不再反复弹（系统在两次拒绝后也会自动静默），改为提示可去系统设置开启。
+                val isAudioPlaying by audioPlaybackManager.isPlaying.collectAsStateWithLifecycle()
+                var notificationPermissionAsked by rememberSaveable { mutableStateOf(false) }
+                val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission(),
+                ) { granted ->
+                    if (!granted) {
+                        appMessageController.postInfo(
+                            getString(R.string.audio_notification_permission_denied),
+                        )
+                    }
+                }
+                LaunchedEffect(isAudioPlaying) {
+                    if (!isAudioPlaying || notificationPermissionAsked) return@LaunchedEffect
+                    // 仅 Android 13（API 33）起需要运行时请求该权限
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return@LaunchedEffect
+                    notificationPermissionAsked = true
+                    val granted = ContextCompat.checkSelfPermission(
+                        this@MainActivity,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (!granted) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+
                 // 版本检测：启动自动检查（24h 节流，静默失败），有更新时弹窗提示。
                 // A2 修复：宿主逻辑自持于 :feature:home，:app 不再 import UpdateViewModel / UpdateDialogHost
                 UpdateHost()
