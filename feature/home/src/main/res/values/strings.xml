@@ -565,7 +565,7 @@
     <string name="app_icon_current">当前图标</string>
     <string name="app_icon_presets">预设</string>
     <string name="app_icon_swit_hint">点击下方图标，立即切换桌面图标</string>
-    <string name="app_icon_default">默认</string>
+    <string name="app_icon_serif">衬线 N</string>
     <string name="app_icon_cream">奶油</string>
     <string name="app_icon_sage">鼠尾草</string>
     <string name="app_icon_steel">钢铁蓝</string>
@@ -573,6 +573,7 @@
     <string name="app_icon_text2">N 字标 2</string>
     <string name="app_icon_play">播放</string>
     <string name="app_icon_emoji">Emoji</string>
+    <string name="app_icon_badge_default">默认</string>
     <string name="theme_color_scheme">配色方案</string>
     <string name="theme_scheme_misty_desc">雾蓝 · 蓝灰雾感，宁静通透</string>
     <string name="theme_scheme_blueberry_desc">蓝莓 · 蓝靛交织，深邃沉静</string>
