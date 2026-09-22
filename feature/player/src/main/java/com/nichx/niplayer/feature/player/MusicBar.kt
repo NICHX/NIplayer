@@ -62,6 +62,7 @@ import coil3.request.crossfade
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import java.util.Locale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.roundToInt
 
 private val CARD_W = 110.dp
@@ -81,8 +82,12 @@ fun MusicBar(
     val isPlaying by playbackManager.isPlaying.collectAsStateWithLifecycle()
     val title by playbackManager.currentTitle.collectAsStateWithLifecycle()
     val coverPath by playbackManager.audioCoverPath.collectAsStateWithLifecycle()
-    val positionMs by playbackManager.positionMs.collectAsStateWithLifecycle()
-    val durationMs by playbackManager.durationMs.collectAsStateWithLifecycle()
+    // P0-1 结构改造（2026-09-22）：原先在此顶层 collect positionMs / durationMs（每 500ms 变化），
+    // 使整个 MusicBar 每秒重组 2 次 —— 而 MusicBar 常驻组合树，可见时还会连带
+    // FloatingMiniPlayerCard 内的 BoxWithConstraints（SubcomposeLayout）重复子组合。
+    // 改为把 StateFlow 透传给叶子组件，由 MiniProgressRow 自行订阅。
+    // 注：AudioPlaybackManager 的这两个是普通 asStateFlow()，**没有** WhileSubscribed 陷阱，
+    // 故可安全传递 Flow（不同于 PlayerViewModel.positionMs 那种 stateIn(WhileSubscribed)）。
 
     val hasActiveTrack = title.isNotEmpty()
 
@@ -96,8 +101,8 @@ fun MusicBar(
                 coverPath = coverPath,
                 title = title,
                 isPlaying = isPlaying,
-                positionMs = positionMs,
-                durationMs = durationMs,
+                positionMsFlow = playbackManager.positionMs,
+                durationMsFlow = playbackManager.durationMs,
                 onPlayPause = { playbackManager.togglePlayPause() },
                 onNext = { playbackManager.playNext() },
                 onPrevious = { playbackManager.playPrevious() },
@@ -113,8 +118,8 @@ private fun FloatingMiniPlayerCard(
     coverPath: String?,
     title: String,
     isPlaying: Boolean,
-    positionMs: Long,
-    durationMs: Long,
+    positionMsFlow: StateFlow<Long>,
+    durationMsFlow: StateFlow<Long>,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -250,45 +255,11 @@ private fun FloatingMiniPlayerCard(
                     )
                 }
 
-                // 播放时间与细进度条
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = formatMiniTime(positionMs),
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 8.sp,
-                        )
-                        Text(
-                            text = formatMiniTime(durationMs),
-                            color = Color.White.copy(alpha = 0.55f),
-                            fontSize = 8.sp,
-                        )
-                    }
-                    Spacer(Modifier.height(1.dp))
-                    val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(Color.White.copy(alpha = 0.2f)),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(fraction)
-                                .height(2.dp)
-                                .background(Color.White),
-                        )
-                    }
-                }
+                // 播放时间与细进度条（P0-1 结构改造：订阅收敛到 MiniProgressRow 内部）
+                MiniProgressRow(
+                    positionMsFlow = positionMsFlow,
+                    durationMsFlow = durationMsFlow,
+                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -353,5 +324,60 @@ private fun formatMiniTime(ms: Long): String {
         String.format(Locale.ROOT, "%d:%02d:%02d", hours, minutes, seconds)
     } else {
         String.format(Locale.ROOT, "%d:%02d", minutes, seconds)
+    }
+}
+
+/**
+ * 迷你播放条的时间文本 + 细进度条（P0-1 结构改造，2026-09-22）。
+ *
+ * 这是迷你播放条里唯一需要每 500ms 刷新的部分。把订阅收敛到本组件后，
+ * [MusicBar] 与 [FloatingMiniPlayerCard] 不再因播放进度变化而重组 ——
+ * 后者内部有 BoxWithConstraints（SubcomposeLayout），每 tick 重复子组合代价明显。
+ * 布局、文案、颜色逐字沿用原实现，仅把两个值改为内部 collect。
+ */
+@Composable
+private fun MiniProgressRow(
+    positionMsFlow: StateFlow<Long>,
+    durationMsFlow: StateFlow<Long>,
+) {
+    val positionMs by positionMsFlow.collectAsStateWithLifecycle()
+    val durationMs by durationMsFlow.collectAsStateWithLifecycle()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = formatMiniTime(positionMs),
+                color = Color.White.copy(alpha = 0.85f),
+                fontSize = 8.sp,
+            )
+            Text(
+                text = formatMiniTime(durationMs),
+                color = Color.White.copy(alpha = 0.55f),
+                fontSize = 8.sp,
+            )
+        }
+        Spacer(Modifier.height(1.dp))
+        val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .clip(RoundedCornerShape(1.dp))
+                .background(Color.White.copy(alpha = 0.2f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .height(2.dp)
+                    .background(Color.White),
+            )
+        }
     }
 }
