@@ -189,7 +189,8 @@ fun LrcApiSettingsScreen(
             ) {
                 SettingClickRow(
                     label = stringResource(R.string.lrcapi_clear_label),
-                    value = stringResource(R.string.lrcapi_clear_hint),
+                    value = stringResource(R.string.lrcapi_clear_action),
+                    description = stringResource(R.string.lrcapi_clear_hint),
                     onClick = { showClearDialog = true },
                 )
             }

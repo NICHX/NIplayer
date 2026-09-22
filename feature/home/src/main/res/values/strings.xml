@@ -283,8 +283,8 @@
     <string name="settings_entry_download_sub">管理下载与上传任务</string>
     <string name="settings_entry_cache">缓存管理</string>
     <string name="settings_entry_cache_sub">清理各类缓存</string>
-    <string name="settings_entry_lrcapi">歌词 API</string>
-    <string name="settings_entry_lrcapi_sub">配置在线歌词接口</string>
+    <string name="settings_entry_lrcapi">音乐元数据</string>
+    <string name="settings_entry_lrcapi_sub">配置在线歌词与封面接口</string>
     <string name="settings_entry_player">播放器</string>
     <string name="settings_entry_player_sub">播放内核、字幕与手势</string>
     <string name="settings_entry_media_library">媒体库</string>
@@ -802,8 +802,9 @@
     <string name="lrcapi_guide_link">github.com/HisAtri/LrcApi</string>
     <string name="lrcapi_guide_open">打开项目</string>
     <string name="lrcapi_clear_title">数据管理</string>
-    <string name="lrcapi_clear_label">清空在线匹配缓存与忽略列表</string>
+    <string name="lrcapi_clear_label">在线匹配缓存与忽略列表</string>
     <string name="lrcapi_clear_hint">删除所有在线匹配的歌词 / 封面缓存，并重置「忽略」列表</string>
+    <string name="lrcapi_clear_action">清空</string>
     <string name="lrcapi_clear_confirm_title">清空在线匹配数据</string>
     <string name="lrcapi_clear_confirm_body">将删除所有在线匹配的歌词与封面缓存，并重置忽略列表。本地文件或同目录歌词不受影响。确定继续吗？</string>
     <string name="lrcapi_clear_done">已清空在线匹配缓存与忽略列表</string>
