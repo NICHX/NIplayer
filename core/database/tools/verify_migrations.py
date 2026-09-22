@@ -19,8 +19,8 @@
   defaultValue 的列，迁移里多写一个 DEFAULT 不会导致校验失败（反之则会）。
 
 用法：
-    python3 verify_migrations.py            # 校验 6 -> 18
-    python3 verify_migrations.py 10         # 校验 10 -> 18
+    python3 verify_migrations.py            # 校验 6 -> 19
+    python3 verify_migrations.py 10         # 校验 10 -> 19
 """
 
 from __future__ import annotations

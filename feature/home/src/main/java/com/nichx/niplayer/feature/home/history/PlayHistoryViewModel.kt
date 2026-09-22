@@ -1,19 +1,13 @@
 package com.nichx.niplayer.feature.home.history
 
-import com.nichx.niplayer.feature.home.R
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
-import com.nichx.niplayer.database.dao.SyncConflictDao
-import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.dao.VideoDao
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
-import com.nichx.niplayer.database.entity.SyncConflictEntity
-import com.nichx.niplayer.database.entity.SyncDeleteLogEntity
-import com.nichx.niplayer.database.isSyncableBase
-import com.nichx.niplayer.database.syncKey
+import com.nichx.niplayer.database.sync.PlayHistorySyncDeleter
 import com.nichx.niplayer.datastore.PlayHistorySyncConfig
 import com.nichx.niplayer.datastore.PlayHistorySyncSettings
 import com.nichx.niplayer.common.media.MediaFileTypes
@@ -45,7 +39,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
-import java.util.Date
 
 /**
  * 播放历史列表页 ViewModel。
@@ -71,8 +64,7 @@ class PlayHistoryViewModel @Inject constructor(
     private val mediaLibraryDao: MediaLibraryDao,
     private val storageFactory: StorageFactory,
     private val thumbnailManager: ThumbnailManager,
-    private val syncDeleteLogDao: SyncDeleteLogDao,
-    private val syncConflictDao: SyncConflictDao,
+    private val syncDeleter: PlayHistorySyncDeleter,
     private val syncManager: PlayHistorySyncManager,
 ) : ViewModel() {
 
@@ -284,7 +276,7 @@ class PlayHistoryViewModel @Inject constructor(
     fun deleteHistory(id: Int) {
         viewModelScope.launch {
             val entity = playHistoryDao.getById(id) ?: return@launch
-            recordDeleteTombstone(entity)
+            syncDeleter.tombstoneFor(entity)
             playHistoryDao.delete(id)
         }
     }
@@ -292,34 +284,10 @@ class PlayHistoryViewModel @Inject constructor(
     /** 清空全部历史，逐条记录同步 tombstone。 */
     fun clearAll() {
         viewModelScope.launch {
-            val now = System.currentTimeMillis()
-            playHistoryDao.getAll().forEach { entity -> recordDeleteTombstone(entity, now) }
+            val entities = playHistoryDao.getAll()
+            syncDeleter.tombstoneFor(entities, System.currentTimeMillis())
             playHistoryDao.deleteAll()
         }
-    }
-
-    /**
-     * 为删除写云同步 tombstone。
-     *
-     * BUG-B：record_key 必须是设备无关的 syncKey（归一化存储地址 + 存储内相对路径），而非
-     * 本地 storageId+uniqueKey，否则其他设备无法匹配到同一条记录。仅全身可同步的存储
-     *（SMB / WebDAV / Other）参与；用 REPLACE 刷新时间，避免"删除→重扫→再删"时旧 tombstone 过旧。
-     */
-    private suspend fun recordDeleteTombstone(
-        entity: PlayHistoryEntity,
-        deletedAt: Long = System.currentTimeMillis(),
-    ) {
-        val sid = entity.storageId ?: return
-        val path = entity.storagePath ?: return
-        val library = mediaLibraryDao.getById(sid) ?: return
-        if (!library.mediaType.isSyncableBase()) return
-        syncDeleteLogDao.insertOrReplace(
-            SyncDeleteLogEntity(
-                tableName = TABLE_PLAY_HISTORY,
-                recordKey = syncKey(library.url, path),
-                deletedAt = deletedAt,
-            ),
-        )
     }
 
     /** 云同步状态（驱动 TopBar 同步按钮指示器）。 */
@@ -335,54 +303,9 @@ class PlayHistoryViewModel @Inject constructor(
         }
     }
 
-    /** 未解决的同步冲突列表（供播放历史页冲突提示）。 */
-    val conflicts: StateFlow<List<SyncConflictEntity>> = syncConflictDao.getUnresolvedFlow()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList(),
-        )
-
-    /**
-     * 解决冲突：保留本机版本。
-     *
-     * 将冲突现场中的本机快照（播放位置 / 时长 / 播放时间）写回 play_history 记录，
-     * 并刷新 updated_at，下次同步时会以新版本传播到其他设备。
-     */
-    fun resolveConflictKeepLocal(conflict: SyncConflictEntity) {
-        viewModelScope.launch {
-            conflict.storageId?.let { sid ->
-                val record = playHistoryDao.getPlayHistory(conflict.uniqueKey, sid)
-                if (record != null) {
-                    record.videoPosition = conflict.localVideoPosition
-                    record.videoDuration = conflict.localVideoDuration
-                    record.playTime = Date(conflict.localPlayTime)
-                    record.updatedAt = System.currentTimeMillis()
-                    playHistoryDao.update(record)
-                }
-            }
-            syncConflictDao.delete(conflict)
-            _events.tryEmit(PlayHistoryEvent.Toast(context.getString(R.string.play_history_keep_local)))
-        }
-    }
-
-    /**
-     * 解决冲突：保留云端版本。
-     *
-     * 记录当前已处于 LWW 胜者（远端）状态，仅清除冲突记录。
-     */
-    fun resolveConflictKeepRemote(conflict: SyncConflictEntity) {
-        viewModelScope.launch {
-            syncConflictDao.delete(conflict)
-            _events.tryEmit(PlayHistoryEvent.Toast(context.getString(R.string.play_history_keep_remote)))
-        }
-    }
-
     private companion object {
         /** 批量提交缩略图结果的间隔（ms）。降低 StateFlow emit 次数，减少 Compose 重组。 */
         const val FLUSH_INTERVAL_MS = 250L
-
-        const val TABLE_PLAY_HISTORY = "play_history"
     }
 }
 

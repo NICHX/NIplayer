@@ -79,22 +79,6 @@ interface PlayHistoryDao {
     @Query("SELECT * FROM play_history WHERE url != '' AND storage_id IS NOT NULL ORDER BY play_time DESC")
     suspend fun getAll(): List<PlayHistoryEntity>
 
-    /** 获取自 [sinceId] 之后新增或更新的记录（按 id 升序）。用于增量同步。 */
-    @Query("SELECT * FROM play_history WHERE id > :sinceId AND storage_id IS NOT NULL ORDER BY id ASC")
-    suspend fun getChangesSince(sinceId: Int): List<PlayHistoryEntity>
-
-    /** 获取自 [sinceId] 之后新增或更新的记录（按 updated_at 升序）。用于增量同步捕获已有记录的更新。 */
-    @Query("SELECT * FROM play_history WHERE updated_at > :sinceTimestamp AND storage_id IS NOT NULL ORDER BY updated_at ASC")
-    suspend fun getChangesSinceTimestamp(sinceTimestamp: Long): List<PlayHistoryEntity>
-
-    /** 获取当前最大 id，用于增量同步游标跟踪。 */
-    @Query("SELECT MAX(id) FROM play_history")
-    suspend fun getMaxId(): Int?
-
-    /** 获取当前最大 updated_at，用于增量同步时间游标跟踪。 */
-    @Query("SELECT MAX(updated_at) FROM play_history")
-    suspend fun getMaxUpdatedAt(): Long?
-
     /**
      * 全量播放历史（响应式），按 [playTime] 倒序。
      *
