@@ -5,8 +5,6 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -17,6 +15,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.datastore.GlassSettings
 import com.nichx.niplayer.datastore.LanguageSettings
@@ -45,8 +44,11 @@ import dagger.hilt.android.AndroidEntryPoint
  *
  * ### 画中画（PiP）
  * - 小窗宽高比始终跟随视频实际尺寸同步，方向锁定在小窗期间暂解除（见 [PlayerScreen]）。
- * - 用户点击系统 PiP 的关闭(X)【而非「展开」】时，结束播放器：退出 PiP 后若未回到前台
- *   （未走 [onStart]），判定为关闭，调用 [finish] 让 [PlayerViewModel.onCleared] 停播落进度。
+ * - 用户点击系统 PiP 的关闭(X) / 上滑关掉小窗【而非「展开」】时，结束播放器：退出 PiP 后
+ *   Activity 变为不可见（走到 [onStop]），据此判定为关闭，调用 [finish] 让
+ *   [PlayerViewModel.onCleared] 停播落进度。
+ * - **不能**用 [onStart] 判定「是否已回到前台」：进入 PiP 时 Activity 只走 onPause
+ *   （小窗仍可见，**不会 onStop**），所以展开回全屏只走 onResume，onStart 永远不会被调用。
  */
 @AndroidEntryPoint
 class PlayerActivity : ComponentActivity() {
@@ -54,9 +56,16 @@ class PlayerActivity : ComponentActivity() {
     /** 复用 PlayerScreen 的 ViewModel（同一 ViewModelStore），用于读取播放状态与尺寸。 */
     private val viewModel: PlayerViewModel by viewModels()
 
-    /** 上一帧是否处于 PiP，用于区分"本次退出 PiP 但未回前台=点X关闭"。 */
-    private var pipWasActive = false
-    private var pipExitPending = false
+    /**
+     * 是否处于「PiP 会话」中。
+     *
+     * 进入 PiP 时置位；展开回全屏（[onResume]）或确认关闭小窗（[onStop] / PiP 退出回调）时复位。
+     *
+     * ⚠️ 之所以需要这个标志，而不是直接判断 [onStart]：进入 PiP 时 Activity 只是被置为
+     * **PAUSED**（小窗仍可见，不会 onStop），因此「展开回全屏」只走 onResume，
+     * onStart 永远不会被调用 —— 任何以 onStart 作为「已回到前台」判据的逻辑都会失效。
+     */
+    private var inPipSession = false
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LanguageSettings.wrap(newBase))
@@ -95,28 +104,43 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /**
-     * PiP 退出处理：区分「展开回大窗」与「点 X 关闭」。
+     * PiP 退出处理：区分「展开回大窗」与「点 X / 上滑关闭小窗」。
      *
-     * 展开会走 [onStart]（取消待定）；点 X 关闭不会 [onStart]，延迟到期后结束播放器，避免
-     * 关掉小窗后仍在后台继续解码播放。
+     * 判定依据（不依赖回调先后顺序，也不依赖 [onStart]）：
+     * - **关闭小窗**：Activity 变为不可见 → 先走 [onStop]。多数 ROM 上 [onStop] 先于本回调，
+     *   故此处生命周期已低于 [Lifecycle.State.STARTED]，直接结束播放器。
+     * - **展开回大窗**：Activity 仅由 PAUSED 回到 RESUMED，不会 [onStop]，
+     *   此时生命周期至少为 STARTED，不做任何结束动作（播放继续）。
+     *
+     * [inPipSession] 的复位分工：展开路径由 [onResume] 复位；关闭路径由本回调或 [onStop] 复位。
+     * 两条路径都不依赖回调先后顺序，避免影响后续的正常退后台。
      */
-    override fun onPictureInPictureModeChanged(isInPictureInPicture: Boolean, newConfig: Configuration) {
-        super.onPictureInPictureModeChanged(isInPictureInPicture, newConfig)
-        if (pipWasActive && !isInPictureInPicture) {
-            pipExitPending = true
-            Handler(Looper.getMainLooper()).postDelayed({
-                if (pipExitPending) {
-                    finish()
-                }
-            }, 250)
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (isInPictureInPictureMode) {
+            inPipSession = true
+        } else if (lifecycle.currentState < Lifecycle.State.STARTED) {
+            // onStop 已先到 —— 用户关闭了小窗（而非展开），结束播放器
+            inPipSession = false
+            if (!isFinishing) finish()
         }
-        pipWasActive = isInPictureInPicture
     }
 
-    override fun onStart() {
-        super.onStart()
-        // 回到前台（展开 PiP / 正常恢复），取消待定的关闭动作
-        pipExitPending = false
+    override fun onResume() {
+        super.onResume()
+        // 回到前台 = 展开回全屏：PiP 会话结束，播放继续（不做任何暂停/结束动作）
+        inPipSession = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // 退出 PiP 后进入不可见态（且已不在 PiP 模式）= 用户关闭了小窗（点 X / 上滑）。
+        // 展开回全屏不会走到这里，故不会误杀。结束播放器让 [PlayerViewModel.onCleared]
+        // 停播落进度，避免小窗关掉后仍在后台继续解码播放。
+        if (inPipSession && !isInPictureInPictureMode) {
+            inPipSession = false
+            if (!isFinishing) finish()
+        }
     }
 
     /**
