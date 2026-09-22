@@ -283,8 +283,8 @@
     <string name="settings_entry_download_sub">Manage downloads and uploads</string>
     <string name="settings_entry_cache">Cache manager</string>
     <string name="settings_entry_cache_sub">Clear various caches</string>
-    <string name="settings_entry_lrcapi">Lyrics API</string>
-    <string name="settings_entry_lrcapi_sub">Configure online lyrics API</string>
+    <string name="settings_entry_lrcapi">Music metadata</string>
+    <string name="settings_entry_lrcapi_sub">Configure online lyrics &amp; cover API</string>
     <string name="settings_entry_player">Player</string>
     <string name="settings_entry_player_sub">Kernel, subtitles &amp; gestures</string>
     <string name="settings_entry_media_library">Media library</string>
@@ -802,8 +802,9 @@
     <string name="lrcapi_guide_link">github.com/HisAtri/LrcApi</string>
     <string name="lrcapi_guide_open">Open project</string>
     <string name="lrcapi_clear_title">Data management</string>
-    <string name="lrcapi_clear_label">Clear online-match cache &amp; ignore list</string>
+    <string name="lrcapi_clear_label">Online-match cache &amp; ignore list</string>
     <string name="lrcapi_clear_hint">Delete all online-matched lyrics/cover caches and reset the ignore list</string>
+    <string name="lrcapi_clear_action">Clear</string>
     <string name="lrcapi_clear_confirm_title">Clear online-match data</string>
     <string name="lrcapi_clear_confirm_body">This deletes all online-matched lyrics and cover caches and resets the ignore list. Local files and same-directory lyrics are unaffected. Continue?</string>
     <string name="lrcapi_clear_done">Online-match cache &amp; ignore list cleared</string>
