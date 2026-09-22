@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
+import android.graphics.Rect
 import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
@@ -1334,8 +1335,16 @@ fun PlayerScreen(
         val enterPip: () -> Unit = {
             val size = activeVideoSize
             if (size.isValid) {
-                if (activity is PlayerActivity) (activity as PlayerActivity).enterPip(size)
-                else activity?.enterPictureInPictureMode(
+                if (activity is PlayerActivity) {
+                    // 以视频 SurfaceView 当前屏幕矩形作为 PiP 源矩形，让系统做平滑缩放进入动画；
+                    // 拿不到（VR 模式 / 贴图退出转场中）则回退默认，不做 sourceRectHint。
+                    val sv = surfaceViewRef
+                    val sourceRect = if (sv != null && sv.width > 0 && sv.height > 0) {
+                        val loc = IntArray(2).also { sv.getLocationOnScreen(it) }
+                        Rect(loc[0], loc[1], loc[0] + sv.width, loc[1] + sv.height)
+                    } else null
+                    (activity as PlayerActivity).enterPip(size, sourceRect)
+                } else activity?.enterPictureInPictureMode(
                     PictureInPictureParams.Builder()
                         .setAspectRatio(pipAspectRatio(size))
                         .build(),

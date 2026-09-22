@@ -3,8 +3,13 @@ package com.nichx.niplayer.feature.player
 import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.view.SurfaceView
+import android.view.View
+import android.view.ViewGroup
+import androidx.core.view.children
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -77,6 +82,30 @@ class PlayerActivity : ComponentActivity() {
     @Volatile
     var pipEntryRequested: Boolean = false
         private set
+
+    /**
+     * 当前全屏时视频 SurfaceView 的屏幕矩形，供 PiP 进入时作为 `sourceRectHint`。
+     *
+     * 直接从窗口视图树查找 SurfaceView 即时计算（不依赖 Compose 副作用时机——Home 手势
+     * 触发 [onUserLeaveHint] 时 Compose 的 onGloballyPositioned 写入可能尚未落地，导致
+     * 手势路径拿不到源矩形而退化回「窗口先消失、小窗再淡入」）。
+     */
+    private fun currentVideoSourceRect(): Rect? {
+        val sv = findSurfaceView(window?.decorView) ?: return null
+        if (sv.width <= 0 || sv.height <= 0) return null
+        val loc = IntArray(2)
+        sv.getLocationOnScreen(loc)
+        return Rect(loc[0], loc[1], loc[0] + sv.width, loc[1] + sv.height)
+    }
+
+    /** 深度优先查找 Compose AndroidView 挂载的播放 SurfaceView。 */
+    private fun findSurfaceView(view: View?): SurfaceView? = when (view) {
+        is SurfaceView -> view
+        is ViewGroup -> view
+            .children
+            .firstNotNullOfOrNull { findSurfaceView(it) }
+        else -> null
+    }
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LanguageSettings.wrap(newBase))
@@ -172,15 +201,21 @@ class PlayerActivity : ComponentActivity() {
             !isInPictureInPictureMode &&
             viewModel.state.value is PlaybackState.Playing
         ) {
-            enterPip(viewModel.videoSize.value)
+            enterPip(viewModel.videoSize.value, currentVideoSourceRect())
         }
     }
 
-    /** 进入画中画（手动按钮 / 自动 PiP 共用）。 */
-    fun enterPip(size: VideoSize) {
+    /**
+     * 进入画中画（手动按钮 / 自动 PiP 共用）。
+     *
+     * @param sourceRect 全屏时视频渲染区域（屏幕坐标）。传入后可让系统以此为起点做
+     *   平滑缩放进入动画；`null` 则系统无源矩形可用，会「窗口先消失、小窗再淡入」。
+     *   仅进入时使用，小窗期间调整宽高比（[updatePipAspectRatio]）不传。
+     */
+    fun enterPip(size: VideoSize, sourceRect: Rect? = null) {
         if (size.isValid && !isInPictureInPictureMode) {
             try {
-                val params = buildPipParams(size)
+                val params = buildPipParams(size, sourceRect)
                 setPictureInPictureParams(params)
                 // 先置位再请求：onUserLeaveHint → enterPip → onPause 的时序下，onPause 里
                 // isInPictureInPictureMode 可能仍为 false（见 [pipEntryRequested]），
@@ -203,9 +238,13 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /** 构建 PiP 参数：跟随视频宽高比 + 允许无缝尺寸调整，避免小窗宽高变化闪黑。 */
-    private fun buildPipParams(size: VideoSize): PictureInPictureParams {
+    private fun buildPipParams(size: VideoSize, sourceRect: Rect? = null): PictureInPictureParams {
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(pipAspectRatio(size))
+        // 源矩形让系统从视频所在区域平滑缩放到小窗；缺省则无缩放动画（先消失再淡入）。
+        if (sourceRect != null) {
+            builder.setSourceRectHint(sourceRect)
+        }
         // setSeamlessResizeEnabled 仅 API 31+ 可用，低版本静默忽略
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setSeamlessResizeEnabled(true)
