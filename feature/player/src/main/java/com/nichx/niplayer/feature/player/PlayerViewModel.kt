@@ -746,6 +746,22 @@ class PlayerViewModel @Inject constructor(
     /** 黑边检测失败自动重试上限（× UI 层重试间隔 ≈ 最长等待时间）。 */
     private val MAX_BLACK_BAR_RETRY = 8
 
+    /**
+     * 黑边检测的「最新一次」令牌（BUG-51 修复）。
+     *
+     * 检测会被多种时机连续触发（换源首帧 / 切回 Fit / 失败重试 / 开关切换），若各自并发
+     * 执行，先发起的检测可能后完成并用**过期帧**的结果覆盖新结果，导致画面比例来回翻动。
+     * 每次发起检测时自增，完成后令牌已不是当前值的即视为过期结果并丢弃。
+     *
+     * 不用「取消上一个任务」实现：协程若在启动前就被取消，其 body 不会执行，
+     * `finally` 里的 `bitmap.recycle()` 也随之跳过，会漏掉一张全屏 ARGB_8888 位图。
+     *
+     * 仅在主线程自增（[applyBlackBarDetection] 由 PixelCopy 主线程回调驱动），
+     * IO 线程只读取，故用 @Volatile 保证可见性。
+     */
+    @Volatile
+    private var blackBarDetectionToken = 0
+
     /** 以当前位置设置循环起点 A。若终点 B 已设置则自动启动循环。 */
     fun setAbLoopPointA() {
         val pos = player.positionMs.value
@@ -1471,11 +1487,16 @@ class PlayerViewModel @Inject constructor(
     /**
      * 应用智能黑边检测结果。
      *
-     * 由 UI 层在首帧渲染后抓图调用：PixelCopy 抓取 SurfaceView 位图 → 传入本方法。
+     * 由 UI 层在**换源首帧**渲染后抓图调用：PixelCopy 抓取 SurfaceView 位图 → 传入本方法。
      * 本方法在 IO 调度器执行 [BlackBarDetector.detect]，成功时更新 [effectiveVideoSize]。
+     * 连续触发时只保留最新一次的结果（见 [blackBarDetectionToken]）。
      *
-     * 不会抛异常：检测失败 / 功能关闭 / 全黑画面时保持 [effectiveVideoSize] 为 null，
-     * UI 层将回退到原始 [videoSize]。
+     * 不会抛异常。检测失败（全黑 / 过暗 / 过渡帧）时：
+     * - 尚无有效结果 → 保持 [effectiveVideoSize] 为 null，UI 层回退到原始 [videoSize]
+     * - 已有有效结果 → **保持原结果不变**，不撤销已生效的裁剪
+     *   （BUG-51：撤销会让画面尺寸在裁剪比例与原始比例之间跳变）
+     *
+     * 功能关闭（`autoDetectBlackBars == false`）时统一清空结果。
      *
      * @param bitmap 首帧位图（UI 层通过 PixelCopy 获取）
      */
@@ -1494,6 +1515,8 @@ class PlayerViewModel @Inject constructor(
 
         // 检测在 IO 线程执行（像素扫描耗时），
         // setBlackBarCropEnabled / StateFlow 更新切回主线程（ExoPlayer 要求主线程访问）
+        // BUG-51 修复：本次检测的令牌。完成时若已不是最新令牌，说明结果来自过期帧，直接丢弃
+        val token = ++blackBarDetectionToken
         viewModelScope.launch(Dispatchers.IO) {
             val rect = try {
                 BlackBarDetector.detect(bitmap)
@@ -1503,9 +1526,19 @@ class PlayerViewModel @Inject constructor(
                 bitmap.recycle()
             }
 
+            // 已被更新的检测取代：丢弃过期结果（位图已在 finally 中回收）
+            if (token != blackBarDetectionToken) return@launch
+
             if (rect == null) {
+                // BUG-51 修复：单帧检测失败（全黑 / 过暗 / 过渡帧）不得撤销已生效的裁剪。
+                // 黑边是整片视频的属性，检测失败只说明「这一帧不可用」。原实现在此清空
+                // effectiveVideoSize 并关闭裁剪 —— 开启自动裁剪后拖动进度条时，seek 落点
+                // 若是过渡帧就会把画面比例从裁剪后回落到原始比例（尺寸跳变），随后重试
+                // 成功又跳回去。故已有有效结果时保持现状，也不再重试（重试只会改写它）。
+                if (_effectiveVideoSize.value != null) return@launch
                 withContext(Dispatchers.Main) {
-                    _effectiveVideoSize.value = null
+                    // 切回主线程期间可能又发起了新检测，落地前再校验一次令牌
+                    if (token != blackBarDetectionToken) return@withContext
                     player.setBlackBarCropEnabled(false)
                     // 全黑/过暗导致检测失败：若仍在播放且未超重试上限，请求 UI 层延迟
                     // 重新抓图，等画面变亮后再检测（多数影片首帧是黑屏，需自动重试）
@@ -1540,6 +1573,8 @@ class PlayerViewModel @Inject constructor(
             val hasBlackBars = differsFromContainer && knownAspect
 
             withContext(Dispatchers.Main) {
+                // 切回主线程期间可能又发起了新检测，落地前再校验一次令牌
+                if (token != blackBarDetectionToken) return@withContext
                 if (hasBlackBars) {
                     // 检测到黑边：用有效区域重算 VideoSize，启用裁剪覆盖
                     // 让 media3 把原始视频帧保持比例裁剪填满缩小后的 surface，正好裁掉黑边

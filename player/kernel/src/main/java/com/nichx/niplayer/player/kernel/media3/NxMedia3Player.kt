@@ -322,6 +322,20 @@ class NxMedia3Player @Inject constructor(
     private var hasError: Boolean = false
 
     /**
+     * BUG-51 修复：标记「已装载新源、正在等待其首帧渲染」。
+     *
+     * media3 在**每次 seek** 时都会走 `MediaCodecRenderer.onPositionReset()` →
+     * `videoFrameReleaseControl.reset()`，把首帧状态重置，于是 `onRenderedFirstFrame()`
+     * 会在 seek 后再次回调。若原样透传成 [PlaybackEvent.RenderingStart]，播放器 UI 会把
+     * seek 误判为「换源首帧」而重跑首帧逻辑 —— 开启智能去黑边时即在 seek 落点的过渡帧上
+     * 重跑检测，撤销/改写了已生效的裁剪，画面比例随之跳变。
+     *
+     * 生命周期：[setSource] 置 true；[onRenderedFirstFrame] 消费后置 false（每次换源仅放行一次）。
+     */
+    @Volatile
+    private var awaitingFirstFrame: Boolean = false
+
+    /**
      * M-01 修复：标记 ExoPlayer 已 release，[positionTicker] 据此短路避免访问已释放实例
      * 抛 IllegalStateException。release 顺序保证：先置 [isReleased]=true 再 release ExoPlayer。
      */
@@ -494,6 +508,8 @@ class NxMedia3Player @Inject constructor(
         isNetworkSource = source !is NxMediaSource.Local
         networkIdleTicks = 0
         hdrDetectedEmitted.set(false)
+        // BUG-51 修复：装载新源即进入「等待首帧」状态，onRenderedFirstFrame 据此只放行一次
+        awaitingFirstFrame = true
         // M-03 修复：不在此处写 Buffering。setSource 后 ExoPlayer 仍处于 STATE_IDLE，
         // 状态与实际不一致；PlayerViewModel 在 setSource 后会显式 prepare() + play()，
         // prepare 触发的 onPlaybackStateChanged(STATE_BUFFERING) 会自然驱动状态。
@@ -707,6 +723,8 @@ class NxMedia3Player @Inject constructor(
         networkIdleTicks = 0
         hdrDetectedEmitted.set(false)
         hasError = false
+        // BUG-51 修复：重置首帧放行标志，避免释放后残留状态
+        awaitingFirstFrame = false
         // BUG-7 修复：重置缩放相关状态，避免单例场景下新调用方继承旧模式。
         // 当前 NxMedia3Player 不 @Singleton，每次 @Inject 新实例无实际影响；
         // 但保持重置完整性，防止未来改为单例时出现状态漂移。
@@ -764,7 +782,13 @@ class NxMedia3Player @Inject constructor(
     }
 
     override fun onRenderedFirstFrame() {
-        _events.tryEmit(PlaybackEvent.RenderingStart)
+        // BUG-51 修复：仅在装载新源后的首次渲染发射 RenderingStart。
+        // media3 每次 seek 都会重置首帧状态并再次回调本方法（见 awaitingFirstFrame 说明），
+        // 无条件下发会让 UI 把 seek 当成换源，重跑智能去黑边检测导致画面尺寸跳变。
+        if (awaitingFirstFrame) {
+            awaitingFirstFrame = false
+            _events.tryEmit(PlaybackEvent.RenderingStart)
+        }
         _mediaInfo.value?.hdrType?.let { hdrType ->
             if (hdrDetectedEmitted.compareAndSet(false, true)) {
                 _events.tryEmit(PlaybackEvent.HdrDetected(hdrType))
