@@ -251,6 +251,25 @@ private fun IconOptionCard(
                     )
                 }
             }
+            // 出厂默认徽标：与是否选中无关，始终标在出厂默认那一款上
+            // （由 IconSettings.AppIcon.FACTORY_DEFAULT 推导，改默认值时不会失效）
+            if (icon == IconSettings.AppIcon.FACTORY_DEFAULT) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(2.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(NiExtraColors.current.surfaceLevel3)
+                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.app_icon_badge_default),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                    )
+                }
+            }
         }
         Spacer(Modifier.height(8.dp))
         Text(
@@ -264,7 +283,7 @@ private fun IconOptionCard(
 }
 
 private fun IconSettings.AppIcon.previewRes(): Int = when (this) {
-    IconSettings.AppIcon.DEFAULT -> R.mipmap.ic_variant_default
+    IconSettings.AppIcon.SERIF -> R.mipmap.ic_variant_default
     IconSettings.AppIcon.CREAM -> R.mipmap.ic_variant_cream
     IconSettings.AppIcon.SAGE -> R.mipmap.ic_variant_sage
     IconSettings.AppIcon.STEEL -> R.mipmap.ic_variant_steel
@@ -275,7 +294,7 @@ private fun IconSettings.AppIcon.previewRes(): Int = when (this) {
 }
 
 private fun IconSettings.AppIcon.labelRes(): Int = when (this) {
-    IconSettings.AppIcon.DEFAULT -> R.string.app_icon_default
+    IconSettings.AppIcon.SERIF -> R.string.app_icon_serif
     IconSettings.AppIcon.CREAM -> R.string.app_icon_cream
     IconSettings.AppIcon.SAGE -> R.string.app_icon_sage
     IconSettings.AppIcon.STEEL -> R.string.app_icon_steel
