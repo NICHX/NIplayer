@@ -334,43 +334,101 @@ class NxMedia3Player @Inject constructor(
     /** 无数据接收的连续 tick 计数，用于空闲超时清零。 */
     private var networkIdleTicks: Int = 0
 
+    /** 位置轮询是否已排入主线程消息队列，用于避免重复 post（P1-4 修复，2026-09-22）。 */
+    private var tickerScheduled = false
+
+    /**
+     * 位置轮询体。
+     *
+     * P1-4 修复（2026-09-22）：原实现只以 [isReleased] 作为停止条件 —— 于是**只要播放器实例
+     * 还活着，无论 Idle / Ready / Paused / Ended，主线程都被每 500ms 唤醒一次**
+     * （Idle 时只是跳过写入，Handler 消息照发）。暂停后把手机放着、播完停在结束页、
+     * 进入播放器但尚未起播，这几种状态都在持续耗电与无谓唤醒主线程。
+     *
+     * 现只在「位置会前进」或「需要刷新缓冲/网速」的状态下轮询：
+     * - [PlaybackState.Playing]   需要（进度前进）
+     * - [PlaybackState.Buffering] 需要（缓冲进度、网速；且 duration 常在此阶段首次可用）
+     * 其余（Idle / Ready / Paused / Ended / Error）位置静止，无需轮询。
+     * 启停由 [syncPositionTicker] 在状态变化时统一处理。
+     *
+     * duration 时序说明：`_durationMs` 由本 ticker 与 [onPositionDiscontinuity] 两处写入。
+     * Ready 态不轮询是安全的 —— 进入 Playing 后 ticker 立即恢复并补上 duration，
+     * 且 media3 的 timeline 通常在 Buffering 阶段就已确定时长。
+     */
     private val positionTicker = object : Runnable {
         override fun run() {
+            tickerScheduled = false
             // M-01 修复：已 release 后不再访问 exoPlayer，避免 IllegalStateException
-            if (!isReleased && _state.value !is PlaybackState.Idle) {
-                try {
-                    _positionMs.value = exoPlayer.currentPosition.coerceAtLeast(0)
-                    _bufferedMs.value = exoPlayer.bufferedPosition.coerceAtLeast(0)
-                    _durationMs.value = exoPlayer.duration.takeIf { it != C.TIME_UNSET } ?: 0
-                    val bytes = bytesSinceLastTick
-                    bytesSinceLastTick = 0L
-                    if (isNetworkSource) {
-                        if (bytes > 0) {
-                            _networkSpeed.value = (bytes * 1000L) / POSITION_UPDATE_INTERVAL_MS
-                            networkIdleTicks = 0
-                        } else {
-                            if (networkIdleTicks >= 2) {
-                                _networkSpeed.value = 0L
-                            } else {
-                                networkIdleTicks++
-                            }
-                        }
+            if (isReleased) return
+            // 状态已不再需要轮询（syncPositionTicker 会在下次状态变化时重新启动）
+            if (_state.value !is PlaybackState.Playing &&
+                _state.value !is PlaybackState.Buffering
+            ) {
+                return
+            }
+            try {
+                _positionMs.value = exoPlayer.currentPosition.coerceAtLeast(0)
+                _bufferedMs.value = exoPlayer.bufferedPosition.coerceAtLeast(0)
+                _durationMs.value = exoPlayer.duration.takeIf { it != C.TIME_UNSET } ?: 0
+                val bytes = bytesSinceLastTick
+                bytesSinceLastTick = 0L
+                if (isNetworkSource) {
+                    if (bytes > 0) {
+                        _networkSpeed.value = (bytes * 1000L) / POSITION_UPDATE_INTERVAL_MS
+                        networkIdleTicks = 0
                     } else {
-                        _networkSpeed.value = 0L
+                        if (networkIdleTicks >= 2) {
+                            _networkSpeed.value = 0L
+                        } else {
+                            networkIdleTicks++
+                        }
                     }
-                } catch (_: IllegalStateException) {
-                    // M-01 兜底：release 与本块竞态时仍可能抛 IllegalStateException，吞掉避免崩溃
+                } else {
+                    _networkSpeed.value = 0L
                 }
+            } catch (_: IllegalStateException) {
+                // M-01 兜底：release 与本块竞态时仍可能抛 IllegalStateException，吞掉避免崩溃
             }
             if (!isReleased) {
+                tickerScheduled = true
                 mainHandler.postDelayed(this, POSITION_UPDATE_INTERVAL_MS)
             }
         }
     }
 
+    /**
+     * 按当前 [PlaybackState] 启停位置轮询（P1-4 修复）。
+     *
+     * 幂等：与 [tickerScheduled] 比较后提前返回，重复调用无副作用。
+     * 所有状态写入都必须经 [setState]，否则轮询会与实际状态脱节。
+     */
+    private fun syncPositionTicker() {
+        if (isReleased) {
+            mainHandler.removeCallbacks(positionTicker)
+            tickerScheduled = false
+            return
+        }
+        val needed = _state.value is PlaybackState.Playing ||
+            _state.value is PlaybackState.Buffering
+        if (needed == tickerScheduled) return
+        tickerScheduled = needed
+        if (needed) {
+            mainHandler.post(positionTicker)
+        } else {
+            mainHandler.removeCallbacks(positionTicker)
+        }
+    }
+
+    /** 状态写入统一入口：写状态并同步位置轮询启停（P1-4 修复）。 */
+    private fun setState(newState: PlaybackState) {
+        _state.value = newState
+        syncPositionTicker()
+    }
+
     init {
         okHttpDataSourceFactory.setTransferListener(speedListener)
-        mainHandler.post(positionTicker)
+        // 初始为 Idle，syncPositionTicker 不会启动轮询；首次进入 Buffering 时由 setState 启动
+        syncPositionTicker()
     }
 
     // endregion
@@ -622,7 +680,7 @@ class NxMedia3Player @Inject constructor(
         isReleased = true
         // 先写 Idle 让 positionTicker 的 _state 检查短路，再 removeCallbacks，
         // 避免ticker 在 release 后访问 exoPlayer 抛 IllegalStateException
-        _state.value = PlaybackState.Idle
+        setState(PlaybackState.Idle)
         mainHandler.removeCallbacks(positionTicker)
         exoPlayer.removeListener(this)
         exoPlayer.release()
@@ -667,28 +725,30 @@ class NxMedia3Player @Inject constructor(
                 // 此时 hasError=true，不应覆盖刚写入的 Error 状态。
                 // 仅当非错误上下文进入 IDLE 时才写 Idle（如初次 setSource 前的初始态）。
                 if (!hasError) {
-                    _state.value = PlaybackState.Idle
+                    setState(PlaybackState.Idle)
                 }
             }
-            Player.STATE_BUFFERING -> _state.value = PlaybackState.Buffering
+            Player.STATE_BUFFERING -> setState(PlaybackState.Buffering)
             Player.STATE_READY -> {
                 // READY + playWhenReady → Playing；否则 Ready/Paused 由 onIsPlayingChanged 处理
                 if (!exoPlayer.playWhenReady) {
-                    _state.value = PlaybackState.Ready
+                    setState(PlaybackState.Ready)
                 }
                 // 进入 READY 表示已成功缓冲，清除错误标志
                 hasError = false
             }
-            Player.STATE_ENDED -> _state.value = PlaybackState.Ended
+            Player.STATE_ENDED -> setState(PlaybackState.Ended)
         }
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
-        _state.value = when {
-            isPlaying -> PlaybackState.Playing
-            exoPlayer.playbackState == Player.STATE_READY -> PlaybackState.Paused
-            else -> _state.value // BUFFERING / ENDED / IDLE 由 onPlaybackStateChanged 处理
-        }
+        setState(
+            when {
+                isPlaying -> PlaybackState.Playing
+                exoPlayer.playbackState == Player.STATE_READY -> PlaybackState.Paused
+                else -> _state.value // BUFFERING / ENDED / IDLE 由 onPlaybackStateChanged 处理
+            },
+        )
     }
 
     @Suppress("DEPRECATION")
@@ -715,7 +775,7 @@ class NxMedia3Player @Inject constructor(
     override fun onPlayerError(error: PlaybackException) {
         // C-01 修复：置标志位，防止随后 media3 自动转入 STATE_IDLE 时覆盖 Error 状态
         hasError = true
-        _state.value = PlaybackState.Error(error)
+        setState(PlaybackState.Error(error))
         _events.tryEmit(PlaybackEvent.Error(error))
     }
 
