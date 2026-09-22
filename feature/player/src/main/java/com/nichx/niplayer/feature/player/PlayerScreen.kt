@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.util.Rational
 import android.view.PixelCopy
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -430,9 +429,14 @@ fun PlayerScreen(
                 Lifecycle.Event.ON_PAUSE -> {
                     viewModel.saveProgress()
                     // M-23：普通退后台时暂停播放，避免后台视频继续解码消耗电池、干扰系统息屏。
-                    // 进入画中画时 activity 处于 PiP 态，此时不暂停（PiP 需保持声音连续），
-                    // 恢复大窗后由 ON_RESUME 直接继续播放
-                    val inPip = activity?.isInPictureInPictureMode == true
+                    // 进入画中画时不暂停（PiP 需保持声音连续），恢复大窗后无需恢复（从未暂停）。
+                    //
+                    // 判据必须同时看两个来源：onPause 发生在 PiP 进入动画**开始时**，而
+                    // isInPictureInPictureMode 在 Android 15+ 要等动画结束才置位 —— 只读它会在
+                    // 刚进小窗时误判为「普通退后台」而暂停播放。故补上 PlayerActivity 在
+                    // 发起 PiP 请求时打的标记（HUD 按钮 / 自动 PiP 两条入口都经它）。
+                    val inPip = activity?.isInPictureInPictureMode == true ||
+                        (activity as? PlayerActivity)?.pipEntryRequested == true
                     if (!inPip && viewModel.nxPlayer.state.value is PlaybackState.Playing) {
                         viewModel.nxPlayer.pause()
                     }
@@ -883,7 +887,7 @@ fun PlayerScreen(
                     runCatching {
                         activity?.setPictureInPictureParams(
                             PictureInPictureParams.Builder()
-                                .setAspectRatio(Rational(activeVideoSize.width, activeVideoSize.height))
+                                .setAspectRatio(pipAspectRatio(activeVideoSize))
                                 .build(),
                         )
                     }
@@ -1333,7 +1337,7 @@ fun PlayerScreen(
                 if (activity is PlayerActivity) (activity as PlayerActivity).enterPip(size)
                 else activity?.enterPictureInPictureMode(
                     PictureInPictureParams.Builder()
-                        .setAspectRatio(Rational(size.width, size.height))
+                        .setAspectRatio(pipAspectRatio(size))
                         .build(),
                 )
             }

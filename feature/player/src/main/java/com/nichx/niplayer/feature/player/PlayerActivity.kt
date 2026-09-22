@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
-import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -15,7 +14,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.core.view.WindowCompat
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.datastore.GlassSettings
 import com.nichx.niplayer.datastore.LanguageSettings
@@ -67,6 +65,19 @@ class PlayerActivity : ComponentActivity() {
      */
     private var inPipSession = false
 
+    /**
+     * 本次退到后台是否由「主动进入 PiP」引起，供 [PlayerScreen] 在 ON_PAUSE 时判断
+     * 「该不该暂停播放」（`true` = 进小窗，不暂停）。
+     *
+     * 为什么不直接用 [isInPictureInPictureMode]：`onPictureInPictureModeChanged` 自
+     * Android 15 起被延后到**进入动画结束**才回调，而 onPause 发生在动画开始 —— 那一刻
+     * 该标志仍为 false，会导致刚进小窗就把播放暂停（小窗里画面卡住）。
+     * 本应用的 PiP 入口只有 [enterPip] 一处（HUD 按钮 / 自动 PiP），在这里显式标记即可。
+     */
+    @Volatile
+    var pipEntryRequested: Boolean = false
+        private set
+
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LanguageSettings.wrap(newBase))
     }
@@ -108,7 +119,7 @@ class PlayerActivity : ComponentActivity() {
      *
      * 判定依据（不依赖回调先后顺序，也不依赖 [onStart]）：
      * - **关闭小窗**：Activity 变为不可见 → 先走 [onStop]。多数 ROM 上 [onStop] 先于本回调，
-     *   故此处生命周期已低于 [Lifecycle.State.STARTED]，直接结束播放器。
+     *   故此处生命周期已低于 STARTED（已不可见），直接结束播放器。
      * - **展开回大窗**：Activity 仅由 PAUSED 回到 RESUMED，不会 [onStop]，
      *   此时生命周期至少为 STARTED，不做任何结束动作（播放继续）。
      *
@@ -119,10 +130,14 @@ class PlayerActivity : ComponentActivity() {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (isInPictureInPictureMode) {
             inPipSession = true
-        } else if (lifecycle.currentState < Lifecycle.State.STARTED) {
-            // onStop 已先到 —— 用户关闭了小窗（而非展开），结束播放器
-            inPipSession = false
-            if (!isFinishing) finish()
+            pipEntryRequested = true
+        } else {
+            pipEntryRequested = false
+            if (PipExitPolicy.activityIsInvisible(lifecycle.currentState)) {
+                // onStop 已先到 —— 用户关闭了小窗（而非展开），结束播放器
+                inPipSession = false
+                if (!isFinishing) finish()
+            }
         }
     }
 
@@ -130,14 +145,16 @@ class PlayerActivity : ComponentActivity() {
         super.onResume()
         // 回到前台 = 展开回全屏：PiP 会话结束，播放继续（不做任何暂停/结束动作）
         inPipSession = false
+        pipEntryRequested = false
     }
 
     override fun onStop() {
         super.onStop()
+        pipEntryRequested = false
         // 退出 PiP 后进入不可见态（且已不在 PiP 模式）= 用户关闭了小窗（点 X / 上滑）。
         // 展开回全屏不会走到这里，故不会误杀。结束播放器让 [PlayerViewModel.onCleared]
         // 停播落进度，避免小窗关掉后仍在后台继续解码播放。
-        if (inPipSession && !isInPictureInPictureMode) {
+        if (PipExitPolicy.closedPipWindow(inPipSession, isInPictureInPictureMode)) {
             inPipSession = false
             if (!isFinishing) finish()
         }
@@ -165,8 +182,15 @@ class PlayerActivity : ComponentActivity() {
             try {
                 val params = buildPipParams(size)
                 setPictureInPictureParams(params)
-                enterPictureInPictureMode(params)
+                // 先置位再请求：onUserLeaveHint → enterPip → onPause 的时序下，onPause 里
+                // isInPictureInPictureMode 可能仍为 false（见 [pipEntryRequested]），
+                // 由本标记保证「进小窗不暂停播放」。请求失败则立刻回滚，避免后续真退后台时不暂停。
+                pipEntryRequested = true
+                if (!enterPictureInPictureMode(params)) {
+                    pipEntryRequested = false
+                }
             } catch (_: Exception) {
+                pipEntryRequested = false
             }
         }
     }
@@ -181,7 +205,7 @@ class PlayerActivity : ComponentActivity() {
     /** 构建 PiP 参数：跟随视频宽高比 + 允许无缝尺寸调整，避免小窗宽高变化闪黑。 */
     private fun buildPipParams(size: VideoSize): PictureInPictureParams {
         val builder = PictureInPictureParams.Builder()
-            .setAspectRatio(Rational(size.width, size.height))
+            .setAspectRatio(pipAspectRatio(size))
         // setSeamlessResizeEnabled 仅 API 31+ 可用，低版本静默忽略
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setSeamlessResizeEnabled(true)
