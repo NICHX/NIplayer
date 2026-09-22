@@ -683,6 +683,7 @@
     <string name="player_ctrl_name_screenshot">截图</string>
     <string name="player_ctrl_name_long_press_speed">长按倍速</string>
     <string name="player_ctrl_name_pip">画中画</string>
+    <string name="player_ctrl_name_background_play">后台播放</string>
     <string name="player_ctrl_name_sleep_timer">定时关闭</string>
     <string name="player_ctrl_name_media_info">媒体信息</string>
     <string name="player_ctrl_name_bookmarks">书签</string>
@@ -694,8 +695,6 @@
     <string name="player_pitch_preserve_desc">倍速播放时保持原音调，关闭则变速变调（适合快速浏览）</string>
     <string name="player_orientation_mode">进入播放器方向</string>
     <string name="player_orientation_title">默认播放方向</string>
-    <string name="player_auto_pip">自动进入画中画</string>
-    <string name="player_auto_pip_desc">切出播放页时自动转为小窗继续播放</string>
     <string name="player_orientation_landscape">横屏</string>
     <string name="player_orientation_portrait">竖屏</string>
     <string name="player_orientation_auto">自动（按视频比例）</string>

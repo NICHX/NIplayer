@@ -683,6 +683,7 @@
     <string name="player_ctrl_name_screenshot">Screenshot</string>
     <string name="player_ctrl_name_long_press_speed">Long-press speed</string>
     <string name="player_ctrl_name_pip">Picture-in-picture</string>
+    <string name="player_ctrl_name_background_play">Background play</string>
     <string name="player_ctrl_name_sleep_timer">Sleep timer</string>
     <string name="player_ctrl_name_media_info">Media info</string>
     <string name="player_ctrl_name_bookmarks">Bookmarks</string>
@@ -694,8 +695,6 @@
     <string name="player_pitch_preserve_desc">Keep the original pitch at faster speeds; turn off to change pitch with speed (for quick browsing)</string>
     <string name="player_orientation_mode">Player orientation</string>
     <string name="player_orientation_title">Default orientation</string>
-    <string name="player_auto_pip">Auto Picture-in-Picture</string>
-    <string name="player_auto_pip_desc">Enter Picture-in-Picture automatically when leaving the player</string>
     <string name="player_orientation_landscape">Landscape</string>
     <string name="player_orientation_portrait">Portrait</string>
     <string name="player_orientation_auto">Auto (by video ratio)</string>

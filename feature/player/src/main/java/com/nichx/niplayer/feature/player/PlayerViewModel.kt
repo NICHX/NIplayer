@@ -3,6 +3,7 @@ package com.nichx.niplayer.feature.player
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -1969,7 +1970,34 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 进入视频后台播放后，用当前视频的缓存缩略图作为通知封面（异步回填）。
+     *
+     * 复用库缩略图体系（历史视频文件路径对应一张缓存 jpg）；无缓存缩略图时静默，
+     * 通知仅显示标题不显示封面。回填成功后刷新通知让封面立即出现。
+     */
+    fun loadVideoBackgroundCover() {
+        val history = currentHistory ?: return
+        val sid = history.storageId ?: return
+        val path = history.storagePath
+        if (path.isNullOrBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val thumbPath = thumbnailManager.getCachedThumbnailPath(sid, path)
+            val bitmap = thumbPath?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
+            if (bitmap != null) {
+                VideoBgPlaybackController.setCover(bitmap)
+                withContext(Dispatchers.Main) {
+                    VideoBgPlaybackService.instance?.refreshNotification()
+                }
+            }
+        }
+    }
+
     override fun onCleared() {
+        // 若处于视频后台播放，先停掉前台服务（内部清控制器引用、置 active=false），
+        // 再 release 播放器，避免服务/通知线程仍持有已释放的 ExoPlayer。
+        VideoBgPlaybackController.stopService(appContext)
+
         // 清理 AudioPlaybackManager 回调，避免 @Singleton 持有已销毁的 ViewModel 导致泄漏
         audioPlaybackManager.onPlaybackError = null
         audioPlaybackManager.onMessage = null

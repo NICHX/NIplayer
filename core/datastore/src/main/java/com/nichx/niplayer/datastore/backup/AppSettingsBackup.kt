@@ -63,7 +63,6 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             playerOrientationMode = PlayerSettings.orientationMode,
             playerAudioPlayModeIndex = PlayerSettings.audioPlayModeIndex,
             playerAudioSpeedIndex = PlayerSettings.audioSpeedIndex,
-            playerAutoPip = PlayerSettings.autoPip,
             playerControlLayouts = PlayerControlLayout.snapshotAll().ifEmpty { null },
             // 字幕
             subtitleAutoLoadSameName = SubtitleSettings.autoLoadSameNameSubtitle,
@@ -139,7 +138,6 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.playerOrientationMode?.let { PlayerSettings.orientationMode = it }
         s.playerAudioPlayModeIndex?.let { PlayerSettings.audioPlayModeIndex = it }
         s.playerAudioSpeedIndex?.let { PlayerSettings.audioSpeedIndex = it }
-        s.playerAutoPip?.let { PlayerSettings.autoPip = it }
         s.playerControlLayouts?.let { PlayerControlLayout.restoreAll(it) }
         // 字幕
         s.subtitleAutoLoadSameName?.let { SubtitleSettings.autoLoadSameNameSubtitle = it }
@@ -232,7 +230,6 @@ data class AppSettingsData(
     val playerOrientationMode: Int? = null,
     val playerAudioPlayModeIndex: Int? = null,
     val playerAudioSpeedIndex: Int? = null,
-    val playerAutoPip: Boolean? = null,
     // 播放器控制功能自定义布局（"ORIENTATION_id" -> "surface|visible|order"）
     val playerControlLayouts: Map<String, String>? = null,
     // 字幕

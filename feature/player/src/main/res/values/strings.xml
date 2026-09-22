@@ -160,6 +160,11 @@
     <string name="player_notification_playing">正在播放</string>
     <string name="player_notification_channel">音乐播放</string>
     <string name="player_notification_channel_desc">音乐播放控制</string>
+    <string name="player_video_bg_playing">正在后台播放</string>
+    <string name="player_video_bg_channel">视频后台播放</string>
+    <string name="player_video_bg_channel_desc">视频后台播放控制</string>
+    <string name="player_background_play">后台播放</string>
+    <string name="player_background_play_desc">最小化视频，仅保留音频后台播放</string>
 
     <!-- 字幕搜索 -->
     <string name="subtitle_search_title">搜索字幕</string>
