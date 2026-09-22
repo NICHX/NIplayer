@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import android.media.AudioManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -198,6 +199,19 @@ fun PlayerScreen(
     // 震动是用户唯一可靠的触发确认 —— 尤其在横屏全屏、手指遮挡画面时。
     // 全仓原先 0 处触觉反馈（performHapticFeedback / LocalHapticFeedback 均无命中）。
     val haptic = LocalHapticFeedback.current
+    // 「加强」调整（2026-09-22）：改用当前 API 下**最强**的触觉类型。
+    // - API 30+ ：Confirm（系统定义的「正向确认」震动，比 LongPress 更明显）
+    // - API 26-29：LongPress（该区间可用的最强类型）
+    // ⚠️ 不能直接用 HapticFeedbackType.Confirm 了事 —— Compose 1.10 的 HapticFeedbackType
+    //    并未按 API 降级（Confirm 对应 HapticFeedbackConstants.CONFIRM，该常量 API 30 才引入），
+    //    在 minSdk 26 的低版本设备上会静默无震动。故此处显式按版本选择。
+    val strongHaptic = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            HapticFeedbackType.Confirm
+        } else {
+            HapticFeedbackType.LongPress
+        }
+    }
     // M-26 修复：activity 为 null 时（嵌入非 Activity 宿主）记录降级提示，
     // 强制横屏/亮度/PiP/系统 bar 控制等会静默失效，用户感知"功能没了"。
     // 此处不阻断渲染（UI 仍可播放），仅在需要 activity 的操作处检查 null 并给 OSD 提示。
@@ -1122,7 +1136,7 @@ fun PlayerScreen(
                                         if (doubleTapStepMs > 0) {
                                             val third = size.width / 3f
                                             // UX-2：双击手势无可见按钮，震动作为触发确认
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            haptic.performHapticFeedback(strongHaptic)
                                             when {
                                                 startX < third -> {
                                                     viewModel.seekTo(
@@ -1169,7 +1183,7 @@ fun PlayerScreen(
                             ) {
                                 longPressTriggered = true
                                 // UX-2：长按倍速生效时给一次确认
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                haptic.performHapticFeedback(strongHaptic)
                                 viewModel.applyLongPressSpeed()
                             }
 
