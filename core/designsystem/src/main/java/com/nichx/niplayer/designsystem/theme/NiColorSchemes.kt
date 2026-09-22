@@ -10,58 +10,67 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 
 /**
- * NIplayer 配色方案枚举。
+ * NIplayer 配色方案枚举（12 套 / 4 个分类）。
  *
  * 每套方案是一组「完整氛围色板」，覆盖主色、次级色、三级色、页面背景、卡片表面、
  * 描边色与缩略图渐变。为打破单调单色，[secondary]/[tertiary] 采用反差色相，切换时
  * 整页氛围随主打色的同时，次级/三级装饰色带来丰富的组合观感。
  *
- * 分类：
+ * 分类（每类 3 套，与主题页网格每行 3 个整除）：
  * - 冷色系 / 暖色系 / 自然色系（经典氛围）
- * - 马卡龙（明亮柔和粉彩）
  * - 莫兰迪（低饱和高级灰调）
- * - 薄荷曼波（清新鲜明的组合撞色）
  *
  * 展示文案经 [labelRes]/[categoryRes] 资源化，支持 i18n（见 core/designsystem res）。
+ *
+ * ## [key] 是持久化契约
+ *
+ * MMKV（`:core:datastore` 的 `ThemeSettings`）与备份文件里存的是 **[key] 字符串**，
+ * 不是枚举序号 —— 因此**增删枚举项、调整声明顺序都不会影响已保存的主题**。
+ * 反过来说：**改 [key] 的值 = 改所有已保存主题的含义**，必须同时提供数据迁移
+ * （见 `:core:datastore` 的 `ThemeSchemeMigration`）。`NiSchemeTest` 把 key 集合钉死。
+ *
+ * @param key 持久化稳定键（与 Kotlin 常量名解耦，便于日后重命名常量而不动存储）
  */
-enum class NiScheme(@StringRes val labelRes: Int, @StringRes val categoryRes: Int) {
+enum class NiScheme(
+    val key: String,
+    @StringRes val labelRes: Int,
+    @StringRes val categoryRes: Int,
+) {
     // 冷色系
-    MISTY(R.string.color_scheme_misty, R.string.color_scheme_category_cool),
-    BLUEBERRY(R.string.color_scheme_blueberry, R.string.color_scheme_category_cool),
-    DENIM(R.string.color_scheme_denim, R.string.color_scheme_category_cool),
+    MISTY("MISTY", R.string.color_scheme_misty, R.string.color_scheme_category_cool),
+    BLUEBERRY("BLUEBERRY", R.string.color_scheme_blueberry, R.string.color_scheme_category_cool),
+    // key 沿用历史 id（原「牛仔 Denim」）：2026-09-22 换色板 + 改名，但 key 不动，已保存主题照旧还原
+    LAKE_CYAN("DENIM", R.string.color_scheme_lake_cyan, R.string.color_scheme_category_cool),
 
     // 暖色系
-    ROSE_DUST(R.string.color_scheme_rose_dust, R.string.color_scheme_category_warm),
-    STRAWBERRY(R.string.color_scheme_strawberry, R.string.color_scheme_category_warm),
-    CORAL(R.string.color_scheme_coral, R.string.color_scheme_category_warm),
+    // key 沿用历史 id（原「玫瑰 Rose」）
+    SAKURA_PINK("ROSE_DUST", R.string.color_scheme_sakura_pink, R.string.color_scheme_category_warm),
+    STRAWBERRY("STRAWBERRY", R.string.color_scheme_strawberry, R.string.color_scheme_category_warm),
+    CORAL("CORAL", R.string.color_scheme_coral, R.string.color_scheme_category_warm),
 
     // 自然色系
-    FOREST(R.string.color_scheme_forest, R.string.color_scheme_category_nature),
-    MATCHA(R.string.color_scheme_matcha, R.string.color_scheme_category_nature),
-    CARAMEL(R.string.color_scheme_caramel, R.string.color_scheme_category_nature),
-
-    // 马卡龙（明亮粉彩与撞色）
-    MINT_MACARON(R.string.color_scheme_mint_macaron, R.string.color_scheme_category_macaron),
-    SAKURA_MACARON(R.string.color_scheme_sakura_macaron, R.string.color_scheme_category_macaron),
-    LAVENDER_MACARON(R.string.color_scheme_lavender_macaron, R.string.color_scheme_category_macaron),
-    SPEARMINT(R.string.color_scheme_spearmint, R.string.color_scheme_category_macaron),
-    BUBBLEGUM(R.string.color_scheme_bubblegum, R.string.color_scheme_category_macaron),
-    SUMMER_SODA(R.string.color_scheme_summer_soda, R.string.color_scheme_category_macaron),
+    FOREST("FOREST", R.string.color_scheme_forest, R.string.color_scheme_category_nature),
+    MATCHA("MATCHA", R.string.color_scheme_matcha, R.string.color_scheme_category_nature),
+    CARAMEL("CARAMEL", R.string.color_scheme_caramel, R.string.color_scheme_category_nature),
 
     // 莫兰迪
-    ALMOND(R.string.color_scheme_almond, R.string.color_scheme_category_morandi),
-    MAUVE(R.string.color_scheme_mauve, R.string.color_scheme_category_morandi),
-    SAGE(R.string.color_scheme_sage, R.string.color_scheme_category_morandi);
+    // key 沿用历史 id（原「杏仁 Almond」）
+    LOTUS_PINK("ALMOND", R.string.color_scheme_lotus_pink, R.string.color_scheme_category_morandi),
+    MAUVE("MAUVE", R.string.color_scheme_mauve, R.string.color_scheme_category_morandi),
+    SAGE("SAGE", R.string.color_scheme_sage, R.string.color_scheme_category_morandi);
 
     companion object {
+        /** 默认方案（雾蓝）：未知 / 缺失的 key 一律回落到它。 */
+        val DEFAULT: NiScheme = MISTY
+
         /**
-         * 按序数还原配色方案，越界回落到 [MISTY]。
+         * 由持久化 key 还原配色方案。
          *
-         * A1 架构修复（2026-09-21）：:core:datastore 原先直接持有本枚举类型，使**数据层依赖
-         * UI 层**（:core:designsystem）。现由 datastore 只暴露序号，UI 层在边界处调用本方法还原。
-         * MMKV 里的存储格式本来就是 ordinal，故无数据迁移。
+         * 2026-09-22 起存储由 ordinal 改为 key —— 旧版本存的 ordinal 由
+         * `:core:datastore` 的 `ThemeSchemeMigration` 在读取时一次性换算，
+         * 本方法只认 key；key 为空（全新安装）或无法识别时回落 [DEFAULT]。
          */
-        fun fromOrdinal(ordinal: Int): NiScheme = entries.getOrElse(ordinal) { MISTY }
+        fun fromKey(key: String?): NiScheme = entries.firstOrNull { it.key == key } ?: DEFAULT
     }
 }
 
@@ -141,43 +150,31 @@ object NiSchemes {
     private fun schemeLight(scheme: NiScheme): Blueprint = when (scheme) {
         NiScheme.MISTY -> MistyLight
         NiScheme.BLUEBERRY -> BlueberryLight
-        NiScheme.DENIM -> DenimLight
-        NiScheme.ROSE_DUST -> RoseDustLight
+        NiScheme.LAKE_CYAN -> LakeCyanLight
+        NiScheme.SAKURA_PINK -> SakuraPinkLight
         NiScheme.STRAWBERRY -> StrawberryLight
         NiScheme.CORAL -> CoralLight
         NiScheme.FOREST -> ForestLight
         NiScheme.MATCHA -> MatchaLight
         NiScheme.CARAMEL -> CaramelLight
-        NiScheme.MINT_MACARON -> MintMacaronLight
-        NiScheme.SAKURA_MACARON -> SakuraMacaronLight
-        NiScheme.LAVENDER_MACARON -> LavenderMacaronLight
-        NiScheme.ALMOND -> AlmondLight
+        NiScheme.LOTUS_PINK -> LotusPinkLight
         NiScheme.MAUVE -> MauveLight
         NiScheme.SAGE -> SageLight
-        NiScheme.SPEARMINT -> SpearmintLight
-        NiScheme.BUBBLEGUM -> BubblegumLight
-        NiScheme.SUMMER_SODA -> SummerSodaLight
     }
 
     private fun schemeDark(scheme: NiScheme): DarkBlueprint = when (scheme) {
         NiScheme.MISTY -> MistyDark
         NiScheme.BLUEBERRY -> BlueberryDark
-        NiScheme.DENIM -> DenimDark
-        NiScheme.ROSE_DUST -> RoseDustDark
+        NiScheme.LAKE_CYAN -> LakeCyanDark
+        NiScheme.SAKURA_PINK -> SakuraPinkDark
         NiScheme.STRAWBERRY -> StrawberryDark
         NiScheme.CORAL -> CoralDark
         NiScheme.FOREST -> ForestDark
         NiScheme.MATCHA -> MatchaDark
         NiScheme.CARAMEL -> CaramelDark
-        NiScheme.MINT_MACARON -> MintMacaronDark
-        NiScheme.SAKURA_MACARON -> SakuraMacaronDark
-        NiScheme.LAVENDER_MACARON -> LavenderMacaronDark
-        NiScheme.ALMOND -> AlmondDark
+        NiScheme.LOTUS_PINK -> LotusPinkDark
         NiScheme.MAUVE -> MauveDark
         NiScheme.SAGE -> SageDark
-        NiScheme.SPEARMINT -> SpearmintDark
-        NiScheme.BUBBLEGUM -> BubblegumDark
-        NiScheme.SUMMER_SODA -> SummerSodaDark
     }
 
     /** 根据配色方案构建 Light ColorScheme。 */

@@ -64,9 +64,9 @@ fun ThemeScreen(
     onBack: () -> Unit = {},
 ) {
     val themeConfig by ThemeSettings.themeFlow.collectAsStateWithLifecycle()
-    // A1 修复：datastore 只存配色方案序号（数据层不依赖 UI 层的 NiScheme 类型），
-    // 在此边界还原为枚举
-    val currentScheme = NiScheme.fromOrdinal(themeConfig.schemeOrdinal)
+    // A1 修复：datastore 只存配色方案的原始值（数据层不依赖 UI 层的 NiScheme 类型），
+    // 在此边界还原为枚举。2026-09-22 起原始值由 ordinal 改为稳定 key
+    val currentScheme = NiScheme.fromKey(themeConfig.schemeKey)
     // 生效深浅色：跟随系统模式下用 isSystemInDarkTheme 实时判断，使预览正确随系统切换
     val systemDark = isSystemInDarkTheme()
     val effectiveDark = when (themeConfig.mode) {
@@ -141,7 +141,7 @@ fun ThemeScreen(
                         SchemeCard(
                             scheme = scheme,
                             isSelected = currentScheme == scheme,
-                            onClick = { ThemeSettings.setThemeScheme(scheme.ordinal) },
+                            onClick = { ThemeSettings.setThemeScheme(scheme.key) },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -547,20 +547,14 @@ private fun ThemeSettings.Mode.descriptionRes(): Int = when (this) {
 private fun NiScheme.descriptionRes(): Int = when (this) {
     NiScheme.MISTY -> R.string.theme_scheme_misty_desc
     NiScheme.BLUEBERRY -> R.string.theme_scheme_blueberry_desc
-    NiScheme.DENIM -> R.string.theme_scheme_denim_desc
-    NiScheme.ROSE_DUST -> R.string.theme_scheme_rose_dust_desc
+    NiScheme.LAKE_CYAN -> R.string.theme_scheme_lake_cyan_desc
+    NiScheme.SAKURA_PINK -> R.string.theme_scheme_sakura_pink_desc
     NiScheme.STRAWBERRY -> R.string.theme_scheme_strawberry_desc
     NiScheme.CORAL -> R.string.theme_scheme_coral_desc
     NiScheme.FOREST -> R.string.theme_scheme_forest_desc
     NiScheme.MATCHA -> R.string.theme_scheme_matcha_desc
     NiScheme.CARAMEL -> R.string.theme_scheme_caramel_desc
-    NiScheme.MINT_MACARON -> R.string.theme_scheme_mint_macaron_desc
-    NiScheme.SAKURA_MACARON -> R.string.theme_scheme_sakura_macaron_desc
-    NiScheme.LAVENDER_MACARON -> R.string.theme_scheme_lavender_macaron_desc
-    NiScheme.ALMOND -> R.string.theme_scheme_almond_desc
+    NiScheme.LOTUS_PINK -> R.string.theme_scheme_lotus_pink_desc
     NiScheme.MAUVE -> R.string.theme_scheme_mauve_desc
     NiScheme.SAGE -> R.string.theme_scheme_sage_desc
-    NiScheme.SPEARMINT -> R.string.theme_scheme_spearmint_desc
-    NiScheme.BUBBLEGUM -> R.string.theme_scheme_bubblegum_desc
-    NiScheme.SUMMER_SODA -> R.string.theme_scheme_summer_soda_desc
 }

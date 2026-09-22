@@ -22,30 +22,23 @@
     <string name="download_target_preset_not_set">No download directory set</string>
     <string name="download_target_custom">Choose download directory</string>
 
-    <!-- Color schemes (NiScheme.labelRes) -->
-    <string name="color_scheme_misty">Misty Blue</string>
-    <string name="color_scheme_blueberry">Blueberry Night</string>
-    <string name="color_scheme_denim">Retro Denim</string>
-    <string name="color_scheme_rose_dust">Rose Dust</string>
-    <string name="color_scheme_strawberry">Strawberry Cream</string>
-    <string name="color_scheme_coral">Sunset Coral</string>
-    <string name="color_scheme_forest">Forest Whispers</string>
-    <string name="color_scheme_matcha">Matcha Breeze</string>
-    <string name="color_scheme_caramel">Caramel Amber</string>
-    <string name="color_scheme_mint_macaron">Mint Candy</string>
-    <string name="color_scheme_sakura_macaron">Sakura Pudding</string>
-    <string name="color_scheme_lavender_macaron">Taro Mousse</string>
-    <string name="color_scheme_almond">Almond Mousse</string>
-    <string name="color_scheme_mauve">Grey Mauve</string>
+    <!-- Color schemes (NiScheme.labelRes): short colour names only -->
+    <string name="color_scheme_misty">Mist Blue</string>
+    <string name="color_scheme_blueberry">Blueberry</string>
+    <string name="color_scheme_lake_cyan">Lake Cyan</string>
+    <string name="color_scheme_sakura_pink">Sakura</string>
+    <string name="color_scheme_strawberry">Strawberry</string>
+    <string name="color_scheme_coral">Coral</string>
+    <string name="color_scheme_forest">Forest</string>
+    <string name="color_scheme_matcha">Matcha</string>
+    <string name="color_scheme_caramel">Caramel</string>
+    <string name="color_scheme_lotus_pink">Lotus</string>
+    <string name="color_scheme_mauve">Mauve</string>
     <string name="color_scheme_sage">Sage</string>
-    <string name="color_scheme_spearmint">Lime Mint</string>
-    <string name="color_scheme_bubblegum">Bubblegum</string>
-    <string name="color_scheme_summer_soda">Summer Soda</string>
 
     <!-- Color scheme categories (NiScheme.categoryRes) -->
     <string name="color_scheme_category_cool">Cool</string>
     <string name="color_scheme_category_warm">Warm</string>
     <string name="color_scheme_category_nature">Nature</string>
-    <string name="color_scheme_category_macaron">Candy</string>
     <string name="color_scheme_category_morandi">Morandi</string>
 </resources>

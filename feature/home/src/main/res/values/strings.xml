@@ -574,24 +574,18 @@
     <string name="app_icon_play">播放</string>
     <string name="app_icon_emoji">Emoji</string>
     <string name="theme_color_scheme">配色方案</string>
-    <string name="theme_scheme_misty_desc">雾蓝静谧 · 蓝灰雾感，宁静通透</string>
-    <string name="theme_scheme_blueberry_desc">蓝莓之夜 · 蓝靛交织，深邃沉静</string>
-    <string name="theme_scheme_denim_desc">复古牛仔 · 蓝调点缀铜橙，复古质感</string>
-    <string name="theme_scheme_rose_dust_desc">玫瑰尘埃 · 干枯玫瑰配灰棕，温柔内敛</string>
-    <string name="theme_scheme_strawberry_desc">草莓奶油 · 草莓红撞蜜橙，甜美轻盈</string>
-    <string name="theme_scheme_coral_desc">落日珊瑚 · 珊瑚橙融蜜桃，温暖热忱</string>
-    <string name="theme_scheme_forest_desc">森野絮语 · 森绿配赭棕，清冽自然</string>
-    <string name="theme_scheme_matcha_desc">抹茶微风 · 抹茶绿伴麦秆黄，清新治愈</string>
-    <string name="theme_scheme_caramel_desc">焦糖琥珀 · 焦糖褐融琥珀，醇厚温暖</string>
-    <string name="theme_scheme_mint_macaron_desc">薄荷糖 · 薄荷绿融奶油粉，清甜爽口</string>
-    <string name="theme_scheme_sakura_macaron_desc">樱花布丁 · 樱粉伴奶油杏与香芋紫，软糯奶香</string>
-    <string name="theme_scheme_lavender_macaron_desc">香芋慕斯 · 香芋紫配薄荷蓝与紫藤，绵软梦幻</string>
-    <string name="theme_scheme_almond_desc">杏仁慕斯 · 米驼融烟粉灰绿，低饱和高级</string>
-    <string name="theme_scheme_mauve_desc">灰霭紫 · 灰紫伴粉灰青灰，知性柔和</string>
-    <string name="theme_scheme_sage_desc">鼠尾草 · 灰绿配沙灰，静谧雅致</string>
-    <string name="theme_scheme_spearmint_desc">青柠薄荷 · 薄荷绿撞桃红天空蓝，冰爽鲜活</string>
-    <string name="theme_scheme_bubblegum_desc">泡泡糖 · 泡泡糖粉配天空蓝蜜黄，俏皮甜腻</string>
-    <string name="theme_scheme_summer_soda_desc">橘夏汽水 · 汽水橙撞苏打蓝汽水绿，元气清爽</string>
+    <string name="theme_scheme_misty_desc">雾蓝 · 蓝灰雾感，宁静通透</string>
+    <string name="theme_scheme_blueberry_desc">蓝莓 · 蓝靛交织，深邃沉静</string>
+    <string name="theme_scheme_lake_cyan_desc">湖青 · 青碧湖色点缀铜沙，清冽通透</string>
+    <string name="theme_scheme_sakura_pink_desc">樱粉 · 樱粉配奶油杏，柔和甜润</string>
+    <string name="theme_scheme_strawberry_desc">草莓 · 草莓红撞蜜橙，甜美轻盈</string>
+    <string name="theme_scheme_coral_desc">珊瑚 · 珊瑚橙融蜜桃，温暖热忱</string>
+    <string name="theme_scheme_forest_desc">森林 · 森绿配赭棕，清冽自然</string>
+    <string name="theme_scheme_matcha_desc">抹茶 · 抹茶绿伴麦秆黄，清新治愈</string>
+    <string name="theme_scheme_caramel_desc">焦糖 · 焦糖褐融琥珀，醇厚温暖</string>
+    <string name="theme_scheme_lotus_pink_desc">藕荷 · 灰粉紫配烟粉，低饱和高级</string>
+    <string name="theme_scheme_mauve_desc">灰紫 · 灰紫伴粉灰青灰，知性柔和</string>
+    <string name="theme_scheme_sage_desc">苔绿 · 灰绿配沙灰，静谧雅致</string>
     <string name="theme_preview">主题预览</string>
 
     <!-- 语言（LanguageScreen） -->

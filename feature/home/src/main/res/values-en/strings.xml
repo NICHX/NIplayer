@@ -574,24 +574,18 @@
     <string name="app_icon_play">Play</string>
     <string name="app_icon_emoji">Emoji</string>
     <string name="theme_color_scheme">Color scheme</string>
-    <string name="theme_scheme_misty_desc">Misty blue, calm and airy</string>
-    <string name="theme_scheme_blueberry_desc">Blueberry night, deep and serene</string>
-    <string name="theme_scheme_denim_desc">Retro denim with copper accents</string>
-    <string name="theme_scheme_rose_dust_desc">Dusty rose, soft and understated</string>
-    <string name="theme_scheme_strawberry_desc">Strawberry cream, sweet and light</string>
-    <string name="theme_scheme_coral_desc">Sunset coral, warm and vibrant</string>
-    <string name="theme_scheme_forest_desc">Forest whispers, crisp and natural</string>
-    <string name="theme_scheme_matcha_desc">Matcha breeze, fresh and healing</string>
-    <string name="theme_scheme_caramel_desc">Caramel amber, rich and cozy</string>
-    <string name="theme_scheme_mint_macaron_desc">Mint candy, fresh and sweet</string>
-    <string name="theme_scheme_sakura_macaron_desc">Sakura pudding, soft and milky</string>
-    <string name="theme_scheme_lavender_macaron_desc">Taro mousse, creamy and dreamy</string>
-    <string name="theme_scheme_almond_desc">Almond mousse, low-key sophistication</string>
-    <string name="theme_scheme_mauve_desc">Grey mauve, soft and elegant</string>
+    <string name="theme_scheme_misty_desc">Mist blue, calm and airy</string>
+    <string name="theme_scheme_blueberry_desc">Blueberry, deep and serene</string>
+    <string name="theme_scheme_lake_cyan_desc">Lake cyan with copper sand, crisp and clear</string>
+    <string name="theme_scheme_sakura_pink_desc">Sakura pink with cream apricot, soft and sweet</string>
+    <string name="theme_scheme_strawberry_desc">Strawberry, sweet and light</string>
+    <string name="theme_scheme_coral_desc">Coral, warm and vibrant</string>
+    <string name="theme_scheme_forest_desc">Forest, crisp and natural</string>
+    <string name="theme_scheme_matcha_desc">Matcha, fresh and healing</string>
+    <string name="theme_scheme_caramel_desc">Caramel, rich and cozy</string>
+    <string name="theme_scheme_lotus_pink_desc">Muted mauve pink, low-key sophistication</string>
+    <string name="theme_scheme_mauve_desc">Mauve, soft and elegant</string>
     <string name="theme_scheme_sage_desc">Sage, quiet and refined</string>
-    <string name="theme_scheme_spearmint_desc">Lime mint, cool and vivid</string>
-    <string name="theme_scheme_bubblegum_desc">Bubblegum, playful and colorful</string>
-    <string name="theme_scheme_summer_soda_desc">Summer soda, fresh and vibrant</string>
     <string name="theme_preview">Theme preview</string>
 
     <!-- Language (LanguageScreen) -->

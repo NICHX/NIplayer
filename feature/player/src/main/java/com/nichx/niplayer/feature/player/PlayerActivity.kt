@@ -128,7 +128,7 @@ class PlayerActivity : ComponentActivity() {
                 ThemeSettings.Mode.DARK -> true
                 ThemeSettings.Mode.SYSTEM -> isSystemInDarkTheme()
             }
-            NiTheme(darkTheme = darkTheme, scheme = NiScheme.fromOrdinal(themeConfig.schemeOrdinal)) {
+            NiTheme(darkTheme = darkTheme, scheme = NiScheme.fromKey(themeConfig.schemeKey)) {
                 CompositionLocalProvider(
                     LocalNiGlassOpacity provides glassOpacity,
                     LocalNiGlassTopBarOpacity provides glassTopBarOpacity,
