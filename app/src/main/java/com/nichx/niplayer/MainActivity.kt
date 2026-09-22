@@ -117,7 +117,7 @@ class MainActivity : ComponentActivity() {
             NiTheme(
                 darkTheme = darkTheme,
                 // A1 修复：datastore 只存序号，在 UI 边界还原为配色方案枚举
-                scheme = NiScheme.fromOrdinal(themeConfig.schemeOrdinal),
+                scheme = NiScheme.fromKey(themeConfig.schemeKey),
             ) {
                 // O-12：上次崩溃日志提示，启动时读取一次（消费即清除）
                 var crashLog by remember {

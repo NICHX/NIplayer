@@ -13,7 +13,7 @@ import org.junit.Test
  *
  * 覆盖两件容易被改坏、且坏了不会报错的事：
  *
- * 1. **18 套方案 × 明暗两态都能构建成功** —— `buildLight` / `buildDark` 内部的 `when`
+ * 1. **12 套方案 × 明暗两态都能构建成功** —— `buildLight` / `buildDark` 内部的 `when`
  *    是穷尽式（无 `else`），新增枚举项时编译器会拦下；但 `schemeLight` / `schemeDark`
  *    的映射写错（例如把 Dark 方案接到 Light 蓝图）**编译器不会报**，只能靠测试。
  * 2. **`brandScale` 至少 10 个元素** —— [NiExtraColors.brand10] / `brand20` / `brand40` /
@@ -102,8 +102,8 @@ class NiColorSchemesTest {
     fun `同一方案重复构建结果稳定`() {
         // 纯函数：同样的输入必须给出同样的输出（防止引入随机/时间依赖）
         assertEquals(
-            NiSchemes.buildLightExtra(NiScheme.DENIM),
-            NiSchemes.buildLightExtra(NiScheme.DENIM),
+            NiSchemes.buildLightExtra(NiScheme.LAKE_CYAN),
+            NiSchemes.buildLightExtra(NiScheme.LAKE_CYAN),
         )
     }
 

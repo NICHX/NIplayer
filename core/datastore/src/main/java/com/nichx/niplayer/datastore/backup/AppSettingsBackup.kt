@@ -35,6 +35,9 @@ import javax.inject.Inject
  * v2 变更：原顶层字段 `lrcApiUrl` / `lrcApiAuth` / `assrtToken` 并入 appSettings，
  * 不再作为 BackupData 顶层字段。v1 → v2 兼容由 BackupManager 处理。
  *
+ * 2026-09-22 变更：配色方案由 `themeScheme`（ordinal，Int）改为 `themeSchemeKey`（稳定 key，String）。
+ * 旧字段仅为导入老备份保留，新导出不再写入 —— 其余 JSON 字段名不变，故**不提升备份版本号**。
+ *
  * 序列化采用 Moshi 原生 [JsonAdapter.toJsonValue] / [JsonAdapter.fromJsonValue] 模式
  * （基于 [Any] 松散对象），不依赖 JsonElement DOM（Moshi 1.15.2 不提供该 API）。
  *
@@ -52,7 +55,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         val data = AppSettingsData(
             // 主题
             themeMode = ThemeSettings.themeMode.value,
-            themeScheme = ThemeSettings.themeSchemeOrdinal,
+            themeSchemeKey = ThemeSettings.themeSchemeKey,
             // 播放器（lastSpeedIndex 等运行时状态不备份）
             playerLongPressSpeed = PlayerSettings.longPressSpeed,
             playerAutoDetectBlackBars = PlayerSettings.autoDetectBlackBars,
@@ -127,7 +130,9 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
 
         // 主题
         s.themeMode?.let { ThemeSettings.restoreMode(it) }
-        s.themeScheme?.let { ThemeSettings.restoreScheme(it) }
+        // 新格式存稳定 key；旧备份（本改动之前导出）里 themeScheme 是 ordinal，走换算路径
+        s.themeSchemeKey?.let { ThemeSettings.restoreScheme(it) }
+            ?: s.themeScheme?.let { ThemeSettings.restoreLegacyScheme(it) }
         // 播放器
         s.playerLongPressSpeed?.let { PlayerSettings.longPressSpeed = it }
         s.playerAutoDetectBlackBars?.let { PlayerSettings.autoDetectBlackBars = it }
@@ -219,6 +224,14 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
 data class AppSettingsData(
     // 主题
     val themeMode: Int? = null,
+    /** 配色方案稳定 key（2026-09-22 起）。 */
+    val themeSchemeKey: String? = null,
+    /**
+     * 旧版备份里的配色方案 ordinal，**只用于导入老备份时换算**，新导出不再写入。
+     *
+     * 不写回该字段是刻意的：新枚举只有 12 套，其序号被老版本按 18 套解读会指向**另一套配色**，
+     * 宁可让老版本跳过主题恢复，也不要写一个含义不同的值。
+     */
     val themeScheme: Int? = null,
     // 播放器（lastSpeedIndex 等运行时状态不备份）
     val playerLongPressSpeed: Float? = null,

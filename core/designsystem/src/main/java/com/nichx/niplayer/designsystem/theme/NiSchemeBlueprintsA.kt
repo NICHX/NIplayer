@@ -7,7 +7,7 @@ import androidx.compose.ui.graphics.Color
 // 冷色系（Cool）
 // ═══════════════════════════
 
-// ── 雾蓝静谧 Misty ──
+// ── 雾蓝 Misty ──
 internal val MistyLight = Blueprint(
     primary = Color(0xFF6E9BBB),
     onPrimary = Color.White,
@@ -47,7 +47,7 @@ internal val MistyDark = DarkBlueprint(
     outlineVariant = Color(0xFF3D4C54),
 )
 
-// ── 蓝莓之夜 Blueberry Night（靛紫组合）──
+// ── 蓝莓 Blueberry（靛紫组合）──
 internal val BlueberryLight = Blueprint(
     primary = Color(0xFF4A5FA5),
     onPrimary = Color.White,
@@ -87,91 +87,96 @@ internal val BlueberryDark = DarkBlueprint(
     outlineVariant = Color(0xFF39404F),
 )
 
-// ── 复古牛仔 Denim（蓝＋蓝绿＋铜橙）──
-internal val DenimLight = Blueprint(
-    primary = Color(0xFF3E5F8A),
+// ── 湖青 Lake Cyan（湖青＋灰蓝＋铜沙）──
+// 原「牛仔 Denim」：主色 #3E5F8A（色相 214°）与蓝莓 226° 仅差 12°，三支蓝扎堆；
+// 2026-09-22 改为青碧（186°），补上森林 136° → 雾蓝 205° 之间的空档。持久化 key 仍为 DENIM。
+internal val LakeCyanLight = Blueprint(
+    primary = Color(0xFF35838C),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFD7E3F3),
-    onPrimaryContainer = Color(0xFF14212F),
-    secondary = Color(0xFF4E7A7A),
+    primaryContainer = Color(0xFFD2EBEE),
+    onPrimaryContainer = Color(0xFF0E343A),
+    secondary = Color(0xFF5C7F99),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD6ECEC),
-    onSecondaryContainer = Color(0xFF0E2424),
-    tertiary = Color(0xFFB77B45),
+    secondaryContainer = Color(0xFFDCE7F0),
+    onSecondaryContainer = Color(0xFF1C2A36),
+    tertiary = Color(0xFFB98250),
     onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFF0E0CC),
-    onTertiaryContainer = Color(0xFF3A2613),
-    inversePrimary = Color(0xFFA9C4E6),
-    background = Color(0xFFF1F4F8),
-    surfaceVariant = Color(0xFFE0E7EE),
-    outline = Color(0xFF8F9AA8),
-    outlineVariant = Color(0xFFC3CDD8),
+    tertiaryContainer = Color(0xFFF2E3CE),
+    onTertiaryContainer = Color(0xFF3C2711),
+    inversePrimary = Color(0xFF8FC9D2),
+    background = Color(0xFFF2F7F8),
+    surfaceVariant = Color(0xFFDFEAEC),
+    outline = Color(0xFF8E9EA2),
+    outlineVariant = Color(0xFFC2D2D5),
 )
-internal val DenimDark = DarkBlueprint(
-    primary = Color(0xFF8FB3DC),
-    onPrimary = Color(0xFF14212F),
-    primaryContainer = Color(0xFF2F4058),
-    onPrimaryContainer = Color(0xFFD7E3F3),
-    secondary = Color(0xFF7FB3B3),
-    onSecondary = Color(0xFF0E2424),
-    secondaryContainer = Color(0xFF2F4C4C),
-    onSecondaryContainer = Color(0xFFD6ECEC),
-    tertiary = Color(0xFFE0A76B),
-    onTertiary = Color(0xFF3A2613),
-    tertiaryContainer = Color(0xFF6E4C25),
-    onTertiaryContainer = Color(0xFFF0E0CC),
-    inversePrimary = Color(0xFF3E5F8A),
-    surface = Color(0xFF0E1218),
-    surfaceVariant = Color(0xFF1E252E),
-    outline = Color(0xFF8F9AA8),
-    outlineVariant = Color(0xFF39414C),
+internal val LakeCyanDark = DarkBlueprint(
+    primary = Color(0xFF7FC3CC),
+    onPrimary = Color(0xFF0A3238),
+    primaryContainer = Color(0xFF1F5A63),
+    onPrimaryContainer = Color(0xFFD2EBEE),
+    secondary = Color(0xFFA6C2D4),
+    onSecondary = Color(0xFF12252F),
+    secondaryContainer = Color(0xFF3A5468),
+    onSecondaryContainer = Color(0xFFDCE7F0),
+    tertiary = Color(0xFFE0AF7C),
+    onTertiary = Color(0xFF3C2711),
+    tertiaryContainer = Color(0xFF7A5730),
+    onTertiaryContainer = Color(0xFFF2E3CE),
+    inversePrimary = Color(0xFF35838C),
+    surface = Color(0xFF0C1416),
+    surfaceVariant = Color(0xFF1C2628),
+    outline = Color(0xFF8E9EA2),
+    outlineVariant = Color(0xFF38464A),
 )
 
 // ═══════════════════════════
 // 暖色系（Warm）
 // ═══════════════════════════
 
-// ── 玫瑰尘埃 Rose Dust（干枯玫瑰＋灰棕）──
-internal val RoseDustLight = Blueprint(
-    primary = Color(0xFFB0686F),
+// ── 樱粉 Sakura Pink（樱粉＋奶油杏＋香芋紫）──
+// 原「玫瑰 Rose」：主色 #B0686F 是低饱和砖玫瑰（色相 354°），与草莓 348° 几乎同色相，
+// 且观感偏红不偏粉 —— 精简后整个色板一支粉都不剩。2026-09-22 换成本色板（沿用已删除的
+// 樱花布丁 Sakura Macaron 色值，配色已调好），持久化 key 仍为 ROSE_DUST。
+internal val SakuraPinkLight = Blueprint(
+    primary = Color(0xFFF08FB4),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFF6DDE0),
-    onPrimaryContainer = Color(0xFF3D1A1F),
-    secondary = Color(0xFF9A7B78),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFF0E4E2),
-    onSecondaryContainer = Color(0xFF32221F),
-    tertiary = Color(0xFFB58A9A),
-    onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFF2E1E8),
-    onTertiaryContainer = Color(0xFF37202B),
-    inversePrimary = Color(0xFFEABCC1),
-    background = Color(0xFFF9F4F3),
-    surfaceVariant = Color(0xFFF0E7E6),
-    outline = Color(0xFFA59796),
-    outlineVariant = Color(0xFFD3C6C5),
+    primaryContainer = Color(0xFFFCDDE9),
+    onPrimaryContainer = Color(0xFF4A2530),
+    secondary = Color(0xFFF2C9A0),
+    onSecondary = Color(0xFF4A3A25),
+    secondaryContainer = Color(0xFFFCEBD9),
+    onSecondaryContainer = Color(0xFF4A3A25),
+    tertiary = Color(0xFFC5B3E8),
+    onTertiary = Color(0xFF3A3560),
+    tertiaryContainer = Color(0xFFEFE9FB),
+    onTertiaryContainer = Color(0xFF3A3560),
+    inversePrimary = Color(0xFFFFB8D2),
+    background = Color(0xFFFEF4F8),
+    surfaceVariant = Color(0xFFFAE8EE),
+    outline = Color(0xFFAF9AA1),
+    outlineVariant = Color(0xFFDCC8CF),
 )
-internal val RoseDustDark = DarkBlueprint(
-    primary = Color(0xFFE4A1A8),
-    onPrimary = Color(0xFF4A2328),
-    primaryContainer = Color(0xFF823E46),
-    onPrimaryContainer = Color(0xFFF6DDE0),
-    secondary = Color(0xFFD0B9B5),
-    onSecondary = Color(0xFF32221F),
-    secondaryContainer = Color(0xFF51403D),
-    onSecondaryContainer = Color(0xFFF0E4E2),
-    tertiary = Color(0xFFE3C2D1),
-    onTertiary = Color(0xFF37202B),
-    tertiaryContainer = Color(0xFF70414F),
-    onTertiaryContainer = Color(0xFFF2E1E8),
-    inversePrimary = Color(0xFFB0686F),
-    surface = Color(0xFF1B1213),
-    surfaceVariant = Color(0xFF302425),
-    outline = Color(0xFFA59796),
-    outlineVariant = Color(0xFF524447),
+internal val SakuraPinkDark = DarkBlueprint(
+    primary = Color(0xFFFFB4D1),
+    onPrimary = Color(0xFF4A2530),
+    primaryContainer = Color(0xFFA05A78),
+    onPrimaryContainer = Color(0xFFFCDDE9),
+    secondary = Color(0xFFFFDCBA),
+    onSecondary = Color(0xFF4A3A25),
+    secondaryContainer = Color(0xFF7A6245),
+    onSecondaryContainer = Color(0xFFFCEBD9),
+    tertiary = Color(0xFFD9C9F5),
+    onTertiary = Color(0xFF3A3560),
+    tertiaryContainer = Color(0xFF5B5A8F),
+    onTertiaryContainer = Color(0xFFEFE9FB),
+    inversePrimary = Color(0xFFF08FB4),
+    surface = Color(0xFF1E1018),
+    surfaceVariant = Color(0xFF36222C),
+    outline = Color(0xFFAF9AA1),
+    outlineVariant = Color(0xFF5C4450),
 )
 
-// ── 草莓奶油 Strawberry Cream（草莓红＋蜜橙＋果粉）──
+// ── 草莓 Strawberry（草莓红＋蜜橙＋果粉）──
 internal val StrawberryLight = Blueprint(
     primary = Color(0xFFF04A6A),
     onPrimary = Color.White,
@@ -211,7 +216,7 @@ internal val StrawberryDark = DarkBlueprint(
     outlineVariant = Color(0xFF5A414A),
 )
 
-// ── 落日珊瑚 Sunset Coral（珊瑚橙＋蜜桃）──
+// ── 珊瑚 Coral（珊瑚橙＋蜜桃）──
 internal val CoralLight = Blueprint(
     primary = Color(0xFFFF6E5A),
     onPrimary = Color.White,
@@ -255,7 +260,7 @@ internal val CoralDark = DarkBlueprint(
 // 自然色系（Nature）
 // ═══════════════════════════
 
-// ── 森野絮语 Forest Whispers（森绿＋灰绿＋赭棕）──
+// ── 森林 Forest（森绿＋灰绿＋赭棕）──
 internal val ForestLight = Blueprint(
     primary = Color(0xFF3E7A4E),
     onPrimary = Color.White,
@@ -295,7 +300,7 @@ internal val ForestDark = DarkBlueprint(
     outlineVariant = Color(0xFF3E5342),
 )
 
-// ── 抹茶微风 Matcha Breeze（抹茶绿＋麦秆黄＋藤绿）──
+// ── 抹茶 Matcha（抹茶绿＋麦秆黄＋藤绿）──
 internal val MatchaLight = Blueprint(
     primary = Color(0xFF86A855),
     onPrimary = Color.White,
@@ -335,7 +340,7 @@ internal val MatchaDark = DarkBlueprint(
     outlineVariant = Color(0xFF44473A),
 )
 
-// ── 焦糖琥珀 Caramel Amber（焦糖褐＋玫瑰棕＋琥珀）──
+// ── 焦糖 Caramel（焦糖褐＋玫瑰棕＋琥珀）──
 internal val CaramelLight = Blueprint(
     primary = Color(0xFFA97949),
     onPrimary = Color.White,
