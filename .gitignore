@@ -30,6 +30,8 @@ BUG_REPORT.md
 /ARCHITECTURE_ENGINEERING_REVIEW_*.md
 /FIX_LOG_*.md
 /UNCOMMITTED_CHANGES_*.md
+# 2026-09-22：性能/UX/UI 三维度优化分析文档，同上——一次性产物，不入库。
+/OPTIMIZATION_REVIEW_*.md
 
 # 工具会话记忆目录：与代码演进无关的本地状态，不入库。
 /.workbuddy-ai/

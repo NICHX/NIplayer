@@ -39,6 +39,51 @@ subprojects {
     }
 }
 
+// ==================== Compose 编译器度量（重组优化基线） ====================
+//
+// 目的：把「哪些 composable 可跳过 / 哪些类被判为 unstable」变成可量化的报告，
+// 而不是靠读代码猜。`*-composables.txt` 列出每个 composable 的 restartable / skippable
+// 与不可跳过的原因；`*-classes.txt` 列出每个类的 stability 判定。
+//
+// 产物（每模块各一份）：<module>/build/compose-reports/、<module>/build/compose-metrics/
+//   - app_debug-composables.txt / -classes.txt / -module.json
+//   - app_debug-composables.csv、app_debug-compose-metrics.csv
+//
+// 注意：该扩展只对**应用了** `org.jetbrains.kotlin.plugin.compose` 的模块可用
+// （本项目为 :app / :core:designsystem / :core:navigation / :feature:home / :feature:player）。
+// 对未应用该插件的模块（如 :player:kernel）直接 configure 会抛异常，故用 plugins.withId 守卫。
+subprojects {
+    plugins.withId("org.jetbrains.kotlin.plugin.compose") {
+        extensions.configure<org.jetbrains.kotlin.compose.compiler.gradle.ComposeCompilerGradlePluginExtension> {
+            reportsDestination = layout.buildDirectory.dir("compose-reports")
+            metricsDestination = layout.buildDirectory.dir("compose-metrics")
+            // 跨模块类型的稳定性声明（compose-stability.conf）。
+            //
+            // 背景：Compose 编译器对**跨模块**类型无法推断稳定性 —— 编译 A 模块时拿不到 B 模块
+            // 的 IR，于是把来自 B 的类型一律当作 unstable。后果是只要某个 composable 的参数里
+            // 出现这种类型，它就**永久失去跳过重组的能力**，与参数值是否变化无关。
+            //
+            // 为什么不就地加 @Immutable：这些类型定义在 :player:kernel / :core:storage 等
+            // **无 Compose 依赖**的模块，加标注等于让内核层反向依赖 Compose，属依赖倒置，
+            // 与项目已完成的 A1/A2 架构修复方向冲突。故只能在此集中声明。
+            //
+            // ⚠️ 写进该文件 = 对编译器做承诺「实例构造后不会变化」。承诺错了不报错，
+            //    只会静默产生「界面不刷新」的 bug。每一项都必须人工核对字段是否全为 val。
+            //
+            // ⚠️ 该配置文件**不支持注释行**（Kotlin 2.4.10 实测）：解析器会把 `#` 开头或
+            //    含空格的任意行当成类名去校验，报 `... is not a valid pattern`，且错误里的
+            //    行号恒为 0（不是真实行号），极易误判。故说明只能写在本处，文件内只放类名。
+            //
+            // ⚠️ 必须用 .set(listOf(...))：ListProperty 只有 from(Iterable) / from(Provider)
+            //    两个重载，**没有 varargs 版**（写成 from(file) 会编译失败）。
+            //    单数属性 stabilityConfigurationFile 已废弃且为 error 级，勿用。
+            stabilityConfigurationFiles.set(
+                listOf(rootProject.layout.projectDirectory.file("compose-stability.conf")),
+            )
+        }
+    }
+}
+
 /**
  * 混合 Java/Kotlin 模块的 detekt 类路径补丁（`:core:subtitle` 专用，2026-09-21 修复）。
  *
