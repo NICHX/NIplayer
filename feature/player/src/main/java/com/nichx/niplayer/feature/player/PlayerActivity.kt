@@ -2,6 +2,7 @@ package com.nichx.niplayer.feature.player
 
 import android.app.PictureInPictureParams
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Rect
 import android.os.Build
@@ -22,14 +23,12 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.datastore.GlassSettings
 import com.nichx.niplayer.datastore.LanguageSettings
-import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassTopBarOpacity
 import com.nichx.niplayer.designsystem.theme.NiScheme
 import com.nichx.niplayer.designsystem.theme.NiTheme
-import com.nichx.niplayer.player.kernel.PlaybackState
 import com.nichx.niplayer.player.kernel.VideoSize
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -175,6 +174,9 @@ class PlayerActivity : ComponentActivity() {
         // 回到前台 = 展开回全屏：PiP 会话结束，播放继续（不做任何暂停/结束动作）
         inPipSession = false
         pipEntryRequested = false
+        // 视频后台播放：回前台即退出后台托管（surface 靠回前台 surfaceCreated 自动复挂画面，
+        // 播放从未暂停，无需手动 play）。
+        VideoBgPlaybackController.stopService(this)
     }
 
     override fun onStop() {
@@ -190,19 +192,24 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /**
-     * 用户按 Home / 切出应用时触发。
+     * 进入"视频后台播放"（后台仅音频）：接管当前视频播放到前台服务，系统保活 + 媒体通知。
      *
-     * 开启 [PlayerSettings.autoPip] 且播放中时，自动进入画中画而非退后台暂停；
-     * 通过 `!isInPictureInPictureMode` 防止手动触发 PiP 时重复进入。
+     * 由播放器 HUD 按钮主动触发。不暂停播放，仅把渲染表面交由 SurfaceView 生命周期
+     * （surfaceDestroyed 自动解绑画面，仅出音频）。
      */
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        if (PlayerSettings.autoPip &&
-            !isInPictureInPictureMode &&
-            viewModel.state.value is PlaybackState.Playing
-        ) {
-            enterPip(viewModel.videoSize.value, currentVideoSourceRect())
+    fun enterVideoBackgroundPlayback() {
+        if (isInPictureInPictureMode) return
+        val player = viewModel.nxPlayer.mediaSessionPlayer ?: return
+        val title = viewModel.title.value
+        VideoBgPlaybackController.enter(player, title, viewModel::playNext, viewModel::playPrevious)
+        try {
+            startForegroundService(Intent(this, VideoBgPlaybackService::class.java))
+        } catch (_: Exception) {
+            // 活动后台等极端时序下 FGS 启动受限：回滚控制器，保持普通行为
+            VideoBgPlaybackController.clear()
         }
+        // 异步加载当前视频缩略图作为通知封面（无缓存时静默，不影响后台播放）
+        viewModel.loadVideoBackgroundCover()
     }
 
     /**

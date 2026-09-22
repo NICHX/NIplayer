@@ -55,6 +55,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.HeadsetMic
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Bookmark
@@ -438,7 +439,9 @@ fun PlayerScreen(
                     // 发起 PiP 请求时打的标记（HUD 按钮 / 自动 PiP 两条入口都经它）。
                     val inPip = activity?.isInPictureInPictureMode == true ||
                         (activity as? PlayerActivity)?.pipEntryRequested == true
-                    if (!inPip && viewModel.nxPlayer.state.value is PlaybackState.Playing) {
+                    // 视频后台播放（后台仅音频）会话中也保持播放，不退后台即暂停。
+                    val inVideoBg = VideoBgPlaybackController.active
+                    if (!inPip && !inVideoBg && viewModel.nxPlayer.state.value is PlaybackState.Playing) {
                         viewModel.nxPlayer.pause()
                     }
                 }
@@ -1411,6 +1414,17 @@ fun PlayerScreen(
                 id, Icons.Rounded.PictureInPictureAlt,
                 stringResource(R.string.player_picture_in_picture),
                 onClick = enterPip,
+            )
+            "background_play" -> HudButtonConfig(
+                id, Icons.Rounded.HeadsetMic,
+                stringResource(R.string.player_background_play),
+                onClick = {
+                    // 进入后台播放前先收起「更多」菜单，避免返回时菜单仍展开
+                    showMoreMenu = false
+                    // 主动进入后台仅音频播放：接管到前台服务后把播放器退回后台
+                    (activity as? PlayerActivity)?.enterVideoBackgroundPlayback()
+                    activity?.moveTaskToBack(true)
+                },
             )
             "sleep_timer" -> HudButtonConfig(
                 id, Icons.Rounded.Bedtime,

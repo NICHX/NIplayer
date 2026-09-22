@@ -691,6 +691,9 @@ class NxMedia3Player @Inject constructor(
         exoPlayer.setVideoSurface(surface)
     }
 
+    override val mediaSessionPlayer: Player?
+        get() = exoPlayer
+
     override fun release() {
         // M-01 修复：先置标志位再 release ExoPlayer，positionTicker 据此短路
         isReleased = true

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.HeadsetMic
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LockOpen
@@ -221,6 +222,7 @@ private fun ctrlIcon(id: String): ImageVector = when (id) {
     "screenshot" -> Icons.Rounded.PhotoCamera
     "long_press_speed" -> Icons.Rounded.Speed
     "pip" -> Icons.Rounded.PictureInPictureAlt
+    "background_play" -> Icons.Rounded.HeadsetMic
     "sleep_timer" -> Icons.Rounded.Bedtime
     "media_info" -> Icons.Rounded.Info
     else -> Icons.Rounded.Bookmark // bookmarks
@@ -507,6 +509,7 @@ internal fun ctrlName(id: String): String = stringResource(
         "screenshot" -> R.string.player_ctrl_name_screenshot
         "long_press_speed" -> R.string.player_ctrl_name_long_press_speed
         "pip" -> R.string.player_ctrl_name_pip
+        "background_play" -> R.string.player_ctrl_name_background_play
         "sleep_timer" -> R.string.player_ctrl_name_sleep_timer
         "media_info" -> R.string.player_ctrl_name_media_info
         "bookmarks" -> R.string.player_ctrl_name_bookmarks

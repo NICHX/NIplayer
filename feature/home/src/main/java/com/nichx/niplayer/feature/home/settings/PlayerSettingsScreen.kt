@@ -72,7 +72,6 @@ fun PlayerSettingsScreen(
     var seekSensitivity by remember { mutableStateOf(PlayerSettings.seekSensitivity) }
     var doubleTapStepSeconds by remember { mutableStateOf(PlayerSettings.doubleTapStepSeconds) }
     var orientationMode by remember { mutableStateOf(PlayerSettings.orientationMode) }
-    var autoPip by remember { mutableStateOf(PlayerSettings.autoPip) }
     var showOrientationDialog by remember { mutableStateOf(false) }
     var showOrientationHintDialog by remember { mutableStateOf(false) }
     var showTokenDialog by remember { mutableStateOf(false) }
@@ -147,16 +146,6 @@ fun PlayerSettingsScreen(
                     value = orientationModeLabel,
                     infoOnClick = { showOrientationHintDialog = true },
                     onClick = { showOrientationDialog = true },
-                )
-                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                SettingSwitchRow(
-                    label = stringResource(R.string.player_auto_pip),
-                    description = stringResource(R.string.player_auto_pip_desc),
-                    checked = autoPip,
-                    onCheckedChange = {
-                        autoPip = it
-                        PlayerSettings.autoPip = it
-                    },
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingClickRow(

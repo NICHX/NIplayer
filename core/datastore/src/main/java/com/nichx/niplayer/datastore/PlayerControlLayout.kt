@@ -36,7 +36,7 @@ object PlayerControlLayout {
     /** 全部功能 id（按此默认顺序展示与排序）。 */
     val ALL_IDS: List<String> = listOf(
         "rotate", "ab_loop", "black_bar_crop", "lock", "screenshot",
-        "long_press_speed", "pip", "sleep_timer", "media_info", "bookmarks", "vr",
+        "long_press_speed", "pip", "background_play", "sleep_timer", "media_info", "bookmarks", "vr",
     )
 
     /** 全部可放置的面，固定顺序（用于循环切换）。 */
@@ -55,6 +55,7 @@ object PlayerControlLayout {
         "screenshot" to PlayerControlSurface.RIGHT,
         "long_press_speed" to PlayerControlSurface.MORE,
         "pip" to PlayerControlSurface.MORE,
+        "background_play" to PlayerControlSurface.MORE,
         "sleep_timer" to PlayerControlSurface.MORE,
         "media_info" to PlayerControlSurface.MORE,
         "bookmarks" to PlayerControlSurface.MORE,

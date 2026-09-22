@@ -1,6 +1,7 @@
 package com.nichx.niplayer.player.kernel
 
 import android.view.Surface
+import androidx.media3.common.Player
 import androidx.media3.common.text.Cue
 import com.nichx.niplayer.player.kernel.audio.EqualizerConfig
 import com.nichx.niplayer.player.kernel.audio.NiEqualizer
@@ -224,6 +225,14 @@ interface NxPlayer {
      *               （如 Activity 切到后台或 Surface 销毁时）。
      */
     fun attachSurface(surface: Surface?)
+
+    /**
+     * 暴露给媒体会话（前台服务的 MediaSession / 媒体通知）的 media3 [Player] 桥。
+     *
+     * **不转移所有权**：释放仍由调用方（PlayerViewModel）在其 [release] 时统一完成。
+     * 实现方直接返回内部 ExoPlayer；非 media3 实现返回 null。
+     */
+    val mediaSessionPlayer: Player?
 
     /** 释放播放器资源。调用后实例不可再用。 */
     fun release()

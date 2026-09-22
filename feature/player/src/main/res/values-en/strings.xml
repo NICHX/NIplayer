@@ -158,6 +158,11 @@
     <string name="player_notification_playing">Playing</string>
     <string name="player_notification_channel">Music playback</string>
     <string name="player_notification_channel_desc">Music playback controls</string>
+    <string name="player_video_bg_playing">Playing in background</string>
+    <string name="player_video_bg_channel">Video background playback</string>
+    <string name="player_video_bg_channel_desc">Video background playback controls</string>
+    <string name="player_background_play">Background play</string>
+    <string name="player_background_play_desc">Minimize the video and keep playing audio in the background</string>
 
     <!-- Subtitle search -->
     <string name="subtitle_search_title">Search subtitles</string>
