@@ -207,6 +207,15 @@ internal fun DownloadManagerTab(
                         is DownloadGroupedItem.Task -> "task_${item.display.task.id}"
                     }
                 },
+                // UI-5 修复（2026-09-22）：本列表是 Section / Task 两种布局混排，
+                // 不声明 contentType 会让 LazyList 的复用池在两种 item 之间串用，
+                // 滚动时更容易出现抖动与多余的重新布局。全仓原先 0 处 contentType。
+                contentType = { item ->
+                    when (item) {
+                        is DownloadGroupedItem.Section -> "section"
+                        is DownloadGroupedItem.Task -> "task"
+                    }
+                },
             ) { item ->
                 when (item) {
                     is DownloadGroupedItem.Section -> SectionHeader(
