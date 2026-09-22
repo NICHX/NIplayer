@@ -2443,44 +2443,34 @@ class StorageFileViewModel @Inject constructor(
     /** 切换排序字段，持久化并立即重排当前列表。 */
     fun setSortBy(sortBy: FileBrowserSettings.SortBy) {
         FileBrowserSettings.setSortBy(sortBy)
-        _uiState.update {
-            it.copy(files = applyFilterAndSort(it.rawFiles))
-        }
+        resortOffMainThread()
     }
 
     /** 切换升降序，持久化并立即重排当前列表。 */
     fun setSortAscending(ascending: Boolean) {
         FileBrowserSettings.setSortAscending(ascending)
-        _uiState.update {
-            it.copy(files = applyFilterAndSort(it.rawFiles))
-        }
+        resortOffMainThread()
     }
 
     /** 切换"仅显示媒体文件"开关，持久化并立即刷新当前目录列表。 */
     fun toggleShowOnlyMediaFiles() {
         val newValue = !FileBrowserSettings.showOnlyMediaFiles
         FileBrowserSettings.showOnlyMediaFiles = newValue
-        _uiState.update {
-            it.copy(files = applyFilterAndSort(it.rawFiles))
-        }
+        resortOffMainThread()
     }
 
     /** 切换"显示隐藏文件"开关，持久化并立即刷新当前目录列表。 */
     fun toggleShowHiddenFiles() {
         val newValue = !FileBrowserSettings.showHiddenFiles
         FileBrowserSettings.showHiddenFiles = newValue
-        _uiState.update {
-            it.copy(files = applyFilterAndSort(it.rawFiles))
-        }
+        resortOffMainThread()
     }
 
     /** 切换是否隐藏 .thumb 缩略图文件夹，持久化并立即刷新当前目录列表。 */
     fun toggleHideThumbFolder() {
         val newValue = !FileBrowserSettings.hideThumbFolder
         FileBrowserSettings.hideThumbFolder = newValue
-        _uiState.update {
-            it.copy(files = applyFilterAndSort(it.rawFiles))
-        }
+        resortOffMainThread()
     }
 
     /**
@@ -2498,17 +2488,13 @@ class StorageFileViewModel @Inject constructor(
         } else if (!newValue) {
             verdictScanJob?.cancel()
         }
-        _uiState.update {
-            it.copy(files = applyFilterAndSort(it.rawFiles))
-        }
+        resortOffMainThread()
     }
 
     /** 设置文件类型过滤，持久化并立即刷新当前目录列表。 */
     fun setMediaFilter(filter: FileBrowserSettings.MediaFilter) {
         FileBrowserSettings.mediaFilter = filter
-        _uiState.update {
-            it.copy(files = applyFilterAndSort(it.rawFiles))
-        }
+        resortOffMainThread()
     }
 
     /** 过滤 + 排序的实现在 [filterAndSortStorageFiles]（同包顶层函数，可单测）。 */
@@ -2518,6 +2504,38 @@ class StorageFileViewModel @Inject constructor(
             config = FileBrowserSettings.sortFlow.value,
             folderMediaVerdicts = folderMediaVerdicts,
         )
+
+    /** 重排请求的串行化句柄，见 [resortOffMainThread]。 */
+    private var resortJob: Job? = null
+
+    /**
+     * P1-5 修复（2026-09-22）：把「设置变更后的重排」从主线程移到 [Dispatchers.Default]。
+     *
+     * 原先 7 个设置开关（排序字段/升降序/仅媒体/显示隐藏/.thumb 开关/无媒体文件夹/媒体类型）
+     * 都在调用线程直接跑 [applyFilterAndSort]，而调用方是 Compose 点击回调 —— 即主线程。
+     * [storageFileComparator] 用自然排序（逐字符比较，处理 "2.mp4" < "10.mp4"），
+     * 大目录（数千项）下会造成可感知的卡顿。
+     *
+     * 同文件的加载路径（listDirectory）本就用 `withContext(Dispatchers.IO)` 包了同一个调用，
+     * 属遗漏而非有意设计。
+     *
+     * 线程安全前提（均已核对）：
+     * - [folderMediaVerdicts] 是 [java.util.concurrent.ConcurrentHashMap]
+     * - [FileBrowserSettings.sortFlow] 与 [_uiState] 都是 StateFlow，`.value` 读写线程安全
+     * - [filterAndSortStorageFiles] 是纯函数，只读入参、不碰共享可变状态
+     *
+     * 串行化：新请求取消旧请求。**`if (!isActive) return@launch` 是必需的** ——
+     * [applyFilterAndSort] 内部没有挂起点，仅靠 `cancel()` 无法中断其执行，
+     * 已取消的协程仍会一路跑到 `_uiState.update`，把过期结果覆盖到最新结果之上。
+     */
+    private fun resortOffMainThread() {
+        resortJob?.cancel()
+        resortJob = viewModelScope.launch(Dispatchers.Default) {
+            val sorted = applyFilterAndSort(_uiState.value.rawFiles)
+            if (!isActive) return@launch
+            _uiState.update { it.copy(files = sorted) }
+        }
+    }
 
 
     override fun onCleared() {
