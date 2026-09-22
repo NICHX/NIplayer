@@ -35,3 +35,4 @@ BUG_REPORT.md
 
 # 工具会话记忆目录：与代码演进无关的本地状态，不入库。
 /.workbuddy-ai/
+/.commandcode
