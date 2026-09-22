@@ -39,7 +39,6 @@ import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.Forward10
-import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -61,7 +60,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,6 +76,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -119,6 +122,25 @@ internal fun PlayerProgressBar(
             .fillMaxWidth()
             .height(trackHeight + thumbRadius * 2)
             .clip(RoundedCornerShape(trackHeight / 2))
+            // 无障碍（UX-3，2026-09-22）：本进度条是自绘 Canvas + pointerInput，
+            // 原先没有任何语义信息 —— TalkBack 读不出「当前进度 / 总时长」，
+            // 也无法用无障碍手势调节（视障用户完全无法 seek）。
+            // 补三件事：进度范围、可读的当前值文本、可设置进度的动作。
+            .semantics {
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    current = positionFraction.coerceIn(0f, 1f),
+                    range = 0f..1f,
+                )
+                if (durationMs > 0) {
+                    stateDescription = "${formatDuration((positionFraction * durationMs).toLong())} / " +
+                        formatDuration(durationMs)
+                }
+                setProgress { target ->
+                    onSeek(target.coerceIn(0f, 1f))
+                    onSeekFinished()
+                    true
+                }
+            }
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)

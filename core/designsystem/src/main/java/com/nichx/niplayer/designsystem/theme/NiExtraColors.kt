@@ -1,6 +1,7 @@
 package com.nichx.niplayer.designsystem.theme
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Brush
@@ -14,7 +15,15 @@ import androidx.compose.ui.graphics.Color
  * 供新设计组件读取。现有页面不读取本类，不受影响。
  *
  * 读取方式：`NiExtraColors.current.surfaceLevel2`（与 `MaterialTheme.colorScheme` 风格一致）。
+ *
+ * P2 修复（2026-09-22）：本类原先被 Compose 编译器判为 **runtime（不稳定）**，
+ * 唯一原因是 `brandScale: List<Color>` 这一个字段 —— 含 `List` 字段的类一律失稳。
+ * 后果：任何把本类作为参数接收的 composable 都无法跳过重组。
+ * 显式标注 [Immutable] 以覆盖推断（前提成立：全部字段为 `val`，且 `brandScale` 由
+ * [NiSchemes.buildLightExtra] 一次性构造、此后不再改动）。
+ * 依据来自 Compose 编译器稳定性报告：`*-classes.txt` 中本类原为 `runtime class`。
  */
+@Immutable
 data class NiExtraColors(
     val isDark: Boolean,
     val brandScale: List<Color>,
