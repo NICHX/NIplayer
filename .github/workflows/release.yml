@@ -50,8 +50,17 @@ jobs:
 
       - name: Ensure NDK & CMake
         run: |
-          if [ ! -d "$ANDROID_HOME/ndk/26.1.10909125" ] || [ ! -d "$ANDROID_HOME/cmake/3.22.1" ]; then
-            yes | sdkmanager "ndk;26.1.10909125" "cmake;3.22.1" >/dev/null
+          # NDK 版本从 gradle/libs.versions.toml 读取（与 player:ffmpeg 的 ndkVersion 同源），
+          # 避免两处各自硬编码漂移 —— 此前这里装的是 26.1.10909125，而模块声明的是
+          # 28.2.13676358，该步骤等于无效（做法与 ci.yml 保持一致）。
+          NDK_VERSION=$(grep -E '^ndk[[:space:]]*=' gradle/libs.versions.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "$NDK_VERSION" ]; then
+            echo "::error::无法从 gradle/libs.versions.toml 读取 ndk 版本"
+            exit 1
+          fi
+          echo "NDK_VERSION=$NDK_VERSION"
+          if [ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ] || [ ! -d "$ANDROID_HOME/cmake/3.22.1" ]; then
+            yes | sdkmanager "ndk;$NDK_VERSION" "cmake;3.22.1" >/dev/null
           fi
 
       - name: Set up Gradle
@@ -121,6 +130,14 @@ jobs:
               echo "> 🎉 首个版本"
               echo ""
             } >> "$BODY"
+          fi
+
+          # 若存在手写亮点说明（.github/release-notes/<tag>.md），插入到版本头之后、
+          # 自动生成的提交清单之前 —— 自动清单保证「不遗漏」，手写部分负责「讲清楚这版做了什么」。
+          HIGHLIGHTS=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$HIGHLIGHTS" ]; then
+            cat "$HIGHLIGHTS" >> "$BODY"
+            echo "" >> "$BODY"
           fi
 
           # 按 Conventional Commits 前缀分类展示提交，并给出对应 commit 短哈希
