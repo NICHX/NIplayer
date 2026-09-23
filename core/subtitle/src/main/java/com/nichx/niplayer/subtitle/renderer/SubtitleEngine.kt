@@ -122,6 +122,19 @@ class SubtitleEngine(
      * @param fileName 字幕文件名（用于 UI 显示）
      */
     fun load(tto: TimedTextObject, fileName: String?) {
+        // m-16 修复：先记下当前渲染位置，重建 parsed 后要立刻按该位置重算一帧。
+        //
+        // 不能指望上层再喂一次 update —— player.positionMs 是 StateFlow，其值由 500ms
+        // 轮询器驱动，而轮询器只在 Playing/Buffering 期间运行（见 NxMedia3Player.positionTicker）。
+        // 暂停态下 positionMs 恒定不变 → StateFlow 不再发射 → 上层 collect 不再触发 →
+        // 装载好的字幕永远不渲染，直到用户恢复播放。而"暂停下来挑字幕"恰恰是最常见的用法。
+        val lastPositionMs = if (lastUpdatePositionMs != Long.MIN_VALUE) {
+            // 反算原 positionMs：effectiveMs = positionMs + offsetMs → positionMs = effectiveMs - offsetMs
+            lastUpdatePositionMs - lastUpdateOffsetMs
+        } else {
+            null
+        }
+
         parsed.clear()
         startMsToIndex.clear()
         tto.captions.values.forEachIndexed { index, caption ->
@@ -135,6 +148,9 @@ class SubtitleEngine(
         _renderables.value = emptyList()
         // M-14 修复：加载新字幕后清空缓存键，强制下次 update 重新计算
         lastUpdatePositionMs = Long.MIN_VALUE
+
+        // 立即重算一帧（与 [updateStyleConfig] 同一套路）：暂停态装载也能马上看到效果
+        lastPositionMs?.let { update(it) }
     }
 
     /** 清空字幕（卸载外挂字幕）。 */
