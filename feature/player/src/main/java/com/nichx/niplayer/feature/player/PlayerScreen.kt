@@ -174,6 +174,9 @@ fun PlayerScreen(
     val subtitleTracks by viewModel.subtitleTracks.collectAsStateWithLifecycle()
     val selectedSubtitleTrackIndex by viewModel.selectedSubtitleTrackIndex.collectAsStateWithLifecycle()
     val subtitleOffsetMs by viewModel.subtitleOffsetMs.collectAsStateWithLifecycle()
+    // 同目录外部字幕：候选列表 + 当前生效的那一个（null 表示走内嵌轨道）
+    val sameDirSubtitles by viewModel.sameDirSubtitles.collectAsStateWithLifecycle()
+    val activeExternalSubtitle by viewModel.activeExternalSubtitle.collectAsStateWithLifecycle()
     val playlistInfo by viewModel.playlistInfo.collectAsStateWithLifecycle()
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val currentIndex by viewModel.currentIndex.collectAsStateWithLifecycle()
@@ -228,6 +231,8 @@ fun PlayerScreen(
     var lastTapTimeMs by remember { mutableLongStateOf(0L) }
     var showSubtitleSearch by rememberSaveable { mutableStateOf(false) }
     var showSubtitleStyle by rememberSaveable { mutableStateOf(false) }
+    // 应用内字幕选择器（可浏览网络存储，取代默认走 SAF 的手动加字幕入口）
+    var showSubtitlePicker by rememberSaveable { mutableStateOf(false) }
     var locked by rememberSaveable { mutableStateOf(false) }
     var showSpeedMenu by rememberSaveable { mutableStateOf(false) }
     var showMoreMenu by rememberSaveable { mutableStateOf(false) }
@@ -1817,13 +1822,16 @@ fun PlayerScreen(
             SubtitleManageDialog(
                 subtitleTracks = subtitleTracks,
                 selectedIndex = selectedSubtitleTrackIndex,
+                sameDirSubtitles = sameDirSubtitles,
+                activeExternalSubtitle = activeExternalSubtitle,
                 offsetMs = subtitleOffsetMs,
                 onSelectTrack = { viewModel.selectSubtitleTrack(it) },
+                onSelectSameDirSubtitle = { viewModel.selectSameDirSubtitle(it) },
                 onAdjustOffset = { viewModel.adjustSubtitleOffset(it) },
                 onResetOffset = { viewModel.resetSubtitleOffset() },
                 onAddExternal = {
                     showSubtitleMenu = false
-                    subtitleLauncher.launch(arrayOf("*/*"))
+                    showSubtitlePicker = true
                 },
                 onSearch = {
                     showSubtitleMenu = false
@@ -1834,6 +1842,22 @@ fun PlayerScreen(
                     showSubtitleStyle = true
                 },
                 onDismiss = { showSubtitleMenu = false },
+            )
+        }
+
+        if (showSubtitlePicker) {
+            SubtitleFilePickerDialog(
+                initialLocalPath = viewModel.currentLocalDirectory,
+                onPicked = { storageId, dirPath, fileName ->
+                    showSubtitlePicker = false
+                    viewModel.loadSubtitleFromPicker(storageId, dirPath, fileName)
+                },
+                // 系统选择器保留为兜底：SAF 到不了 SMB/WebDAV，但能覆盖系统文档树/云盘
+                onPickFromSystem = {
+                    showSubtitlePicker = false
+                    subtitleLauncher.launch(arrayOf("*/*"))
+                },
+                onDismiss = { showSubtitlePicker = false },
             )
         }
 

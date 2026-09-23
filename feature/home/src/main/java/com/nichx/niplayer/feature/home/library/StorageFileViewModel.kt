@@ -1921,7 +1921,15 @@ class StorageFileViewModel @Inject constructor(
             try {
                 val uniqueKey = "${library.id}:${file.path}"
                 // W-N7 修复：传入 uniqueKey 作为 mediaId，与播放历史 uniqueKey 一致。
-                val source = MediaSourceBuilder.buildMediaSource(s, file, mediaId = uniqueKey)
+                // ownsStorage=false：`s` 是本 ViewModel 的长期字段（列目录/上传/重命名都用它），
+                // 生命周期由本 ViewModel 的 onCleared 负责。播放器切源或退出时**不得**关闭它，
+                // 否则用户从播放器返回本页后目录操作会全部失败。
+                val source = MediaSourceBuilder.buildMediaSource(
+                    s,
+                    file,
+                    mediaId = uniqueKey,
+                    ownsStorage = false,
+                )
 
                 // 只有"自动方向"模式（orientationMode==2）才会在进入前预读视频宽高比并可能
                 // 触发等待，才标记"正在准备"以显示"识别方向中"标签；其余情况不显示该提示。

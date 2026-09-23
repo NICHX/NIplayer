@@ -76,12 +76,20 @@ sealed class NxMediaSource {
      *                包装进 DefaultMediaSourceFactory
      * @param uri 用于 media3 MediaItem.uri（影响 MediaSession 元数据展示）
      * @param storage 调用方创建的 Storage 实例（可为 null，HTTP/Local 类型不携带），
-     *               由 PlayerViewModel 在切换或退出时关闭
+     *               由 PlayerViewModel 在切换或退出时按 [ownsStorage] 决定是否关闭
+     * @param ownsStorage [storage] 是否由本次播放**独占**（即除播放器外无人再持有）。
+     *
+     *   `true`（默认）：实例是为这次播放新建的，播放结束必须由播放器关闭，否则连接泄漏。
+     *   `false`：实例是**借来**的 —— 发送方（如文件浏览页 `StorageFileViewModel`）
+     *   长期持有它并用于列目录/上传/重命名，其生命周期由发送方负责。
+     *   播放器**不得**关闭这类实例，否则用户从播放器返回文件浏览页后，
+     *   目录操作会全部失败（`Storage.close()` 后实例即失效）。
      */
     data class DataSource(
         val factory: DataSource.Factory,
         override val uri: Uri,
         override val mediaId: String = "",
         val storage: com.nichx.niplayer.storage.Storage? = null,
+        val ownsStorage: Boolean = true,
     ) : NxMediaSource()
 }
