@@ -31,10 +31,18 @@ object MediaSourceBuilder {
      * 避免 MediaSession 元数据显示异常及潜在内部兼容性问题。
      * DataSource.Factory 仍绑定真实 [Storage] + [StorageFile]，播放路径不受影响。
      */
+    /**
+     * @param ownsStorage [storage] 是否由本次播放独占（见 [NxMediaSource.DataSource.ownsStorage]）。
+     *   默认 `true` —— 大多数调用方（[HistoryStartProvider]、播放列表连播、音频切歌）
+     *   都是为这次播放新建实例。**借来**的实例（文件浏览页 `StorageFileViewModel.playFile`
+     *   持有的长期字段）必须传 `false`，否则播放器会在切源/退出时把它关掉，
+     *   用户返回文件浏览页后目录操作全部失败。
+     */
     suspend fun buildMediaSource(
         storage: Storage,
         file: StorageFile,
         mediaId: String = "",
+        ownsStorage: Boolean = true,
     ): NxMediaSource {
         val playUrl = withContext(Dispatchers.IO) { storage.createPlayUrl(file) }
         return when {
@@ -56,13 +64,14 @@ object MediaSourceBuilder {
                 val path = file.path.ifEmpty { file.name }.removePrefix("/")
                 val absoluteUri = Uri.parse("niplayer-storage://${storage.library.id}/$path")
                 // BUG-19+23 修复：将 storage 引用随 NxMediaSource 传递给 PlayerViewModel，
-                // 由 PlayerViewModel 在切换或 onCleared 时统一关闭，避免播放/切集期间
-                // 创建的 Storage 永不关闭导致 SMB 连接泄漏。
+                // 由 PlayerViewModel 在切换或 onCleared 时按 ownsStorage 决定是否关闭，
+                // 避免播放/切集期间创建的 Storage 永不关闭导致 SMB 连接泄漏。
                 NxMediaSource.DataSource(
                     factory = StorageDataSource.Factory(storage, file),
                     uri = absoluteUri,
                     mediaId = mediaId,
                     storage = storage,
+                    ownsStorage = ownsStorage,
                 )
             }
         }

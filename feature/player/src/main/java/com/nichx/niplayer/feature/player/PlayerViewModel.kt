@@ -42,6 +42,7 @@ import com.nichx.niplayer.player.kernel.PlaylistItem
 import com.nichx.niplayer.player.kernel.SubtitleTrackInfo
 import com.nichx.niplayer.player.kernel.VideoSize
 import com.nichx.niplayer.common.coroutine.AppCoroutineScope
+import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageAccess
 import com.nichx.niplayer.storage.StorageFactory
@@ -50,6 +51,8 @@ import com.nichx.niplayer.subtitle.format.FormatASS
 import com.nichx.niplayer.sync.PlayHistorySyncManager
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import com.nichx.niplayer.subtitle.format.FormatSRT
+import com.nichx.niplayer.subtitle.info.TimedTextObject
+import com.nichx.niplayer.subtitle.matcher.SubtitleMatcher
 import com.nichx.niplayer.subtitle.renderer.SubtitleColor
 import com.nichx.niplayer.subtitle.renderer.SubtitleEngine
 import com.nichx.niplayer.subtitle.renderer.SubtitleStyleConfig
@@ -330,6 +333,49 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
+     * 字幕装载代号。
+     *
+     * 每次「开始播放新视频 / 用户手动选字幕 / 清除字幕」时自增，用于作废仍在进行中的
+     * 异步装载。典型场景：SMB 目录扫描耗时 1-3 秒，期间用户已切到下一集 ——
+     * 若无代号校验，上一视频的扫描结果迟到后会装载到新视频上。
+     *
+     * 只在主线程读写（所有自增点与检查点均在主线程）。
+     */
+    private var subtitleLoadGeneration = 0
+
+    /** 开始一次新的字幕装载，返回本次代号，同时作废所有在途装载。 */
+    private fun beginSubtitleLoad(): Int = ++subtitleLoadGeneration
+
+    /**
+     * 当前视频同目录下的字幕文件名列表（按名称排序）。
+     *
+     * 供字幕轨道菜单展示，让用户能在内嵌轨道与同目录字幕文件之间切换。
+     * 无同目录字幕或扫描失败时为空列表。
+     */
+    private val _sameDirSubtitles = MutableStateFlow<List<String>>(emptyList())
+    val sameDirSubtitles: StateFlow<List<String>> = _sameDirSubtitles.asStateFlow()
+
+    /**
+     * 当前生效的外挂字幕文件名（同目录自动识别或用户手动选择的），null 表示无外挂字幕。
+     *
+     * 用于字幕轨道菜单回显选中态。
+     */
+    private val _activeExternalSubtitle = MutableStateFlow<String?>(null)
+    val activeExternalSubtitle: StateFlow<String?> = _activeExternalSubtitle.asStateFlow()
+
+    /** 当前视频路径（本地绝对路径 / 库内相对路径），供字幕轨道菜单选同目录字幕用。 */
+    private var currentVideoPath: String? = null
+
+    /**
+     * 当前视频所在本地目录的绝对路径；非本地来源（SMB/WebDAV/直链）时返回 null。
+     *
+     * 供应用内字幕选择器作为起始目录 —— 用户手动加字幕时，
+     * 目标文件通常就在视频旁边，直接落在该目录省去逐层翻找。
+     */
+    val currentLocalDirectory: String?
+        get() = currentVideoPath?.let { localParentDirectory(it)?.absolutePath }
+
+    /**
      * 从 [SubtitleSettings] 构造 [SubtitleStyleConfig] 注入 [subtitleEngine]。
      *
      * 在 [refreshSubtitleStyle] 时再次调用以应用用户改设置后的最新值。
@@ -405,12 +451,22 @@ class PlayerViewModel @Inject constructor(
      * 当前播放源持有的 Storage 实例（仅 SMB/DocumentFile 等需要 DataSource 注入的协议）。
      *
      * playAtIndex / PlayStarter（经 PlaybackRequest.source）创建的 Storage 随
-     * NxMediaSource.DataSource 一并传递到此，由本 ViewModel 统一管理：
+     * NxMediaSource.DataSource 一并传递到此，由本 ViewModel 管理：
      * - 切换源（[playAtIndex] / setSource）前关闭旧 storage
      * - [onCleared] 中关闭当前 storage
      * - HTTP/Local 类型 source 不携带 storage（为 null），无需关闭
+     *
+     * **仅当 [currentStorageOwned] 为真才关闭** —— 借来的实例（文件浏览页持有的那个）
+     * 归发送方所有，播放器无权释放。详见 [swapStorage]。
      */
     private var currentStorage: com.nichx.niplayer.storage.Storage? = null
+
+    /**
+     * [currentStorage] 是否由本 ViewModel 独占（详见 [swapStorage]）。
+     *
+     * 借来的实例（`ownsStorage = false`）不参与关闭 —— 它的生命周期属于发送方。
+     */
+    private var currentStorageOwned: Boolean = false
 
     /** 播放列表（同目录视频文件），空列表表示无连播。 */
     private val _playlist = MutableStateFlow<List<PlaylistItem>>(emptyList())
@@ -870,7 +926,7 @@ class PlayerViewModel @Inject constructor(
                 registerAudioCallbacks()
             } else {
                 // 视频：使用 NxPlayer
-                swapStorage(extractStorageFromSource(request.source))
+                swapStorage(request.source)
                 // 将 startPositionMs 直接传给 setSource，由 media3 在 prepare 时
                 // 自动 seek 到此位置开始下载，避免先从 0 buffer 再被 seekTo 中断。
                 player.setSource(request.source, request.startPositionMs)
@@ -888,15 +944,15 @@ class PlayerViewModel @Inject constructor(
             request.history?.let { history ->
                 viewModelScope.launch {
                     recordPlayStart(history, request.title, request.startPositionMs)
-                    // 恢复播放时自动加载历史外挂字幕（仅视频）
+                    // 恢复播放时装载外挂字幕（仅视频）：
+                    // 历史持久化字幕优先，否则按设置尝试同目录自动识别
                     if (!request.isAudio) {
-                        val storageId = history.storageId
-                        if (storageId != null) {
-                            val existing = playHistoryDao.getPlayHistory(history.uniqueKey, storageId)
-                            existing?.subtitlePath?.takeIf { it.isNotBlank() }?.let { path ->
-                                loadPersistedSubtitle(path)
-                            }
-                        }
+                        startSubtitleLoad(
+                            videoFileName = request.title,
+                            videoPath = history.storagePath ?: history.url,
+                            storageId = history.storageId,
+                            historyKey = history.uniqueKey,
+                        )
                     }
                 }
             }
@@ -1252,21 +1308,22 @@ class PlayerViewModel @Inject constructor(
                     isAudioPlayback = false
                     _isLocalSource.value = false
                     // 视频：使用 NxPlayer
-                    swapStorage(extractStorageFromSource(source))
+                    swapStorage(source)
                     // 同 init 路径，startPositionMs 直接传给 setSource。
                     player.setSource(source, startPositionMs)
                     player.prepare()
                     player.play()
 
-                    // 字幕清理（仅视频）
+                    // 字幕清理（仅视频）+ 重新装载：
+                    // 历史持久化字幕优先，否则按设置尝试同目录自动识别
                     subtitleEngine.clear()
                     player.setSubtitleOffsetMs(0L)
-                    val existingSub = withContext(Dispatchers.IO) {
-                        playHistoryDao.getPlayHistory(currentHistory!!.uniqueKey, library.id)
-                    }
-                    existingSub?.subtitlePath?.takeIf { it.isNotBlank() }?.let { path ->
-                        loadPersistedSubtitle(path)
-                    }
+                    startSubtitleLoad(
+                        videoFileName = item.fileName,
+                        videoPath = item.filePath,
+                        storageId = library.id,
+                        historyKey = currentHistory!!.uniqueKey,
+                    )
 
                     // 视频路径清理：封面/歌词由 Manager 自管（audioCoverPath/lrcText），
                     // 下次音频播放时在 play() 内自动刷新，此处无需清空副本
@@ -1292,27 +1349,27 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 从 [NxMediaSource] 提取携带的 [com.nichx.niplayer.storage.Storage]。
-     *
-     * 仅 [NxMediaSource.DataSource] 类型携带 storage 引用，HTTP/Local 类型不携带。
-     */
-    private fun extractStorageFromSource(
-        source: com.nichx.niplayer.player.kernel.NxMediaSource,
-    ): com.nichx.niplayer.storage.Storage? {
-        return (source as? com.nichx.niplayer.player.kernel.NxMediaSource.DataSource)?.storage
-    }
-
-    /**
      * 切换 [currentStorage]：先关闭旧 storage（异步），再赋值新 storage。
      *
      * - 旧 storage 关闭用独立 closeScope（Dispatchers.IO），避免 viewModelScope
      *   取消时阻塞；storage.close() 是 suspend，需在协程中调用
-     * - null 入参表示新源是 HTTP/Local，无需持有 storage
+     * - 源为 HTTP/Local 时不携带 storage（为 null），无需持有
+     *
+     * **只关闭自己创建的实例**：源携带的 storage 可能是**借来**的
+     * （[com.nichx.niplayer.player.kernel.NxMediaSource.DataSource.ownsStorage] = false，
+     * 如文件浏览页 `StorageFileViewModel` 的长期字段）。关掉它会让用户从播放器返回
+     * 文件浏览页后目录操作全部失败 —— `Storage.close()` 后实例即失效。
+     * 借来的实例由发送方自己负责释放。
      */
-    private fun swapStorage(newStorage: com.nichx.niplayer.storage.Storage?) {
+    private fun swapStorage(source: com.nichx.niplayer.player.kernel.NxMediaSource) {
+        val dataSource = source as? com.nichx.niplayer.player.kernel.NxMediaSource.DataSource
+        val newStorage = dataSource?.storage
+        val newOwned = dataSource?.ownsStorage ?: false
         val old = currentStorage
+        val oldOwned = currentStorageOwned
         currentStorage = newStorage
-        if (old != null && old !== newStorage) {
+        currentStorageOwned = newOwned
+        if (old != null && oldOwned && old !== newStorage) {
             // 用 closeScope 关闭，避免 onCleared 中 viewModelScope 已取消时无法执行
             closeScope.launch {
                 try {
@@ -1613,8 +1670,27 @@ class PlayerViewModel @Inject constructor(
     /** 选择指定音频轨道。透传至 [NxPlayer.selectAudioTrack]。 */
     fun selectAudioTrack(index: Int) = player.selectAudioTrack(index)
 
-    /** 选择字幕轨道。-1 自动；-2 关闭；>=0 选中指定轨道。 */
-    fun selectSubtitleTrack(index: Int) = player.selectSubtitleTrack(index)
+    /**
+     * 选择字幕轨道。-1 自动；-2 关闭；>=0 选中指定轨道。
+     *
+     * 内嵌轨道与外挂字幕**互斥**，所以这里必须先卸掉外挂字幕。不卸会有两个后果：
+     * 1. 外挂字幕继续由 [subtitleEngine] 渲染，与内嵌字幕叠加显示；
+     * 2. [activeExternalSubtitle] 不为 null 会让字幕菜单里**所有**内嵌轨道项失去高亮
+     *    （见 `SubtitleTrackDialog` 的 `embeddedSelectionActive`）——
+     *    用户点「关闭」「自动」或任何内嵌轨道都看不到选中态变化，表现为「点了没反应」。
+     */
+    fun selectSubtitleTrack(index: Int) {
+        if (_activeExternalSubtitle.value != null) {
+            // 作废在途的同目录装载：否则它稍后落地会把外挂字幕又装回来，覆盖用户这次选择
+            beginSubtitleLoad()
+            _activeExternalSubtitle.value = null
+            // clear() 会把延迟一并清零；用户只是换轨道，不该丢已调好的延迟，这里还原
+            val keptOffset = subtitleEngine.offsetMs.value
+            subtitleEngine.clear()
+            subtitleEngine.setOffsetMs(keptOffset)
+        }
+        player.selectSubtitleTrack(index)
+    }
 
     /** 调整字幕延迟（增量，ms）。 */
     fun adjustSubtitleOffset(deltaMs: Long) {
@@ -1637,32 +1713,28 @@ class PlayerViewModel @Inject constructor(
      * 2. 用 [FormatASS] / [FormatSRT] 解析为 [com.nichx.niplayer.subtitle.info.TimedTextObject]
      * 3. 加载到 [subtitleEngine]，由 [SubtitleOverlay] 渲染
      *
-     * 解析成功后复制到持久目录 `files/subtitles/` 并经 [PlayHistoryDao.updateSubtitle]
+     * 解析成功后写入持久目录 `files/subtitles/` 并经 [PlayHistoryDao.updateSubtitle]
      * 持久化路径，恢复播放时自动加载，避免用户每次重新搜索/选择字幕。
      *
+     * 装载细节统一由 [applyExternalSubtitle] 承担（解析 / 主线程装载 / 关闭内嵌字幕 / 持久化）。
+     *
      * @param uri 字幕文件 URI（content:// / file://）
-     * @param mimeType 字幕 MIME 类型（用于选择解析器）
+     * @param mimeType 字幕 MIME 类型（保留参数兼容性，解析器改由文件扩展名判定）
      * @param language 字幕语言标签（保留参数兼容性，当前未使用）
      */
     fun addSubtitle(uri: Uri, mimeType: String, language: String? = null) {
+        // 用户明确选择：递增代号作废在途的同目录自动装载，避免迟到结果反过来覆盖
+        val generation = beginSubtitleLoad()
         viewModelScope.launch(Dispatchers.IO) {
             val tempFile = copyUriToTempFile(uri) ?: return@launch
             try {
-                // 解析留在 IO 线程（ASS/SRT 解析可能耗时）
-                val tto = when {
-                    mimeType.contains("ssa", ignoreCase = true) ||
-                        mimeType.contains("ass", ignoreCase = true) -> FormatASS().parseFile(tempFile)
-                    else -> FormatSRT().parseFile(tempFile)
-                }
-                // 装载必须回到主线程：SubtitleEngine 声明「所有方法假定在主线程调用」，
-                // 其内部 parsed（ArrayList）/ startMsToIndex（TreeMap）均非线程安全，
-                // 而 update() 由播放位置驱动在主线程高频遍历同一批容器。
-                // 若在此处（IO 线程）直接 load()，会与 update() 并发读写，
-                // 可能抛 ConcurrentModificationException / IndexOutOfBoundsException 或渲染出错乱字幕。
-                withContext(Dispatchers.Main) { subtitleEngine.load(tto, tempFile.name) }
-
-                // 解析成功后持久化字幕到内部存储，并更新历史记录
-                persistSubtitle(tempFile, mimeType)
+                applyExternalSubtitle(
+                    fileName = uri.lastPathSegment?.substringAfterLast('/')
+                        ?.takeIf { it.isNotBlank() } ?: tempFile.name,
+                    bytes = tempFile.readBytes(),
+                    generation = generation,
+                    persist = true,
+                )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1674,56 +1746,355 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 持久化字幕文件到 `files/subtitles/` 并更新 [PlayHistoryEntity.subtitlePath]。
+     * 将字幕内容写入持久目录 `files/subtitles/` 并更新 [PlayHistoryEntity.subtitlePath]。
      *
-     * 将字幕从临时缓存复制到持久目录，确保进程重启后仍可加载。
-     * 文件名基于 uniqueKey 哈希避免冲突，扩展名从 mimeType 推断。
+     * 文件名基于 uniqueKey 哈希避免冲突，扩展名由 [ext] 指定，确保进程重启后仍可加载。
+     *
+     * @param ext 扩展名（不含点，如 `srt`；空串时落为 `sub`）
      */
-    private suspend fun persistSubtitle(tempFile: File, mimeType: String) {
+    private suspend fun writePersistedSubtitle(ext: String, bytes: ByteArray) {
         val history = currentHistory ?: return
         val storageId = history.storageId ?: return
         // 文件夹访问加密：加密目录内的文件不写历史，字幕路径也不持久化
         if (encryptedFolderManager.isWithinEncrypted(storageId, history.storagePath)) return
-        val ext = when {
-            mimeType.contains("ass", ignoreCase = true) -> ".ass"
-            mimeType.contains("ssa", ignoreCase = true) -> ".ssa"
-            mimeType.contains("srt", ignoreCase = true) -> ".srt"
-            else -> ".sub"
-        }
+        val suffix = ext.ifEmpty { "sub" }
         val subtitleDir = File(appContext.filesDir, "subtitles").apply { mkdirs() }
-        val persistentFile = File(subtitleDir, "${history.uniqueKey.hashCode()}$ext")
+        val persistentFile = File(subtitleDir, "${history.uniqueKey.hashCode()}.$suffix")
         try {
-            tempFile.copyTo(persistentFile, overwrite = true)
+            persistentFile.writeBytes(bytes)
             playHistoryDao.updateSubtitle(history.uniqueKey, storageId, persistentFile.absolutePath)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             // 持久化失败不影响当前播放，仅无法恢复字幕
         }
     }
 
     /**
-     * 从持久化路径加载外挂字幕。
+     * 视频开始播放时的字幕装载流程（本地 / SMB / WebDAV 通用）。
      *
-     * 恢复播放时，历史记录含 subtitlePath 则调用本方法自动加载。
+     * 由视频播放的两条入口调用（init 恢复播放、[playVideoAtIndex] 切集），统一处理
+     * 「历史持久化字幕」与「同目录字幕」两个来源：
+     *
+     * 1. 递增装载代号（[beginSubtitleLoad]），作废上一视频仍在途的装载
+     * 2. 查历史持久化字幕（用户此前手动指定过，读本地文件，快）
+     * 3. 扫描同目录字幕列表：本地走 `File` —— 字幕不被 MediaStore 索引，
+     *    [com.nichx.niplayer.storage.impl.VideoStorage.listFiles] 只返回 video 表中的视频，
+     *    扫不到字幕；远程走 [Storage.listFiles]。结果写入 [sameDirSubtitles] 供菜单展示
+     * 4. 装载：持久化字幕优先；否则按 [SubtitleMatcher] 从同目录候选挑最匹配的
+     *    （受 [SubtitleSettings.autoLoadSameNameSubtitle] 开关门控）
+     *
+     * 全程异步不阻塞播放；任何一步失败静默忽略 —— 字幕属增强行为。
+     *
+     * @param videoFileName 视频文件名（含扩展名）
+     * @param videoPath 视频路径（本地为绝对路径，网络存储为库内相对路径）
+     * @param storageId 视频所属存储库 ID（直链播放可为 null，此时仅本地路径可用）
+     * @param historyKey 播放历史 uniqueKey，用于查持久化字幕（null 表示本次不记历史）
      */
-    private fun loadPersistedSubtitle(path: String) {
+    private fun startSubtitleLoad(
+        videoFileName: String,
+        videoPath: String,
+        storageId: Int?,
+        historyKey: String?,
+    ) {
+        val generation = beginSubtitleLoad()
+        currentVideoPath = videoPath
+        _sameDirSubtitles.value = emptyList()
+        _activeExternalSubtitle.value = null
+
+        val autoLoad = SubtitleSettings.autoLoadSameNameSubtitle
+        val priority = SubtitleSettings.subtitlePriority
+
         viewModelScope.launch(Dispatchers.IO) {
-            val file = File(path)
-            if (!file.exists()) return@launch
-            try {
-                val tto = when {
-                    path.endsWith(".ass", ignoreCase = true) ||
-                        path.endsWith(".ssa", ignoreCase = true) -> FormatASS().parseFile(file)
-                    else -> FormatSRT().parseFile(file)
-                }
-                // 同 addSubtitle：装载必须回到主线程，避免与主线程的 update() 并发读写引擎内部容器
-                withContext(Dispatchers.Main) { subtitleEngine.load(tto, file.name) }
+            // 1. 历史持久化字幕：用户此前手动指定过，优先级最高
+            val persistedPath = if (historyKey != null && storageId != null) {
+                playHistoryDao.getPlayHistory(historyKey, storageId)
+                    ?.subtitlePath?.takeIf { it.isNotBlank() }
+            } else {
+                null
+            }
+
+            // 2. 同目录字幕列表（远程可能耗时 1-3 秒）
+            val candidates = try {
+                listSameDirSubtitleNames(videoPath, storageId)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
-            } catch (e: Exception) {
-                // 恢复失败静默忽略
+            } catch (_: Exception) {
+                emptyList()
             }
+
+            withContext(Dispatchers.Main) {
+                // 守卫用视频路径而非装载代号：代号会被「用户切换内嵌轨道」等动作自增，
+                // 但候选列表只与"当前是哪个视频"有关，不该被那些动作连带丢弃。
+                // 真正的风险是切集后上一集的扫描结果迟到，路径比对正好覆盖它。
+                if (videoPath != currentVideoPath) return@withContext
+                _sameDirSubtitles.value = candidates
+            }
+
+            // 3. 装载
+            val persistedFile = persistedPath?.let { File(it) }
+            if (persistedFile != null && persistedFile.exists()) {
+                val bytes = try {
+                    persistedFile.readBytes()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+                if (bytes != null) {
+                    applyExternalSubtitle(persistedFile.name, bytes, generation, persist = false)
+                }
+            } else if (autoLoad) {
+                val picked = SubtitleMatcher.pickBest(videoFileName, candidates, priority)
+                    ?: return@launch
+                val bytes = try {
+                    readSameDirSubtitleBytes(videoPath, storageId, picked)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+                if (bytes != null) {
+                    applyExternalSubtitle(picked, bytes, generation, persist = false)
+                }
+            }
+        }
+    }
+
+    /**
+     * 用户从字幕轨道菜单选择同目录字幕文件。
+     *
+     * 与自动识别不同：这是明确的用户选择，会持久化到播放历史 ——
+     * 下次播放优先恢复该字幕，而不是重新自动匹配。
+     */
+    fun selectSameDirSubtitle(fileName: String) {
+        val videoPath = currentVideoPath ?: return
+        val storageId = currentHistory?.storageId
+        val generation = beginSubtitleLoad()
+        viewModelScope.launch(Dispatchers.IO) {
+            val bytes = try {
+                readSameDirSubtitleBytes(videoPath, storageId, fileName)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            if (bytes == null) {
+                // 读不到（文件已被移走 / 网络存储断连 / 权限）原先完全静默，
+                // 用户只会看到"选了字幕但什么都没发生"
+                notifySubtitleLoadFailed(fileName, generation)
+                return@launch
+            }
+            applyExternalSubtitle(fileName, bytes, generation, persist = true)
+        }
+    }
+
+    /**
+     * 用户从应用内文件选择器选中的字幕（可位于任意存储库的任意目录）。
+     *
+     * 同样视为明确的用户选择，会持久化到播放历史。
+     *
+     * @param storageId 字幕文件所属存储库 ID（本地直链文件可为 null）
+     * @param dirPath 字幕文件所在目录（库内相对路径 / 本地绝对路径，根目录传空串）
+     * @param fileName 字幕文件名
+     */
+    fun loadSubtitleFromPicker(storageId: Int?, dirPath: String, fileName: String) {
+        val generation = beginSubtitleLoad()
+        val fullPath = if (dirPath.isEmpty()) fileName else "$dirPath/$fileName"
+        viewModelScope.launch(Dispatchers.IO) {
+            val bytes = try {
+                readSameDirSubtitleBytes(fullPath, storageId, fileName)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            if (bytes == null) {
+                notifySubtitleLoadFailed(fileName, generation)
+                return@launch
+            }
+            applyExternalSubtitle(fileName, bytes, generation, persist = true)
+        }
+    }
+
+    /**
+     * 列出视频同目录下的字幕文件名（按名称排序）。
+     *
+     * 本地走 `File`（本地字幕不被 MediaStore 索引）；远程临时创建 [Storage] 列举。
+     * 远程实例用完立即关闭 —— 刻意**不复用**播放源携带的 / 文件浏览页持有的实例：
+     * [com.nichx.niplayer.feature.home.library.StorageFileViewModel] 在返回栈中仍持有其
+     * `storage` 字段，而 [swapStorage] 会在切源时关闭旧实例，复用会导致用户返回
+     * 文件浏览页后目录操作失败。
+     */
+    private suspend fun listSameDirSubtitleNames(videoPath: String, storageId: Int?): List<String> {
+        val localDir = localParentDirectory(videoPath)
+        if (localDir != null) {
+            return localDir.list().orEmpty()
+                .filter { SubtitleMatcher.isSubtitleFile(it) }
+                .sorted()
+        }
+        if (storageId == null) return emptyList()
+        val children = withStorage(storageId) { listChildren(it, videoPath) } ?: return emptyList()
+        return children
+            .filter { !it.isDirectory && SubtitleMatcher.isSubtitleFile(it.name) }
+            .map { it.name }
+            .sorted()
+    }
+
+    /** 读取视频同目录下指定字幕文件的字节内容。 */
+    private suspend fun readSameDirSubtitleBytes(
+        videoPath: String,
+        storageId: Int?,
+        fileName: String,
+    ): ByteArray? {
+        val localDir = localParentDirectory(videoPath)
+        if (localDir != null) {
+            return File(localDir, fileName).takeIf { it.isFile }?.readBytes()
+        }
+        if (storageId == null) return null
+        return withStorage(storageId) { storage ->
+            val file = listChildren(storage, videoPath)
+                .firstOrNull { !it.isDirectory && it.name == fileName }
+                ?: return@withStorage null
+            storage.openInputStream(file).use { it.readBytes() }
+        }
+    }
+
+    /** 列出 [videoPath] 所在目录的子项（远程存储）。 */
+    private suspend fun listChildren(storage: Storage, videoPath: String): List<StorageFile> =
+        storage.listFiles(parentStorageFile(videoPath))
+
+    /** 构造 [videoPath] 所在目录的 [StorageFile]（远程路径用，仅 [StorageFile.path] 有意义）。 */
+    private fun parentStorageFile(videoPath: String): StorageFile {
+        val parentPath = videoPath.substringBeforeLast('/', missingDelimiterValue = "")
+        return object : AbstractStorageFile(
+            path = parentPath,
+            name = parentPath.substringAfterLast('/'),
+            isDirectory = true,
+            length = 0L,
+            lastModified = 0L,
+        ) {}
+    }
+
+    /** 临时创建 [Storage] 执行 [block]，无论成败都关闭实例。 */
+    private suspend fun <T> withStorage(storageId: Int, block: suspend (Storage) -> T): T? {
+        val library = mediaLibraryDao.getById(storageId) ?: return null
+        val storage = storageFactory.create(library) ?: return null
+        return try {
+            block(storage)
+        } finally {
+            try {
+                storage.close()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // 关闭失败不影响已读取的内容
+            }
+        }
+    }
+
+    /**
+     * 解析并装载外挂字幕，可选持久化到历史。
+     *
+     * @param fileName 字幕文件名（用于展示与扩展名判定）
+     * @param bytes 字幕内容
+     * @param generation 装载代号；装载前校验，若已被更新的操作取代则整体丢弃
+     * @param persist 是否写入 [PlayHistoryEntity.subtitlePath]。用户手动选择为 true；
+     *   同目录自动识别为 false —— 后者每次播放都会重新扫描，写历史反而会把一次自动
+     *   匹配结果固化成「用户指定」，掩盖后续更合适的候选
+     */
+    private suspend fun applyExternalSubtitle(
+        fileName: String,
+        bytes: ByteArray,
+        generation: Int,
+        persist: Boolean,
+    ) {
+        val tto = try {
+            parseSubtitleBytes(fileName, bytes)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+
+        // 解析器对"看不懂的格式"不抛异常：FormatSRT 会把认不出的行当 warning 跳过，
+        // 最后返回一个 captions 为空的 TTO（例如 .vtt 文件 —— 本项目没有 VTT 解析器，
+        // 但 SubtitleMatcher / SAF 都会把 .vtt 当字幕列出来）。若直接装载，
+        // 用户看到的是「选了字幕，屏幕上什么都没有」且没有任何提示。
+        // 这里显式识别并给出可见反馈，而不是静默失败。
+        if (tto == null || tto.captions.isEmpty()) {
+            notifySubtitleParseFailed(fileName, generation)
+            return
+        }
+
+        // 同 addSubtitle：装载必须回到主线程，避免与主线程的 update() 并发读写引擎内部容器。
+        // 返回是否真的装载了 —— 被更新操作取代时不得继续持久化。
+        val applied = withContext(Dispatchers.Main) {
+            if (generation != subtitleLoadGeneration) return@withContext false
+            subtitleEngine.load(tto, fileName)
+            _activeExternalSubtitle.value = fileName
+            // 外挂字幕与内嵌字幕同时渲染会重叠，选外挂即关闭内嵌（-2 = 关闭）
+            player.selectSubtitleTrack(-2)
+            true
+        }
+
+        // 只有真正生效的那一次才写历史。否则用户快速连点两个字幕时，
+        // 先点的那个（已被取代、屏幕上没生效）可能后完成读盘并把路径写进历史，
+        // 导致下次播放恢复的是用户没选的那个。
+        if (persist && applied) {
+            writePersistedSubtitle(fileName.substringAfterLast('.', "").lowercase(), bytes)
+        }
+    }
+
+    /** 字幕解析失败（或解析出 0 条字幕）时提示用户。 */
+    private suspend fun notifySubtitleParseFailed(fileName: String, generation: Int) =
+        notifySubtitleProblem(R.string.player_subtitle_parse_failed, fileName, generation)
+
+    /** 字幕文件读取失败时提示用户。 */
+    private suspend fun notifySubtitleLoadFailed(fileName: String, generation: Int) =
+        notifySubtitleProblem(R.string.player_subtitle_load_failed, fileName, generation)
+
+    /**
+     * 字幕装载出问题时提示用户。
+     *
+     * 只在装载代号仍然有效时提示：用户可能已经切集或换了别的字幕，此时旧文件的
+     * 失败与新上下文无关，弹提示只会误导。
+     */
+    private suspend fun notifySubtitleProblem(
+        @androidx.annotation.StringRes messageRes: Int,
+        fileName: String,
+        generation: Int,
+    ) {
+        withContext(Dispatchers.Main) {
+            if (generation != subtitleLoadGeneration) return@withContext
+            _messageEvent.tryEmit(appContext.getString(messageRes, fileName))
+        }
+    }
+
+    /** 视频路径对应的本地父目录；非本地路径或目录不存在时返回 null。 */
+    private fun localParentDirectory(videoPath: String): File? {
+        val path = videoPath.removePrefix("file://")
+        if (!path.startsWith("/")) return null
+        return File(path).parentFile?.takeIf { it.isDirectory }
+    }
+
+    /**
+     * 将字幕字节写入临时文件并解析为 [TimedTextObject]。
+     *
+     * [FormatASS] / [FormatSRT] 只提供 `parseFile(File)` 入口，故需落地临时文件
+     * （与 [addSubtitle] 的 `copyUriToTempFile` 一致）。解析失败抛异常，由调用方兜底。
+     */
+    private fun parseSubtitleBytes(fileName: String, bytes: ByteArray): TimedTextObject? {
+        val ext = fileName.substringAfterLast('.', "").lowercase().ifEmpty { "sub" }
+        val tempFile = File.createTempFile("subtitle_", ".$ext", appContext.cacheDir)
+        return try {
+            tempFile.writeBytes(bytes)
+            when (ext) {
+                "ass", "ssa" -> FormatASS().parseFile(tempFile)
+                else -> FormatSRT().parseFile(tempFile)
+            }
+        } finally {
+            tempFile.delete()
         }
     }
 
@@ -1734,6 +2105,9 @@ class PlayerViewModel @Inject constructor(
      * adjustSubtitleOffset 基于旧值计算。
      */
     fun clearExternalSubtitle() {
+        // 递增代号作废在途装载，否则清理后迟到的扫描结果会把字幕又装回来
+        beginSubtitleLoad()
+        _activeExternalSubtitle.value = null
         subtitleEngine.clear()
         player.setSubtitleOffsetMs(0L)
     }
@@ -2021,8 +2395,10 @@ class PlayerViewModel @Inject constructor(
 
         // 释放播放源持有的 Storage（SMB 连接等），避免泄漏。
         // 用独立 scope + NonCancellable 确保关闭完成（storage.close 是 suspend）。
-        val storageToClose = currentStorage
+        // 只关自己创建的：借来的实例（ownsStorage=false）归发送方管，关了会破坏其后续使用。
+        val storageToClose = currentStorage.takeIf { currentStorageOwned }
         currentStorage = null
+        currentStorageOwned = false
         if (storageToClose != null) {
             closeScope.launch(NonCancellable) {
                 try {

@@ -61,7 +61,10 @@ internal fun SubtitleManageDialog(
     subtitleTracks: List<SubtitleTrackInfo>,
     selectedIndex: Int,
     offsetMs: Long,
+    sameDirSubtitles: List<String>,
+    activeExternalSubtitle: String?,
     onSelectTrack: (Int) -> Unit,
+    onSelectSameDirSubtitle: (String) -> Unit,
     onAdjustOffset: (Long) -> Unit,
     onResetOffset: () -> Unit,
     onAddExternal: () -> Unit,
@@ -74,13 +77,14 @@ internal fun SubtitleManageDialog(
     var showTrackDialog by remember { mutableStateOf(false) }
     var showDelayDialog by remember { mutableStateOf(false) }
 
-    // 当前字幕摘要（「轨道」行右侧回显）
+    // 当前字幕摘要（「轨道」行右侧回显）。外挂字幕生效时优先回显其文件名
     val autoSelectedTrack = if (selectedIndex == -1) {
         subtitleTracks.firstOrNull { it.isAutoSelected }
     } else {
         null
     }
     val trackSummary = when {
+        activeExternalSubtitle != null -> activeExternalSubtitle
         selectedIndex == -2 -> stringResource(R.string.player_subtitle_none)
         selectedIndex == -1 -> autoSelectedTrack?.let {
             stringResource(R.string.player_subtitle_auto_used, it.label)
@@ -99,7 +103,10 @@ internal fun SubtitleManageDialog(
         SubtitleTrackDialog(
             subtitleTracks = subtitleTracks,
             selectedIndex = selectedIndex,
+            sameDirSubtitles = sameDirSubtitles,
+            activeExternalSubtitle = activeExternalSubtitle,
             onSelectTrack = onSelectTrack,
+            onSelectSameDirSubtitle = onSelectSameDirSubtitle,
             onDismiss = { showTrackDialog = false },
         )
     }
@@ -210,12 +217,15 @@ internal fun SubtitleMenuItem(
     }
 }
 
-/** 字幕轨道选择二级 Dialog（关闭/自动/内嵌轨道列表，选中项高亮）。 */
+/** 字幕轨道选择二级 Dialog（关闭/自动/内嵌轨道/同目录字幕，选中项高亮）。 */
 @Composable
 internal fun SubtitleTrackDialog(
     subtitleTracks: List<SubtitleTrackInfo>,
     selectedIndex: Int,
+    sameDirSubtitles: List<String>,
+    activeExternalSubtitle: String?,
     onSelectTrack: (Int) -> Unit,
+    onSelectSameDirSubtitle: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val primary = MaterialTheme.colorScheme.primary
@@ -226,6 +236,8 @@ internal fun SubtitleTrackDialog(
     } else {
         null
     }
+    // 外挂字幕生效时，内嵌轨道项不参与高亮（两者互斥：选外挂会关闭内嵌）
+    val embeddedSelectionActive = activeExternalSubtitle == null
     val trackItems = buildList<TrackOption> {
         add(TrackOption(stringResource(R.string.player_subtitle_off), -2, stringResource(R.string.player_subtitle_none)))
         add(
@@ -238,6 +250,17 @@ internal fun SubtitleTrackDialog(
         )
         subtitleTracks.forEach { track ->
             add(TrackOption(track.label, track.index, stringResource(R.string.player_subtitle_embedded)))
+        }
+        // 同目录字幕文件：选中后由 SubtitleEngine 外挂渲染（本地 / SMB / WebDAV 通用）
+        sameDirSubtitles.forEach { name ->
+            add(
+                TrackOption(
+                    label = name,
+                    index = TRACK_INDEX_EXTERNAL,
+                    description = stringResource(R.string.player_subtitle_same_dir),
+                    externalFileName = name,
+                )
+            )
         }
     }
 
@@ -258,7 +281,11 @@ internal fun SubtitleTrackDialog(
                 .verticalScroll(rememberScrollState()),
         ) {
             trackItems.forEach { option: TrackOption ->
-                val isSelected = option.index == selectedIndex
+                val isSelected = if (option.externalFileName != null) {
+                    activeExternalSubtitle == option.externalFileName
+                } else {
+                    embeddedSelectionActive && option.index == selectedIndex
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
@@ -269,7 +296,11 @@ internal fun SubtitleTrackDialog(
                             if (isSelected) primary.copy(alpha = 0.08f)
                             else Color.Transparent
                         )
-                        .clickable { onSelectTrack(option.index) }
+                        .clickable {
+                            val external = option.externalFileName
+                            if (external != null) onSelectSameDirSubtitle(external)
+                            else onSelectTrack(option.index)
+                        }
                         .padding(horizontal = 16.dp),
                 ) {
                     Box(
@@ -298,6 +329,8 @@ internal fun SubtitleTrackDialog(
                             color = if (isSelected) primary else onSurface,
                             fontSize = 14.sp,
                             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             text = option.description,
@@ -402,8 +435,18 @@ internal fun SubtitleDelayDialog(
     }
 }
 
+/**
+ * 字幕轨道列表项。
+ *
+ * [externalFileName] 非空表示这是同目录外挂字幕文件（走 SubtitleEngine 渲染），
+ * 此时 [index] 无意义，取 [TRACK_INDEX_EXTERNAL] 占位。
+ */
 internal data class TrackOption(
     val label: String,
     val index: Int,
     val description: String,
+    val externalFileName: String? = null,
 )
+
+/** 同目录外挂字幕项的占位索引（不参与内嵌轨道索引比较）。 */
+private const val TRACK_INDEX_EXTERNAL = Int.MIN_VALUE
