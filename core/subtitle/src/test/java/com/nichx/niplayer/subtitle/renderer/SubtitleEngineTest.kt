@@ -216,6 +216,52 @@ class SubtitleEngineTest {
     }
 
     @Test
+    fun `暂停态装载字幕后立即渲染`() = runTest {
+        val engine = SubtitleEngine()
+        engine.setViewSize(1920f, 1080f)
+        engine.load(ttoOf(caption(1_000L, 5_000L, "Old")), "old.srt")
+        engine.update(2_000L)
+        assertEquals("Old", engine.renderables.value[0].spans[0].text)
+
+        // 暂停态：player.positionMs 是 StateFlow，其值由 500ms 轮询器驱动，
+        // 而轮询器只在 Playing/Buffering 运行 —— 暂停时值不再变化，上层不会再调用 update。
+        // 换字幕（或首次装载）必须自己重算一帧，否则屏幕内容一直停在旧值。
+        engine.load(ttoOf(caption(1_000L, 5_000L, "New")), "new.srt")
+
+        assertEquals(1, engine.renderables.value.size)
+        assertEquals("New", engine.renderables.value[0].spans[0].text)
+    }
+
+    @Test
+    fun `装载重渲染按当前偏移反算播放位置`() = runTest {
+        val engine = SubtitleEngine()
+        engine.setViewSize(1920f, 1080f)
+        engine.load(ttoOf(caption(1_000L, 5_000L, "Old")), "old.srt")
+        engine.setOffsetMs(1_000L)
+        engine.update(1_500L) // effective = 2500
+
+        engine.load(ttoOf(caption(1_000L, 5_000L, "New")), "new.srt")
+
+        // 反算 positionMs = 2500 - 1000 = 1500，再叠加偏移仍是 effective 2500 → 命中区间
+        assertEquals(1, engine.renderables.value.size)
+        assertEquals("New", engine.renderables.value[0].spans[0].text)
+    }
+
+    @Test
+    fun `从未收到播放位置时装载不重渲染`() = runTest {
+        val engine = SubtitleEngine()
+        engine.setViewSize(1920f, 1080f)
+
+        // 一次 update 都没发生过 —— 不知道播放位置，装载时无从重算（属预期边界）
+        engine.load(ttoOf(caption(1_000L, 5_000L, "Hello")), "test.srt")
+        assertTrue(engine.renderables.value.isEmpty())
+
+        // 首个位置到来后正常渲染
+        engine.update(2_000L)
+        assertEquals(1, engine.renderables.value.size)
+    }
+
+    @Test
     fun `字幕名称显示文件名`() = runTest {
         val engine = SubtitleEngine()
         engine.setViewSize(1920f, 1080f)
