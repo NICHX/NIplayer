@@ -21,6 +21,10 @@ package com.nichx.niplayer.subtitle.renderer
  * @property applyEmbeddedStyles 是否应用 ASS Style 自带颜色；false 时强制用本配置的 [primaryColor]/[outlineColor]
  * @property primaryColor 用户文字颜色（仅 applyEmbeddedStyles=false 时强制覆盖）
  * @property outlineColor 用户描边颜色（仅 applyEmbeddedStyles=false 时强制覆盖）
+ * @property textSizeFactor 无 Style 字号时的默认字号（占视图高度的比例）。
+ *   放在这里而非 [SubtitleEngine] 构造参数，是为了让播放中改「字号」能经
+ *   [SubtitleEngine.updateStyleConfig] 立即生效 —— 构造参数只在开播时读一次，
+ *   用户在字幕样式面板里调字号会「改了没反应」，直到重开播放页。
  */
 data class SubtitleStyleConfig(
     val outlineWidth: Float = 2f,
@@ -29,4 +33,5 @@ data class SubtitleStyleConfig(
     val applyEmbeddedStyles: Boolean = true,
     val primaryColor: SubtitleColor = SubtitleColor.WHITE,
     val outlineColor: SubtitleColor = SubtitleColor.BLACK,
+    val textSizeFactor: Float = 0.0533f,
 )

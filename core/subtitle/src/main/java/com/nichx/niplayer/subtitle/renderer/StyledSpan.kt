@@ -99,6 +99,9 @@ data class TransformAnimation(
  * 并经 [AssOverrideParser] 解析生成，作为 [SubtitleOverlay] 的渲染输入。
  *
  * @property spans 文本片段列表（按顺序排列，已包含换行 span）
+ * @property drawings 矢量绘制（ASS `\p1` 模式），坐标已归一化到 0..1
+ * @property clip 裁剪区域（来自 `\clip` / `\iclip`），null 表示不裁剪
+ * @property clipInverted true 表示 `\iclip`（裁剪区域**之外**可见）
  * @property align 屏幕对齐（来自 Style 或 \a 覆盖）
  * @property position 屏幕位置归一化（0..1, 0..1），null 表示按 [align] 自动布局
  * @property alpha 整体透明度（0..1，来自 \fad 动画计算）
@@ -114,6 +117,9 @@ data class TransformAnimation(
  */
 data class RenderableCaption(
     val spans: List<StyledSpan>,
+    val drawings: List<RenderableDrawing> = emptyList(),
+    val clip: SubtitleClip? = null,
+    val clipInverted: Boolean = false,
     val align: SubtitleAlign,
     val position: Pair<Float, Float>? = null,
     val alpha: Float = 1f,
@@ -126,4 +132,57 @@ data class RenderableCaption(
     val styleOutlineWidth: Float = 2f,
     val styleShadowDepth: Float = 2f,
     val styleShadowAlpha: Float = 0.6f,
+) {
+    /** 有无可绘制内容（纯矢量绘制行没有文本 span）。 */
+    val isEmpty: Boolean get() = spans.isEmpty() && drawings.isEmpty()
+}
+
+/**
+ * ASS 矢量绘制的单条路径指令（`\p1` 模式）。
+ *
+ * 坐标已由 [AssOverrideParser] 归一化到 0..1（除以 PlayRes 并叠加 `\pos` 偏移），
+ * 渲染层只需乘以画布尺寸即可。
+ */
+sealed interface SubtitlePathOp {
+    data class MoveTo(val x: Float, val y: Float) : SubtitlePathOp
+    data class LineTo(val x: Float, val y: Float) : SubtitlePathOp
+    data class CubicTo(
+        val c1x: Float,
+        val c1y: Float,
+        val c2x: Float,
+        val c2y: Float,
+        val x: Float,
+        val y: Float,
+    ) : SubtitlePathOp
+
+    data object Close : SubtitlePathOp
+}
+
+/**
+ * 可渲染的矢量绘制。
+ *
+ * @property path 路径指令（归一化坐标）
+ * @property primary 填充色
+ * @property outline 描边色
+ * @property outlineWidth 描边宽度（px，已按视口等比缩放）
+ */
+data class RenderableDrawing(
+    val path: List<SubtitlePathOp>,
+    val primary: SubtitleColor,
+    val outline: SubtitleColor,
+    val outlineWidth: Float,
 )
+
+/**
+ * 字幕裁剪区域（`\clip` / `\iclip`）。
+ *
+ * 坐标均为归一化 0..1，渲染层乘以画布尺寸使用。
+ */
+sealed interface SubtitleClip {
+    /** `\clip(x1,y1,x2,y2)` 矩形裁剪。 */
+    data class Rect(val left: Float, val top: Float, val right: Float, val bottom: Float) : SubtitleClip
+
+    /** `\clip(m ...)` 矢量裁剪。 */
+    data class Vector(val path: List<SubtitlePathOp>) : SubtitleClip
+}
+

@@ -11,6 +11,12 @@
     <string name="subtitle_font_monospace">等宽</string>
     <string name="subtitle_font_compact_sans">紧凑无衬线</string>
 
+    <!-- 字幕字重选项（SubtitleSettings.FONT_WEIGHT_OPTIONS） -->
+    <string name="subtitle_weight_light">细</string>
+    <string name="subtitle_weight_normal">常规</string>
+    <string name="subtitle_weight_medium">中粗</string>
+    <string name="subtitle_weight_bold">粗体</string>
+
     <!-- 字幕文字颜色选项（SubtitleSettings.FONT_COLOR_OPTIONS） -->
     <string name="subtitle_color_white">白色</string>
     <string name="subtitle_color_yellow">黄色</string>

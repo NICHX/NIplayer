@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
@@ -77,6 +78,13 @@ class SubtitlePickerViewModel @Inject constructor(
     /** 本地浏览起始目录，由播放器按当前视频来源设置。 */
     var localStartPath: String = externalStorageRoot()
 
+    /** 网络存储起始位置（库 ID + 库内目录），由播放器按当前视频来源设置。 */
+    private var remoteStartLibraryId: Int? = null
+    private var remoteStartPath: String = ""
+
+    /** 播放器是否显式给过本地起始目录（决定打开时是否直接下钻）。 */
+    private var hasExplicitLocalStart = false
+
     /**
      * 浏览代号：目录列举是异步的（SMB 可达数秒），用户快速连点目录时
      * 先发的请求可能后返回。每次新的浏览自增，回调侧比对后再落状态。
@@ -98,12 +106,45 @@ class SubtitlePickerViewModel @Inject constructor(
     }
 
     /**
-     * 回到选择器根页面。
+     * 配置弹层打开时的起始位置（由播放器按「当前视频所在目录」传入）。
      *
-     * ViewModel 作用域挂在播放页导航条目上，弹层关闭后实例仍在 ——
-     * 不重置的话，用户上次浏览到的深层目录会在下次打开时原样出现。
+     * ViewModel 作用域挂在播放页导航条目上、实例跨弹层存活，所以每次打开都要重设；
+     * null 表示该类来源无可定位信息。
      */
-    fun resetToRoot() = backToRoot()
+    fun configureStart(localPath: String?, remote: Pair<Int, String>?) {
+        // 每次都要重设（含清空）：否则上一个视频的起始目录会残留到本次（例如从本地视频切到直链视频）
+        if (localPath.isNullOrBlank()) {
+            hasExplicitLocalStart = false
+        } else {
+            localStartPath = localPath
+            hasExplicitLocalStart = true
+        }
+        remoteStartLibraryId = remote?.first
+        remoteStartPath = remote?.second.orEmpty()
+    }
+
+    /**
+     * 打开选择器：**直接落在当前视频所在目录**（网络源优先，其次本地）。
+     *
+     * 字幕通常就在视频旁边或相邻目录，从库根一层层翻过去代价太大。
+     * 退路：浏览页首行是「上一级」，一路向上即可回到根页面换存储源。
+     * 定位不到时保持原有行为，停在根页面（本地文件入口 + 存储源列表）。
+     */
+    fun openInitial() {
+        val libraryId = remoteStartLibraryId
+        if (libraryId != null) {
+            val item = _uiState.value.libraries.firstOrNull { it.id == libraryId }
+            if (item != null) {
+                browseRemote(item, remoteStartPath)
+                return
+            }
+        }
+        if (hasExplicitLocalStart) {
+            browseLocal(localStartPath)
+            return
+        }
+        backToRoot()
+    }
 
     /** 进入本地文件浏览（从 [localStartPath] 开始）。 */
     fun openLocal() = browseLocal(localStartPath)
@@ -238,11 +279,11 @@ class SubtitlePickerViewModel @Inject constructor(
         } catch (_: Exception) {
             emptyList<Entry>() to ERROR_LIST_FAILED
         } finally {
-            try {
-                storage.close()
-            } catch (_: Exception) {
-                // 关闭失败不影响已列举的结果
-            }
+            // 同 PlayerViewModel.withStorage：清理必须在 NonCancellable 中执行，且 detekt 只接受
+            // 裸 `withContext(NonCancellable) { … }`（外包 try/catch 会被报）。各 Storage 实现的
+            // close 都是「尽力关闭、不抛」（AbstractStorage/WebDavStorage 空实现、SmbStorage 逐流
+            // 吞异常），故这里无需也无法再吞异常。
+            withContext(kotlinx.coroutines.NonCancellable) { storage.close() }
         }
     }
 

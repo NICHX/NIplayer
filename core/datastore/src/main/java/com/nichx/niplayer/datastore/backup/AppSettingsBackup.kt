@@ -59,6 +59,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             // 播放器（lastSpeedIndex 等运行时状态不备份）
             playerLongPressSpeed = PlayerSettings.longPressSpeed,
             playerAutoDetectBlackBars = PlayerSettings.autoDetectBlackBars,
+            playerScaleModeIndex = PlayerSettings.scaleModeIndex,
             playerPitchPreservation = PlayerSettings.pitchPreservationEnabled,
             playerLongPressTimeoutMs = PlayerSettings.longPressTimeoutMs,
             playerSeekSensitivity = PlayerSettings.seekSensitivity,
@@ -73,6 +74,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             subtitleTextSizeFraction = SubtitleSettings.textSizeFraction,
             subtitleApplyEmbeddedStyles = SubtitleSettings.applyEmbeddedStyles,
             subtitleFontFamilyKey = SubtitleSettings.fontFamilyKey,
+            subtitleFontWeight = SubtitleSettings.fontWeightKey,
             subtitleFontColor = SubtitleSettings.fontColor,
             subtitleOutlineWidth = SubtitleSettings.outlineWidth,
             subtitleOutlineColor = SubtitleSettings.outlineColor,
@@ -136,6 +138,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         // 播放器
         s.playerLongPressSpeed?.let { PlayerSettings.longPressSpeed = it }
         s.playerAutoDetectBlackBars?.let { PlayerSettings.autoDetectBlackBars = it }
+        s.playerScaleModeIndex?.let { PlayerSettings.scaleModeIndex = it }
         s.playerPitchPreservation?.let { PlayerSettings.pitchPreservationEnabled = it }
         s.playerLongPressTimeoutMs?.let { PlayerSettings.longPressTimeoutMs = it }
         s.playerSeekSensitivity?.let { PlayerSettings.seekSensitivity = it }
@@ -150,6 +153,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.subtitleTextSizeFraction?.let { SubtitleSettings.textSizeFraction = it }
         s.subtitleApplyEmbeddedStyles?.let { SubtitleSettings.applyEmbeddedStyles = it }
         s.subtitleFontFamilyKey?.let { SubtitleSettings.fontFamilyKey = it }
+        s.subtitleFontWeight?.let { SubtitleSettings.fontWeightKey = it }
         s.subtitleFontColor?.let { SubtitleSettings.fontColor = it }
         s.subtitleOutlineWidth?.let { SubtitleSettings.outlineWidth = it }
         s.subtitleOutlineColor?.let { SubtitleSettings.outlineColor = it }
@@ -236,6 +240,7 @@ data class AppSettingsData(
     // 播放器（lastSpeedIndex 等运行时状态不备份）
     val playerLongPressSpeed: Float? = null,
     val playerAutoDetectBlackBars: Boolean? = null,
+    val playerScaleModeIndex: Int? = null,
     val playerPitchPreservation: Boolean? = null,
     val playerLongPressTimeoutMs: Int? = null,
     val playerSeekSensitivity: Float? = null,
@@ -251,6 +256,7 @@ data class AppSettingsData(
     val subtitleTextSizeFraction: Float? = null,
     val subtitleApplyEmbeddedStyles: Boolean? = null,
     val subtitleFontFamilyKey: String? = null,
+    val subtitleFontWeight: String? = null,
     val subtitleFontColor: Int? = null,
     val subtitleOutlineWidth: Float? = null,
     val subtitleOutlineColor: Int? = null,

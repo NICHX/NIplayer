@@ -90,7 +90,7 @@
     <string name="player_lyrics_manual_done">已按「%1$s」手动匹配歌词</string>
     <string name="player_lyrics_manual_failed">手动匹配失败，请检查输入或网络</string>
     <string name="player_scale_fit">适应</string>
-    <string name="player_scale_crop">裁剪</string>
+    <string name="player_scale_cover">填满</string>
     <string name="player_scale_stretch">拉伸</string>
     <string name="player_speed_menu_title">播放倍速</string>
 
@@ -138,6 +138,13 @@
     <string name="player_subtitle_pick_system">从系统文件选择</string>
     <string name="player_subtitle_parse_failed">无法解析字幕「%1$s」，可能是不支持的格式</string>
     <string name="player_subtitle_load_failed">读取字幕「%1$s」失败，文件可能已移动或存储不可用</string>
+    <!-- 旧版持久化字幕的缓存文件名是纯哈希，原文件名无从还原，展示用泛化标签 -->
+    <string name="player_subtitle_saved_copy">已保存的字幕</string>
+    <string name="player_subtitle_apply_failed">装载字幕「%1$s」失败</string>
+    <string name="player_subtitle_scan_failed">无法读取视频所在目录</string>
+    <string name="player_subtitle_scanning">正在识别同目录字幕…</string>
+    <string name="player_subtitle_loading_file">正在加载「%1$s」…</string>
+    <string name="player_subtitle_back">返回</string>
     <string name="player_subtitle_pick_local">本地文件</string>
     <string name="player_subtitle_pick_up">上一级</string>
     <string name="player_subtitle_pick_loading">加载中…</string>
@@ -201,6 +208,9 @@
     <!-- 字幕样式 -->
     <string name="subtitle_style_title">字幕样式</string>
     <string name="subtitle_font_label">字体</string>
+    <string name="subtitle_weight_label">字重</string>
+    <!-- 字重非法 key 时行内回退显示用（选项标签本体在 core:datastore，与本模块不同 R 命名空间） -->
+    <string name="subtitle_weight_normal">常规</string>
     <string name="subtitle_size_label">字号</string>
     <string name="subtitle_color_label">文字颜色</string>
     <string name="subtitle_outline_width_label">描边宽度</string>

@@ -11,6 +11,12 @@
     <string name="subtitle_font_monospace">Monospace</string>
     <string name="subtitle_font_compact_sans">Condensed sans-serif</string>
 
+    <!-- Subtitle font weight options (SubtitleSettings.FONT_WEIGHT_OPTIONS) -->
+    <string name="subtitle_weight_light">Light</string>
+    <string name="subtitle_weight_normal">Regular</string>
+    <string name="subtitle_weight_medium">Medium</string>
+    <string name="subtitle_weight_bold">Bold</string>
+
     <!-- Subtitle font color options (SubtitleSettings.FONT_COLOR_OPTIONS) -->
     <string name="subtitle_color_white">White</string>
     <string name="subtitle_color_yellow">Yellow</string>

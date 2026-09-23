@@ -132,6 +132,7 @@ import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
 import com.nichx.niplayer.designsystem.components.NiDialogItem
 import com.nichx.niplayer.player.kernel.NxVideoScaleMode
+import com.nichx.niplayer.player.kernel.VideoSize
 import com.nichx.niplayer.player.kernel.PlaybackEvent
 import com.nichx.niplayer.player.kernel.PlaybackState
 import kotlinx.coroutines.delay
@@ -163,7 +164,7 @@ fun PlayerScreen(
     //    viewModel.positionMs —— 后者是 stateIn(WhileSubscribed(5000))，无人订阅时上游会停，
     //    `.value` 将冻结在最后一次发射值，导致 seek 基准错误。
     val videoSize by viewModel.videoSize.collectAsStateWithLifecycle()
-    val effectiveVideoSize by viewModel.effectiveVideoSize.collectAsStateWithLifecycle()
+    val contentAspect by viewModel.contentAspect.collectAsStateWithLifecycle()
     val preReadAspectRatio by viewModel.preReadAspectRatio.collectAsStateWithLifecycle()
     val title by viewModel.title.collectAsStateWithLifecycle()
     val cues by viewModel.cues.collectAsStateWithLifecycle()
@@ -174,9 +175,11 @@ fun PlayerScreen(
     val subtitleTracks by viewModel.subtitleTracks.collectAsStateWithLifecycle()
     val selectedSubtitleTrackIndex by viewModel.selectedSubtitleTrackIndex.collectAsStateWithLifecycle()
     val subtitleOffsetMs by viewModel.subtitleOffsetMs.collectAsStateWithLifecycle()
-    // 同目录外部字幕：候选列表 + 当前生效的那一个（null 表示走内嵌轨道）
+    // 同目录外部字幕：候选列表 + 当前生效的那一个（null 表示走内嵌轨道）+ 装载状态
     val sameDirSubtitles by viewModel.sameDirSubtitles.collectAsStateWithLifecycle()
     val activeExternalSubtitle by viewModel.activeExternalSubtitle.collectAsStateWithLifecycle()
+    // OSD 会被字幕菜单的 Dialog 窗口挡住，所以装载状态要传进菜单内部显示
+    val subtitleLoadState by viewModel.subtitleLoadState.collectAsStateWithLifecycle()
     val playlistInfo by viewModel.playlistInfo.collectAsStateWithLifecycle()
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val currentIndex by viewModel.currentIndex.collectAsStateWithLifecycle()
@@ -283,11 +286,11 @@ fun PlayerScreen(
     var keyboardMuteVolume by remember { mutableIntStateOf(-1) }
     var scaleHint by remember { mutableStateOf<String?>(null) }
     var infoOsd by remember { mutableStateOf<String?>(null) }
+    // 三档循环：适应(Contain) / 填满(Cover) / 拉伸(Fill)，与 PlayerViewModel.SCALE_MODES 下标一致
     val scaleNames = listOf(
         stringResource(R.string.player_scale_fit),
-        stringResource(R.string.player_scale_crop),
+        stringResource(R.string.player_scale_cover),
         stringResource(R.string.player_scale_stretch),
-        "16:9",
     )
     val tapHandler = remember { Handler(Looper.getMainLooper()) }
     var pendingSingleTap by remember { mutableStateOf<Runnable?>(null) }
@@ -501,6 +504,7 @@ fun PlayerScreen(
             showSubtitleMenu = false
             showSubtitleStyle = false
             showSubtitleSearch = false
+            showSubtitlePicker = false
             showSleepTimerDialog = false
             showMediaInfoDrawer = false
             showLongPressSpeedDialog = false
@@ -511,11 +515,12 @@ fun PlayerScreen(
     }
 
     /**
-     * 执行 PixelCopy 抓图并触发黑边检测。
+     * 执行 PixelCopy 抓图并触发去黑边检测。
      *
      * 调用时机：
      * 1. 首帧渲染后（PlaybackEvent.RenderingStart + 300ms 延迟）
-     * 2. 从 Crop/Stretch 切回 Fit 时（redetectBlackBars 事件 + 200ms 延迟）
+     * 2. 收到 `PlayerViewModel.contentProbe` 时（+500ms 延迟）—— 覆盖检测失败重试、
+     *    判决看门狗的周期复检、以及「有黑边」判决落地前的多帧确认
      */
     val triggerBlackBarDetection: () -> Unit = {
         val sv = surfaceViewRef
@@ -584,23 +589,13 @@ fun PlayerScreen(
         }
     }
 
-    // 从 Crop/Stretch 切回 Fit 时重新触发黑边检测
-    // M-28 修复：同上，delay 改用 launch 子协程，不阻塞 collect
+    // 去黑边抓帧请求：首帧检测失败后的重试、以及判决看门狗的周期复检共用此事件流
+    // （见 PlayerViewModel.contentProbe）。延迟 500ms 等画面变化（黑屏变亮 / 内容出现）再抓图。
+    // M-28 修复：delay 放在 launch 子协程里，不阻塞 collect。
     LaunchedEffect(Unit) {
-        viewModel.redetectBlackBars.collect {
+        viewModel.contentProbe.collect {
             launch {
-                delay(200) // 等待 SurfaceView 切回 Fit 比例后再抓图
-                triggerBlackBarDetection()
-            }
-        }
-    }
-
-    // 黑边检测失败（画面全黑/太暗）时自动重试：等画面变亮后重新抓图检测。
-    // 多数影片首帧是黑屏，单次检测会返回 null，需自动重试直到画面变亮或达到上限
-    LaunchedEffect(Unit) {
-        viewModel.blackBarRetry.collect {
-            launch {
-                delay(500) // 等待画面变化（黑屏变亮/内容出现）
+                delay(500)
                 triggerBlackBarDetection()
             }
         }
@@ -756,12 +751,14 @@ fun PlayerScreen(
     LaunchedEffect(
         controllerVisible, state, locked,
         showSpeedMenu, showMoreMenu, showAudioTrackMenu, showSubtitleMenu,
-        showSubtitleSearch, showSubtitleStyle, showSleepTimerDialog, showMediaInfoDrawer,
+        showSubtitleSearch, showSubtitleStyle, showSubtitlePicker, showSleepTimerDialog,
+        showMediaInfoDrawer,
         showLongPressSpeedDialog, showAbLoopDialog, showPlaylistDialog, showBookmarkDialog,
     ) {
         if (controllerVisible && !locked
             && !showSpeedMenu && !showMoreMenu && !showAudioTrackMenu && !showSubtitleMenu
-            && !showSubtitleSearch && !showSubtitleStyle && !showSleepTimerDialog && !showMediaInfoDrawer
+            && !showSubtitleSearch && !showSubtitleStyle && !showSubtitlePicker
+            && !showSleepTimerDialog && !showMediaInfoDrawer
             && !showLongPressSpeedDialog && !showAbLoopDialog && !showPlaylistDialog
             && !showBookmarkDialog
             && state is PlaybackState.Playing
@@ -869,11 +866,15 @@ fun PlayerScreen(
             return@BoxWithConstraints
         }
 
-        // Fit 模式优先使用智能黑边检测后的有效宽高比（去除视频自带黑边）
-        // 检测到黑边时：SurfaceView 用 effectiveVideoSize 比例 + media3 切到裁剪模式
-        // → 16:9 视频帧保持比例裁剪填满 2.35:1 surface，正好裁掉上下黑边，画面不变形
-        val activeVideoSize = effectiveVideoSize?.takeIf { it.isValid } ?: videoSize
-        val targetAspect = if (activeVideoSize.isValid) activeVideoSize.aspectRatio else 16f / 9f
+        // 目标比例：去黑边已生效时取内容比例，否则取视频原始比例。
+        // 缩放档位（surfaceModifier）只决定这个比例**怎么铺到屏幕上**，两者正交。
+        val sourceAspect = if (videoSize.isValid) videoSize.aspectRatio else 16f / 9f
+        val targetAspect = ContentCropDecision.targetAspect(contentAspect, sourceAspect)
+        // PiP 宽高比跟随实际显示比例（含去黑边后的内容比例）。只用到比例，故以 1000 为基准高度。
+        val displayVideoSize = VideoSize(
+            width = (targetAspect * 1000f).toInt().coerceAtLeast(1),
+            height = 1000,
+        )
 
         // 非过渡期持续把 frozenAspect 跟踪为当前实际显示比例；
         // 换源过渡(sourceTransition=true)期间不再更新它，从而天然锁定"切换前的比例"，
@@ -888,15 +889,15 @@ fun PlayerScreen(
         // PiP 尺寸适配：小窗期间视频尺寸变化（切源/黑边检测完成/首帧渲染）时，
         // 同步更新系统 PiP 宽高比，避免小窗始终保持进入时的单一尺寸。
         // 走 PlayerActivity 统一入口以保留播放控制按钮与无缝尺寸调整。
-        LaunchedEffect(isInPip, activeVideoSize) {
-            if (isInPip && activeVideoSize.isValid) {
+        LaunchedEffect(isInPip, displayVideoSize, videoSize) {
+            if (isInPip && videoSize.isValid) {
                 if (activity is PlayerActivity) {
-                    (activity as PlayerActivity).updatePipAspectRatio(activeVideoSize)
+                    (activity as PlayerActivity).updatePipAspectRatio(displayVideoSize)
                 } else {
                     runCatching {
                         activity?.setPictureInPictureParams(
                             PictureInPictureParams.Builder()
-                                .setAspectRatio(pipAspectRatio(activeVideoSize))
+                                .setAspectRatio(pipAspectRatio(displayVideoSize))
                                 .build(),
                         )
                     }
@@ -917,40 +918,32 @@ fun PlayerScreen(
         LaunchedEffect(vrMode) {
             if (vrMode) vrControlsVisible = true
         }
+        // 三档只决定「目标比例怎么铺到屏幕上」。surface 恒按目标比例设定尺寸，
+        // 配合 media3 的缩放模式（SCALE_TO_FIT 缩放到 surface 尺寸）得到精确映射：
+        // Contain 缩进屏幕内 → 完整可见；Cover 放大到溢出 → 由父 Box clipToBounds 裁掉；
+        // Fill 用屏幕比例（与视频比例不一致）→ 拉伸变形。
         val surfaceModifier = when (videoScaleMode) {
-            NxVideoScaleMode.Stretch -> {
-                // 拉伸：忽略视频比例，填满屏幕（画面变形）
+            NxVideoScaleMode.Fill -> {
                 Modifier.align(Alignment.Center).fillMaxSize()
             }
-            NxVideoScaleMode.Crop -> {
-                // 裁剪：短边填满屏幕，长边按视频比例溢出，由父 Box clipToBounds 裁剪
-                // SurfaceView 尺寸 = 视频比例 × 屏幕短边，media3 无需裁剪（视频精确填满 surface）
+            NxVideoScaleMode.Cover -> {
                 if (videoAspect >= screenAspect) {
-                    // 视频比屏幕宽：高度=屏幕高，宽度=高×视频比例（左右溢出裁剪）
+                    // 目标比屏幕宽：高度=屏幕高，宽度=高×目标比例（左右溢出裁掉）
                     Modifier.align(Alignment.Center)
                         .requiredHeight(maxHeight)
                         .requiredWidth(maxHeight * videoAspect)
                 } else {
-                    // 视频比屏幕窄：宽度=屏幕宽，高度=宽/视频比例（上下溢出裁剪）
+                    // 目标比屏幕窄：宽度=屏幕宽，高度=宽/目标比例（上下溢出裁掉）
                     Modifier.align(Alignment.Center)
                         .requiredWidth(maxWidth)
                         .requiredHeight(maxWidth / videoAspect)
                 }
             }
-            NxVideoScaleMode.Fit -> {
-                // 适应：视频完整显示在屏幕内（长边填满，短边留黑边）
+            NxVideoScaleMode.Contain -> {
                 if (videoAspect >= screenAspect) {
                     Modifier.align(Alignment.Center).fillMaxWidth().aspectRatio(videoAspect)
                 } else {
                     Modifier.align(Alignment.Center).fillMaxHeight().aspectRatio(videoAspect)
-                }
-            }
-            NxVideoScaleMode.Ratio16_9 -> {
-                // 强制 16:9：忽略视频原始宽高比，始终以 16:9 比例填满短边，画面可能变形
-                if (screenAspect >= 16f / 9f) {
-                    Modifier.align(Alignment.Center).fillMaxHeight().aspectRatio(16f / 9f)
-                } else {
-                    Modifier.align(Alignment.Center).fillMaxWidth().aspectRatio(16f / 9f)
                 }
             }
         }
@@ -1341,8 +1334,8 @@ fun PlayerScreen(
         val ctrlOrientation = if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT)
             PlayerControlOrientation.PORTRAIT else PlayerControlOrientation.LANDSCAPE
         val enterPip: () -> Unit = {
-            val size = activeVideoSize
-            if (size.isValid) {
+            val size = displayVideoSize
+            if (videoSize.isValid) {
                 if (activity is PlayerActivity) {
                     // 以视频 SurfaceView 当前屏幕矩形作为 PiP 源矩形，让系统做平滑缩放进入动画；
                     // 拿不到（VR 模式 / 贴图退出转场中）则回退默认，不做 sourceRectHint。
@@ -1392,11 +1385,9 @@ fun PlayerScreen(
                 tint = if (autoBlackBarCrop) Color(0xFFFFAB40) else Color.White,
                 onClick = {
                     autoBlackBarCrop = !autoBlackBarCrop
-                    PlayerSettings.autoDetectBlackBars = autoBlackBarCrop
+                    viewModel.setAutoDetectBlackBars(autoBlackBarCrop)
                     infoOsd = if (autoBlackBarCrop) context.getString(R.string.player_black_bar_crop_on)
                     else context.getString(R.string.player_black_bar_crop_off)
-                    if (autoBlackBarCrop) triggerBlackBarDetection()
-                    else viewModel.resetBlackBarDetection()
                 },
             )
             "lock" -> HudButtonConfig(
@@ -1447,11 +1438,12 @@ fun PlayerScreen(
                 onClick = { showBookmarkDialog = true },
             )
             "vr" -> {
-                // 仅当原生画面为 VR 帧型（2:1 的 360°/SBS、1:2 的 OU）时才可进入；
-                // 已在 VR 模式时允许退出。普通视频禁用该按钮。
-                // 实验性功能：VR 播放未开启时整体禁用 VR 入口。
-                val vrCapable = ExperimentalSettings.vrPlaybackEnabled &&
-                    (isLikelyVrVideo(videoSize.width, videoSize.height) || vrMode)
+                // 实验性功能：VR 播放未开启时整体禁用 VR 入口，开启后入口常驻可点。
+                //
+                // 不再按画面宽高比猜测帧型：2:1/1:2 只是 VR 帧型的常见形状，用它做门槛
+                // 既会误判（1.90:1 的 IMAX 片正好落进 2:1 判定窗口），又漏掉 Half-SBS(16:9)、
+                // Full-SBS(32:9)、上下等绝大多数真实 3D 片。帧型改由用户在 VR 控制条里选择。
+                val vrCapable = ExperimentalSettings.vrPlaybackEnabled
                 HudButtonConfig(
                     id, VrHeadsetIcon,
                     stringResource(R.string.player_vr),
@@ -1504,7 +1496,7 @@ fun PlayerScreen(
                     icon = b.icon,
                     label = b.contentDescription,
                     onClick = b.onClick,
-                    enabled = e.id != "pip" || activeVideoSize.isValid,
+                    enabled = e.id != "pip" || videoSize.isValid,
                 )
             }
 
@@ -1588,10 +1580,8 @@ fun PlayerScreen(
                     blackBarCropActive = autoBlackBarCrop,
                     onToggleBlackBarCrop = {
                         autoBlackBarCrop = !autoBlackBarCrop
-                        PlayerSettings.autoDetectBlackBars = autoBlackBarCrop
+                        viewModel.setAutoDetectBlackBars(autoBlackBarCrop)
                         infoOsd = if (autoBlackBarCrop) context.getString(R.string.player_black_bar_crop_on) else context.getString(R.string.player_black_bar_crop_off)
-                        if (autoBlackBarCrop) triggerBlackBarDetection()
-                        else viewModel.resetBlackBarDetection()
                     },
                     onDownload = { viewModel.requestDownload() },
                     showDownload = !isLocalSource,
@@ -1824,6 +1814,7 @@ fun PlayerScreen(
                 selectedIndex = selectedSubtitleTrackIndex,
                 sameDirSubtitles = sameDirSubtitles,
                 activeExternalSubtitle = activeExternalSubtitle,
+                loadState = subtitleLoadState,
                 offsetMs = subtitleOffsetMs,
                 onSelectTrack = { viewModel.selectSubtitleTrack(it) },
                 onSelectSameDirSubtitle = { viewModel.selectSameDirSubtitle(it) },
@@ -1848,6 +1839,8 @@ fun PlayerScreen(
         if (showSubtitlePicker) {
             SubtitleFilePickerDialog(
                 initialLocalPath = viewModel.currentLocalDirectory,
+                // 网络视频：直接落在该库的同一目录，省去从库根逐层翻找
+                initialRemote = viewModel.currentRemoteDirectory,
                 onPicked = { storageId, dirPath, fileName ->
                     showSubtitlePicker = false
                     viewModel.loadSubtitleFromPicker(storageId, dirPath, fileName)

@@ -37,19 +37,24 @@ data class SubtitleTrackInfo(
 )
 
 /**
- * 视频缩放模式。
+ * 视频缩放模式（互斥三档）。
  *
- * - [Fit]：保持宽高比，居中显示，可能留黑边（media3 SCALE_TO_FIT）
- * - [Crop]：保持宽高比，裁剪填满画面（media3 SCALE_TO_FIT_WITH_CROPPING）
- * - [Stretch]：拉伸填满画面，不保比（由 UI 层用全屏 SurfaceView 实现，
- *   media3 视频缩放模式不支持拉伸，必须通过 Surface 尺寸控制）
- * - [Ratio16_9]：强制 16:9 比例，忽略视频原始宽高比，适合老番/老剧填满现代屏幕
+ * 与「目标比例」正交：目标比例由调用方计算（去黑边开启时取内容比例，否则取视频比例），
+ * 本枚举只决定把目标比例**怎么铺到屏幕上**。三个值的语义穷尽且不重叠。
+ *
+ * - [Contain]：完整放下，可能留边（surface 按目标比例缩进屏幕内）
+ * - [Cover]：保持比例放大到铺满屏幕，溢出由父容器裁掉
+ * - [Fill]：不保持比例直接铺满屏幕（画面变形）
+ *
+ * 渲染机制：SurfaceView 恒按「目标比例」设定尺寸，media3 缩放模式由
+ * [NxPlayer.setVideoCropEnabled] 决定。Android 的 `SCALE_TO_FIT` 是把内容缩放**到 surface
+ * 尺寸**（官方文档：调用方必须让 Surface 具备正确的显示比例），因此只要 surface 比例与
+ * 目标比例一致就不会变形；[Fill] 正是故意让 surface 与视频比例不一致以产生拉伸。
  */
 enum class NxVideoScaleMode {
-    Fit,
-    Crop,
-    Stretch,
-    Ratio16_9,
+    Contain,
+    Cover,
+    Fill,
 }
 
 /**
@@ -152,31 +157,27 @@ interface NxPlayer {
     val equalizer: NiEqualizer
 
     /**
-     * 设置视频缩放模式（高阶语义，含拉伸）。
+     * 设置视频缩放模式。
      *
-     * - [NxVideoScaleMode.Fit] / [NxVideoScaleMode.Crop]：直接映射到 media3 videoScalingMode
-     * - [NxVideoScaleMode.Stretch]：通过返回值/状态由 UI 层调整 Surface 尺寸实现，
-     *   调用方应订阅 [videoScaleMode] 并据此决定 SurfaceView 是按 aspectRatio 还是 fillMaxSize
+     * 调用方应订阅 [videoScaleMode] 并据此决定 SurfaceView 的尺寸约束
+     * （[NxVideoScaleMode.Fill] 时填满全屏，其余按目标比例设定）。
      */
     fun setVideoScaleMode(mode: NxVideoScaleMode)
 
-    /** 当前缩放模式。UI 层据此决定 SurfaceView 的尺寸约束（Stretch 时填满全屏）。 */
+    /** 当前缩放模式。UI 层据此决定 SurfaceView 的尺寸约束。 */
     val videoScaleMode: StateFlow<NxVideoScaleMode>
 
     /**
-     * 启用/禁用智能黑边裁剪。
+     * 启用/禁用 media3 层裁剪。
      *
-     * 独立于 [videoScaleMode] 的内部裁剪覆盖，用于智能黑边检测：
-     * - 启用时：media3 临时切到 SCALE_TO_FIT_WITH_CROPPING，配合 UI 层用有效画面比例
-     *   设置 SurfaceView 尺寸，让视频帧保持比例裁剪填满 surface，正好裁掉内容黑边
-     * - 禁用时：按 [videoScaleMode] 恢复（Fit→SCALE_TO_FIT，Crop→CROPPING）
+     * 由调用方按几何推出，**不是**独立的用户开关：
+     * 当「目标比例 ≠ 视频比例」（即去黑边生效，需要把视频帧在 surface 内裁掉自带黑边）时置 true。
+     * - true → `SCALE_TO_FIT_WITH_CROPPING`：保持比例裁剪填满 surface
+     * - false → `SCALE_TO_FIT`：缩放**到** surface 尺寸（surface 比例与目标比例一致，故无变形）
      *
-     * 仅在用户选择 [NxVideoScaleMode.Fit] 且检测到黑边时启用；
-     * 切换视频源 / 切换 scaleMode / 检测失败时禁用。
-     *
-     * @param enabled true=启用裁剪覆盖，false=恢复用户 scaleMode
+     * 内核不再持有第二套裁剪状态，也不再有优先级分支——只有这一个布尔输入。
      */
-    fun setBlackBarCropEnabled(enabled: Boolean)
+    fun setVideoCropEnabled(enabled: Boolean)
 
     /** 当前可用音频轨道列表。 */
     val audioTracks: StateFlow<List<AudioTrackInfo>>

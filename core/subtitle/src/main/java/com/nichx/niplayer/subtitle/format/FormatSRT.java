@@ -112,6 +112,14 @@ public class FormatSRT implements TimedTextFileFormat {
 							lineCounter++;
 						}
 						caption.content = text;
+						// rawContent 才是渲染链路读的字段（AssOverrideParser.parse → SubtitleEngine）。
+						// 只写 content 时 rawContent 保持空串 → 本格式解析出的每条字幕 span 为空 →
+						// SubtitleEngine.update 把它们全部丢弃 → captions 非空、无异常、无提示，
+						// 屏幕上什么都没有。循环每行都补了尾随标记，去掉最后那个，避免多出一个空换行。
+						String rawText = text.endsWith("<br />")
+								? text.substring(0, text.length() - "<br />".length())
+								: text;
+						caption.rawContent = toAssMarkup(rawText);
 						long key = caption.start.mseconds;
 						//in case the key is already there, we increase it by a millisecond, since no duplicates are allowed
 						while (tto.captions.containsKey(key)) key++;
@@ -192,6 +200,85 @@ public class FormatSRT implements TimedTextFileFormat {
 
 
 	/* PRIVATE METHODS */
+
+	/** SRT 文本里的行分隔标记（[Caption.content] 用）。 */
+	private static final String SRT_LINE_BREAK = "<br />";
+
+	/**
+	 * 形如标签的 `&lt;...&gt;`：必须以字母或 `/` 开头。
+	 *
+	 * 收紧首字符是为了不误伤正文里的比较符号 —— `5 &lt; 10 &gt; 3` 若按 `<[^>]*>` 匹配会把
+	 * `< 10 >` 整段当成标签删掉。
+	 */
+	private static final java.util.regex.Pattern SRT_TAG =
+			java.util.regex.Pattern.compile("<[/a-zA-Z][^>]*>");
+
+	/** `<font color="RRGGBB">` 里的颜色值（容忍引号与 `#`）。 */
+	private static final java.util.regex.Pattern FONT_COLOR =
+			java.util.regex.Pattern.compile("(?i)color\\s*=\\s*[\"']?#?([0-9a-f]{6})[\"']?");
+
+	/**
+	 * SRT 文本 → 渲染链路（{@link com.nichx.niplayer.subtitle.renderer.AssOverrideParser}）认识的标记。
+	 *
+	 * 渲染只认 ASS override tag：SDH / 字幕组常用的 HTML 标记若原样带进去，会**整段显示成字面文本**
+	 *（`&lt;i&gt;Hello&lt;/i&gt;` 直接画在屏幕上），同时斜体、加粗、颜色等意图全部丢失。
+	 * 这里做最小映射：
+	 * <ul>
+	 *   <li>行分隔 `&lt;br /&gt;` → `\N`（ASS 换行）</li>
+	 *   <li>`&lt;i&gt;`、`&lt;b&gt;`、`&lt;u&gt;`、`&lt;s&gt;` 及其闭合标签 → 对应的
+	 *       ASS override tag（斜体 / 加粗 / 下划线 / 删除线，开与关）</li>
+	 *   <li>`&lt;font color="#RRGGBB"&gt;` → ASS 颜色 tag；`&lt;/font&gt;` → 无操作的颜色 tag</li>
+	 *   <li>其余标签（`&lt;v&gt;`、`&lt;c.xxx&gt;` 等）丢弃，避免原样显示</li>
+	 * </ul>
+	 * 实体解码放在**标签处理之后**：否则 `&amp;lt;i&amp;gt;` 会先变成真标签而被误当样式。
+	 */
+	private static String toAssMarkup(String srtText) {
+		String withBreaks = srtText.replace(SRT_LINE_BREAK, "\\N");
+		java.util.regex.Matcher matcher = SRT_TAG.matcher(withBreaks);
+		StringBuffer out = new StringBuffer();
+		while (matcher.find()) {
+			matcher.appendReplacement(
+					out,
+					java.util.regex.Matcher.quoteReplacement(toAssTag(matcher.group()))
+			);
+		}
+		matcher.appendTail(out);
+		return decodeEntities(out.toString());
+	}
+
+	/** 单个 SRT 标签 → ASS override tag；无法映射的返回空串（丢弃）。 */
+	private static String toAssTag(String tag) {
+		String lower = tag.trim().toLowerCase();
+		if (lower.equals("<i>")) return "{\\i1}";
+		if (lower.equals("</i>")) return "{\\i0}";
+		if (lower.equals("<b>")) return "{\\b1}";
+		if (lower.equals("</b>")) return "{\\b0}";
+		if (lower.equals("<u>")) return "{\\u1}";
+		if (lower.equals("</u>")) return "{\\u0}";
+		if (lower.equals("<s>")) return "{\\s1}";
+		if (lower.equals("</s>")) return "{\\s0}";
+		if (lower.startsWith("</font")) return "{\\c}";
+		if (lower.startsWith("<font")) {
+			java.util.regex.Matcher colorMatcher = FONT_COLOR.matcher(tag);
+			if (!colorMatcher.find()) return "";
+			String rgb = colorMatcher.group(1);
+			// ASS 颜色是 AABBGGRR：AA=00 表示不透明，随后依次是 B、G、R
+			return "{\\c&H00"
+					+ rgb.substring(4, 6) + rgb.substring(2, 4) + rgb.substring(0, 2) + "&}";
+		}
+		return "";
+	}
+
+	/** 常见 HTML 实体解码（先长后短，避免二次解码）。 */
+	private static String decodeEntities(String text) {
+		return text
+				.replace("&nbsp;", " ")
+				.replace("&lt;", "<")
+				.replace("&gt;", ">")
+				.replace("&quot;", "\"")
+				.replace("&#39;", "'")
+				.replace("&amp;", "&");
+	}
 
 	/**
 	 * This method cleans caption.content of XML and parses line breaks.

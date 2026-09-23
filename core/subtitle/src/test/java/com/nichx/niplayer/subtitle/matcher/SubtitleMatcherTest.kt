@@ -11,17 +11,22 @@ class SubtitleMatcherTest {
     // ── 扩展名识别 ────────────────────────────────────────────────
 
     @Test
-    fun `识别四种外挂字幕扩展名`() {
+    fun `识别三种外挂字幕扩展名`() {
         assertTrue(SubtitleMatcher.isSubtitleFile("movie.srt"))
         assertTrue(SubtitleMatcher.isSubtitleFile("movie.ass"))
         assertTrue(SubtitleMatcher.isSubtitleFile("movie.ssa"))
-        assertTrue(SubtitleMatcher.isSubtitleFile("movie.vtt"))
     }
 
     @Test
     fun `扩展名识别不区分大小写`() {
         assertTrue(SubtitleMatcher.isSubtitleFile("MOVIE.SRT"))
         assertTrue(SubtitleMatcher.isSubtitleFile("Movie.Ass"))
+    }
+
+    @Test
+    fun `没有解析器的格式不算字幕`() {
+        // vtt 无解析器：列出来只会让用户选中一个必然解析失败的文件
+        assertFalse(SubtitleMatcher.isSubtitleFile("movie.vtt"))
     }
 
     @Test

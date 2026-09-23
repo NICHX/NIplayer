@@ -418,6 +418,18 @@ public class FormatASS implements TimedTextFileFormat {
                             newStyle.color = Style.getRGBValue("&HBBGGRR", color);
                         else newStyle.color = Style.getRGBValue("decimalCodedBBGGRR", color);
                     }
+                } else if (trimmedStyleFormat.equalsIgnoreCase("OutlineColour")) {
+                    //we save the outline color（渲染侧描边用的就是它；此前未解析，导致描边色被迫取自 BackColour）
+                    String color = line[i].trim();
+                    if (isASS) {
+                        if (color.startsWith("&H"))
+                            newStyle.outlineColor = Style.getRGBValue("&HAABBGGRR", color);
+                        else newStyle.outlineColor = Style.getRGBValue("decimalCodedAABBGGRR", color);
+                    } else {
+                        if (color.startsWith("&H"))
+                            newStyle.outlineColor = Style.getRGBValue("&HBBGGRR", color);
+                        else newStyle.outlineColor = Style.getRGBValue("decimalCodedBBGGRR", color);
+                    }
                 } else if (trimmedStyleFormat.equalsIgnoreCase("BackColour")) {
                     //we save the background color
                     String color = line[i].trim();

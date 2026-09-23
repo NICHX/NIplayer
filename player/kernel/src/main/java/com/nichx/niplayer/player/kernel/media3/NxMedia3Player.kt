@@ -264,7 +264,7 @@ class NxMedia3Player @Inject constructor(
     private val _subtitleOffsetMs = MutableStateFlow(0L)
     override val subtitleOffsetMs: StateFlow<Long> = _subtitleOffsetMs.asStateFlow()
 
-    private val _videoScaleMode = MutableStateFlow(NxVideoScaleMode.Fit)
+    private val _videoScaleMode = MutableStateFlow(NxVideoScaleMode.Contain)
     override val videoScaleMode: StateFlow<NxVideoScaleMode> = _videoScaleMode.asStateFlow()
 
     private val _selectedAudioTrackIndex = MutableStateFlow(-1)
@@ -577,45 +577,28 @@ class NxMedia3Player @Inject constructor(
     }
 
     override fun setVideoScaleMode(mode: NxVideoScaleMode) {
+        // 只记录状态：SurfaceView 尺寸由 UI 层按此值决定；
+        // media3 缩放模式只取决于 [videoCropEnabled]，与本枚举无关。
         _videoScaleMode.value = mode
-        applyVideoScalingMode()
     }
 
-    override fun setBlackBarCropEnabled(enabled: Boolean) {
-        blackBarCropEnabled = enabled
-        applyVideoScalingMode()
-    }
-
-    /**
-     * 黑边裁剪覆盖标志。true 时强制用 CROPPING（用于智能黑边检测的 Fit 模式）。
-     *
-     * 由 [setBlackBarCropEnabled] 设置，[applyVideoScalingMode] 读取。
-     * 切换 [setVideoScaleMode] 不会重置此标志——黑边检测的使能由 PlayerViewModel 管理。
-     */
-    private var blackBarCropEnabled = false
-
-    /**
-     * 根据当前 [videoScaleMode] 和 [blackBarCropEnabled] 计算并应用 media3 videoScalingMode。
-     *
-     * 优先级：blackBarCropEnabled > videoScaleMode
-     * - blackBarCropEnabled=true → CROPPING（智能黑边检测在 Fit 模式下临时裁剪：
-     *   surface 用 effective aspectRatio 设比例，CROPPING 让 media3 在 surface 内裁剪填满，
-     *   正好裁掉视频自带的内容黑边）
-     * - Crop → SCALE_TO_FIT（BUG-9 修复：原用 CROPPING 是冗余设置。
-     *   Crop 模式 surface 用 videoAspect 设比例，与视频比例一致，
-     *   media3 在等比例 surface 内无黑边可裁，CROPPING 与 SCALE_TO_FIT 行为相同。
-     *   实际裁剪效果靠 SurfaceView 溢出父 Box + clipToBounds 实现。
-     *   统一只有"Fit + 智能去黑边"使用 CROPPING，语义更清晰）
-     * - Fit / Stretch / Ratio16_9 → SCALE_TO_FIT
-     *   （Stretch 由 UI 层 fillMaxSize；Ratio16_9 由 UI 层强制 16:9；
-     *   Fit 由 UI 层按 aspectRatio 居中）
-     */
-    private fun applyVideoScalingMode() {
-        exoPlayer.videoScalingMode = when {
-            blackBarCropEnabled -> C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
-            else -> C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+    override fun setVideoCropEnabled(enabled: Boolean) {
+        videoCropEnabled = enabled
+        exoPlayer.videoScalingMode = if (enabled) {
+            // 目标比例 ≠ 视频比例：让 media3 在 surface 内保持比例裁剪填满，
+            // 正好切掉视频自带的内容黑边（surface 比例 = 目标比例）。
+            C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+        } else {
+            // 缩放到 surface 尺寸。surface 比例与目标比例一致时即精确映射，无变形；
+            // Fill 档故意让两者不一致以产生拉伸。
+            C.VIDEO_SCALING_MODE_SCALE_TO_FIT
         }
     }
+
+    /**
+     * media3 层裁剪标志，由 [setVideoCropEnabled] 设置（调用方按几何推出）。
+     */
+    private var videoCropEnabled = false
 
     override fun selectAudioTrack(index: Int) {
         val currentTracks = exoPlayer.currentTracks
@@ -731,8 +714,8 @@ class NxMedia3Player @Inject constructor(
         // BUG-7 修复：重置缩放相关状态，避免单例场景下新调用方继承旧模式。
         // 当前 NxMedia3Player 不 @Singleton，每次 @Inject 新实例无实际影响；
         // 但保持重置完整性，防止未来改为单例时出现状态漂移。
-        _videoScaleMode.value = NxVideoScaleMode.Fit
-        blackBarCropEnabled = false
+        _videoScaleMode.value = NxVideoScaleMode.Contain
+        videoCropEnabled = false
     }
 
     // endregion

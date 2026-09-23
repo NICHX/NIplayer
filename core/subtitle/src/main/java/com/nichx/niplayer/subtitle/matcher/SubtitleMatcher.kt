@@ -25,10 +25,11 @@ object SubtitleMatcher {
     /**
      * 识别为外挂字幕的扩展名（小写，不含点）。
      *
-     * 与 [com.nichx.niplayer.feature.player] 侧解析器能力对齐：SRT / ASS / SSA / VTT。
-     * `.lrc` 不在此列（属音频歌词，由 AudioPlaybackManager 单独处理）。
+     * 只列**确有解析器**的格式：SRT / ASS / SSA。`.vtt` 曾在此列，但项目没有 VTT 解析器
+     * ——列出来只会让用户选中一个必然解析失败的文件（表现为「载入了但什么都不显示」），
+     * 故移除；将来补上 VTT 解析器时再加回。`.lrc` 属音频歌词，由 AudioPlaybackManager 处理。
      */
-    val SUBTITLE_EXTENSIONS: Set<String> = setOf("srt", "ass", "ssa", "vtt")
+    val SUBTITLE_EXTENSIONS: Set<String> = setOf("srt", "ass", "ssa")
 
     /** 同名后缀分隔符：`movie.chs.srt` / `movie_zh.srt` / `movie-1080p.srt` / `movie chs.srt`。 */
     private val STEM_SEPARATORS = charArrayOf('.', '_', '-', ' ')

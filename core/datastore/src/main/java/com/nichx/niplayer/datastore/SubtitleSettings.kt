@@ -40,6 +40,7 @@ object SubtitleSettings {
     private const val KEY_TEXT_SIZE_FRACTION = "subtitle_text_size_fraction"
     private const val KEY_APPLY_EMBEDDED_STYLES = "subtitle_apply_embedded_style"
     private const val KEY_FONT_FAMILY = "subtitle_font_family"
+    private const val KEY_FONT_WEIGHT = "subtitle_font_weight"
     private const val KEY_FONT_COLOR = "subtitle_font_color"
     private const val KEY_OUTLINE_WIDTH = "subtitle_outline_width"
     private const val KEY_OUTLINE_COLOR = "subtitle_outline_color"
@@ -50,6 +51,12 @@ object SubtitleSettings {
     const val FONT_FAMILY_KEY_SERIF = "serif"
     const val FONT_FAMILY_KEY_MONOSPACE = "monospace"
     const val FONT_FAMILY_KEY_SANS_SERIF = "sans_serif"
+
+    // ===== 字重 key 常量（与 UI 层 FontWeight 映射对应） =====
+    const val FONT_WEIGHT_KEY_LIGHT = "light"
+    const val FONT_WEIGHT_KEY_NORMAL = "normal"
+    const val FONT_WEIGHT_KEY_MEDIUM = "medium"
+    const val FONT_WEIGHT_KEY_BOLD = "bold"
 
     /** ASSRT API token。空字符串表示未配置，字幕搜索时会提示用户设置。 */
     var assrtToken: String
@@ -86,6 +93,16 @@ object SubtitleSettings {
     var fontFamilyKey: String
         get() = mmkv.decodeString(KEY_FONT_FAMILY, FONT_FAMILY_KEY_DEFAULT) ?: FONT_FAMILY_KEY_DEFAULT
         set(value) { mmkv.encode(KEY_FONT_FAMILY, value) }
+
+    /**
+     * 字幕字重 key。默认 [FONT_WEIGHT_KEY_NORMAL]。
+     *
+     * 作为文本的**默认**字重；ASS 里显式的 `\b1` 仍会强制加粗（文件意图优先于默认值）。
+     * UI 层将 key 映射为 Compose [androidx.compose.ui.text.font.FontWeight]。
+     */
+    var fontWeightKey: String
+        get() = mmkv.decodeString(KEY_FONT_WEIGHT, FONT_WEIGHT_KEY_NORMAL) ?: FONT_WEIGHT_KEY_NORMAL
+        set(value) { mmkv.encode(KEY_FONT_WEIGHT, value) }
 
     /** 字幕文字颜色（ARGB Int）。默认白色 0xFFFFFFFF。 */
     var fontColor: Int
@@ -129,6 +146,19 @@ object SubtitleSettings {
         R.string.subtitle_font_serif to FONT_FAMILY_KEY_SERIF,
         R.string.subtitle_font_monospace to FONT_FAMILY_KEY_MONOSPACE,
         R.string.subtitle_font_compact_sans to FONT_FAMILY_KEY_SANS_SERIF,
+    )
+
+    /**
+     * 字重选项（标签资源 ID + key）。
+     *
+     * UI 层将 key 映射为 Compose FontWeight。仅 4 档：括号内为对应 FontWeight 值，
+     * 系统字体族会就近选择可用字重（Default/SansSerif 通常都有 Light..Bold）。
+     */
+    val FONT_WEIGHT_OPTIONS: List<Pair<Int, String>> = listOf(
+        R.string.subtitle_weight_light to FONT_WEIGHT_KEY_LIGHT,
+        R.string.subtitle_weight_normal to FONT_WEIGHT_KEY_NORMAL,
+        R.string.subtitle_weight_medium to FONT_WEIGHT_KEY_MEDIUM,
+        R.string.subtitle_weight_bold to FONT_WEIGHT_KEY_BOLD,
     )
 
     /**

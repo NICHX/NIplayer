@@ -90,7 +90,7 @@
     <string name="player_lyrics_manual_done">Lyrics matched manually for "%1$s"</string>
     <string name="player_lyrics_manual_failed">Manual match failed. Check your input or network.</string>
     <string name="player_scale_fit">Fit</string>
-    <string name="player_scale_crop">Crop</string>
+    <string name="player_scale_cover">Crop</string>
     <string name="player_scale_stretch">Stretch</string>
     <string name="player_speed_menu_title">Playback speed</string>
 
@@ -138,6 +138,13 @@
     <string name="player_subtitle_pick_system">Choose from system files</string>
     <string name="player_subtitle_parse_failed">Cannot parse subtitle \"%1$s\" — unsupported format</string>
     <string name="player_subtitle_load_failed">Failed to read subtitle \"%1$s\" — file moved or storage unavailable</string>
+    <!-- Legacy persisted subtitle caches are named by hash only, so the original name is unknown -->
+    <string name="player_subtitle_saved_copy">Saved subtitle</string>
+    <string name="player_subtitle_apply_failed">Failed to apply subtitle \"%1$s\"</string>
+    <string name="player_subtitle_scan_failed">Cannot read the video\'s folder</string>
+    <string name="player_subtitle_scanning">Looking for same-folder subtitles…</string>
+    <string name="player_subtitle_loading_file">Loading \"%1$s\"…</string>
+    <string name="player_subtitle_back">Back</string>
     <string name="player_subtitle_pick_local">Local files</string>
     <string name="player_subtitle_pick_up">Up one level</string>
     <string name="player_subtitle_pick_loading">Loading…</string>
@@ -201,6 +208,9 @@
     <string name="subtitle_style_group_character">Text</string>
     <string name="subtitle_style_group_layout">Layout</string>
     <string name="subtitle_font_label">Font</string>
+    <string name="subtitle_weight_label">Weight</string>
+    <!-- Fallback label for an invalid weight key (option labels live in :core:datastore) -->
+    <string name="subtitle_weight_normal">Regular</string>
     <string name="subtitle_size_label">Size</string>
     <string name="subtitle_color_label">Text color</string>
     <string name="subtitle_outline_width_label">Outline width</string>

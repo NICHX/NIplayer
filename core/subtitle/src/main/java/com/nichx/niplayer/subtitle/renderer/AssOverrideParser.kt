@@ -11,6 +11,9 @@ import com.nichx.niplayer.subtitle.info.TimedTextObject
  * 应用动画（fad/move/transform）生成最终的 [RenderableCaption]。
  *
  * @property rawSpans 已拆分的带样式 span（不含时间动画）
+ * @property drawings 矢量绘制（`\p<n>` 模式），坐标已归一化到 0..1
+ * @property clip 裁剪区域（`\clip` / `\iclip`），null 表示不裁剪
+ * @property clipInverted true 表示 `\iclip`
  * @property align 屏幕对齐（来自 \a 或 Style）
  * @property pos 屏幕位置（来自 \pos，归一化 0..1，null 表示按 align 自动布局）
  * @property fade 渐入渐出（来自 \fad，null 表示无淡入淡出）
@@ -32,6 +35,21 @@ data class ParsedCaption(
     val style: Style,
     val startMs: Long,
     val endMs: Long,
+    val drawings: List<ParsedDrawing> = emptyList(),
+    val clip: SubtitleClip? = null,
+    val clipInverted: Boolean = false,
+)
+
+/**
+ * 解析出的矢量绘制（尚未套用整体动画/回退色）。
+ *
+ * 颜色/描边为 null 时表示「用 Style 或用户配置的默认值」，与 [StyledSpan] 一致。
+ */
+data class ParsedDrawing(
+    val path: List<SubtitlePathOp>,
+    val primary: SubtitleColor? = null,
+    val outline: SubtitleColor? = null,
+    val outlineWidth: Float? = null,
 )
 
 /** \fad(inMs, outMs) 淡入淡出。 */
@@ -107,13 +125,21 @@ object AssOverrideParser {
         var sFontSize: Float? = style.fontSize?.toFloatOrNull()
         var sFontName: String? = style.font?.takeIf { it.isNotBlank() }
         var sPrimary: SubtitleColor? = parseStyleColor(style.color)
-        var sOutline: SubtitleColor? = parseStyleColor(style.backgroundColor)
+        // 描边色优先取 ASS OutlineColour；SSA/无该字段时回退 BackColour（历史行为）
+        var sOutline: SubtitleColor? =
+            parseStyleColor(style.outlineColor) ?: parseStyleColor(style.backgroundColor)
         var sBack: SubtitleColor? = null
         var sOutlineWidth: Float? = null
         var sShadowDepth: Float? = null
 
         val spans = mutableListOf<StyledSpan>()
+        val drawings = mutableListOf<ParsedDrawing>()
         val textBuffer = StringBuilder()
+        val drawingBuffer = StringBuilder()
+        // 非 null 表示处于 `\p<n>` 绘制模式，值为坐标缩放系数（1/2^(n-1)）
+        var drawingScale: Float? = null
+        var clip: SubtitleClip? = null
+        var clipInverted = false
 
         fun flushText() {
             if (textBuffer.isNotEmpty()) {
@@ -138,6 +164,20 @@ object AssOverrideParser {
             }
         }
 
+        /**
+         * 把累积的绘制命令按**当前**样式收成一条绘制。
+         *
+         * `\p0`（退出绘制模式）与行尾都会走这里；绘制命令**不能**当作普通文本累积，
+         * 否则 `m 0 0 l 100 0` 会被原样画到屏幕上。
+         */
+        fun flushDrawing() {
+            val scale = drawingScale ?: return
+            if (drawingBuffer.isEmpty()) return
+            val ops = parseDrawingOps(drawingBuffer.toString(), scale, currentPos, playResX, playResY)
+            if (ops.isNotEmpty()) drawings.add(ParsedDrawing(ops, sPrimary, sOutline, sOutlineWidth))
+            drawingBuffer.clear()
+        }
+
         val raw = caption.rawContent ?: ""
         var i = 0
         while (i < raw.length) {
@@ -147,10 +187,16 @@ object AssOverrideParser {
                     val end = raw.indexOf('}', i + 1)
                     if (end < 0) {
                         // 未闭合的 {，当普通字符处理
-                        textBuffer.append(ch)
+                        if (drawingScale == null) textBuffer.append(ch) else drawingBuffer.append(ch)
                         i += 1
                         continue
                     }
+                    // 先把「标签之前」的文本/绘制按**当前**样式收好，再应用标签里的新样式。
+                    // 不先 flush 的后果：已缓冲的内容会被之后的新样式覆盖 —— 行内样式切换
+                    //（`{\i1}斜体{\i0}`、`{\c&H...&}彩色` 等）全部失效，整段按最后一次样式渲染。
+                    // 这是「外挂字幕渲染样式有问题」的核心成因（原实现只在换行与结尾 flush）。
+                    flushText()
+                    flushDrawing()
                     val block = raw.substring(i + 1, end)
                     val r = scanTagsInBlock(block, playResX, playResY)
                     // 应用样式覆盖（非 null 字段覆盖当前值）
@@ -171,7 +217,25 @@ object AssOverrideParser {
                     r.fade?.let { fade = it }
                     r.move?.let { move = it }
                     if (r.transform != null) transforms.add(r.transform)
+                    // `\p<n>`：0 退出绘制模式；>0 进入并把后续文本当绘制命令读
+                    r.drawingScale?.let { scale ->
+                        drawingScale = if (scale <= 0) {
+                            null
+                        } else {
+                            val exp = (scale - 1).coerceIn(0, 16)
+                            1f / (1 shl exp).toFloat()
+                        }
+                    }
+                    r.clip?.let {
+                        clip = it
+                        clipInverted = r.inverseClip == true
+                    }
                     i = end + 1
+                }
+                ch == '\\' && drawingScale != null -> {
+                    // 绘制模式内的反斜杠不是换行标记，原样交给绘制解析器
+                    drawingBuffer.append(ch)
+                    i += 1
                 }
                 ch == '\\' && i + 1 < raw.length -> {
                     // {} 外的 \N / \n 换行（罕见但兼容）
@@ -186,12 +250,13 @@ object AssOverrideParser {
                     }
                 }
                 else -> {
-                    textBuffer.append(ch)
+                    if (drawingScale == null) textBuffer.append(ch) else drawingBuffer.append(ch)
                     i += 1
                 }
             }
         }
         flushText()
+        flushDrawing()
 
         return ParsedCaption(
             rawSpans = spans,
@@ -204,6 +269,9 @@ object AssOverrideParser {
             style = style,
             startMs = caption.start?.mseconds ?: 0L,
             endMs = caption.end?.mseconds ?: 0L,
+            drawings = drawings,
+            clip = clip,
+            clipInverted = clipInverted,
         )
     }
 
@@ -226,6 +294,12 @@ object AssOverrideParser {
         val fade: FadeAnimation?,
         val move: MoveAnimation?,
         val transform: TransformAnimation?,
+        /** `\p<n>` 的 n（0 表示退出绘制模式）。 */
+        val drawingScale: Int? = null,
+        /** `\clip(...)` / `\iclip(...)` 的裁剪区域。 */
+        val clip: SubtitleClip? = null,
+        /** 是否 `\iclip`（裁剪区域之外可见）。 */
+        val inverseClip: Boolean? = null,
     )
 
     /** 扫描 `{...}` 块内容（不含大括号），返回所有 tag 的覆盖结果。 */
@@ -251,6 +325,9 @@ object AssOverrideParser {
         var fade: FadeAnimation? = null
         var move: MoveAnimation? = null
         var transform: TransformAnimation? = null
+        var drawingScale: Int? = null
+        var clip: SubtitleClip? = null
+        var inverseClip: Boolean? = null
 
         // 拆分 override 块，但 \t(...) 内的嵌套 \ tag 不能被拆开
         // （朴素 split('\\') 会把 \t(0,1000,\fs40) 拆成 "t(0,1000," 与 "fs40)"，丢失 transform 目标）
@@ -306,6 +383,20 @@ object AssOverrideParser {
             // tag 形如 "b1" "fs24" "c&H00FFFFFF&" "pos(320,460)" "t(0,1000,\fs40)"
             val tagBody = tagRaw.trim()
             when {
+                // \clip(...) / \iclip(...) 必须排在 \c（颜色）与 \i（斜体）之前：
+                // 否则 "clip(...)" 会被 startsWith("c") 当成颜色、"iclip(...)" 会被当成斜体
+                tagBody.startsWith("clip(") -> {
+                    clip = parseClip(tagBody.substring(5), playResX, playResY)
+                }
+                tagBody.startsWith("iclip(") -> {
+                    clip = parseClip(tagBody.substring(6), playResX, playResY)
+                    inverseClip = true
+                }
+                // \p<n> 绘制模式开关；用 toIntOrNull 排除同前缀的 \pos(...)
+                tagBody.length > 1 && tagBody[0] == 'p' &&
+                    tagBody.substring(1).toIntOrNull() != null -> {
+                    drawingScale = tagBody.substring(1).toInt()
+                }
                 tagBody.startsWith("bord") -> {
                     outlineWidth = tagBody.substring(4).toFloatOrNull()
                 }
@@ -411,6 +502,7 @@ object AssOverrideParser {
             bold, italic, underline, strikeout, fontSize, fontName,
             primary, outline, back, outlineWidth, shadowDepth, rotationZ,
             pos, align, fade, move, transform,
+            drawingScale, clip, inverseClip,
         )
     }
 
@@ -576,6 +668,145 @@ object AssOverrideParser {
             "top-right" -> SubtitleAlign.TOP_RIGHT
             else -> SubtitleAlign.BOTTOM_CENTER
         }
+    }
+
+    // ===== \p 矢量绘制 与 \clip =====
+
+    /**
+     * 解析 `\clip(...)` / `\iclip(...)` 的参数。
+     *
+     * - 矩形：`\clip(x1,y1,x2,y2)`，坐标基于 PlayRes，归一化到 0..1（自动排序左上/右下）
+     * - 矢量：`\clip(m 0 0 l 100 0 ...)`，复用 [parseDrawingOps]（无 `\pos` 偏移、无缩放）
+     */
+    private fun parseClip(content: String, playResX: Float, playResY: Float): SubtitleClip? {
+        val body = content.trim().trimEnd(')').trim()
+        if (body.isEmpty()) return null
+        if (body.first().isLetter()) {
+            val ops = parseDrawingOps(body, scale = 1f, origin = null, playResX = playResX, playResY = playResY)
+            return if (ops.isEmpty()) null else SubtitleClip.Vector(ops)
+        }
+        val nums = body.split(',').mapNotNull { it.trim().toFloatOrNull() }
+        if (nums.size < 4) return null
+        val x1 = nums[0] / playResX
+        val y1 = nums[1] / playResY
+        val x2 = nums[2] / playResX
+        val y2 = nums[3] / playResY
+        return SubtitleClip.Rect(minOf(x1, x2), minOf(y1, y2), maxOf(x1, x2), maxOf(y1, y2))
+    }
+
+    /**
+     * 解析 ASS 矢量绘制命令串（`\p<n>` 模式下大括号之间的内容）。
+     *
+     * 支持 `m`/`n`（移动起点）、`l`（直线）、`b`（三次贝塞尔）。`s`/`p`/`c`（B 样条系列）
+     * 按「直线连到该组终点」近似：位置与形状保留、圆角丢失 —— 这几种命令实际字幕里极少出现。
+     *
+     * 坐标换算：脚本坐标 = 参数 × [scale]（即 `2^-(n-1)`），叠加 `\pos` 偏移 [origin]
+     *（脚本空间）后除以 PlayRes 归一化为 0..1，与 `\pos`/`\move` 同一坐标系。
+     *
+     * @param scale 坐标缩放系数（`\p<n>` 为 `1/2^(n-1)`；`\clip` 用 1）
+     * @param origin `\pos` 偏移（**归一化**值，null 视为 0）
+     */
+    private fun parseDrawingOps(
+        raw: String,
+        scale: Float,
+        origin: Pair<Float, Float>?,
+        playResX: Float,
+        playResY: Float,
+    ): List<SubtitlePathOp> {
+        val originX = (origin?.first ?: 0f) * playResX
+        val originY = (origin?.second ?: 0f) * playResY
+        val ops = mutableListOf<SubtitlePathOp>()
+
+        fun nx(value: Float) = (value * scale + originX) / playResX
+        fun ny(value: Float) = (value * scale + originY) / playResY
+
+        var started = false
+        for ((cmd, nums) in tokenizeDrawing(raw)) {
+            when (cmd) {
+                'm', 'n' -> {
+                    var k = 0
+                    while (k + 1 < nums.size) {
+                        // ASS 的每个 m 子路径都是独立轮廓（填充时自动闭合）
+                        if (started) ops.add(SubtitlePathOp.Close)
+                        ops.add(SubtitlePathOp.MoveTo(nx(nums[k]), ny(nums[k + 1])))
+                        started = true
+                        k += 2
+                    }
+                }
+                'l' -> {
+                    var k = 0
+                    while (k + 1 < nums.size) {
+                        if (started) ops.add(SubtitlePathOp.LineTo(nx(nums[k]), ny(nums[k + 1])))
+                        k += 2
+                    }
+                }
+                'b' -> {
+                    var k = 0
+                    while (k + 5 < nums.size) {
+                        if (started) {
+                            ops.add(
+                                SubtitlePathOp.CubicTo(
+                                    nx(nums[k]), ny(nums[k + 1]),
+                                    nx(nums[k + 2]), ny(nums[k + 3]),
+                                    nx(nums[k + 4]), ny(nums[k + 5]),
+                                )
+                            )
+                        }
+                        k += 6
+                    }
+                }
+                's', 'p', 'c' -> {
+                    // B 样条类：近似为直线连到每组终点（形状保留、圆角丢失）
+                    var k = 0
+                    while (k + 5 < nums.size) {
+                        if (started) ops.add(SubtitlePathOp.LineTo(nx(nums[k + 4]), ny(nums[k + 5])))
+                        k += 6
+                    }
+                }
+            }
+        }
+        if (ops.isNotEmpty()) ops.add(SubtitlePathOp.Close)
+        return ops
+    }
+
+    /**
+     * 把绘制命令串切成「命令字母 → 其后的数字」序列。
+     *
+     * 数字之间可用空格/逗号分隔，也允许连写（`100-20.5`：`-` 会自然开启下一个数字）。
+     */
+    private fun tokenizeDrawing(raw: String): List<Pair<Char, List<Float>>> {
+        val result = mutableListOf<Pair<Char, List<Float>>>()
+        var cmd: Char? = null
+        val nums = mutableListOf<Float>()
+
+        fun commit() {
+            val c = cmd ?: return
+            result.add(c to nums.toList())
+            nums.clear()
+        }
+
+        var i = 0
+        while (i < raw.length) {
+            val ch = raw[i]
+            when {
+                ch.isLetter() -> {
+                    commit()
+                    cmd = ch.lowercaseChar()
+                    i++
+                }
+                ch.isDigit() || ch == '-' || ch == '+' || ch == '.' -> {
+                    val start = i
+                    if (ch == '-' || ch == '+') i++
+                    while (i < raw.length && (raw[i].isDigit() || raw[i] == '.')) i++
+                    raw.substring(start, i).toFloatOrNull()?.let { value ->
+                        if (cmd != null) nums.add(value)
+                    }
+                }
+                else -> i++ // 分隔符（空格 / 逗号 / 换行）
+            }
+        }
+        commit()
+        return result
     }
 
     private fun parseBool(value: Boolean?): Boolean? = value

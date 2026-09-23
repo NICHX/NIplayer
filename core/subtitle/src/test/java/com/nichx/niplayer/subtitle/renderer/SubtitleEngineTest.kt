@@ -1,9 +1,11 @@
 package com.nichx.niplayer.subtitle.renderer
 
+import com.nichx.niplayer.subtitle.format.FormatSRT
 import com.nichx.niplayer.subtitle.info.Caption
 import com.nichx.niplayer.subtitle.info.Style
 import com.nichx.niplayer.subtitle.info.Time
 import com.nichx.niplayer.subtitle.info.TimedTextObject
+import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -216,6 +218,78 @@ class SubtitleEngineTest {
     }
 
     @Test
+    fun `应用内嵌样式时使用文件自带颜色`() = runTest {
+        val style = Style("Default").apply { color = "ff0000ff" } // RRGGBBAA：不透明红
+        val engine = SubtitleEngine()
+        engine.setViewSize(1920f, 1080f)
+        engine.load(ttoOf(caption(1_000L, 5_000L, "Hello", style)), "test.ass")
+        engine.update(2_000L)
+
+        // 文件自带主色必须胜出（原实现颜色串格式错误 → 被丢弃 → 永远显示用户设置色）
+        assertEquals(SubtitleColor(1f, 0f, 0f, 1f), engine.renderables.value[0].stylePrimary)
+    }
+
+    @Test
+    fun `关闭内嵌样式时强制使用用户颜色`() = runTest {
+        val style = Style("Default").apply { color = "ff0000ff" }
+        val engine = SubtitleEngine()
+        engine.setViewSize(1920f, 1080f)
+        engine.updateStyleConfig(
+            SubtitleStyleConfig(
+                applyEmbeddedStyles = false,
+                primaryColor = SubtitleColor(0f, 1f, 0f, 1f),
+            ),
+        )
+        engine.load(ttoOf(caption(1_000L, 5_000L, "Hello", style)), "test.ass")
+        engine.update(2_000L)
+
+        assertEquals(SubtitleColor(0f, 1f, 0f, 1f), engine.renderables.value[0].stylePrimary)
+    }
+
+    @Test
+    fun `改字号立即生效`() = runTest {
+        val engine = SubtitleEngine()
+        engine.setViewSize(1920f, 1080f)
+        engine.load(ttoOf(caption(1_000L, 5_000L, "Hello")), "test.srt")
+        engine.update(2_000L)
+        val medium = engine.renderables.value[0].styleFontSize
+
+        // 用户在字幕样式面板改字号：必须立刻反映到渲染结果（原先字号只在引擎构造时读一次）
+        engine.updateStyleConfig(SubtitleStyleConfig(textSizeFactor = 0.1f))
+        val large = engine.renderables.value[0].styleFontSize
+
+        assertTrue("字号未随配置变化（$medium → $large）", large > medium)
+    }
+
+    @Test
+    fun `字号按文件声明的 PlayRes 缩放`() = runTest {
+        val style = Style("Default").apply { fontSize = "40" }
+        val tto = ttoOf(caption(1_000L, 5_000L, "Hello", style)).apply {
+            playResX = 1280f
+            playResY = 720f
+        }
+        val engine = SubtitleEngine()
+        engine.setViewSize(1920f, 1080f) // viewScale = min(1920/1280, 1080/720) = 1.5
+        engine.load(tto, "720p.ass")
+        engine.update(2_000L)
+
+        // 40（基于 PlayResY=720 的逻辑字号）× 1.5 = 60px；
+        // 若按硬编码的 288 折算会得到 150px（放大 2.5 倍，即"字体太大"）
+        assertEquals(60f, engine.renderables.value[0].styleFontSize, 0.001f)
+    }
+
+    @Test
+    fun `未声明 PlayRes 时按 ASS 默认 384x288 缩放`() = runTest {
+        val engine = SubtitleEngine()
+        engine.setViewSize(1920f, 1080f) // viewScale = min(5.0, 3.75) = 3.75
+        engine.load(ttoOf(caption(1_000L, 5_000L, "Hello")), "test.srt")
+        engine.update(2_000L)
+
+        // 无 Style 字号 → 默认字号 = textSizeFactor × 视口高度（与 PlayRes 取值无关）
+        assertEquals(0.0533f * 1080f, engine.renderables.value[0].styleFontSize, 0.5f)
+    }
+
+    @Test
     fun `暂停态装载字幕后立即渲染`() = runTest {
         val engine = SubtitleEngine()
         engine.setViewSize(1920f, 1080f)
@@ -233,7 +307,7 @@ class SubtitleEngineTest {
     }
 
     @Test
-    fun `装载重渲染按当前偏移反算播放位置`() = runTest {
+    fun `装载重渲染复用最近播放位置并叠加偏移`() = runTest {
         val engine = SubtitleEngine()
         engine.setViewSize(1920f, 1080f)
         engine.load(ttoOf(caption(1_000L, 5_000L, "Old")), "old.srt")
@@ -242,9 +316,38 @@ class SubtitleEngineTest {
 
         engine.load(ttoOf(caption(1_000L, 5_000L, "New")), "new.srt")
 
-        // 反算 positionMs = 2500 - 1000 = 1500，再叠加偏移仍是 effective 2500 → 命中区间
+        // 复用的位置是原始 positionMs = 1500，再叠加偏移仍是 effective 2500 → 命中区间
         assertEquals(1, engine.renderables.value.size)
         assertEquals("New", engine.renderables.value[0].spans[0].text)
+    }
+
+    @Test
+    fun `暂停态装载首条字幕后立即渲染`() = runTest {
+        val engine = SubtitleEngine()
+        engine.setViewSize(1920f, 1080f)
+
+        // 播放中轮询器已喂过位置，但此时还没有任何字幕 → update 早退，不写渲染缓存
+        engine.update(2_000L)
+
+        // 暂停后装载该视频的**第一条**字幕：必须立即渲染一帧，
+        // 不能等下一次位置更新（暂停时轮询器已停，永远不会再来）
+        engine.load(ttoOf(caption(1_000L, 5_000L, "First")), "first.srt")
+
+        assertEquals(1, engine.renderables.value.size)
+        assertEquals("First", engine.renderables.value[0].spans[0].text)
+    }
+
+    @Test
+    fun `视图尺寸就绪后补渲染已装载字幕`() = runTest {
+        val engine = SubtitleEngine()
+        // 尺寸未设置时装载 + 喂位置：update 因 viewHeightPx<=0 早退，字幕无法渲染
+        engine.load(ttoOf(caption(1_000L, 5_000L, "Hello")), "test.ass")
+        engine.update(2_000L)
+        assertTrue(engine.renderables.value.isEmpty())
+
+        // 尺寸到齐应当自己补一帧，不需要上层再喂一次位置（暂停态不会再喂）
+        engine.setViewSize(1920f, 1080f)
+        assertEquals(1, engine.renderables.value.size)
     }
 
     @Test
@@ -267,5 +370,121 @@ class SubtitleEngineTest {
         engine.setViewSize(1920f, 1080f)
         engine.load(ttoOf(caption(1_000L, 5_000L, "Hello")), "subs.ass")
         assertEquals("subs.ass", engine.subtitleName.value)
+    }
+
+    /**
+     * 端到端回归：真实 .srt 文件 → [com.nichx.niplayer.subtitle.format.FormatSRT] → 引擎。
+     *
+     * 本用例存在的理由：解析器写的是 [Caption.content]，而渲染链路读的是 [Caption.rawContent]。
+     * 上面的用例都手工设了 rawContent，FormatSRTTest 又只断言 content —— 两者之间这段
+     * 「格式写出的字段与渲染读入的字段是否对得上」无人覆盖，于是 SRT 字幕全部静默渲染为空
+     * （captions 非空、无异常、无提示，屏幕上什么都没有）。
+     */
+    @Test
+    fun `SRT 文件解析后经引擎渲染出文本`() = runTest {
+        val file = File.createTempFile("subtitle_test", ".srt")
+        file.writeText(
+            """
+            1
+            00:00:01,000 --> 00:00:05,000
+            Hello World
+
+            2
+            00:00:06,000 --> 00:00:08,000
+            第二行
+            """.trimIndent() + "\n\n",
+            Charsets.UTF_8,
+        )
+        try {
+            val engine = SubtitleEngine()
+            engine.setViewSize(1920f, 1080f)
+            engine.load(FormatSRT().parseFile(file), file.name)
+
+            engine.update(2_000L)
+            assertEquals(1, engine.renderables.value.size)
+            assertEquals("Hello World", engine.renderables.value[0].spans[0].text)
+
+            engine.update(7_000L)
+            assertEquals(1, engine.renderables.value.size)
+            assertEquals("第二行", engine.renderables.value[0].spans[0].text)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `纯矢量绘制行也能渲染`() = runTest {
+        val engine = SubtitleEngine()
+        engine.setViewSize(1920f, 1080f)
+        engine.load(ttoOf(caption(1_000L, 5_000L, "{\\p1}m 0 0 l 100 0 100 100")), "draw.ass")
+        engine.update(2_000L)
+
+        // 没有文本 span 的纯绘制行必须照常进入渲染列表（原先以 spans 非空为条件会被丢弃）
+        val caption = engine.renderables.value.single()
+        assertTrue(caption.spans.isEmpty())
+        assertEquals(1, caption.drawings.size)
+        val move = caption.drawings[0].path.first() as SubtitlePathOp.MoveTo
+        assertEquals(0f, move.x, 0.001f)
+    }
+
+    @Test
+    fun `clip 传递到渲染数据`() = runTest {
+        val engine = SubtitleEngine()
+        engine.setViewSize(1920f, 1080f)
+        engine.load(ttoOf(caption(1_000L, 5_000L, "{\\clip(192,144,384,288)}clipped")), "clip.ass")
+        engine.update(2_000L)
+
+        val clip = engine.renderables.value.single().clip
+        assertTrue("clip 应传递到渲染层：$clip", clip is SubtitleClip.Rect)
+        val rect = (clip ?: error("clip 应传递到渲染层")) as SubtitleClip.Rect
+        assertEquals(0.5f, rect.left, 0.001f)
+    }
+
+    @Test
+    fun `SRT 的斜体标记渲染为斜体 span`() = runTest {
+        val file = File.createTempFile("subtitle_test", ".srt")
+        file.writeText(
+            "1\n00:00:01,000 --> 00:00:05,000\n<i>Hello</i>\n\n",
+            Charsets.UTF_8,
+        )
+        try {
+            val engine = SubtitleEngine()
+            engine.setViewSize(1920f, 1080f)
+            engine.load(FormatSRT().parseFile(file), file.name)
+            engine.update(2_000L)
+
+            val spans = engine.renderables.value[0].spans
+            assertEquals(1, spans.size)
+            assertEquals("Hello", spans[0].text)
+            assertEquals(true, spans[0].italic)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `SRT 多行文本解析为多行 span`() = runTest {
+        val file = File.createTempFile("subtitle_test", ".srt")
+        file.writeText(
+            """
+            1
+            00:00:01,000 --> 00:00:05,000
+            Line one
+            Line two
+            """.trimIndent() + "\n\n",
+            Charsets.UTF_8,
+        )
+        try {
+            val engine = SubtitleEngine()
+            engine.setViewSize(1920f, 1080f)
+            engine.load(FormatSRT().parseFile(file), file.name)
+
+            engine.update(2_000L)
+            // 两个文本 span + 一个换行 span：渲染层据此拆行，不能把 <br /> 当字面文本画出来
+            val texts = engine.renderables.value[0].spans.map { it.text }
+            assertEquals(listOf("Line one", "\n", "Line two"), texts)
+        } finally {
+            file.delete()
+        }
     }
 }

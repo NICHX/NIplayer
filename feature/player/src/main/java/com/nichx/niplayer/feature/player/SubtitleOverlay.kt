@@ -13,8 +13,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -30,16 +36,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.subtitle.renderer.RenderableCaption
 import com.nichx.niplayer.subtitle.renderer.StyledSpan
 import com.nichx.niplayer.subtitle.renderer.SubtitleAlign
+import com.nichx.niplayer.subtitle.renderer.SubtitleClip
 import com.nichx.niplayer.subtitle.renderer.SubtitleColor
 import com.nichx.niplayer.subtitle.renderer.SubtitleEngine
+import com.nichx.niplayer.subtitle.renderer.SubtitlePathOp
 
 /**
  * 外挂字幕渲染层。
@@ -100,6 +108,8 @@ fun SubtitleOverlay(
     val settingsCombinedVersion = settingsVersion + styleVersion
     val bottomPaddingDp = remember(settingsCombinedVersion) { SubtitleSettings.bottomPaddingDp.dp }
     val fontFamily = remember(settingsCombinedVersion) { resolveFontFamily(SubtitleSettings.fontFamilyKey) }
+    // 字重：作为文本的默认字重；ASS 里显式的 \b1 仍会强制加粗（文件意图优先）
+    val fontWeight = remember(settingsCombinedVersion) { resolveFontWeight(SubtitleSettings.fontWeightKey) }
 
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
@@ -126,23 +136,36 @@ fun SubtitleOverlay(
         // - fontFamily（用户改字体族触发失效）
         // - viewWidthPx（横竖屏切换触发失效）
         // - settingsCombinedVersion（m-11 修复：用户改 bottomPaddingDp/fontFamilyKey 后触发失效）
+        // - density（字号由 px 换算成 sp，系统字号缩放/密度变化后必须重新测量）
         // caption.spans 内含 per-span 字号/颜色/样式，spans 变化时 caption 实例变化，
         // 进而 renderables 列表实例变化，触发缓存失效。
-        val layoutCache = remember(renderables, fontFamily, viewWidthPx, settingsCombinedVersion) {
+        val layoutCache = remember(
+            renderables, fontFamily, fontWeight, viewWidthPx, settingsCombinedVersion, density,
+        ) {
             HashMap<RenderableCaption, List<TextLayoutResult>>(renderables.size).also { map ->
                 val maxConstraintWidth = (viewWidthPx * 0.9f).toInt().coerceAtLeast(1)
                 for (caption in renderables) {
-                    if (caption.spans.isEmpty()) continue
+                    if (caption.isEmpty) continue
                     val lines = splitIntoLines(caption.spans)
                     if (lines.isEmpty()) continue
                     val baseFontSize = caption.styleFontSize.coerceAtLeast(12f)
                     val layouts = lines.map { lineSpans ->
-                        val annotated = buildAnnotatedString(caption, lineSpans, baseFontSize, fontFamily)
+                        val annotated = buildAnnotatedString(
+                            caption = caption,
+                            lineSpans = lineSpans,
+                            baseFontSizePx = baseFontSize,
+                            fontFamily = fontFamily,
+                            fontWeight = fontWeight,
+                            density = density,
+                        )
                         val style = TextStyle(
-                            fontSize = baseFontSize.sp,
+                            // 引擎给出的字号是**物理像素**（按视图高度比例算出），必须换算成 sp 再用 ——
+                            // 直接把 px 当 sp 会让 Compose 渲染时再乘一次 density*fontScale，
+                            // 在 3x 屏上字号放大 3 倍（这是「外挂字幕字体太大」的根因）。
+                            fontSize = with(density) { baseFontSize.toSp() },
                             fontFamily = fontFamily,
                             fontStyle = if (lineSpans.any { it.italic == true }) FontStyle.Italic else FontStyle.Normal,
-                            fontWeight = if (lineSpans.any { it.bold == true }) FontWeight.Bold else FontWeight.Normal,
+                            fontWeight = if (lineSpans.any { it.bold == true }) FontWeight.Bold else fontWeight,
                         )
                         measurer.measure(
                             text = annotated,
@@ -160,10 +183,9 @@ fun SubtitleOverlay(
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             for (caption in renderables) {
-                val lineLayouts = layoutCache[caption] ?: continue
-                drawCaptionWithLayouts(
+                drawCaption(
                     caption = caption,
-                    lineLayouts = lineLayouts,
+                    lineLayouts = layoutCache[caption].orEmpty(),
                     canvasWidth = size.width,
                     canvasHeight = size.height,
                     bottomPaddingPx = bottomPaddingDp.toPx(),
@@ -186,24 +208,40 @@ private fun resolveFontFamily(key: String): FontFamily = when (key) {
 }
 
 /**
- * 绘制单条字幕（含边框、阴影、文本、旋转）。
+ * 将 [SubtitleSettings.fontWeightKey] 解析为 Compose [FontWeight]。
+ *
+ * 不识别的 key 回退到 [FontWeight.Normal]。系统字体族会就近选择可用字重，
+ * 因此即便所选字重在该族下不存在，也不会渲染失败（只会退化成最接近的一档）。
+ */
+private fun resolveFontWeight(key: String): FontWeight = when (key) {
+    SubtitleSettings.FONT_WEIGHT_KEY_LIGHT -> FontWeight.Light
+    SubtitleSettings.FONT_WEIGHT_KEY_MEDIUM -> FontWeight.Medium
+    SubtitleSettings.FONT_WEIGHT_KEY_BOLD -> FontWeight.Bold
+    else -> FontWeight.Normal
+}
+
+/**
+ * 绘制单条字幕（矢量绘制 `\p`、文本、边框、阴影、旋转、`\clip` 裁剪）。
  *
  * M-19 修复：文本测量已移至 Composable 层的 [layoutCache] 中，本函数仅负责绘制，
  * 接收预计算好的 [lineLayouts]，避免每帧重复 measure。
+ *
+ * [lineLayouts] 为空是正常情形：一行可能只包含矢量绘制（`{\p1}m ...`），不含文本。
  */
-private fun DrawScope.drawCaptionWithLayouts(
+private fun DrawScope.drawCaption(
     caption: RenderableCaption,
     lineLayouts: List<TextLayoutResult>,
     canvasWidth: Float,
     canvasHeight: Float,
     bottomPaddingPx: Float,
 ) {
-    if (caption.spans.isEmpty() || lineLayouts.isEmpty()) return
+    if (caption.isEmpty || (lineLayouts.isEmpty() && caption.drawings.isEmpty())) return
 
+    val hasText = lineLayouts.isNotEmpty()
     val totalHeight = lineLayouts.fold(0f) { acc, layout -> acc + layout.size.height }
-    val maxWidth = lineLayouts.maxOf { it.size.width.toFloat() }
+    val maxWidth = lineLayouts.maxOfOrNull { it.size.width.toFloat() } ?: 0f
 
-    // 4. 计算绘制起点（x, y）
+    // 文本绘制起点（仅文本用；矢量绘制自带绝对坐标）
     val (startX, startY) = computePosition(
         caption = caption,
         canvasWidth = canvasWidth,
@@ -229,6 +267,20 @@ private fun DrawScope.drawCaptionWithLayouts(
     )
 
     val drawBlock: DrawScope.() -> Unit = {
+        // 矢量绘制（\p1）：先描边后填充（描边宽度取 2×：Stroke 以路径为中心，
+        // 外扩的一半 ≈ ASS \bord 的外描边），层次与文本的「描边在下」一致
+        for (drawing in caption.drawings) {
+            drawSubtitlePath(
+                ops = drawing.path,
+                canvasWidth = canvasWidth,
+                canvasHeight = canvasHeight,
+                fill = colorFromSubtitle(drawing.primary, SubtitleColor.WHITE),
+                outline = colorFromSubtitle(drawing.outline, SubtitleColor.BLACK),
+                outlineWidth = drawing.outlineWidth,
+                alpha = caption.alpha,
+            )
+        }
+
         var currentY = startY
         for (layout in lineLayouts) {
             val lineWidth = layout.size.width.toFloat()
@@ -291,12 +343,103 @@ private fun DrawScope.drawCaptionWithLayouts(
         }
     }
 
-    if (rotationDegrees != 0f) {
-        rotate(degrees = rotationDegrees, pivot = Offset(centerX, centerY), block = drawBlock)
-    } else {
-        drawBlock()
+    // \clip / \iclip：先裁剪（裁剪窗口固定在画面上），再整体旋转
+    withSubtitleClip(caption.clip, caption.clipInverted, canvasWidth, canvasHeight) {
+        if (rotationDegrees != 0f) {
+            // 纯矢量绘制行没有文本包围盒，用 \pos 锚点（缺省为画面中心）作旋转中心
+            val pivot = if (hasText) {
+                Offset(centerX, centerY)
+            } else {
+                Offset(
+                    caption.position?.first?.times(canvasWidth) ?: (canvasWidth / 2f),
+                    caption.position?.second?.times(canvasHeight) ?: (canvasHeight / 2f),
+                )
+            }
+            rotate(degrees = rotationDegrees, pivot = pivot, block = drawBlock)
+        } else {
+            drawBlock()
+        }
     }
 }
+
+/** 在 `\clip` / `\iclip` 区域内执行 [block]；无裁剪时直接执行。 */
+private fun DrawScope.withSubtitleClip(
+    clip: SubtitleClip?,
+    inverted: Boolean,
+    canvasWidth: Float,
+    canvasHeight: Float,
+    block: DrawScope.() -> Unit,
+) {
+    when (clip) {
+        null -> block()
+        is SubtitleClip.Rect -> {
+            val left = clip.left * canvasWidth
+            val top = clip.top * canvasHeight
+            val right = clip.right * canvasWidth
+            val bottom = clip.bottom * canvasHeight
+            if (inverted) {
+                // Difference：当前裁剪区减去该矩形 = 只保留矩形之外
+                clipPath(buildRectPath(left, top, right, bottom), ClipOp.Difference) { block() }
+            } else {
+                clipRect(left = left, top = top, right = right, bottom = bottom) { block() }
+            }
+        }
+        is SubtitleClip.Vector -> {
+            val path = buildPath(clip.path, canvasWidth, canvasHeight)
+            clipPath(path, if (inverted) ClipOp.Difference else ClipOp.Intersect) { block() }
+        }
+    }
+}
+
+/** 绘制一条矢量路径：先描边（宽度 2×，模拟 ASS 外描边）后填充。 */
+private fun DrawScope.drawSubtitlePath(
+    ops: List<SubtitlePathOp>,
+    canvasWidth: Float,
+    canvasHeight: Float,
+    fill: Color,
+    outline: Color,
+    outlineWidth: Float,
+    alpha: Float,
+) {
+    if (ops.isEmpty()) return
+    val path = buildPath(ops, canvasWidth, canvasHeight)
+    if (outlineWidth > 0f && outline.alpha > 0f) {
+        drawPath(
+            path = path,
+            color = outline.copy(alpha = outline.alpha * alpha),
+            style = Stroke(width = outlineWidth * 2f),
+        )
+    }
+    if (fill.alpha > 0f) {
+        drawPath(path = path, color = fill.copy(alpha = fill.alpha * alpha))
+    }
+}
+
+/** 归一化路径指令 → Compose [Path]（坐标乘画布尺寸）。 */
+private fun buildPath(
+    ops: List<SubtitlePathOp>,
+    canvasWidth: Float,
+    canvasHeight: Float,
+): Path {
+    val path = Path()
+    for (op in ops) {
+        when (op) {
+            is SubtitlePathOp.MoveTo -> path.moveTo(op.x * canvasWidth, op.y * canvasHeight)
+            is SubtitlePathOp.LineTo -> path.lineTo(op.x * canvasWidth, op.y * canvasHeight)
+            is SubtitlePathOp.CubicTo -> path.cubicTo(
+                op.c1x * canvasWidth, op.c1y * canvasHeight,
+                op.c2x * canvasWidth, op.c2y * canvasHeight,
+                op.x * canvasWidth, op.y * canvasHeight,
+            )
+            SubtitlePathOp.Close -> path.close()
+        }
+    }
+    return path
+}
+
+/** 矩形 → [Path]（用于 `\iclip` 的反向裁剪）。 */
+private fun buildRectPath(left: Float, top: Float, right: Float, bottom: Float): Path =
+    Path().apply { addRect(Rect(left, top, right, bottom)) }
 
 /**
  * 计算 \frz 旋转的锚点坐标（M-16 修复）。
@@ -409,16 +552,20 @@ private fun splitIntoLines(spans: List<StyledSpan>): List<List<StyledSpan>> {
 private fun buildAnnotatedString(
     caption: RenderableCaption,
     lineSpans: List<StyledSpan>,
-    baseFontSize: Float,
+    baseFontSizePx: Float,
     fontFamily: FontFamily,
+    fontWeight: FontWeight,
+    density: Density,
 ): AnnotatedString = buildAnnotatedString {
     for (span in lineSpans) {
         val spanStyle = SpanStyle(
             color = colorFromSubtitle(span.primaryColor ?: caption.stylePrimary, SubtitleColor.WHITE),
-            fontSize = (span.fontSize ?: baseFontSize).sp,
+            // 同上：per-span 字号（\fs 已按视口缩放）也是物理像素，需换算成 sp
+            fontSize = with(density) { (span.fontSize ?: baseFontSizePx).toSp() },
             fontFamily = fontFamily,
             fontStyle = if (span.italic == true) FontStyle.Italic else FontStyle.Normal,
-            fontWeight = if (span.bold == true) FontWeight.Bold else FontWeight.Normal,
+            // 用户设置的字重是默认值；\b1 仍强制加粗
+            fontWeight = if (span.bold == true) FontWeight.Bold else fontWeight,
         )
         withStyle(spanStyle) {
             append(span.text)

@@ -50,15 +50,37 @@ class StyleTest {
 
     @Test
     fun `decimalCodedAABBGGRR 转换`() {
-        // 0x000000FF = AA=00 BB=00 GG=00 RR=FF → RRGGBBAA = ff000000
-        assertEquals("ff000000", Style.getRGBValue("decimalCodedAABBGGRR", "255"))
+        // 0x000000FF = AA=00 BB=00 GG=00 RR=FF，AA=00 在 ASS 里表示**不透明**
+        // → RRGGBBAA = ff0000ff（原实现把 AA 原样搬到末尾，得到 ff000000 = 全透明）
+        assertEquals("ff0000ff", Style.getRGBValue("decimalCodedAABBGGRR", "255"))
     }
 
     @Test
     fun `ampH AABBGGRR 转换`() {
-        // 注意：当前实现 append(value,6,7) 仅截取单字符，输出 5 位 RRGG+B+AA
-        // 此处锁定现有行为（上游字幕库历史实现），后续如需修正为 RRGGBBAA 需同步更新
-        assertEquals("5631F", Style.getRGBValue("&HAABBGGRR", "&HFF123456"))
+        // AA=00 不透明，BB=12 GG=34 RR=56 → RRGGBBAA = 563412ff
+        assertEquals("563412ff", Style.getRGBValue("&HAABBGGRR", "&H00123456"))
+        // AA=ff 表示全透明 → 输出 alpha 取反为 00
+        assertEquals("56341200", Style.getRGBValue("&HAABBGGRR", "&Hff123456"))
+        // 省略 AA（6 位十六进制）时按 00 补 → 不透明
+        assertEquals("563412ff", Style.getRGBValue("&HAABBGGRR", "&H123456"))
+        // 最常见的默认主色：不透明白，绝不能被解析成透明（否则字幕直接看不见）
+        assertEquals("ffffffff", Style.getRGBValue("&HAABBGGRR", "&H00FFFFFF"))
+        // 消费方（parseStyleColor）只接受 6/8 位：输出长度必须为 8
+        assertEquals(8, Style.getRGBValue("&HAABBGGRR", "&H00123456")!!.length)
+        // 带尾随 & 与大小写前缀（&h）的写法等价
+        assertEquals("563412ff", Style.getRGBValue("&HAABBGGRR", "&h00123456&"))
+    }
+
+    @Test
+    fun `ampH BBGGRR 转换（SSA）`() {
+        // BB=FF GG=80 RR=40 → RRGGBBAA = 4080ffff（原实现单字符切片会算错 G 通道）
+        assertEquals("4080ffff", Style.getRGBValue("&HBBGGRR", "&HFF8040"))
+    }
+
+    @Test
+    fun `颜色名称 cyan 与 aqua 同为 8 字符`() {
+        assertEquals("00ffffff", Style.getRGBValue("name", "cyan"))
+        assertEquals("00ffffff", Style.getRGBValue("name", "aqua"))
     }
 
     @Test
@@ -79,6 +101,7 @@ class StyleTest {
         source.font = "Arial"
         source.fontSize = "28"
         source.color = "ffffff00"
+        source.outlineColor = "000000ff"
         source.backgroundColor = "000000ff"
         source.textAlign = "top-center"
         source.italic = true
@@ -89,6 +112,7 @@ class StyleTest {
         assertEquals("Arial", copy.font)
         assertEquals("28", copy.fontSize)
         assertEquals("ffffff00", copy.color)
+        assertEquals("000000ff", copy.outlineColor)
         assertEquals("000000ff", copy.backgroundColor)
         assertEquals("top-center", copy.textAlign)
         assertEquals(true, copy.italic)

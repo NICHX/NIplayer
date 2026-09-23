@@ -24,6 +24,16 @@ object PlayerSettings {
     private const val KEY_AUDIO_PLAY_MODE_INDEX = "player_audio_play_mode_index"
     private const val KEY_AUDIO_SPEED_INDEX = "player_audio_speed_index"
     private const val KEY_ORIENTATION_MODE = "player_orientation_mode"
+    private const val KEY_SCALE_MODE_INDEX = "player_scale_mode_index"
+
+    /** 缩放模式索引：适应（Contain）。 */
+    const val SCALE_MODE_CONTAIN = 0
+
+    /** 缩放模式索引：填满（Cover）。 */
+    const val SCALE_MODE_COVER = 1
+
+    /** 缩放模式索引：拉伸（Fill）。 */
+    const val SCALE_MODE_FILL = 2
 
     /** 允许的长按倍速候选值（UI 选择用）。 */
     val LONG_PRESS_SPEED_OPTIONS: List<Float> = listOf(1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
@@ -33,10 +43,15 @@ object PlayerSettings {
         get() = mmkv.decodeFloat(KEY_LONG_PRESS_SPEED, 2.0f)
         set(value) { mmkv.encode(KEY_LONG_PRESS_SPEED, value) }
 
-    /** 智能黑边检测开关。默认 false。仅在 Fit 模式下生效。 */
+    /** 智能黑边检测开关。默认 false。 */
     var autoDetectBlackBars: Boolean
         get() = mmkv.decodeBool(KEY_AUTO_DETECT_BLACK_BARS, false)
         set(value) { mmkv.encode(KEY_AUTO_DETECT_BLACK_BARS, value) }
+
+    /** 缩放模式索引（[SCALE_MODE_CONTAIN] / [SCALE_MODE_COVER] / [SCALE_MODE_FILL]）。默认适应。 */
+    var scaleModeIndex: Int
+        get() = mmkv.decodeInt(KEY_SCALE_MODE_INDEX, SCALE_MODE_CONTAIN)
+        set(value) { mmkv.encode(KEY_SCALE_MODE_INDEX, value.coerceIn(SCALE_MODE_CONTAIN, SCALE_MODE_FILL)) }
 
     /** 上次退出时的常规倍速索引（SPEED_VALUES 索引），默认 1（1.0x）。 */
     var lastSpeedIndex: Int
@@ -108,38 +123,48 @@ object PlayerSettings {
         get() = mmkv.decodeInt(KEY_ORIENTATION_MODE, 0)
         set(value) { mmkv.encode(KEY_ORIENTATION_MODE, value) }
 
-    // region 黑边检测结果缓存
+    // region 去黑边判决缓存
 
     private const val KEY_BLACK_BAR_CACHE_PREFIX = "blackbar_cache_"
 
-    /**
-     * 加载指定视频的黑边检测缓存。
-     *
-     * BUG-5 修复：缓存归一化比例（width/height，Float）而非像素值。
-     * 原实现缓存 PixelCopy bitmap 的像素宽高，但 bitmap 尺寸 = SurfaceView 尺寸，
-     * 受屏幕分辨率、横竖屏、沉浸式 bar 等影响，跨设备/横竖屏切换时缓存值不适用。
-     * 比例是视频固有属性，与 surface 像素尺寸无关，跨场景稳定。
-     *
-     * @return 有效画面的宽高比（width/height），> 0；无缓存返回 null
-     */
-    fun loadBlackBarCache(uniqueKey: String): Float? {
-        return mmkv.decodeFloat(KEY_BLACK_BAR_CACHE_PREFIX + uniqueKey, 0f)
-            .takeIf { it > 0f }
-    }
+    /** 判决未知：无缓存（或已清除）。 */
+    const val BLACK_BAR_VERDICT_UNKNOWN = 0f
 
     /**
-     * 保存黑边检测结果到缓存。
-     *
-     * @param aspectRatio 有效画面宽高比（width/height），必须 > 0
+     * 判决「不适用」：该视频是可变画幅（既出现满幅帧、又出现带黑边帧），
+     * 整片禁用去黑边，避免把 IMAX 扩展画幅段落的真实画面裁掉。
      */
-    fun saveBlackBarCache(uniqueKey: String, aspectRatio: Float) {
-        if (aspectRatio > 0f) {
-            mmkv.encode(KEY_BLACK_BAR_CACHE_PREFIX + uniqueKey, aspectRatio)
+    const val BLACK_BAR_VERDICT_NOT_APPLICABLE = -1f
+
+    /**
+     * 读取指定视频的去黑边判决。
+     *
+     * 只存一个 Float：`0` = 无缓存，负数 = 不适用，正数 = 检测到的内容宽高比。
+     * 内容比例是视频固有属性，与 surface 像素尺寸无关，跨设备/横竖屏稳定
+     * （BUG-5：原实现缓存像素宽高，随屏幕分辨率与横竖屏变化而失效）。
+     *
+     * BUG-51：判决一旦为「不适用」就不再回头——结果单调，不会在裁剪比例与
+     * 原始比例之间来回跳变。
+     *
+     * @return [BLACK_BAR_VERDICT_UNKNOWN] / [BLACK_BAR_VERDICT_NOT_APPLICABLE] / 内容宽高比(>0)
+     */
+    fun loadBlackBarVerdict(uniqueKey: String): Float =
+        mmkv.decodeFloat(KEY_BLACK_BAR_CACHE_PREFIX + uniqueKey, BLACK_BAR_VERDICT_UNKNOWN)
+
+    /**
+     * 保存去黑边判决。
+     *
+     * @param verdict 内容宽高比（> 0）或 [BLACK_BAR_VERDICT_NOT_APPLICABLE]；
+     *   其他值（含 [BLACK_BAR_VERDICT_UNKNOWN]）不写入
+     */
+    fun saveBlackBarVerdict(uniqueKey: String, verdict: Float) {
+        if (verdict > 0f || verdict == BLACK_BAR_VERDICT_NOT_APPLICABLE) {
+            mmkv.encode(KEY_BLACK_BAR_CACHE_PREFIX + uniqueKey, verdict)
         }
     }
 
-    /** 清除指定视频的黑边检测缓存。 */
-    fun clearBlackBarCache(uniqueKey: String) {
+    /** 清除指定视频的去黑边判决缓存。 */
+    fun clearBlackBarVerdict(uniqueKey: String) {
         mmkv.removeValueForKey(KEY_BLACK_BAR_CACHE_PREFIX + uniqueKey)
     }
 
