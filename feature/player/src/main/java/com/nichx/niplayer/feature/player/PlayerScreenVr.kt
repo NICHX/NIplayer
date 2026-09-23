@@ -47,7 +47,7 @@ internal val VR_OVERLAY_TOP_DP: Dp = 88.dp
 /**
  * VR 模式控制条（顶部玻璃胶囊）。
  *
- * 在 VR 环视模式下提供三个操作：循环切换画面格式（左右/上下 × 180°/360°）、画面归中、
+ * 在 VR 环视模式下提供三个操作：循环切换画面格式（左右/上下/整幅 × 180°/360°）、画面归中、
  * 退出 VR。随控制栏显隐一起淡入淡出。
  *
  * 位置固定为距顶部 [VR_OVERLAY_TOP_DP] 处并向下展开，避免沉浸式全屏下与状态栏 / 挖孔
@@ -167,7 +167,9 @@ internal fun VrControlOverlay(
                     stringResource(R.string.player_vr_sensitivity_hint) + "+")
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "${stringResource(R.string.player_vr_zoom)} ${String.format(Locale.ROOT, "%.1f", zoom)}×",
+                    text = "${stringResource(R.string.player_vr_zoom)} ${
+                        String.format(Locale.ROOT, "%.1f", zoom)
+                    }×",
                     color = Color.White,
                     fontSize = 12.sp,
                 )

@@ -236,6 +236,7 @@
     <string name="player_vr_format_hint">Frame layout</string>
     <string name="player_vr_format_sbs_pano">Side-by-side · %1$d°</string>
     <string name="player_vr_format_ou_pano">Over-under · %1$d°</string>
+    <string name="player_vr_format_full_pano">Mono · %1$d°</string>
     <string name="player_vr_fov">FOV</string>
     <string name="player_vr_fov_hint">Field of view</string>
     <string name="player_vr_sensitivity">Sensitivity</string>
@@ -246,4 +247,5 @@
     <string name="player_vr_view_lock">Lock view</string>
     <string name="player_vr_entered">VR look-around: ON</string>
     <string name="player_vr_exited">VR look-around: OFF</string>
+    <string name="player_vr_pano_only_hint">VR look-around works with panoramic sources (VR180 / VR360); drag to look around</string>
 </resources>
