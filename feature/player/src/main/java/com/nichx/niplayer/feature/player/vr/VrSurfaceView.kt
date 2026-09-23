@@ -20,13 +20,15 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 /**
- * 布局格式索引（已解析，用于采样半幅）。
- * - [SBS] 左右格式，取左半幅
- * - [OU] 上下格式，取上半幅
+ * 布局格式索引（已解析，决定采样范围）。
+ * - [SBS] 左右打包，取左半幅
+ * - [OU] 上下打包，取上半幅
+ * - [FULL] 整幅（mono），整帧即一幅全景
  */
 enum class VrResolvedLayout(val shaderIndex: Int) {
     SBS(0),
     OU(1),
+    FULL(2),
 }
 
 /**
@@ -38,14 +40,17 @@ enum class VrResolvedLayout(val shaderIndex: Int) {
  *   由 GL 线程以 `samplerExternalOES` 采样；FFmpeg 音频软解链路不受影响。
  * - 球面网格在 GL 线程 CPU 生成一次（仅位置，UV 在片元里由球面方向反算），相机置于球心，
  *   view 矩阵来自陀螺仪（`SensorManager.getRotationMatrixFromVector` +
- *   `remapCoordinateSystem` 矫正横屏 `Display.rotation`），projection 由 FOV/视距决定。
- * - [recenter] 通过 volatile 标志在 GL 线程消费，把当前朝向置为视野正前方。
+ *   `remapCoordinateSystem` 矫正横屏 `Display.rotation`），projection 由 FOV 决定。
+ * - 采样范围由 [VrResolvedLayout] 决定：左右/上下打包取其中一只眼，整幅（mono 全景）取全帧。
+ * - 除陀螺仪外还支持**手指拖拽环视**（[dragBy]）—— 无陀螺仪设备、平板、躺卧观看时的唯一手段；
+ *   无传感器数据时仍照常构图，不会退化成全黑。
+ * - [recenter] 通过 volatile 标志在 GL 线程消费：把当前朝向置为视野正前方，并清掉拖拽偏移。
  * - [VrSettings.invertYaw] 在片元里反转经度（镜像水平转向）。
  *
  * 线程铁律：主线程只写 volatile 标量 / 排队，绝不触碰 GL / SurfaceTexture / EGL，
  * 从根上规避旧版"主线程 `setDefaultBufferSize` 与 GL 线程 `updateTexImage` 争 BufferQueue 锁"导致的 ANR。
  */
-class VrSurfaceView @JvmOverloads constructor(
+class VrSurfaceView(
     context: Context,
     @androidx.annotation.MainThread private val player: NxPlayer,
 ) : GLSurfaceView(context), SensorEventListener {
@@ -125,7 +130,7 @@ class VrSurfaceView @JvmOverloads constructor(
         renderer.setGyroSensitivity(sensitivity)
     }
 
-    /** 视距（Zoom）倍率，MIN_ZOOM~MAX_ZOOM。>1 推近，<1 拉远。由外部（Compose）调用。 */
+    /** 视距（Zoom）倍率，[VrSettings.MIN_ZOOM]~[VrSettings.MAX_ZOOM]。>1 推近，<1 拉远。 */
     @JvmName("updateZoom")
     fun setZoom(zoom: Float) {
         renderer.setZoom(zoom)
@@ -133,17 +138,21 @@ class VrSurfaceView @JvmOverloads constructor(
 
     /** 把当前朝向置为视野正前方（仅置标志，GL 线程消费，保持主线程不碰 GL）。 */
     fun recenter() {
+        // 同时清掉手指拖拽造成的视角偏移，让「归中」回到设备正前方
+        renderer.resetDrag()
         renderer.recenter()
     }
 
     /** 轻点（未位移）回调，用于唤出 VR 控制条。由 PlayerScreen 注入。 */
     var onTap: (() -> Unit)? = null
 
-    // 原生触摸：轻点（无位移）→ 唤出控制条。仅此一路处理触摸，VR 模式下外层 Compose 手势已屏蔽。
+    // 原生触摸：轻点（无位移）唤出控制条；拖动环视 —— 无陀螺仪的设备、平板、躺卧观看时
+    // 只能靠它转视角。VR 模式下外层 Compose 手势层已被屏蔽，这里是唯一的触摸入口。
     private var touchDownX = 0f
     private var touchDownY = 0f
     private var touchDownTime = 0L
-    private var touchMoved = false
+    private var dragStarted = false
+    private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
 
     init {
         setOnTouchListener { _, event ->
@@ -152,27 +161,29 @@ class VrSurfaceView @JvmOverloads constructor(
                     touchDownX = event.x
                     touchDownY = event.y
                     touchDownTime = event.eventTime
-                    touchMoved = false
+                    dragStarted = false
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - touchDownX
                     val dy = event.y - touchDownY
                     touchDownX = event.x
                     touchDownY = event.y
-                    if (dx * dx + dy * dy > 1f) {
-                        touchMoved = true
+                    if (!dragStarted && dx * dx + dy * dy > touchSlop * touchSlop) {
+                        dragStarted = true
                     }
+                    // 超过 touchSlop 才认定为拖动；之后逐段把增量交给渲染器换算成角度
+                    if (dragStarted) renderer.dragBy(dx, dy)
                 }
                 android.view.MotionEvent.ACTION_UP -> {
-                    if (!touchMoved &&
-                        event.eventTime - touchDownTime < 300
+                    if (!dragStarted &&
+                        event.eventTime - touchDownTime < TAP_TIMEOUT_MS
                     ) {
                         onTap?.invoke()
                     }
-                    touchMoved = false
+                    dragStarted = false
                 }
                 android.view.MotionEvent.ACTION_CANCEL -> {
-                    touchMoved = false
+                    dragStarted = false
                 }
                 else -> return@setOnTouchListener false
             }
@@ -247,7 +258,7 @@ class VrSurfaceView @JvmOverloads constructor(
 
         // -- 视口 --
         private var viewportW = 1
-        private var viewportH = 1
+        @Volatile private var viewportH = 1
         private var aspect = 1f
 
         // -- 姿态（平滑中的 device→world 四元数 + 归中基准） --
@@ -256,10 +267,26 @@ class VrSurfaceView @JvmOverloads constructor(
         @Volatile private var targetRotVec: FloatArray? = null
         @Volatile private var recenterRequested = false
         private var firstPose = true // 首次有效传感器帧时自动归中，使进入 VR 时默认就面向设备当前朝向
-        private val lastMvp = FloatArray(16).apply {
-            Matrix.setIdentityM(this, 0)
-            setPerspective(this, 85f, 1f, 1f)
-        }
+
+        // -- 手指拖拽的视角偏移（弧度）：主线程累加，GL 线程每帧消费 --
+        @Volatile private var dragYaw = 0f
+        @Volatile private var dragPitch = 0f
+
+        // -- 每帧复用的矩阵/向量：原先 updateCamera 每帧新建 9 个 FloatArray，
+        //    60~120fps 下是持续的 GC 压力，改为固定复用。 --
+        private val mBase = FloatArray(9)
+        private val mRemap = FloatArray(9)
+        private val mTargetQuat = FloatArray(4)
+        private val mCurR = FloatArray(9)
+        private val mCurRT = FloatArray(9)
+        private val mRefR = FloatArray(9)
+        private val mView3 = FloatArray(9)
+        private val mViewDragged = FloatArray(9)
+        private val mDragR = FloatArray(9)
+        private val mDragX = FloatArray(9)
+        private val mDragY = FloatArray(9)
+        private val mView16 = FloatArray(16)
+        private val mProj16 = FloatArray(16)
 
         // -- 可调参数 --
         @Volatile private var fovDegrees: Float = 85f
@@ -295,6 +322,31 @@ class VrSurfaceView @JvmOverloads constructor(
         fun setZoom(zoom: Float) {
             // 视距可拉远（<1，视野变宽）也可推近（>1）
             zoomFactor = zoom.coerceIn(MIN_ZOOM, MAX_ZOOM)
+        }
+
+        /**
+         * 手指拖拽（主线程调用）：把像素位移换算成视角偏移并累加。
+         *
+         * 换算基准取「竖向拖满一屏 ≈ 转过一个垂直 FOV」，水平方向同样的每像素角度恰好等价，
+         * 因此两个方向手感一致。偏移由 GL 线程每帧预乘到 view 矩阵上。
+         *
+         * 方向约定为「抓取/平移」：手指右移把画面往右推 → 视角左转（与街景、YouTube 360 一致）。
+         * 实机手感若相反，把下面两行的符号对调即可。
+         */
+        @androidx.annotation.MainThread
+        fun dragBy(dxPx: Float, dyPx: Float) {
+            val perPx = Math.toRadians(fovDegrees.toDouble()).toFloat() /
+                viewportH.coerceAtLeast(1)
+            dragYaw += dxPx * perPx
+            dragPitch = (dragPitch + dyPx * perPx).coerceIn(-MAX_DRAG_PITCH, MAX_DRAG_PITCH)
+            requestRender()
+        }
+
+        /** 清除拖拽造成的视角偏移（「画面归中」时调用，回到设备正前方）。 */
+        @androidx.annotation.MainThread
+        fun resetDrag() {
+            dragYaw = 0f
+            dragPitch = 0f
         }
 
         @JvmName("rendererSetInvertYaw")
@@ -398,61 +450,113 @@ class VrSurfaceView @JvmOverloads constructor(
             return verts.toFloatArray()
         }
 
-        // -- 相机矩阵（球心、向 +z 看，经 view=refR*curR^T 做相对旋转与归中） --
+        // -- 相机矩阵（球心，view = dragR * refR * curR^T） --
 
-        /** 把当前 device→world 旋转向量（展示重映射后）作平滑并合成 mvp。在 GL 线程调用。 */
+        /**
+         * 合成 uMvp。GL 线程每帧调用；中间矩阵全部复用预分配字段，不再每帧分配。
+         *
+         * 注意：「无传感器数据」（无陀螺仪设备）与「视角锁定」都只跳过**姿态更新**，仍然照常
+         * 构图 —— 原实现这两条路径直接 return，uMvpBuf 会一直保持零矩阵：无陀螺仪设备进入 VR
+         * 就是纯黑，且拖拽也无法生效。
+         */
         private fun updateCamera() {
-            val rv = targetRotVec ?: return // 尚无传感器数据，沿用 lastMvp
-            // 视角锁定：跳过传感器姿态更新与归中，保持当前视角不变（画面固定）
-            if (viewLocked) return
-            val base = FloatArray(9)
+            updatePoseFromSensor()
+
+            // 相对旋转 view = refR * curR^T；归中（current==ref）时 view=identity → 前方 = 全景中心
+            quatToMatrix3(currentQuat, mCurR)
+            transpose3(mCurR, mCurRT)
+            quatToMatrix3(refQuat, mRefR)
+            mat3Mul(mRefR, mCurRT, mView3)
+
+            // 手指拖拽的视角偏移在**屏幕坐标系**里预乘：乘在 view 左侧等于在 view 空间里旋转世界，
+            // 因此左右/上下始终与屏幕对齐，不会因陀螺仪把视角转向别处而变成倾斜。
+            dragMatrix3(mDragR)
+            mat3Mul(mDragR, mView3, mViewDragged)
+
+            // 3x3 view 嵌入 4x4（列主序）
+            mView16[0] = mViewDragged[0]; mView16[1] = mViewDragged[1]; mView16[2] = mViewDragged[2]
+            mView16[4] = mViewDragged[3]; mView16[5] = mViewDragged[4]; mView16[6] = mViewDragged[5]
+            mView16[8] = mViewDragged[6]; mView16[9] = mViewDragged[7]; mView16[10] = mViewDragged[8]
+            mView16[3] = 0f; mView16[7] = 0f; mView16[11] = 0f
+            mView16[12] = 0f; mView16[13] = 0f; mView16[14] = 0f; mView16[15] = 1f
+
+            // 有效透视竖直 FOV（度）：视距 zoom<1 拉远（FOV 变大），>1 推近（FOV 变小）
+            val effFovDeg = (fovDegrees / zoomFactor).coerceIn(MIN_EFFECTIVE_FOV, MAX_EFFECTIVE_FOV)
+            Matrix.perspectiveM(mProj16, 0, effFovDeg, aspect, 0.1f, 10f)
+            Matrix.multiplyMM(uMvpBuf, 0, mProj16, 0, mView16, 0)
+        }
+
+        /**
+         * 消费最新传感器姿态：重映射 → 四元数 → slerp 平滑 → 归中。GL 线程调用。
+         *
+         * **视角锁定只停掉「跟随设备姿态」，不影响「画面归中」**。原实现把整段逻辑都跳过，
+         * 于是锁定时按「归中」毫无反应；而拖拽不看锁定标志、照旧能改视角 —— 用户把视角拖走后
+         * 就再也回不到前方。锁定时归中改为直接把姿态对齐到设备当前朝向（不做平滑）。
+         */
+        private fun updatePoseFromSensor() {
+            val rv = targetRotVec ?: return // 无 GAME_ROTATION_VECTOR 的设备：保持单位姿态
             // GAME_ROTATION_VECTOR 旋转向量 → 3x3 device→world（API 37 起返回 void，直接填 R）
-            SensorManager.getRotationMatrixFromVector(base, rv)
+            SensorManager.getRotationMatrixFromVector(mBase, rv)
 
             // 按横屏 Display.rotation 重映射，把"屏幕坐标系"对齐到陀螺仪设备系（方向修正核心）
-            val remap = FloatArray(9)
-            if (SensorManager.remapCoordinateSystem(base, remapXAxis, remapYAxis, remap)) {
-                System.arraycopy(remap, 0, base, 0, 9)
+            if (SensorManager.remapCoordinateSystem(mBase, remapXAxis, remapYAxis, mRemap)) {
+                System.arraycopy(mRemap, 0, mBase, 0, 9)
+            }
+            matToQuat(mBase, mTargetQuat)
+
+            if (viewLocked) {
+                // 锁定：不跟随设备姿态，但「首帧」与「用户按归中」仍须对齐到设备当前朝向
+                if (firstPose || recenterRequested) {
+                    System.arraycopy(mTargetQuat, 0, currentQuat, 0, 4)
+                    System.arraycopy(mTargetQuat, 0, refQuat, 0, 4)
+                    firstPose = false
+                    recenterRequested = false
+                }
+                return
             }
 
             // 3x3 → 四元数，做 slerp 平滑（对 device→world 姿态平滑，避免归一化漂移）
-            val targetQuat = FloatArray(4)
-            matToQuat(base, targetQuat)
-            slerp(currentQuat, targetQuat, gyroSensitivity)
+            slerp(currentQuat, mTargetQuat, gyroSensitivity)
 
             // recenter：以"原始设备朝向"(targetQuat) 为归中基准，而非平滑后的 currentQuat。
             // 首帧自动归中 → 进入即面向设备当前朝向；手动回中 → 立即将当前看的方向置为前方。
             if (firstPose) {
-                System.arraycopy(targetQuat, 0, refQuat, 0, 4)
+                System.arraycopy(mTargetQuat, 0, refQuat, 0, 4)
                 firstPose = false
             } else if (recenterRequested) {
-                System.arraycopy(targetQuat, 0, refQuat, 0, 4)
+                System.arraycopy(mTargetQuat, 0, refQuat, 0, 4)
                 recenterRequested = false
             }
-
-            // 相对旋转 view = refR * curR^T；归中（current==ref）时 view=identity → 前方=pano 中心
-            val curR = quatToMatrix3(currentQuat)
-            val curRT = transpose3(curR)
-            val refR = quatToMatrix3(refQuat)
-            val view3 = mat3Mul(refR, curRT)
-
-            // 3x3 view 嵌入 4x4（列主序），projection 由 FOV/视距决定
-            val view16 = FloatArray(16)
-            view16[0] = view3[0]; view16[1] = view3[1]; view16[2] = view3[2]; view16[3] = 0f
-            view16[4] = view3[3]; view16[5] = view3[4]; view16[6] = view3[5]; view16[7] = 0f
-            view16[8] = view3[6]; view16[9] = view3[7]; view16[10] = view3[8]; view16[11] = 0f
-            view16[12] = 0f; view16[13] = 0f; view16[14] = 0f; view16[15] = 1f
-
-            val proj16 = FloatArray(16)
-            // 有效透视竖直 FOV（度）：视距 zoom<1 拉远（FOV 变大），>1 推近（FOV 变小）
-            val effFovDeg = (fovDegrees / zoomFactor).coerceIn(5f, 165f)
-            Matrix.perspectiveM(proj16, 0, effFovDeg, aspect, 0.1f, 10f)
-
-            Matrix.multiplyMM(uMvpBuf, 0, proj16, 0, view16, 0)
         }
 
-        private fun setPerspective(out: FloatArray, fovY: Float, aspect: Float, near: Float = 0.1f, far: Float = 10f) {
-            Matrix.perspectiveM(out, 0, fovY, aspect, near, far)
+        /**
+         * 拖拽偏移矩阵：`dragR = Rx(-pitch) · Ry(-yaw)`，写入 [out]。
+         *
+         * view 是「world→camera」，预乘即在世界系里追加一次旋转。符号由来：
+         * 「相机右转 θ」= 预乘 `Ry(θ)`，「相机上抬 φ」= 预乘 `Rx(-φ)`；
+         * 拖拽取抓取约定（手指右移→视角左转、手指下移→视角上抬），故取 `-yaw / -pitch`。
+         */
+        private fun dragMatrix3(out: FloatArray) {
+            if (dragYaw == 0f && dragPitch == 0f) {
+                java.util.Arrays.fill(out, 0f)
+                out[0] = 1f; out[4] = 1f; out[8] = 1f
+                return
+            }
+            val a = -dragYaw
+            val b = -dragPitch
+            val ca = Math.cos(a.toDouble()).toFloat()
+            val sa = Math.sin(a.toDouble()).toFloat()
+            val cb = Math.cos(b.toDouble()).toFloat()
+            val sb = Math.sin(b.toDouble()).toFloat()
+            // Ry(a)，列主序
+            mDragY[0] = ca; mDragY[1] = 0f; mDragY[2] = -sa
+            mDragY[3] = 0f; mDragY[4] = 1f; mDragY[5] = 0f
+            mDragY[6] = sa; mDragY[7] = 0f; mDragY[8] = ca
+            // Rx(b)，列主序
+            mDragX[0] = 1f; mDragX[1] = 0f; mDragX[2] = 0f
+            mDragX[3] = 0f; mDragX[4] = cb; mDragX[5] = sb
+            mDragX[6] = 0f; mDragX[7] = -sb; mDragX[8] = cb
+            mat3Mul(mDragX, mDragY, out)
         }
 
         private fun matToQuat(m: FloatArray, out: FloatArray) {
@@ -503,38 +607,38 @@ class VrSurfaceView @JvmOverloads constructor(
             }
         }
 
-        /** 四元数 → 3x3 列主序旋转矩阵（device→world）。 */
-        private fun quatToMatrix3(q: FloatArray): FloatArray {
+        /** 四元数 → 3x3 列主序旋转矩阵（device→world），写入 [out]。 */
+        private fun quatToMatrix3(q: FloatArray, out: FloatArray) {
             val x = q[0]; val y = q[1]; val z = q[2]; val w = q[3]
             val xx = x * x; val yy = y * y; val zz = z * z
             val xy = x * y; val xz = x * z; val yz = y * z
             val wx = w * x; val wy = w * y; val wz = w * z
-            return floatArrayOf(
-                1 - 2 * (yy + zz), 2 * (xy + wz), 2 * (xz - wy),
-                2 * (xy - wz), 1 - 2 * (xx + zz), 2 * (yz + wx),
-                2 * (xz + wy), 2 * (yz - wx), 1 - 2 * (xx + yy),
-            )
+            out[0] = 1 - 2 * (yy + zz); out[1] = 2 * (xy + wz); out[2] = 2 * (xz - wy)
+            out[3] = 2 * (xy - wz); out[4] = 1 - 2 * (xx + zz); out[5] = 2 * (yz + wx)
+            out[6] = 2 * (xz + wy); out[7] = 2 * (yz - wx); out[8] = 1 - 2 * (xx + yy)
         }
 
-        private fun transpose3(m: FloatArray): FloatArray =
-            floatArrayOf(
-                m[0], m[3], m[6],
-                m[1], m[4], m[7],
-                m[2], m[5], m[8],
-            )
+        /** 3x3 列主序转置，写入 [out]。 */
+        private fun transpose3(m: FloatArray, out: FloatArray) {
+            out[0] = m[0]; out[1] = m[3]; out[2] = m[6]
+            out[3] = m[1]; out[4] = m[4]; out[5] = m[7]
+            out[6] = m[2]; out[7] = m[5]; out[8] = m[8]
+        }
 
-        /** 3x3 列主序矩阵相乘。 */
-        private fun mat3Mul(a: FloatArray, b: FloatArray): FloatArray {
-            val r = FloatArray(9)
+        /**
+         * 3x3 列主序矩阵相乘：`out = a · b`。
+         *
+         * 调用方保证 [out] 与 [a] / [b] 不是同一个数组（不做自别名处理）。
+         */
+        private fun mat3Mul(a: FloatArray, b: FloatArray, out: FloatArray) {
             for (col in 0 until 3) {
                 for (row in 0 until 3) {
-                    r[col * 3 + row] =
+                    out[col * 3 + row] =
                         a[0 * 3 + row] * b[col * 3 + 0] +
                         a[1 * 3 + row] * b[col * 3 + 1] +
                         a[2 * 3 + row] * b[col * 3 + 2]
                 }
             }
-            return r
         }
 
         private fun dot(a: FloatArray, b: FloatArray): Float = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]
@@ -702,6 +806,21 @@ class VrSurfaceView @JvmOverloads constructor(
         private const val MIN_ZOOM = 0.4f
         private const val MAX_ZOOM = 3f
 
+        /**
+         * 有效透视 FOV 的取值区间（度）。
+         *
+         * 下界 5°：再窄就接近长焦，画面抖动明显；上界 165°：再宽会严重桶形畸变影响观感。
+         * FOV 与视距相除后必须夹在本区间内（视距范围 0.4~3 × FOV 30~120 → 10~300）。
+         */
+        private const val MIN_EFFECTIVE_FOV = 5f
+        private const val MAX_EFFECTIVE_FOV = 165f
+
+        /** 轻点判定时长上限（ms）：按下到抬起在此之内且无位移，视为轻点。 */
+        private const val TAP_TIMEOUT_MS = 300L
+
+        /** 拖拽俯仰角上限（弧度，约 80°）：避免拖到极点附近出现翻转/万向锁观感。 */
+        private const val MAX_DRAG_PITCH = 1.4f
+
         /** 球面网格细分：经线 × 纬线。 */
         private const val SPHERE_LONG_SEG = 96
         private const val SPHERE_LAT_SEG = 48
@@ -736,21 +855,28 @@ class VrSurfaceView @JvmOverloads constructor(
                 if (uInvertYaw == 1) lon = -lon;
                 float lat = asin(clamp(w.y, -1.0, 1.0));
 
-                // 180° 内容：超出全景覆盖角（SBS 水平 ±90° / OU 垂直 ±90°）的区域置黑，
-                // 避免 uv 越出对应半幅露出另一只眼或贴边拉伸，形成"拼接错位"。
-                // 360°（uHalfPano=π）时该判断恒为假，不影响。
+                // 布局：0=左右打包（取左半幅）1=上下打包（取上半幅）2=整幅（mono 全景）
+                bool overUnder = (uLayout == 1);
+
+                // 超出单幅覆盖角的区域置黑（左右/整幅看经度，上下看纬度），避免 uv 越出单幅
+                // 露出另一只眼或贴边拉伸，形成"拼接错位"。360°（uHalfPano=π）时该判断恒为假。
                 float halfPano = uHalfPano;
-                bool outside = (uLayout == 0 && abs(lon) > halfPano) ||
-                               (uLayout == 1 && abs(lat) > halfPano);
+                bool outside = overUnder ? (abs(lat) > halfPano) : (abs(lon) > halfPano);
                 if (outside) {
                     gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
                     return;
                 }
 
-                // 半幅采样：SBS 水平映射到半幅（取左半幅），OU 垂直映射到上半幅。
-                vec2 uv = (uLayout == 0)
-                    ? vec2((lon / (2.0 * uHalfPano) + 0.5) * 0.5, lat / PI + 0.5)
-                    : vec2(lon / TWO_PI + 0.5,                   (lat / (2.0 * uHalfPano) + 0.5) * 0.5);
+                // 等距柱面采样：经度占横向、纬度占纵向
+                vec2 uv;
+                if (overUnder) {
+                    // 上下打包：横向整幅覆盖完整经度范围，纵向取上半幅
+                    uv = vec2(lon / TWO_PI + 0.5, (lat / (2.0 * halfPano) + 0.5) * 0.5);
+                } else {
+                    uv = vec2(lon / (2.0 * halfPano) + 0.5, lat / PI + 0.5);
+                    // 左右打包：只取左半幅；整幅（mono）保持全宽
+                    if (uLayout == 0) uv.x *= 0.5;
+                }
                 // SurfaceTexture 帧纵向与此处坐标相反，翻转 v 使画面保持正立
                 uv.y = 1.0 - uv.y;
                 gl_FragColor = texture2D(uTex, uv);

@@ -249,16 +249,20 @@ fun PlayerScreen(
     var showBookmarkDialog by rememberSaveable { mutableStateOf(false) }
     var surfaceViewRef by remember { mutableStateOf<SurfaceView?>(null) }
 
-    // VR（环视）播放状态：切换到 GL 全景渲染路径，用陀螺仪环视单眼画面。
+    // VR（环视）播放状态：切换到 GL 全景渲染路径，用陀螺仪 / 手指拖拽环视全景画面。
     var vrMode by rememberSaveable { mutableStateOf(false) }
     var vrViewRef by remember { mutableStateOf<VrSurfaceView?>(null) }
-    // 画面格式索引（0..3，对应 VrFormat 枚举顺序），持久化
+    // 画面格式索引（对应 VrFormat 枚举顺序：左右/上下/整幅 × 180°/360°），持久化
     var vrFormatIndex by rememberSaveable { mutableIntStateOf(VrSettings.formatIndex.coerceIn(0, VrFormat.entries.lastIndex)) }
     // VR 可调参数（FOV、陀螺仪灵敏度、视距），持久化并实时同步到渲染视图
-    var vrFov by rememberSaveable { mutableIntStateOf(VrSettings.fovDegrees.coerceIn(30, 120)) }
+    var vrFov by rememberSaveable {
+        mutableIntStateOf(VrSettings.fovDegrees.coerceIn(VrSettings.MIN_FOV_DEGREES, VrSettings.MAX_FOV_DEGREES))
+    }
     var vrSensitivity by rememberSaveable { mutableFloatStateOf(VrSettings.gyroSensitivity) }
-    var vrZoom by rememberSaveable { mutableFloatStateOf(VrSettings.zoom.coerceIn(VrSettings.MIN_ZOOM, VrSettings.MAX_ZOOM)) }
-    // VR 控制条自动收起：进入/交互时显示，闲置后隐藏
+    var vrZoom by rememberSaveable {
+        mutableFloatStateOf(VrSettings.zoom.coerceIn(VrSettings.MIN_ZOOM, VrSettings.MAX_ZOOM))
+    }
+    // VR 控制条显隐：进入/交互时显示，闲置后隐藏
     var vrControlsVisible by rememberSaveable { mutableStateOf(true) }
     var vrViewLocked by rememberSaveable { mutableStateOf(false) }
 
@@ -911,12 +915,21 @@ fun PlayerScreen(
             if (isInPip) vrMode = false
         }
 
-        // VR 当前画面格式（左右/上下 × 180°/360°）
+        // VR 当前画面格式（左右/上下/整幅 × 180°/360°）
         val activeVrFormat = VrFormat.fromIndex(vrFormatIndex.coerceIn(0, VrFormat.entries.lastIndex))
 
-        // VR 控制：进入 VR 时默认显示，轻点画面在显示/隐藏间切换（无自动收起，避免与切换冲突）
+        // VR 控制：进入时同时显示 VR 胶囊与主控制栏（否则进 VR 后无从暂停/拖动），
+        // 之后轻点画面在显示/隐藏间切换（无自动收起，避免与切换冲突）
         LaunchedEffect(vrMode) {
-            if (vrMode) vrControlsVisible = true
+            if (vrMode) {
+                vrControlsVisible = true
+                controllerVisible = true
+                // 一次性说明：入口不再按画面比例筛选，任何片子都能进 VR，故需告知适用片源
+                if (!VrSettings.helpShown) {
+                    VrSettings.helpShown = true
+                    infoOsd = context.getString(R.string.player_vr_pano_only_hint)
+                }
+            }
         }
         // 三档只决定「目标比例怎么铺到屏幕上」。surface 恒按目标比例设定尺寸，
         // 配合 media3 的缩放模式（SCALE_TO_FIT 缩放到 surface 尺寸）得到精确映射：
@@ -959,9 +972,12 @@ fun PlayerScreen(
                         v.setZoom(vrZoom)
                         v.setInvertYaw(VrSettings.invertYaw)
                         v.setViewLocked(vrViewLocked)
-                        // 轻点切换控制条显示/隐藏
+                        // 轻点：同时切换 VR 胶囊与主控制栏。VR 下外层 Compose 手势层已被移除，
+                        // 这里是唤出控制条的唯一通路 —— 只切 VR 胶囊的话，进 VR 后无法暂停/拖动。
                         v.onTap = {
-                            vrControlsVisible = !vrControlsVisible
+                            val show = !vrControlsVisible
+                            vrControlsVisible = show
+                            controllerVisible = show
                         }
                         vrViewRef = v
                     }
@@ -1440,9 +1456,13 @@ fun PlayerScreen(
             "vr" -> {
                 // 实验性功能：VR 播放未开启时整体禁用 VR 入口，开启后入口常驻可点。
                 //
-                // 不再按画面宽高比猜测帧型：2:1/1:2 只是 VR 帧型的常见形状，用它做门槛
-                // 既会误判（1.90:1 的 IMAX 片正好落进 2:1 判定窗口），又漏掉 Half-SBS(16:9)、
-                // Full-SBS(32:9)、上下等绝大多数真实 3D 片。帧型改由用户在 VR 控制条里选择。
+                // 不再按画面宽高比猜测帧型：整帧比例既无法区分 VR 与普通片，也会误判
+                // （1.90:1 的 IMAX 片正好落进 2:1 的判定窗口）。帧型（左右/上下 × 180°/360°）
+                // 由用户在 VR 控制条里选择。
+                //
+                // 注意：本入口只服务 **VR 全景**（等距柱面、单眼环视），与 **3D 立体**
+                // （Half/Full-SBS、上下打包，需要把左右眼分别送到两只眼睛）是两类不同的东西。
+                // 3D 片进这里只会看到单眼画面被拉成球面 —— 本应用目前不具备 3D 立体播放能力。
                 val vrCapable = ExperimentalSettings.vrPlaybackEnabled
                 HudButtonConfig(
                     id, VrHeadsetIcon,
@@ -1590,11 +1610,12 @@ fun PlayerScreen(
             }
         }
 
-        // VR 模式控制条：方向（格式 / 滑动 / 归中）/ 视距 / FOV / 灵敏度 / 退出，闲置自动收起
+        // VR 模式控制条：格式 / 归中 / 视角锁定 / FOV / 灵敏度 / 视距 / 退出，闲置自动收起
         if (vrMode && !isInPip) {
             VrControlOverlay(
                 formatLabel = when (activeVrFormat.layout) {
                     1 -> stringResource(R.string.player_vr_format_ou_pano, activeVrFormat.halfPanoDegrees)
+                    2 -> stringResource(R.string.player_vr_format_full_pano, activeVrFormat.halfPanoDegrees)
                     else -> stringResource(R.string.player_vr_format_sbs_pano, activeVrFormat.halfPanoDegrees)
                 },
                 fovDegrees = vrFov,
@@ -1614,12 +1635,14 @@ fun PlayerScreen(
                     vrViewRef?.setViewLocked(vrViewLocked)
                 },
                 onFovChange = { delta ->
-                    vrFov = (vrFov + delta.toInt()).coerceIn(30, 120)
+                    vrFov = (vrFov + delta.toInt())
+                        .coerceIn(VrSettings.MIN_FOV_DEGREES, VrSettings.MAX_FOV_DEGREES)
                     VrSettings.fovDegrees = vrFov
                     vrViewRef?.setFovDegrees(vrFov.toFloat())
                 },
                 onSensitivityChange = { delta ->
-                    vrSensitivity = (vrSensitivity + delta).coerceIn(0.05f, 0.5f)
+                    vrSensitivity = (vrSensitivity + delta)
+                        .coerceIn(VrSettings.MIN_GYRO_SENSITIVITY, VrSettings.MAX_GYRO_SENSITIVITY)
                     VrSettings.gyroSensitivity = vrSensitivity
                     vrViewRef?.setGyroSensitivity(vrSensitivity)
                 },

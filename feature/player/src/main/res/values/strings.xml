@@ -236,6 +236,7 @@
     <string name="player_vr_format_hint">画面格式</string>
     <string name="player_vr_format_sbs_pano">左右 · %1$d°</string>
     <string name="player_vr_format_ou_pano">上下 · %1$d°</string>
+    <string name="player_vr_format_full_pano">整幅 · %1$d°</string>
     <string name="player_vr_fov">视场</string>
     <string name="player_vr_fov_hint">视场角</string>
     <string name="player_vr_sensitivity">灵敏度</string>
@@ -246,4 +247,5 @@
     <string name="player_vr_view_lock">视角锁定</string>
     <string name="player_vr_entered">VR 环视：已开启</string>
     <string name="player_vr_exited">VR 环视：已关闭</string>
+    <string name="player_vr_pano_only_hint">VR 环视仅适用于全景片源（VR180 / VR360）；拖动画面可环视</string>
 </resources>
