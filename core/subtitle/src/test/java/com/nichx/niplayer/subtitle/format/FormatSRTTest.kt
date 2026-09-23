@@ -1,6 +1,7 @@
 package com.nichx.niplayer.subtitle.format
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -93,12 +94,57 @@ class FormatSRTTest {
     fun `文件名被记录`() {
         val srt = """
             1
-            00:00:01,000 --> 00:00:02,000
+            00:00:01,000 --> 00:00:05,000
             Hi
         """.trimIndent()
         val file = tempSrt(srt)
         val tto = FormatSRT().parseFile(file)
         assertEquals(file.name, tto.fileName)
+    }
+
+    @Test
+    fun `HTML 标记转换为 ASS 标记而非字面文本`() {
+        val srt = """
+            1
+            00:00:01,000 --> 00:00:05,000
+            <i>Italic</i> and <font color="#00FF00">green</font>
+        """.trimIndent()
+        val tto = FormatSRT().parseFile(tempSrt(srt))
+        val raw = tto.captions.firstEntry().value!!.rawContent
+
+        assertTrue("斜体应有对应 tag：$raw", raw.contains("{\\i1}"))
+        assertTrue(raw.contains("{\\i0}"))
+        // #00FF00 → BB=00 GG=FF RR=00 → ASS AABBGGRR = 0000FF00
+        assertTrue("颜色应转成 ASS 颜色 tag：$raw", raw.contains("{\\c&H0000FF00&}"))
+        assertFalse("标签不得原样进入渲染文本：$raw", raw.contains("<"))
+        assertTrue(raw.contains("Italic") && raw.contains("green"))
+    }
+
+    @Test
+    fun `未知标签被丢弃、实体被解码`() {
+        val srt = """
+            1
+            00:00:01,000 --> 00:00:05,000
+            <v Speaker>A &amp; B &lt;tag&gt;
+        """.trimIndent()
+        val tto = FormatSRT().parseFile(tempSrt(srt))
+        val raw = tto.captions.firstEntry().value!!.rawContent
+
+        // 实体解码发生在标签处理之后：解码出来的 <tag> 不能再被当成样式标签
+        assertTrue("实体应被解码：$raw", raw.contains("A & B <tag>"))
+        assertFalse(raw.contains("<v"))
+    }
+
+    @Test
+    fun `正文里的比较符号不被当成标签`() {
+        val srt = """
+            1
+            00:00:01,000 --> 00:00:05,000
+            5 < 10 > 3
+        """.trimIndent()
+        val tto = FormatSRT().parseFile(tempSrt(srt))
+
+        assertEquals("5 < 10 > 3", tto.captions.firstEntry().value!!.rawContent)
     }
 }
 
@@ -150,6 +196,37 @@ class FormatASSTest {
 
         assertEquals(1280f, tto.playResX, 0.001f)
         assertEquals(720f, tto.playResY, 0.001f)
+    }
+
+    @Test
+    fun `样式颜色解析为可渲染的 RRGGBBAA`() {
+        val ass = """
+            $header
+            Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello
+        """.trimIndent()
+        val tto = FormatASS().parseFile(tempAss(ass))
+
+        val style = tto.styling["Default"]!!
+        // 主色 &H00FFFFFF（不透明白）→ 8 位 RRGGBBAA，且 alpha 必须是「不透明」
+        //（原实现输出 5 位色串，消费方只接受 6/8 位 → 颜色被静默丢弃，一律回退用户设置色）
+        assertEquals("ffffffff", style.color)
+        assertEquals(8, style.color.length)
+        // OutlineColour &H00000000（不透明黑）：描边色必须取自这里，而不是 BackColour
+        assertEquals("000000ff", style.outlineColor)
+        // BackColour &H00000000
+        assertEquals("000000ff", style.backgroundColor)
+    }
+
+    @Test
+    fun `彩色样式颜色按 BGR 顺序还原`() {
+        // PrimaryColour &H00FF8040 = AA=00 BB=FF GG=80 RR=40 → RRGGBBAA = 4080ffff
+        val ass = """
+            $header
+            Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello
+        """.trimIndent().replace("&H00FFFFFF", "&H00FF8040")
+        val tto = FormatASS().parseFile(tempAss(ass))
+
+        assertEquals("4080ffff", tto.styling["Default"]!!.color)
     }
 
     @Test

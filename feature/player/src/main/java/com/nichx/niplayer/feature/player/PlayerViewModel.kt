@@ -149,17 +149,18 @@ class PlayerViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), VideoSize(0, 0))
 
     /**
-     * 智能黑边检测后的有效视频尺寸。
+     * 去黑边后的「内容宽高比」（width/height）。
      *
-     * - 未检测 / 检测失败 / 功能关闭时：与 [videoSize] 一致
-     * - 检测成功时：[VideoSize.width]/[VideoSize.height] 为去除黑边后的有效画面像素，
-     *   [VideoSize.aspectRatio] 为真实内容宽高比，供 UI 层 Fit 模式计算 SurfaceView 尺寸
+     * - null：不去黑边（功能关闭 / 未测出 / 已判为「不适用」）→ UI 用视频原始比例
+     * - > 0：UI 以此作为**目标比例**计算 SurfaceView 尺寸
      *
-     * 仅在 Fit 模式下由 UI 层订阅使用；Crop/Stretch 不受影响。
-     * 检测由 UI 层在首帧后抓图触发（[applyBlackBarDetection]），结果在 ViewModel 持久化。
+     * 与缩放档位正交：目标比例由本值给出，档位只决定怎么把它铺到屏幕上。
+     * [NxVideoScaleMode.Fill] 忽略本值（拉伸不需要目标比例）。
+     *
+     * 检测由 UI 层抓图触发（[applyBlackBarDetection]），判决按视频缓存（见 [applyBlackBarVerdict]）。
      */
-    private val _effectiveVideoSize = MutableStateFlow<VideoSize?>(null)
-    val effectiveVideoSize: StateFlow<VideoSize?> = _effectiveVideoSize.asStateFlow()
+    private val _contentAspect = MutableStateFlow<Float?>(null)
+    val contentAspect: StateFlow<Float?> = _contentAspect.asStateFlow()
 
     /**
      * 退出播放时通过 PixelCopy 截取的最后一帧 Bitmap。
@@ -283,8 +284,9 @@ class PlayerViewModel @Inject constructor(
     /** 暴露 [NxPlayer] 供 UI 层 SurfaceView 挂载渲染。 */
     val nxPlayer: NxPlayer get() = player
 
-    /** 当前缩放模式索引（0:1:2 对应 [SCALE_MODES] 适应/裁剪/拉伸）。 */
-    private val _scaleIndex = MutableStateFlow(0)
+    /** 当前缩放模式索引（0:1:2 对应 [SCALE_MODES] 适应/填满/拉伸）。初值取持久化设置。 */
+    private val _scaleIndex =
+        MutableStateFlow(PlayerSettings.scaleModeIndex.coerceIn(0, SCALE_MODES.lastIndex))
     val scaleIndex: StateFlow<Int> = _scaleIndex.asStateFlow()
 
     /** 当前可用音频轨道列表。 */
@@ -325,9 +327,7 @@ class PlayerViewModel @Inject constructor(
      *
      * 内嵌字幕仍走 media3 TextRenderer → SubtitleView（[cues] StateFlow）。
      */
-    val subtitleEngine: SubtitleEngine = SubtitleEngine(
-        textSizeFactor = SubtitleSettings.textSizeFraction,
-    ).apply {
+    val subtitleEngine: SubtitleEngine = SubtitleEngine().apply {
         // 初始化注入用户样式配置（描边宽度/阴影/颜色/applyEmbeddedStyles）
         updateStyleConfig(buildSubtitleStyleConfig())
     }
@@ -347,10 +347,38 @@ class PlayerViewModel @Inject constructor(
     private fun beginSubtitleLoad(): Int = ++subtitleLoadGeneration
 
     /**
+     * 外挂字幕任务的进行状态，供字幕菜单**在内显示**。
+     *
+     * 为什么不复用 [messageEvent] 的 OSD：OSD 画在播放页主窗口，而字幕菜单是独立的 Dialog
+     * 窗口（叠在其上）—— 装载失败时用户正看着菜单，OSD 被盖住、2 秒后自行消失，等于没有反馈；
+     * 网络存储读盘（1-3 秒）期间菜单也没有任何进行中提示，用户会以为「点了没反应」。
+     */
+    sealed interface SubtitleLoadState {
+        /** 没有进行中的任务。 */
+        data object Idle : SubtitleLoadState
+
+        /** 正在读取/解析 [fileName]；null 表示正在扫描同目录候选。 */
+        data class Loading(val fileName: String?) : SubtitleLoadState
+
+        /**
+         * 失败。[messageRes] 为文案资源；[fileName] 非空时作为格式化参数传入
+         * （扫描失败没有具体文件，此时用不接收参数的文案）。
+         */
+        data class Failed(
+            @androidx.annotation.StringRes val messageRes: Int,
+            val fileName: String? = null,
+        ) : SubtitleLoadState
+    }
+
+    private val _subtitleLoadState = MutableStateFlow<SubtitleLoadState>(SubtitleLoadState.Idle)
+    val subtitleLoadState: StateFlow<SubtitleLoadState> = _subtitleLoadState.asStateFlow()
+
+    /**
      * 当前视频同目录下的字幕文件名列表（按名称排序）。
      *
      * 供字幕轨道菜单展示，让用户能在内嵌轨道与同目录字幕文件之间切换。
-     * 无同目录字幕或扫描失败时为空列表。
+     * 读取目录失败时此处同样为空列表 —— 失败原因经 [subtitleLoadState] 单独暴露，避免
+     * 「目录里确实没有字幕」与「目录读不到」两种情形都表现为一个没有解释的空列表。
      */
     private val _sameDirSubtitles = MutableStateFlow<List<String>>(emptyList())
     val sameDirSubtitles: StateFlow<List<String>> = _sameDirSubtitles.asStateFlow()
@@ -376,6 +404,20 @@ class PlayerViewModel @Inject constructor(
         get() = currentVideoPath?.let { localParentDirectory(it)?.absolutePath }
 
     /**
+     * 当前视频所在**网络存储目录**（库 ID + 库内目录）；本地视频 / 直链 / 无库信息时为 null。
+     *
+     * 与 [currentLocalDirectory] 配对，供应用内字幕选择器把起始位置定在视频旁边 ——
+     * 网络库往往层级很深，每次从库根一层层翻到目标目录代价太大。
+     */
+    val currentRemoteDirectory: Pair<Int, String>?
+        get() {
+            val path = currentVideoPath?.takeIf { it.isNotBlank() } ?: return null
+            if (localParentDirectory(path) != null) return null
+            val storageId = currentHistory?.storageId ?: return null
+            return storageId to path.substringBeforeLast('/', missingDelimiterValue = "")
+        }
+
+    /**
      * 从 [SubtitleSettings] 构造 [SubtitleStyleConfig] 注入 [subtitleEngine]。
      *
      * 在 [refreshSubtitleStyle] 时再次调用以应用用户改设置后的最新值。
@@ -389,6 +431,7 @@ class PlayerViewModel @Inject constructor(
         applyEmbeddedStyles = SubtitleSettings.applyEmbeddedStyles,
         primaryColor = SubtitleColor.fromArgb(SubtitleSettings.fontColor),
         outlineColor = SubtitleColor.fromArgb(SubtitleSettings.outlineColor),
+        textSizeFactor = SubtitleSettings.textSizeFraction,
     )
 
     /**
@@ -772,30 +815,20 @@ class PlayerViewModel @Inject constructor(
     val abLoopEvent: SharedFlow<String> = _abLoopEvent.asSharedFlow()
 
     /**
-     * 请求 UI 层重新触发黑边检测（PixelCopy）。
+     * 请求 UI 层抓取一帧并回送 [applyBlackBarDetection]（PixelCopy）。
      *
-     * 触发场景：用户从 Crop/Stretch 切回 Fit 时，[effectiveVideoSize] 已被清除，
-     * 需要重新抓图检测。UI 层收到此事件后执行 PixelCopy → [applyBlackBarDetection]。
-     * extraBufferCapacity=4 + DROP_OLDEST，快速触发多次时保留最新请求。
-     */
-    private val _redetectBlackBars = MutableSharedFlow<Unit>(
-        extraBufferCapacity = 4,
-        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
-    )
-    val redetectBlackBars: SharedFlow<Unit> = _redetectBlackBars.asSharedFlow()
-
-    /**
-     * 黑边检测失败（画面全黑/太暗）时的自动重试请求。
+     * 合并了原先分立的两个事件流（重试 / 切回 Fit 重检），三类来源共用：
+     * 1. 首帧检测失败（全黑 / 过暗）后的重试
+     * 2. 判决看门狗的周期复检（见 [startBlackBarWatchdog]）
+     * 3. 用户重新开启去黑边但该片尚无判决
      *
-     * [applyBlackBarDetection] 检测到全黑或过暗画面（返回 null）时，若仍在播放且未超
-     * 重试上限，通过本事件请求 UI 层延迟重新抓图（PixelCopy），等画面变亮后再检测。
-     * 解决多数影片首帧是黑屏导致"智能去黑边"不生效、需手动关开开关重试的问题。
+     * UI 层只需一个采集点。extraBufferCapacity=1 + DROP_OLDEST：连续触发时保留最新请求。
      */
-    private val _blackBarRetry = MutableSharedFlow<Unit>(
+    private val _contentProbe = MutableSharedFlow<Unit>(
         extraBufferCapacity = 1,
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
     )
-    val blackBarRetry: SharedFlow<Unit> = _blackBarRetry.asSharedFlow()
+    val contentProbe: SharedFlow<Unit> = _contentProbe.asSharedFlow()
 
     /** 黑边检测失败自动重试计数（检测成功 / 切源 / 功能关闭时清零）。 */
     private var blackBarRetryCount = 0
@@ -804,9 +837,29 @@ class PlayerViewModel @Inject constructor(
     private val MAX_BLACK_BAR_RETRY = 8
 
     /**
+     * 当前视频的去黑边判决（编码同 [PlayerSettings.loadBlackBarVerdict]）：
+     * [PlayerSettings.BLACK_BAR_VERDICT_UNKNOWN] / [PlayerSettings.BLACK_BAR_VERDICT_NOT_APPLICABLE] / 内容比例(>0)。
+     *
+     * 只在主线程读写（检测结果统一回主线程落地）。
+     */
+    private var blackBarVerdict: Float = PlayerSettings.BLACK_BAR_VERDICT_UNKNOWN
+
+    /** 判决看门狗（见 [startBlackBarWatchdog]）。 */
+    private var blackBarWatchdog: Job? = null
+
+    /** 待确认的「有黑边」内容比例（见 [confirmAndApplyVerdict]）。 */
+    private var pendingBarAspect: Float? = null
+
+    /** 待确认样本的追问次数（避免一直确认不下来时反复抓帧）。 */
+    private var barConfirmCount = 0
+
+    /** 当前视频的去黑边缓存 key。无播放历史（直链/本地）时为 null，即不做缓存。 */
+    private val blackBarCacheKey: String? get() = currentHistory?.uniqueKey
+
+    /**
      * 黑边检测的「最新一次」令牌（BUG-51 修复）。
      *
-     * 检测会被多种时机连续触发（换源首帧 / 切回 Fit / 失败重试 / 开关切换），若各自并发
+     * 检测会被多种时机连续触发（换源首帧 / 失败重试 / 看门狗 / 开关切换），若各自并发
      * 执行，先发起的检测可能后完成并用**过期帧**的结果覆盖新结果，导致画面比例来回翻动。
      * 每次发起检测时自增，完成后令牌已不是当前值的即视为过期结果并丢弃。
      *
@@ -870,6 +923,8 @@ class PlayerViewModel @Inject constructor(
     init {
         // F-01：从持久化设置恢复音调保持开关
         player.setPitchPreservationEnabled(PlayerSettings.pitchPreservationEnabled)
+        // 缩放档位持久化：把恢复出的档位同步给内核，避免 UI 状态与内核状态不一致
+        player.setVideoScaleMode(SCALE_MODES[_scaleIndex.value])
 
         // 消费播放列表
         playlistHolder.consume()?.let { (items, startIndex) ->
@@ -1511,11 +1566,14 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 切换到下一个缩放模式并应用到播放器。返回新的索引。
+     * 切换到下一个缩放模式并应用到播放器，同时持久化。返回新的索引。
      *
-     * 三档循环：适应 → 裁剪 → 拉伸 → 适应。
-     * - 适应/裁剪：由 media3 videoScalingMode 处理
-     * - 拉伸：UI 层订阅 [NxPlayer.videoScaleMode]，将 SurfaceView 改为 fillMaxSize
+     * 三档循环：适应(Contain) → 填满(Cover) → 拉伸(Fill) → 适应。
+     * 三档的差异全部由 UI 层的 SurfaceView 尺寸实现（见 [NxVideoScaleMode]），
+     * 这里只负责改档位并重算「是否需要 media3 裁剪」。
+     *
+     * 与去黑边正交：不再像旧实现那样切档位就清空去黑边结果 —— 去黑边是否生效
+     * 只取决于目标比例与视频比例是否不同，[NxVideoScaleMode.Fill] 下自动失效。
      *
      * 内置 200ms 防抖，避免连续快速点击导致 SurfaceView 反复重建与 OSD 抖动。
      */
@@ -1527,41 +1585,38 @@ class PlayerViewModel @Inject constructor(
         lastScaleClickMs = now
         val next = (_scaleIndex.value + 1) % SCALE_MODES.size
         _scaleIndex.value = next
+        PlayerSettings.scaleModeIndex = next
         player.setVideoScaleMode(SCALE_MODES[next])
-        if (SCALE_MODES[next] != NxVideoScaleMode.Fit) {
-            // 切到 Crop/Stretch 时禁用黑边裁剪覆盖，清除已检测结果
-            player.setBlackBarCropEnabled(false)
-            _effectiveVideoSize.value = null
-        } else {
-            // 切回 Fit 时：若之前检测过黑边（现已清除），请求 UI 层重新触发 PixelCopy 检测
-            // 首次进入 Fit（从未检测过）不触发，避免无意义的抓图
-            if (videoSize.value.isValid) {
-                _redetectBlackBars.tryEmit(Unit)
-            }
-        }
+        applyVideoCrop()
         return next
     }
 
     /**
-     * 应用智能黑边检测结果。
+     * 应用一次去黑边检测结果。
      *
-     * 由 UI 层在**换源首帧**渲染后抓图调用：PixelCopy 抓取 SurfaceView 位图 → 传入本方法。
-     * 本方法在 IO 调度器执行 [BlackBarDetector.detect]，成功时更新 [effectiveVideoSize]。
-     * 连续触发时只保留最新一次的结果（见 [blackBarDetectionToken]）。
+     * 由 UI 层在换源首帧渲染后、以及收到 [contentProbe] 时抓图调用：
+     * PixelCopy 抓取 SurfaceView 位图 → 传入本方法。检测在 IO 线程执行
+     * （[BlackBarDetector.detect]），判决统一回主线程落地。连续触发时只保留最新一次结果
+     * （见 [blackBarDetectionToken]）。
      *
-     * 不会抛异常。检测失败（全黑 / 过暗 / 过渡帧）时：
-     * - 尚无有效结果 → 保持 [effectiveVideoSize] 为 null，UI 层回退到原始 [videoSize]
-     * - 已有有效结果 → **保持原结果不变**，不撤销已生效的裁剪
-     *   （BUG-51：撤销会让画面尺寸在裁剪比例与原始比例之间跳变）
+     * 判据只看画面内容，不看文件名——文件名不可靠：可变画幅远不止 IMAX 一种命名
+     * （Open Matte 等），而 "IMAX Enhanced" 标签也常打在恒定画幅的片源上。
+     * - **满幅帧**（内容比例 ≈ 容器比例且几乎铺满整帧）：这一帧没有黑边。若此前已判出
+     *   「有黑边」，说明**片内画幅在变化** → 判为
+     *   [PlayerSettings.BLACK_BAR_VERDICT_NOT_APPLICABLE]，整片禁用，避免扩展段落被裁掉。
+     * - **命中成品比例白名单的带黑边内容** → 记为固定内容比例。
+     * - 其他（不成比例的矩形，多为字幕 / 暗场误判）→ 保持原判决不变。
      *
-     * 功能关闭（`autoDetectBlackBars == false`）时统一清空结果。
+     * 判决单调：只会「未知 → 固定 / 不适用」或「固定 → 不适用」，**永不从「不适用」恢复**，
+     * 因此最多发生一次画面比例变化，不会来回跳（BUG-51）。
      *
-     * @param bitmap 首帧位图（UI 层通过 PixelCopy 获取）
+     * 失败（全黑 / 过暗 / 过渡帧）一律退化为「不裁」，绝不误裁。
+     *
+     * @param bitmap 抓取到的帧位图（UI 层通过 PixelCopy 获取，本方法负责回收）
      */
     fun applyBlackBarDetection(bitmap: Bitmap) {
         if (!PlayerSettings.autoDetectBlackBars) {
-            _effectiveVideoSize.value = null
-            blackBarRetryCount = 0
+            clearBlackBarResult()
             bitmap.recycle()
             return
         }
@@ -1571,9 +1626,8 @@ class PlayerViewModel @Inject constructor(
             return
         }
 
-        // 检测在 IO 线程执行（像素扫描耗时），
-        // setBlackBarCropEnabled / StateFlow 更新切回主线程（ExoPlayer 要求主线程访问）
-        // BUG-51 修复：本次检测的令牌。完成时若已不是最新令牌，说明结果来自过期帧，直接丢弃
+        // [blackBarVerdict] 只在主线程读写，故在起协程前先取一份快照
+        val previousVerdict = blackBarVerdict
         val token = ++blackBarDetectionToken
         viewModelScope.launch(Dispatchers.IO) {
             val rect = try {
@@ -1588,82 +1642,193 @@ class PlayerViewModel @Inject constructor(
             if (token != blackBarDetectionToken) return@launch
 
             if (rect == null) {
-                // BUG-51 修复：单帧检测失败（全黑 / 过暗 / 过渡帧）不得撤销已生效的裁剪。
-                // 黑边是整片视频的属性，检测失败只说明「这一帧不可用」。原实现在此清空
-                // effectiveVideoSize 并关闭裁剪 —— 开启自动裁剪后拖动进度条时，seek 落点
-                // 若是过渡帧就会把画面比例从裁剪后回落到原始比例（尺寸跳变），随后重试
-                // 成功又跳回去。故已有有效结果时保持现状，也不再重试（重试只会改写它）。
-                if (_effectiveVideoSize.value != null) return@launch
+                // 这一帧不可用（全黑 / 过暗 / 过渡帧）：不改判决。判决仍未知时请求重试，
+                // 等画面变亮再检测（多数影片首帧是黑屏）。已有判决则不重试也不撤销 ——
+                // 撤销会让比例从裁剪后回落到原始值（BUG-51）。
+                if (previousVerdict != PlayerSettings.BLACK_BAR_VERDICT_UNKNOWN) return@launch
                 withContext(Dispatchers.Main) {
-                    // 切回主线程期间可能又发起了新检测，落地前再校验一次令牌
                     if (token != blackBarDetectionToken) return@withContext
-                    player.setBlackBarCropEnabled(false)
-                    // 全黑/过暗导致检测失败：若仍在播放且未超重试上限，请求 UI 层延迟
-                    // 重新抓图，等画面变亮后再检测（多数影片首帧是黑屏，需自动重试）
                     if (PlayerSettings.autoDetectBlackBars &&
                         state.value is PlaybackState.Playing &&
                         blackBarRetryCount < MAX_BLACK_BAR_RETRY
                     ) {
                         blackBarRetryCount++
-                        _blackBarRetry.tryEmit(Unit)
+                        _contentProbe.tryEmit(Unit)
                     }
                 }
                 return@launch
             }
 
-            // 检测到有效画面区域：重置重试计数
-            blackBarRetryCount = 0
-
-            // 用检测到的有效像素区域重算 VideoSize
-            // pixelWidthHeightRatio 保持原值（黑边不影响像素形状）
-            val rectAspect = rect.width.toFloat() / rect.height
-            val videoAspect = currentSize.width.toFloat() / currentSize.height
-            // 用阈值比较（3%），避免采样误差导致误判：
-            // BlackBarDetector 用 SAMPLE_STEP=4 下采样，rect 比例可能与真实比例有微小差异，
-            // 精确比较 != 会让无黑边视频也触发 effectiveVideoSize 更新，导致画面比例变化两次
-            val differsFromContainer = kotlin.math.abs(rectAspect - videoAspect) > 0.03f
-            // 裁剪白名单闸门（参考 mpv dynamic-crop.lua）：只有当内容区域命中已知成品比例时
-            // 才允许裁剪。字幕/纵向文字等把画面边缘误判成"黑边"时，得到的裁剪矩形是
-            // 不成比例的形状，命中不了白名单，从而被否决、不裁剪，避免真实画面被裁残缺。
-            val longSide = maxOf(rect.width, rect.height)
-            val shortSide = minOf(rect.width, rect.height)
-            val knownAspect = BlackBarDetector.matchesKnownAspect(longSide, shortSide)
-            val hasBlackBars = differsFromContainer && knownAspect
+            // 判决细节（满幅帧识别、成品比例白名单闸门、单调性）见 [ContentCropDecision]
+            val verdict = ContentCropDecision.decideVerdict(
+                rectWidth = rect.width,
+                rectHeight = rect.height,
+                bmpWidth = rect.bmpWidth,
+                bmpHeight = rect.bmpHeight,
+                containerAspect = currentSize.aspectRatio,
+                previousVerdict = previousVerdict,
+            )
 
             withContext(Dispatchers.Main) {
                 // 切回主线程期间可能又发起了新检测，落地前再校验一次令牌
                 if (token != blackBarDetectionToken) return@withContext
-                if (hasBlackBars) {
-                    // 检测到黑边：用有效区域重算 VideoSize，启用裁剪覆盖
-                    // 让 media3 把原始视频帧保持比例裁剪填满缩小后的 surface，正好裁掉黑边
-                    val effective = VideoSize(
-                        width = rect.width,
-                        height = rect.height,
-                        pixelWidthHeightRatio = currentSize.pixelWidthHeightRatio,
-                        unappliedRotationDegrees = currentSize.unappliedRotationDegrees,
-                    )
-                    _effectiveVideoSize.value = effective
-                    player.setBlackBarCropEnabled(true)
-                } else {
-                    // 无黑边：保持 effectiveVideoSize = null，使用原始 videoSize
-                    // 避免不必要的画面比例变化
-                    _effectiveVideoSize.value = null
-                    player.setBlackBarCropEnabled(false)
-                }
+                blackBarRetryCount = 0
+                confirmAndApplyVerdict(verdict)
             }
         }
     }
 
-    /** 重置黑边检测结果（切换视频 / seek 跨度大时调用）。 */
-    fun resetBlackBarDetection() {
-        _effectiveVideoSize.value = null
-        blackBarRetryCount = 0
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            player.setBlackBarCropEnabled(false)
-        } else {
-            viewModelScope.launch(Dispatchers.Main) {
-                player.setBlackBarCropEnabled(false)
+    /**
+     * 多帧确认后落地判决。
+     *
+     * 「有黑边」判决（正值）必须连续两次检测到一致的内容比例才生效：暗场 / 字幕 / 过渡帧
+     * 造成的单帧误判只会得到一次不一致的矩形，不会落地，从而不会把真实画面裁掉。
+     * 契约是「宁可晚一点生效，也不误裁」。
+     *
+     * 非裁剪判决（满幅 / 不适用）无需确认，直接落地——满幅帧另有面积门槛保护（见
+     * [ContentCropDecision.isFullFrame]）。
+     */
+    private fun confirmAndApplyVerdict(verdict: Float) {
+        if (verdict <= 0f) {
+            pendingBarAspect = null
+            barConfirmCount = 0
+            applyBlackBarVerdict(verdict)
+            return
+        }
+        val pending = pendingBarAspect
+        if (pending != null &&
+            kotlin.math.abs(verdict - pending) / pending <= CONTENT_ASPECT_AGREEMENT
+        ) {
+            pendingBarAspect = null
+            barConfirmCount = 0
+            applyBlackBarVerdict(verdict)
+            return
+        }
+        // 首次或与上次不一致：记为待确认样本，并再抓一帧来核对
+        pendingBarAspect = verdict
+        if (barConfirmCount < MAX_BAR_CONFIRM) {
+            barConfirmCount++
+            _contentProbe.tryEmit(Unit)
+        }
+    }
+
+    /**
+     * 用户开关「去黑边」。
+     *
+     * 开启：按已有判决立即生效；该片尚无判决时请求抓帧检测。
+     * 关闭：清空生效中的裁剪，但**保留判决与缓存** —— 再次开启可即时恢复，不必重测。
+     *
+     * 例外：已判为「不适用」的片子重新开启时视为**要求重新判定**（清除该片缓存再测）。
+     * 「不适用」是终态且会写缓存，若一次误判就永久钉死该片，用户将没有任何恢复手段；
+     * 关掉再打开正好是「我不信，再试一次」的自然表达。
+     */
+    fun setAutoDetectBlackBars(enabled: Boolean) {
+        if (PlayerSettings.autoDetectBlackBars == enabled) return
+        PlayerSettings.autoDetectBlackBars = enabled
+        if (enabled) {
+            if (blackBarVerdict == PlayerSettings.BLACK_BAR_VERDICT_NOT_APPLICABLE) {
+                blackBarCacheKey?.let { PlayerSettings.clearBlackBarVerdict(it) }
+                blackBarVerdict = PlayerSettings.BLACK_BAR_VERDICT_UNKNOWN
+                pendingBarAspect = null
+                barConfirmCount = 0
             }
+            applyBlackBarVerdict(blackBarVerdict)
+            if (blackBarVerdict == PlayerSettings.BLACK_BAR_VERDICT_UNKNOWN &&
+                videoSize.value.isValid
+            ) {
+                _contentProbe.tryEmit(Unit)
+            }
+        } else {
+            clearBlackBarResult()
+        }
+    }
+
+    /** 落地判决（主线程）：更新状态、按需写缓存、推送内核裁剪标志、启停看门狗。 */
+    private fun applyBlackBarVerdict(verdict: Float) {
+        val changed = verdict != blackBarVerdict
+        blackBarVerdict = verdict
+        _contentAspect.value = verdict.takeIf { it > 0f }
+        applyVideoCrop()
+        if (changed) {
+            blackBarCacheKey?.let { PlayerSettings.saveBlackBarVerdict(it, verdict) }
+        }
+        // 「固定」判决需要看门狗持续复检（可变画幅片的满幅段落可能很晚才出现）
+        if (verdict > 0f) startBlackBarWatchdog() else stopBlackBarWatchdog()
+    }
+
+    /**
+     * 把「是否需要 media3 裁剪」推给内核。
+     *
+     * 需要裁剪 = 已测出内容比例（即目标比例 ≠ 视频比例）且当前档位不是
+     * [NxVideoScaleMode.Fill]（Fill 直接铺满屏幕、忽略目标比例）。必须在主线程调用。
+     */
+    private fun applyVideoCrop() {
+        player.setVideoCropEnabled(
+            ContentCropDecision.needsVideoCrop(_contentAspect.value, SCALE_MODES[_scaleIndex.value]),
+        )
+    }
+
+    /** 清空生效中的去黑边裁剪（功能关闭时）。保留 [blackBarVerdict] 与缓存。 */
+    private fun clearBlackBarResult() {
+        stopBlackBarWatchdog()
+        blackBarRetryCount = 0
+        pendingBarAspect = null
+        barConfirmCount = 0
+        _contentAspect.value = null
+        player.setVideoCropEnabled(false)
+    }
+
+    /**
+     * 判决看门狗：内容比例固定后低频复检是否出现「满幅帧」。
+     *
+     * IMAX 类可变画幅片可能开场连续数分钟都是宽银幕段，只靠首帧那几次检测发现不了，
+     * 必须等其后的满幅段落出现才能识破。看门狗**只会把判决推向「不适用」，绝不改回**，
+     * 因此不会引起比例来回跳变。
+     */
+    private fun startBlackBarWatchdog() {
+        if (blackBarWatchdog?.isActive == true) return
+        blackBarWatchdog = viewModelScope.launch {
+            while (isActive) {
+                delay(BLACK_BAR_WATCHDOG_INTERVAL_MS)
+                if (!PlayerSettings.autoDetectBlackBars) break
+                if (blackBarVerdict <= 0f) break
+                if (state.value !is PlaybackState.Playing) continue
+                _contentProbe.tryEmit(Unit)
+            }
+        }
+    }
+
+    private fun stopBlackBarWatchdog() {
+        blackBarWatchdog?.cancel()
+        blackBarWatchdog = null
+    }
+
+    /**
+     * 重置去黑边状态（切换视频源时调用）。
+     *
+     * 按缓存恢复本片判决：命中「不适用」则整片直接不裁（IMAX 片进片即保持稳定画幅，
+     * 不会出现「先裁错再纠正」的跳变）；命中内容比例则立即生效；无缓存则等待抓帧检测。
+     */
+    fun resetBlackBarDetection() {
+        blackBarDetectionToken++
+        blackBarRetryCount = 0
+        pendingBarAspect = null
+        barConfirmCount = 0
+        stopBlackBarWatchdog()
+
+        val cached = blackBarCacheKey?.let { PlayerSettings.loadBlackBarVerdict(it) }
+            ?: PlayerSettings.BLACK_BAR_VERDICT_UNKNOWN
+        blackBarVerdict = cached
+        _contentAspect.value = cached.takeIf { it > 0f }
+
+        val land = {
+            applyVideoCrop()
+            if (cached > 0f) startBlackBarWatchdog()
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            land()
+        } else {
+            viewModelScope.launch(Dispatchers.Main) { land() }
         }
     }
 
@@ -1676,13 +1841,22 @@ class PlayerViewModel @Inject constructor(
      * 内嵌轨道与外挂字幕**互斥**，所以这里必须先卸掉外挂字幕。不卸会有两个后果：
      * 1. 外挂字幕继续由 [subtitleEngine] 渲染，与内嵌字幕叠加显示；
      * 2. [activeExternalSubtitle] 不为 null 会让字幕菜单里**所有**内嵌轨道项失去高亮
-     *    （见 `SubtitleTrackDialog` 的 `embeddedSelectionActive`）——
+     *    （见 `SubtitleTrackList` 的 `embeddedSelectionActive`）——
      *    用户点「关闭」「自动」或任何内嵌轨道都看不到选中态变化，表现为「点了没反应」。
+     *
+     * 同时**无条件作废在途的同目录装载**（见 [beginSubtitleLoad] 的调用位置说明）：
+     * 自动识别与手动选同目录字幕都是异步的，且 [_activeExternalSubtitle] 要到装载成功才赋值，
+     * 因此不能以「外挂字幕是否已生效」作为是否需要作废的判据。
      */
     fun selectSubtitleTrack(index: Int) {
+        // 放在 if 之外：自动识别（SMB/WebDAV 列目录 1-3 秒）与手动选同目录字幕在这段时间里
+        // [_activeExternalSubtitle] 仍是 null，若只在非 null 时作废，用户此时点「关闭 / 自动 /
+        // 内嵌轨道」就拦不住迟到的结果 —— applyExternalSubtitle 照常落地并调用
+        // player.selectSubtitleTrack(-2)，把用户刚选的轨道顶掉（表现为「选了没反应/自己变回去」）。
+        // 候选列表只与「当前是哪个视频」有关，其写入用视频路径守卫（见 startSubtitleLoad），
+        // 不受本代号影响，菜单里的同目录字幕项不会因此消失。
+        beginSubtitleLoad()
         if (_activeExternalSubtitle.value != null) {
-            // 作废在途的同目录装载：否则它稍后落地会把外挂字幕又装回来，覆盖用户这次选择
-            beginSubtitleLoad()
             _activeExternalSubtitle.value = null
             // clear() 会把延迟一并清零；用户只是换轨道，不该丢已调好的延迟，这里还原
             val keptOffset = subtitleEngine.offsetMs.value
@@ -1726,19 +1900,17 @@ class PlayerViewModel @Inject constructor(
         // 用户明确选择：递增代号作废在途的同目录自动装载，避免迟到结果反过来覆盖
         val generation = beginSubtitleLoad()
         viewModelScope.launch(Dispatchers.IO) {
-            val tempFile = copyUriToTempFile(uri) ?: return@launch
+            val tempFile = copyUriToTempFile(uri)
+            if (tempFile == null) {
+                notifySubtitleLoadFailed(uri.lastPathSegment.orEmpty(), generation)
+                return@launch
+            }
             try {
-                applyExternalSubtitle(
-                    fileName = uri.lastPathSegment?.substringAfterLast('/')
-                        ?.takeIf { it.isNotBlank() } ?: tempFile.name,
-                    bytes = tempFile.readBytes(),
-                    generation = generation,
-                    persist = true,
-                )
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // 解析失败时静默忽略，避免崩溃；后续可加错误提示
+                val fileName = uri.lastPathSegment?.substringAfterLast('/')
+                    ?.takeIf { it.isNotBlank() } ?: tempFile.name
+                loadSubtitle(generation, fileName, persist = true) {
+                    attempt { tempFile.readBytes() }
+                }
             } finally {
                 tempFile.delete()
             }
@@ -1748,18 +1920,19 @@ class PlayerViewModel @Inject constructor(
     /**
      * 将字幕内容写入持久目录 `files/subtitles/` 并更新 [PlayHistoryEntity.subtitlePath]。
      *
-     * 文件名基于 uniqueKey 哈希避免冲突，扩展名由 [ext] 指定，确保进程重启后仍可加载。
+     * 文件名格式 `{uniqueKey 哈希}_{原文件名}`：哈希前缀保证不同视频的同名字幕互不覆盖，
+     * 后半段保留原文件名 —— 恢复播放时菜单与提示要显示的是**用户的文件名**，而不是一串数字
+     *（读取侧用 [subtitleDisplayName] 去掉前缀）。同一视频换字幕会覆盖同一路径，不堆积垃圾。
      *
-     * @param ext 扩展名（不含点，如 `srt`；空串时落为 `sub`）
+     * @param sourceFileName 源字幕文件名（含扩展名），用于展示名与扩展名
      */
-    private suspend fun writePersistedSubtitle(ext: String, bytes: ByteArray) {
+    private suspend fun writePersistedSubtitle(sourceFileName: String, bytes: ByteArray) {
         val history = currentHistory ?: return
         val storageId = history.storageId ?: return
         // 文件夹访问加密：加密目录内的文件不写历史，字幕路径也不持久化
         if (encryptedFolderManager.isWithinEncrypted(storageId, history.storagePath)) return
-        val suffix = ext.ifEmpty { "sub" }
         val subtitleDir = File(appContext.filesDir, "subtitles").apply { mkdirs() }
-        val persistentFile = File(subtitleDir, "${history.uniqueKey.hashCode()}.$suffix")
+        val persistentFile = File(subtitleDir, SubtitleCacheNaming.fileName(history.uniqueKey, sourceFileName))
         try {
             persistentFile.writeBytes(bytes)
             playHistoryDao.updateSubtitle(history.uniqueKey, storageId, persistentFile.absolutePath)
@@ -1784,7 +1957,7 @@ class PlayerViewModel @Inject constructor(
      * 4. 装载：持久化字幕优先；否则按 [SubtitleMatcher] 从同目录候选挑最匹配的
      *    （受 [SubtitleSettings.autoLoadSameNameSubtitle] 开关门控）
      *
-     * 全程异步不阻塞播放；任何一步失败静默忽略 —— 字幕属增强行为。
+     * 全程异步不阻塞播放；每一步的进行/失败状态都写入 [subtitleLoadState]（菜单内可见）。
      *
      * @param videoFileName 视频文件名（含扩展名）
      * @param videoPath 视频路径（本地为绝对路径，网络存储为库内相对路径）
@@ -1808,57 +1981,110 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             // 1. 历史持久化字幕：用户此前手动指定过，优先级最高
             val persistedPath = if (historyKey != null && storageId != null) {
-                playHistoryDao.getPlayHistory(historyKey, storageId)
+                attempt { playHistoryDao.getPlayHistory(historyKey, storageId) }
                     ?.subtitlePath?.takeIf { it.isNotBlank() }
             } else {
                 null
             }
+            val persistedFile = persistedPath?.let { File(it) }?.takeIf { it.exists() }
 
-            // 2. 同目录字幕列表（远程可能耗时 1-3 秒）
-            val candidates = try {
-                listSameDirSubtitleNames(videoPath, storageId)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                emptyList()
+            // 2. 同目录候选（远程可能耗时 1-3 秒，期间菜单显示进行中）
+            if (persistedFile == null) {
+                setSubtitleLoadState(generation, SubtitleLoadState.Loading(fileName = null))
             }
+            val listing = listSameDirSubtitleNames(videoPath, storageId)
+            val candidates = (listing as? DirListing.Ok)?.names.orEmpty()
 
             withContext(Dispatchers.Main) {
-                // 守卫用视频路径而非装载代号：代号会被「用户切换内嵌轨道」等动作自增，
-                // 但候选列表只与"当前是哪个视频"有关，不该被那些动作连带丢弃。
-                // 真正的风险是切集后上一集的扫描结果迟到，路径比对正好覆盖它。
+                // 候选列表只与「当前是哪个视频」有关：代号会被「用户切换内嵌轨道」等动作自增，
+                // 不该连带丢掉列表；真正的风险是切集后上一集的扫描结果迟到，路径比对正好覆盖。
                 if (videoPath != currentVideoPath) return@withContext
                 _sameDirSubtitles.value = candidates
             }
-
-            // 3. 装载
-            val persistedFile = persistedPath?.let { File(it) }
-            if (persistedFile != null && persistedFile.exists()) {
-                val bytes = try {
-                    persistedFile.readBytes()
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    null
-                }
-                if (bytes != null) {
-                    applyExternalSubtitle(persistedFile.name, bytes, generation, persist = false)
-                }
-            } else if (autoLoad) {
-                val picked = SubtitleMatcher.pickBest(videoFileName, candidates, priority)
-                    ?: return@launch
-                val bytes = try {
-                    readSameDirSubtitleBytes(videoPath, storageId, picked)
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    null
-                }
-                if (bytes != null) {
-                    applyExternalSubtitle(picked, bytes, generation, persist = false)
-                }
+            if (listing is DirListing.Failed) {
+                // 读不到目录必须给出原因：否则菜单只是空着，用户无从判断是「本来没有」还是「读失败」
+                logSubtitle("扫描同目录字幕失败: $videoPath")
+                setSubtitleLoadState(
+                    generation,
+                    SubtitleLoadState.Failed(R.string.player_subtitle_scan_failed),
+                )
             }
+
+            // 3. 装载：历史持久化字幕优先；读不到/解析不了时退回自动匹配
+            val loaded = persistedFile != null && loadSubtitle(
+                generation = generation,
+                // 展示名取原文件名：缓存文件名带哈希前缀，直接展示会是一串数字
+                fileName = SubtitleCacheNaming.displayName(
+                    cacheFileName = persistedFile.name,
+                    legacyFallback = appContext.getString(R.string.player_subtitle_saved_copy),
+                ),
+                persist = false,
+                readBytes = { attempt { persistedFile.readBytes() } },
+            )
+            // 成功路径的状态由 loadSubtitle 内部复位，这里直接结束
+            if (loaded) return@launch
+
+            val picked = if (autoLoad) {
+                SubtitleMatcher.pickBest(videoFileName, candidates, priority)
+            } else {
+                null
+            }
+            if (picked == null) {
+                settleSubtitleLoadIdle(generation)
+                return@launch
+            }
+            loadSubtitle(
+                generation = generation,
+                fileName = picked,
+                persist = false,
+                readBytes = { readSameDirSubtitleBytes(videoPath, storageId, picked) },
+            )
         }
+    }
+
+    /**
+     * 任务收尾：没有失败就把状态复位为空闲。
+     *
+     * 已经给出失败原因时**保留**它 —— 否则「扫描失败 / 读取失败 / 解析失败」的提示会被
+     * 紧接着的空闲态立刻抹掉，用户又回到「点了没反应」。
+     */
+    private suspend fun settleSubtitleLoadIdle(generation: Int) {
+        withContext(Dispatchers.Main) {
+            if (generation != subtitleLoadGeneration) return@withContext
+            if (_subtitleLoadState.value is SubtitleLoadState.Failed) return@withContext
+            _subtitleLoadState.value = SubtitleLoadState.Idle
+        }
+    }
+
+    /**
+     * 读取并装载一个已选定的字幕。
+     *
+     * 把「读字节 → 失败提示 → 解析装载」收成一处，三类入口（自动识别 / 菜单选同目录 /
+     * 应用内选择器 / SAF）共用，避免各写一遍 try/catch 与提示逻辑，也保证每个入口都有
+     * 统一的失败反馈（原先只有 SAF 入口包了 try/catch，其余入口抛异常会直接逃出 scope）。
+     *
+     * @param readBytes 读取字幕内容；失败返回 null 或抛异常
+     * @return 是否装载成功（失败原因已写入 [subtitleLoadState]）
+     */
+    private suspend fun loadSubtitle(
+        generation: Int,
+        fileName: String,
+        persist: Boolean,
+        readBytes: suspend () -> ByteArray?,
+    ): Boolean {
+        setSubtitleLoadState(generation, SubtitleLoadState.Loading(fileName))
+        val bytes = attempt(readBytes)
+        if (bytes == null) {
+            notifySubtitleLoadFailed(fileName, generation)
+            return false
+        }
+        val applied = attempt { applyExternalSubtitle(fileName, bytes, generation, persist) }
+        if (applied == null) {
+            // 引擎装载 / 写历史抛异常（解析失败已在 applyExternalSubtitle 内处理并返回 false）
+            notifySubtitleProblem(R.string.player_subtitle_apply_failed, fileName, generation)
+            return false
+        }
+        return applied
     }
 
     /**
@@ -1868,24 +2094,17 @@ class PlayerViewModel @Inject constructor(
      * 下次播放优先恢复该字幕，而不是重新自动匹配。
      */
     fun selectSameDirSubtitle(fileName: String) {
-        val videoPath = currentVideoPath ?: return
+        val videoPath = currentVideoPath ?: run {
+            // 没有视频路径就无法定位同目录：明确提示，别让点击静默消失
+            _subtitleLoadState.value = SubtitleLoadState.Failed(R.string.player_subtitle_scan_failed)
+            return
+        }
         val storageId = currentHistory?.storageId
         val generation = beginSubtitleLoad()
         viewModelScope.launch(Dispatchers.IO) {
-            val bytes = try {
+            loadSubtitle(generation, fileName, persist = true) {
                 readSameDirSubtitleBytes(videoPath, storageId, fileName)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                null
             }
-            if (bytes == null) {
-                // 读不到（文件已被移走 / 网络存储断连 / 权限）原先完全静默，
-                // 用户只会看到"选了字幕但什么都没发生"
-                notifySubtitleLoadFailed(fileName, generation)
-                return@launch
-            }
-            applyExternalSubtitle(fileName, bytes, generation, persist = true)
         }
     }
 
@@ -1902,43 +2121,42 @@ class PlayerViewModel @Inject constructor(
         val generation = beginSubtitleLoad()
         val fullPath = if (dirPath.isEmpty()) fileName else "$dirPath/$fileName"
         viewModelScope.launch(Dispatchers.IO) {
-            val bytes = try {
+            loadSubtitle(generation, fileName, persist = true) {
                 readSameDirSubtitleBytes(fullPath, storageId, fileName)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                null
             }
-            if (bytes == null) {
-                notifySubtitleLoadFailed(fileName, generation)
-                return@launch
-            }
-            applyExternalSubtitle(fileName, bytes, generation, persist = true)
         }
+    }
+
+    /** 同目录候选的读取结果：区分「目录里确实没有字幕」与「目录读取失败」。 */
+    private sealed interface DirListing {
+        data class Ok(val names: List<String>) : DirListing
+        data object Failed : DirListing
     }
 
     /**
      * 列出视频同目录下的字幕文件名（按名称排序）。
      *
-     * 本地走 `File`（本地字幕不被 MediaStore 索引）；远程临时创建 [Storage] 列举。
-     * 远程实例用完立即关闭 —— 刻意**不复用**播放源携带的 / 文件浏览页持有的实例：
-     * [com.nichx.niplayer.feature.home.library.StorageFileViewModel] 在返回栈中仍持有其
-     * `storage` 字段，而 [swapStorage] 会在切源时关闭旧实例，复用会导致用户返回
-     * 文件浏览页后目录操作失败。
+     * 本地走 `File`（本地字幕不被 MediaStore 索引，[com.nichx.niplayer.storage.impl.VideoStorage]
+     * 只列 Room `video` 表）；远程临时创建 [Storage] 列举。远程实例用完立即关闭 —— 刻意
+     * **不复用**播放源携带的 / 文件浏览页持有的实例：[com.nichx.niplayer.feature.home.library
+     * .StorageFileViewModel] 在返回栈中仍持有其 `storage` 字段，而 [swapStorage] 会在切源时
+     * 关闭旧实例，复用会导致用户返回文件浏览页后目录操作失败。
      */
-    private suspend fun listSameDirSubtitleNames(videoPath: String, storageId: Int?): List<String> {
+    private suspend fun listSameDirSubtitleNames(videoPath: String, storageId: Int?): DirListing {
         val localDir = localParentDirectory(videoPath)
         if (localDir != null) {
-            return localDir.list().orEmpty()
-                .filter { SubtitleMatcher.isSubtitleFile(it) }
-                .sorted()
+            // File.list() 无权限时返回 null（而非空数组），必须与「目录本来就没有字幕」区分
+            val names = attempt { localDir.list() } ?: return DirListing.Failed
+            return DirListing.Ok(names.filter { SubtitleMatcher.isSubtitleFile(it) }.sorted())
         }
-        if (storageId == null) return emptyList()
-        val children = withStorage(storageId) { listChildren(it, videoPath) } ?: return emptyList()
-        return children
-            .filter { !it.isDirectory && SubtitleMatcher.isSubtitleFile(it.name) }
-            .map { it.name }
-            .sorted()
+        if (storageId == null) return DirListing.Ok(emptyList())
+        val children = withStorage(storageId) { listChildren(it, videoPath) } ?: return DirListing.Failed
+        return DirListing.Ok(
+            children
+                .filter { !it.isDirectory && SubtitleMatcher.isSubtitleFile(it.name) }
+                .map { it.name }
+                .sorted(),
+        )
     }
 
     /** 读取视频同目录下指定字幕文件的字节内容。 */
@@ -1983,13 +2201,15 @@ class PlayerViewModel @Inject constructor(
         return try {
             block(storage)
         } finally {
-            try {
-                storage.close()
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // 关闭失败不影响已读取的内容
-            }
+            // 清理必须在 NonCancellable 中执行（取消后普通 suspend 调用会立即抛）；同时 detekt 的
+            // SuspendFunInFinallySection 只接受**裸** `withContext(NonCancellable) { … }` ——
+            // 在外层包 try/catch 仍会被报，而在 finally 内 throw 会触发
+            // ThrowingExceptionFromFinally，两条规则互相冲突（见 config/detekt/detekt.yml）。
+            //
+            // 因此这里不再吞 close 异常，前提是各 [Storage] 实现的 close 都是「尽力关闭、不抛」：
+            // AbstractStorage/WebDavStorage 为空实现，SmbStorage 逐个流吞异常。故 close 不会
+            // 顶掉 block 抛出的原始异常。
+            withContext(kotlinx.coroutines.NonCancellable) { storage.close() }
         }
     }
 
@@ -2002,37 +2222,30 @@ class PlayerViewModel @Inject constructor(
      * @param persist 是否写入 [PlayHistoryEntity.subtitlePath]。用户手动选择为 true；
      *   同目录自动识别为 false —— 后者每次播放都会重新扫描，写历史反而会把一次自动
      *   匹配结果固化成「用户指定」，掩盖后续更合适的候选
+     * @return 是否装载成功（失败原因已写入 [subtitleLoadState] 并同时经 OSD 提示）
      */
     private suspend fun applyExternalSubtitle(
         fileName: String,
         bytes: ByteArray,
         generation: Int,
         persist: Boolean,
-    ) {
-        val tto = try {
-            parseSubtitleBytes(fileName, bytes)
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            null
-        }
+    ): Boolean {
+        val tto = attempt { parseSubtitleBytes(fileName, bytes) }
 
-        // 解析器对"看不懂的格式"不抛异常：FormatSRT 会把认不出的行当 warning 跳过，
-        // 最后返回一个 captions 为空的 TTO（例如 .vtt 文件 —— 本项目没有 VTT 解析器，
-        // 但 SubtitleMatcher / SAF 都会把 .vtt 当字幕列出来）。若直接装载，
-        // 用户看到的是「选了字幕，屏幕上什么都没有」且没有任何提示。
-        // 这里显式识别并给出可见反馈，而不是静默失败。
+        // 解析器对"看不懂的格式"不抛异常，但会给出一个 captions 为空的 TTO。若直接装载，
+        // 用户看到的是「选了字幕，屏幕上什么都没有」且没有任何提示 —— 这里显式给出反馈。
         if (tto == null || tto.captions.isEmpty()) {
             notifySubtitleParseFailed(fileName, generation)
-            return
+            return false
         }
 
         // 同 addSubtitle：装载必须回到主线程，避免与主线程的 update() 并发读写引擎内部容器。
-        // 返回是否真的装载了 —— 被更新操作取代时不得继续持久化。
+        // 返回是否真的装载了 —— 被更新操作取代时不得继续持久化，也不得改写新任务的状态提示。
         val applied = withContext(Dispatchers.Main) {
             if (generation != subtitleLoadGeneration) return@withContext false
             subtitleEngine.load(tto, fileName)
             _activeExternalSubtitle.value = fileName
+            _subtitleLoadState.value = SubtitleLoadState.Idle
             // 外挂字幕与内嵌字幕同时渲染会重叠，选外挂即关闭内嵌（-2 = 关闭）
             player.selectSubtitleTrack(-2)
             true
@@ -2042,8 +2255,9 @@ class PlayerViewModel @Inject constructor(
         // 先点的那个（已被取代、屏幕上没生效）可能后完成读盘并把路径写进历史，
         // 导致下次播放恢复的是用户没选的那个。
         if (persist && applied) {
-            writePersistedSubtitle(fileName.substringAfterLast('.', "").lowercase(), bytes)
+            writePersistedSubtitle(fileName, bytes)
         }
+        return applied
     }
 
     /** 字幕解析失败（或解析出 0 条字幕）时提示用户。 */
@@ -2057,8 +2271,12 @@ class PlayerViewModel @Inject constructor(
     /**
      * 字幕装载出问题时提示用户。
      *
+     * 两路并用：写入菜单内可见的 [subtitleLoadState]（OSD 画在播放页主窗口，被字幕菜单的
+     * Dialog 窗口盖住且 2 秒后消失，用户正看着菜单时等于没有反馈），同时保留 OSD
+     * （菜单已关闭时仍能看到）。
+     *
      * 只在装载代号仍然有效时提示：用户可能已经切集或换了别的字幕，此时旧文件的
-     * 失败与新上下文无关，弹提示只会误导。
+     * 失败与新上下文无关，提示只会误导。
      */
     private suspend fun notifySubtitleProblem(
         @androidx.annotation.StringRes messageRes: Int,
@@ -2067,8 +2285,33 @@ class PlayerViewModel @Inject constructor(
     ) {
         withContext(Dispatchers.Main) {
             if (generation != subtitleLoadGeneration) return@withContext
-            _messageEvent.tryEmit(appContext.getString(messageRes, fileName))
+            val message = appContext.getString(messageRes, fileName)
+            _subtitleLoadState.value = SubtitleLoadState.Failed(messageRes, fileName)
+            _messageEvent.tryEmit(message)
+            logSubtitle("装载失败：$message")
         }
+    }
+
+    /** 执行 [block]，异常返回 null（[kotlinx.coroutines.CancellationException] 照常抛出）。 */
+    private suspend fun <T> attempt(block: suspend () -> T): T? = try {
+        block()
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
+    /** 在主线程按代号守卫写入 [SubtitleLoadState]（已作废的旧任务不得改写当前提示）。 */
+    private suspend fun setSubtitleLoadState(generation: Int, state: SubtitleLoadState) {
+        withContext(Dispatchers.Main) {
+            if (generation != subtitleLoadGeneration) return@withContext
+            _subtitleLoadState.value = state
+        }
+    }
+
+    /** 字幕链路诊断日志：装载属静默的增强行为，没有日志时线上问题无从定位。 */
+    private fun logSubtitle(message: String) {
+        android.util.Log.i("SubtitleLoad", message)
     }
 
     /** 视频路径对应的本地父目录；非本地路径或目录不存在时返回 null。 */
@@ -2085,7 +2328,11 @@ class PlayerViewModel @Inject constructor(
      * （与 [addSubtitle] 的 `copyUriToTempFile` 一致）。解析失败抛异常，由调用方兜底。
      */
     private fun parseSubtitleBytes(fileName: String, bytes: ByteArray): TimedTextObject? {
-        val ext = fileName.substringAfterLast('.', "").lowercase().ifEmpty { "sub" }
+        // 解析器由扩展名决定；无法识别的扩展名直接判失败，而不是退回某个解析器硬啃
+        //（原实现会回退成 ".sub" 交给 FormatSRT，只会得到 captions 为空的 TTO，
+        // 用户看到的是「载入了但什么都不显示」，不如明确失败）
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        if (ext !in SubtitleMatcher.SUBTITLE_EXTENSIONS) return null
         val tempFile = File.createTempFile("subtitle_", ".$ext", appContext.cacheDir)
         return try {
             tempFile.writeBytes(bytes)
@@ -2108,6 +2355,7 @@ class PlayerViewModel @Inject constructor(
         // 递增代号作废在途装载，否则清理后迟到的扫描结果会把字幕又装回来
         beginSubtitleLoad()
         _activeExternalSubtitle.value = null
+        _subtitleLoadState.value = SubtitleLoadState.Idle
         subtitleEngine.clear()
         player.setSubtitleOffsetMs(0L)
     }
@@ -2471,19 +2719,36 @@ private data class PendingDownload(
 )
 
 /**
- * 缩放模式常量，索引 0:1:2:3 对应「适应:裁剪:拉伸:16:9」。
+ * 缩放模式常量，索引 0:1:2 对应「适应(Contain) : 填满(Cover) : 拉伸(Fill)」。
  *
- * - Fit：media3 SCALE_TO_FIT，保持宽高比可能留黑边
- * - Crop：media3 SCALE_TO_FIT_WITH_CROPPING，裁剪填满
- * - Stretch：UI 层 SurfaceView 填满全屏，由 NxPlayer.videoScaleMode 状态驱动
- * - Ratio16_9：强制 16:9 显示比例，忽略视频原始宽高比
+ * 与 [com.nichx.niplayer.datastore.PlayerSettings.scaleModeIndex] 的编码一一对应。
+ *
+ * 三档的差异全部由 UI 层设定 SurfaceView 尺寸实现：Android 的 `SCALE_TO_FIT` 是把内容
+ * 缩放**到 surface 尺寸**，因此只要 surface 比例 = 目标比例就不会变形，让 surface 溢出
+ * 屏幕（Cover）或与视频比例不一致（Fill）即分别得到裁切与拉伸。内核只区分
+ * 「是否需要裁剪」（[NxPlayer.setVideoCropEnabled]）。
  */
 private val SCALE_MODES = listOf(
-    NxVideoScaleMode.Fit,
-    NxVideoScaleMode.Crop,
-    NxVideoScaleMode.Stretch,
-    NxVideoScaleMode.Ratio16_9,
+    NxVideoScaleMode.Contain,
+    NxVideoScaleMode.Cover,
+    NxVideoScaleMode.Fill,
 )
+
+/**
+ * 去黑边判决看门狗的复检间隔。
+ *
+ * 可变画幅片（IMAX 等）的满幅段落可能出现在片中的任意位置，需要在其后复检才能识破。
+ * 1 分钟一次 PixelCopy 的开销可忽略；间隔再短收益有限（黑边是整片属性，不急于一时）。
+ */
+private const val BLACK_BAR_WATCHDOG_INTERVAL_MS = 60_000L
+
+/**
+ * 「有黑边」判决的多帧一致性容差：两次检测到的内容比例相对差在此范围内才算一致。
+ */
+private const val CONTENT_ASPECT_AGREEMENT = 0.04f
+
+/** 「有黑边」判决的最大确认次数。超过仍未取得一致样本则退回「不裁」。 */
+private const val MAX_BAR_CONFIRM = 3
 
 /**
  * 周期性保存播放进度的时间间隔。

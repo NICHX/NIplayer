@@ -24,12 +24,8 @@ import java.util.TreeMap
  * - 完全自控时序，正负偏移都精确生效（不依赖 media3 setSubtitleOffsetMs）
  *
  * 线程安全：所有方法假定在主线程调用（与 ExoPlayer.Listener 回调线程一致）。
- *
- * @param textSizeFactor 字体大小因子（相对于视图高度，如 0.0533 表示 5.33% 视图高度）
  */
-class SubtitleEngine(
-    private val textSizeFactor: Float = 0.0533f,
-) {
+class SubtitleEngine {
 
     /** 已解析的字幕列表（按 startMs 排序，索引与 TreeMap key 对应）。 */
     private val parsed = mutableListOf<ParsedCaption>()
@@ -60,6 +56,15 @@ class SubtitleEngine(
     private var viewWidthPx: Float = 0f
 
     /**
+     * 当前字幕文件的逻辑分辨率（ASS `PlayResX/PlayResY`）。
+     *
+     * 字号、描边、坐标的换算基准，[load] 时从文件读取；未声明时为 ASS 默认 384x288
+     *（SRT 等无 PlayRes 的格式即走该默认值）。
+     */
+    private var playResX: Float = 384f
+    private var playResY: Float = 288f
+
+    /**
      * M-14 修复：渲染缓存，避免 ExoPlayer 每 ~16ms 触发 update 都重新跑 applyAnimation。
      *
      * 缓存命中条件（全部满足才复用上次结果）：
@@ -76,6 +81,20 @@ class SubtitleEngine(
     private var lastUpdateStyleConfigVersion: Int = 0
     private var lastUpdateViewHeightPx: Float = 0f
     private var lastUpdateViewWidthPx: Float = 0f
+
+    /**
+     * 最近一次收到的播放位置（原始 positionMs，未叠加偏移）。
+     *
+     * 与 [lastUpdatePositionMs]（存的是已叠加偏移的 effectiveMs，且只在真正渲染一帧后才写入）
+     * 不同，本字段在每次 [update] 进入时**无条件**记录，因此「还没有装载任何字幕」期间
+     * 上层喂进来的位置也不会丢。
+     *
+     * 用途：[load] / [updateStyleConfig] / [setViewSize] 补渲染一帧时按它取位置 ——
+     * 一个视频装载**第一条**字幕时 [lastUpdatePositionMs] 必然是 MIN_VALUE（parsed 为空时
+     * [update] 早退，不写渲染缓存），此时若按 [lastUpdatePositionMs] 反算就会拿不到位置，
+     * 暂停态下字幕将永远不显示。
+     */
+    private var lastKnownPositionMs: Long = Long.MIN_VALUE
 
     /** styleConfig 变更版本号，[updateStyleConfig] 时自增，用于触发 [update] 缓存失效。 */
     private var styleConfigVersion: Int = 0
@@ -107,11 +126,8 @@ class SubtitleEngine(
         // m-07 修复：原注释"立即重渲染一次"但实现仅赋值 styleConfig 未触发渲染。
         // 现主动调用 [update] 用最近一次 positionMs 重渲染，用户改样式后立即看到效果，
         // 即使暂停态或未在播放也立即刷新（update 内部缓存失效后会重新计算）。
-        // lastUpdatePositionMs 在 update 中会被重置，此处复用最近值即可。
-        if (parsed.isNotEmpty() && lastUpdatePositionMs != Long.MIN_VALUE) {
-            // 反算原 positionMs：effectiveMs = positionMs + offsetMs → positionMs = effectiveMs - offsetMs
-            val lastPositionMs = lastUpdatePositionMs - lastUpdateOffsetMs
-            update(lastPositionMs)
+        if (parsed.isNotEmpty() && lastKnownPositionMs != Long.MIN_VALUE) {
+            update(lastKnownPositionMs)
         }
     }
 
@@ -122,21 +138,23 @@ class SubtitleEngine(
      * @param fileName 字幕文件名（用于 UI 显示）
      */
     fun load(tto: TimedTextObject, fileName: String?) {
-        // m-16 修复：先记下当前渲染位置，重建 parsed 后要立刻按该位置重算一帧。
+        // m-16 修复：先记下当前播放位置，重建 parsed 后要立刻按该位置重算一帧。
         //
         // 不能指望上层再喂一次 update —— player.positionMs 是 StateFlow，其值由 500ms
         // 轮询器驱动，而轮询器只在 Playing/Buffering 期间运行（见 NxMedia3Player.positionTicker）。
         // 暂停态下 positionMs 恒定不变 → StateFlow 不再发射 → 上层 collect 不再触发 →
         // 装载好的字幕永远不渲染，直到用户恢复播放。而"暂停下来挑字幕"恰恰是最常见的用法。
-        val lastPositionMs = if (lastUpdatePositionMs != Long.MIN_VALUE) {
-            // 反算原 positionMs：effectiveMs = positionMs + offsetMs → positionMs = effectiveMs - offsetMs
-            lastUpdatePositionMs - lastUpdateOffsetMs
-        } else {
-            null
-        }
+        //
+        // 位置取 [lastKnownPositionMs] 而非按 [lastUpdatePositionMs] 反算：后者只在**已装载字幕**
+        // 且 [update] 越过全部早退后才写入，因此一个视频装载第一条字幕时它必然是 MIN_VALUE
+        // —— 首次装载（同目录自动识别、暂停后挑字幕）恰好全落在这一分支，反算会拿不到位置。
+        val lastPositionMs = lastKnownPositionMs.takeIf { it != Long.MIN_VALUE }
 
         parsed.clear()
         startMsToIndex.clear()
+        // 字号/描边/坐标的换算基准取**文件声明的 PlayRes**（未声明时 TTO 默认 384x288）。
+        playResX = tto.playResX.takeIf { it > 0f } ?: 384f
+        playResY = tto.playResY.takeIf { it > 0f } ?: 288f
         tto.captions.values.forEachIndexed { index, caption ->
             val parsedCaption = AssOverrideParser.parse(caption, tto)
             parsed.add(parsedCaption)
@@ -171,8 +189,16 @@ class SubtitleEngine(
 
     /** 设置视图尺寸（用于字号换算）。由 UI 层在 onSizeChanged 调用。 */
     fun setViewSize(widthPx: Float, heightPx: Float) {
+        val changed = (heightPx > 0f && heightPx != viewHeightPx) ||
+            (widthPx > 0f && widthPx != viewWidthPx)
         viewHeightPx = if (heightPx > 0f) heightPx else viewHeightPx
         viewWidthPx = if (widthPx > 0f) widthPx else viewWidthPx
+        // m-08 的早退（viewHeightPx<=0 时 update 直接返回）会丢掉那一帧，而本方法原先只存尺寸、
+        // 不触发重算：若上层此后不再喂位置（暂停态装载字幕），字幕就一直没有渲染的机会。
+        // 尺寸真正变化时补一帧。相同尺寸重复调用（SideEffect 每次重组都会调）不触发，避免空转。
+        if (changed && parsed.isNotEmpty() && lastKnownPositionMs != Long.MIN_VALUE) {
+            update(lastKnownPositionMs)
+        }
     }
 
     /**
@@ -181,6 +207,10 @@ class SubtitleEngine(
      * @param positionMs 当前播放位置（ms，来自 player.positionMs）
      */
     fun update(positionMs: Long) {
+        // 无条件记录位置：即使本次因未装载字幕 / 未测量尺寸 / 时间轴为负而跳过渲染，
+        // 位置也要留下，供 load() / setViewSize() 补渲染时使用（见 [lastKnownPositionMs]）。
+        lastKnownPositionMs = positionMs
+
         if (parsed.isEmpty()) {
             _renderables.value = emptyList()
             return
@@ -225,7 +255,8 @@ class SubtitleEngine(
                 val current = parsed[index]
                 if (effectiveMs < current.startMs || effectiveMs > current.endMs) continue
                 val renderable = applyAnimation(current, effectiveMs)
-                if (renderable.spans.isNotEmpty()) {
+                // 纯矢量绘制行没有文本 span（`{\p1}m ...`），必须以「有无可绘制内容」判断
+                if (!renderable.isEmpty) {
                     renderables.add(renderable)
                 }
             }
@@ -315,10 +346,13 @@ class SubtitleEngine(
         } else {
             parseStyleColor(style.color) ?: cfg.primaryColor
         }
+        // 描边色优先取 ASS OutlineColour；SSA/无该字段时回退 BackColour（历史行为）
         val styleOutline = if (!cfg.applyEmbeddedStyles) {
             cfg.outlineColor
         } else {
-            parseStyleColor(style.backgroundColor) ?: cfg.outlineColor
+            parseStyleColor(style.outlineColor)
+                ?: parseStyleColor(style.backgroundColor)
+                ?: cfg.outlineColor
         }
         val styleBack = SubtitleColor.BLACK
         // 关闭内嵌样式：清空 per-span 颜色（含 Style 默认色、\c 覆盖色、\t 动画色），
@@ -332,6 +366,25 @@ class SubtitleEngine(
 
         return RenderableCaption(
             spans = effectiveSpans,
+            // 矢量绘制：颜色同样遵循 applyEmbeddedStyles 策略；\bord 是脚本单位，需按视口缩放
+            drawings = parsed.drawings.map { drawing ->
+                RenderableDrawing(
+                    path = drawing.path,
+                    primary = if (!cfg.applyEmbeddedStyles) {
+                        cfg.primaryColor
+                    } else {
+                        drawing.primary ?: stylePrimary
+                    },
+                    outline = if (!cfg.applyEmbeddedStyles) {
+                        cfg.outlineColor
+                    } else {
+                        drawing.outline ?: styleOutline
+                    },
+                    outlineWidth = drawing.outlineWidth?.let { it * viewScale } ?: cfg.outlineWidth,
+                )
+            },
+            clip = parsed.clip,
+            clipInverted = parsed.clipInverted,
             align = parsed.align,
             position = position,
             alpha = alpha,
@@ -472,17 +525,21 @@ class SubtitleEngine(
     /**
      * 计算视口等比缩放系数。
      *
-     * ASS 字号与坐标基于 PlayRes（默认 384x288）设计，应按 `min(宽/PlayResX, 高/PlayResY)`
-     * 等比缩放，与视频画面区域适配：
-     * - 横屏 16:9（如 1920x1080）：min(5.0, 3.75) = 3.75，与旧实现（仅按高度）一致，无回归
-     * - 竖屏（如 1080x2400）：min(2.81, 8.33) = 2.81，避免纯高度缩放导致字号暴增
+     * ASS 字号与坐标基于**文件声明的 PlayRes**（[playResX] x [playResY]，未声明时 384x288），
+     * 按 `min(宽/PlayResX, 高/PlayResY)` 等比缩放以适配画面区域：
+     * - 1280x720 文件 + 1920x1080 视口：min(1.5, 1.5) = 1.5（Fontsize=40 → 60px）
+     * - 384x288 文件 + 1920x1080 视口：min(5.0, 3.75) = 3.75，与旧实现（固定按 288 折算）一致
+     *
+     * 原先固定用 288/384 当基准：PlayResY=720 的文件（Aegisub 默认之一）字号会被放大
+     * `720/288 = 2.5` 倍 —— 这是「外挂字幕字体太大」的另一半原因（[AssOverrideParser] 解析
+     * `\pos` 时已经用的是文件 PlayRes，两边基准必须一致，否则位置与字号比例也会互相打架）。
      *
      * 宽度未知（setViewSize 尚未调用）时回退为仅按高度缩放。
      */
     private fun computeViewScale(): Float {
-        val heightScale = viewHeightPx / 288f
+        val heightScale = viewHeightPx / playResY
         if (viewWidthPx <= 0f) return heightScale
-        val widthScale = viewWidthPx / 384f
+        val widthScale = viewWidthPx / playResX
         return minOf(widthScale, heightScale)
     }
 
@@ -490,7 +547,8 @@ class SubtitleEngine(
      * 根据 Style.fontSize 和视口等比缩放系数计算实际字号（px）。
      *
      * ASS Style.fontSize 是基于 PlayResY 的逻辑值，需按 [viewScale] 等比缩放。
-     * 若 Style.fontSize 无效，则用 [textSizeFactor] * viewHeightPx 作为默认值（同样受宽度维度限制）。
+     * 若 Style.fontSize 无效，则用 [SubtitleStyleConfig.textSizeFactor] * viewHeightPx 作为默认值
+     *（同样受宽度维度限制）。
      */
     private fun computeStyleFontSize(style: Style, viewScale: Float): Float {
         val styleSize = style.fontSize?.toFloatOrNull()
@@ -499,8 +557,9 @@ class SubtitleEngine(
             // 例如 PlayResY=288, fontSize=24, viewScale=3.75 → 24 * 3.75 = 90px
             styleSize * viewScale
         } else {
-            // 默认字号 = 视图高度的 textSizeFactor 比例（PlayRes 288 下的逻辑字号经等比缩放）
-            textSizeFactor * viewScale * 288f
+            // 默认字号 = 视图高度的 textSizeFactor 比例（PlayRes 288 下的逻辑字号经等比缩放）。
+            // 取 [SubtitleStyleConfig.textSizeFactor] 而非构造参数：改字号要能立即生效。
+            styleConfig.textSizeFactor * viewScale * 288f
         }
     }
 

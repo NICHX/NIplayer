@@ -1,6 +1,7 @@
 package com.nichx.niplayer.feature.player
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -62,6 +63,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  *   SAF 访问不到网络存储，但对少数只存在于系统文档树/云盘的字幕仍有用，
  *   直接删掉会是一次能力回退。为 null 时不展示该入口。
  * @param initialLocalPath 本地浏览起始目录（通常是当前视频所在目录），null 用外部存储根
+ * @param initialRemote 网络存储起始位置（库 ID + 库内目录）；两者都为空时停在根页面
  */
 @Composable
 internal fun SubtitleFilePickerDialog(
@@ -69,17 +71,17 @@ internal fun SubtitleFilePickerDialog(
     onDismiss: () -> Unit,
     onPickFromSystem: (() -> Unit)? = null,
     initialLocalPath: String? = null,
+    initialRemote: Pair<Int, String>? = null,
     viewModel: SubtitlePickerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val secondary = PlayerDialogColors.textSecondary
 
-    // 每次打开都从根页面开始：ViewModel 挂在导航条目上，实例跨弹层存活
-    LaunchedEffect(Unit) { viewModel.resetToRoot() }
-
-    // 起始目录只在进入时写入一次，不参与重组（localStartPath 是普通字段，不触发重组）
-    LaunchedEffect(initialLocalPath) {
-        if (!initialLocalPath.isNullOrBlank()) viewModel.localStartPath = initialLocalPath
+    // 每次打开都定位到「当前视频所在目录」（网络源优先，其次本地）；定位不到时回到根页面。
+    // ViewModel 实例跨弹层存活，所以起始位置每次打开都要重设。
+    LaunchedEffect(Unit) {
+        viewModel.configureStart(localPath = initialLocalPath, remote = initialRemote)
+        viewModel.openInitial()
     }
 
     val location = state.location
@@ -255,9 +257,13 @@ private fun PickerRow(
             text = label,
             color = onSurface,
             fontSize = 15.sp,
+            // 文件名常常超过一行：不省略号截断，改为**可横向手动滑动**看全名
+            //（softWrap=false 才能让文本按完整宽度测量，否则测量宽度=可视宽度，无从滚动）
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            softWrap = false,
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState()),
         )
         if (trailing != null) {
             Text(

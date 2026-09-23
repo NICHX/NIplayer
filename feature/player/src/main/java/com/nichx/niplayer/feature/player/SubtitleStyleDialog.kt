@@ -63,6 +63,7 @@ fun SubtitleStyleDialog(
 ) {
     // 本地 state（与 SubtitleSettings 同步）：用户修改后立即写回 MMKV 并触发 onStyleChanged
     var fontFamilyKey by remember { mutableStateOf(SubtitleSettings.fontFamilyKey) }
+    var fontWeightKey by remember { mutableStateOf(SubtitleSettings.fontWeightKey) }
     var textSizeFraction by remember { mutableStateOf(SubtitleSettings.textSizeFraction) }
     var fontColor by remember { mutableStateOf(SubtitleSettings.fontColor) }
     var outlineWidth by remember { mutableStateOf(SubtitleSettings.outlineWidth) }
@@ -72,6 +73,7 @@ fun SubtitleStyleDialog(
 
     // 子 Dialog 显示状态
     var showFontFamilyPicker by remember { mutableStateOf(false) }
+    var showFontWeightPicker by remember { mutableStateOf(false) }
     var showTextSizePicker by remember { mutableStateOf(false) }
     var showFontColorPicker by remember { mutableStateOf(false) }
     var showOutlineWidthPicker by remember { mutableStateOf(false) }
@@ -103,6 +105,14 @@ fun SubtitleStyleDialog(
                 label = stringResource(R.string.subtitle_font_label),
                 value = stringResource(SubtitleSettings.FONT_FAMILY_OPTIONS.find { it.second == fontFamilyKey }?.first ?: R.string.subtitle_font_default),
                 onClick = { showFontFamilyPicker = true },
+            )
+            StyleClickRow(
+                label = stringResource(R.string.subtitle_weight_label),
+                value = stringResource(
+                    SubtitleSettings.FONT_WEIGHT_OPTIONS.find { it.second == fontWeightKey }?.first
+                        ?: R.string.subtitle_weight_normal,
+                ),
+                onClick = { showFontWeightPicker = true },
             )
             StyleClickRow(
                 label = stringResource(R.string.subtitle_size_label),
@@ -173,6 +183,20 @@ fun SubtitleStyleDialog(
                 showFontFamilyPicker = false
             },
             onDismiss = { showFontFamilyPicker = false },
+        )
+    }
+    if (showFontWeightPicker) {
+        SingleSelectDialog(
+            title = stringResource(R.string.subtitle_weight_label),
+            options = SubtitleSettings.FONT_WEIGHT_OPTIONS,
+            selected = fontWeightKey,
+            onSelect = {
+                fontWeightKey = it
+                SubtitleSettings.fontWeightKey = it
+                applyAndNotify()
+                showFontWeightPicker = false
+            },
+            onDismiss = { showFontWeightPicker = false },
         )
     }
     if (showTextSizePicker) {

@@ -52,6 +52,35 @@ class AssOverrideParserTest {
         assertEquals(false, parsed.rawSpans[0].italic)
     }
 
+    /**
+     * 行内样式切换必须按「标签之前 / 之后」拆成两个 span。
+     *
+     * 原实现只在换行与行尾 flush 文本缓冲，标签切样式时缓冲里已累积的文本会被**新样式**一并带走
+     *（`{\i1}斜体{\i0}` 整段都变成关闭斜体之后的样式），行内样式等于失效。
+     */
+    @Test
+    fun `行内样式切换拆成多个 span`() {
+        val parsed = AssOverrideParser.parse(caption("{\\i1}italic{\\i0} normal"), tto)
+
+        assertEquals(2, parsed.rawSpans.size)
+        assertEquals("italic", parsed.rawSpans[0].text)
+        assertEquals(true, parsed.rawSpans[0].italic)
+        assertEquals(" normal", parsed.rawSpans[1].text)
+        assertEquals(false, parsed.rawSpans[1].italic)
+    }
+
+    @Test
+    fun `行内颜色切换只作用于其后文本`() {
+        // {\c&H0000FF&} 是 AABBGGRR → 红（RR=FF）
+        val parsed = AssOverrideParser.parse(caption("plain{\\c&H0000FF&}red"), tto)
+
+        assertEquals(2, parsed.rawSpans.size)
+        assertEquals(null, parsed.rawSpans[0].primaryColor)
+        val red = parsed.rawSpans[1].primaryColor!!
+        assertEquals(1f, red.r, 0.001f)
+        assertEquals(0f, red.g, 0.001f)
+    }
+
     @Test
     fun `字体大小 tag 解析`() {
         val parsed = AssOverrideParser.parse(caption("{\\fs24}size24"), tto)
@@ -133,6 +162,67 @@ class AssOverrideParserTest {
     }
 
     @Test
+    fun `p 绘制模式不再把坐标当文本`() {
+        // 无 \p0 时由行尾结束绘制模式
+        val parsed = AssOverrideParser.parse(caption("{\\p1}m 0 0 l 100 0 100 100"), tto)
+
+        assertTrue("绘制命令不得进入文本 span：${parsed.rawSpans}", parsed.rawSpans.isEmpty())
+        assertEquals(1, parsed.drawings.size)
+
+        val ops = parsed.drawings[0].path
+        // 坐标系与 \pos 一致：脚本坐标 / PlayRes（测试 TTO 为默认 384x288）
+        val move = ops[0] as SubtitlePathOp.MoveTo
+        assertEquals(0f, move.x, 0.001f)
+        assertEquals(0f, move.y, 0.001f)
+        val line = ops[1] as SubtitlePathOp.LineTo
+        assertEquals(100f / 384f, line.x, 0.001f)
+        assertEquals(0f, line.y, 0.001f)
+    }
+
+    @Test
+    fun `p 的指数决定坐标缩放`() {
+        // \p2 → 坐标缩放 1/2：l 384 0 → 192/384 = 0.5
+        val parsed = AssOverrideParser.parse(caption("{\\p2}m 0 0 l 384 0"), tto)
+        val line = parsed.drawings[0].path[1] as SubtitlePathOp.LineTo
+        assertEquals(0.5f, line.x, 0.001f)
+    }
+
+    @Test
+    fun `p0 退出绘制模式后恢复文本`() {
+        val parsed = AssOverrideParser.parse(caption("{\\p1}m 0 0 l 10 0{\\p0}text"), tto)
+
+        assertEquals(1, parsed.drawings.size)
+        assertEquals(1, parsed.rawSpans.size)
+        assertEquals("text", parsed.rawSpans[0].text)
+    }
+
+    @Test
+    fun `矩形 clip 解析为归一化区域`() {
+        val parsed = AssOverrideParser.parse(caption("{\\clip(192,144,384,288)}clipped"), tto)
+
+        val clip = parsed.clip
+        assertTrue("clip 应被解析为矩形：$clip", clip is SubtitleClip.Rect)
+        val rect = (clip ?: error("clip 应被解析为矩形")) as SubtitleClip.Rect
+        assertEquals(0.5f, rect.left, 0.001f)
+        assertEquals(0.5f, rect.top, 0.001f)
+        assertEquals(1f, rect.right, 0.001f)
+        assertEquals(1f, rect.bottom, 0.001f)
+        assertEquals(false, parsed.clipInverted)
+    }
+
+    @Test
+    fun `矢量 clip 与 iclip 逆裁剪`() {
+        val vector = AssOverrideParser.parse(caption("{\\clip(m 0 0 l 384 0 384 288)}x"), tto)
+        assertTrue("矢量 clip 应被识别：${vector.clip}", vector.clip is SubtitleClip.Vector)
+
+        val inverted = AssOverrideParser.parse(caption("{\\iclip(0,0,192,144)}x"), tto)
+        assertEquals(true, inverted.clipInverted)
+        val rect = (inverted.clip ?: error("iclip 应被解析为矩形")) as SubtitleClip.Rect
+        assertEquals(0f, rect.left, 0.001f)
+        assertEquals(0.5f, rect.right, 0.001f)
+    }
+
+    @Test
     fun `时间戳从 caption 读取`() {
         val parsed = AssOverrideParser.parse(caption("hello"), tto)
         assertEquals(1000L, parsed.startMs)
@@ -141,12 +231,15 @@ class AssOverrideParserTest {
 
     @Test
     fun `样式覆盖 tag 后恢复`() {
-        // 无换行时整段合并为单 span，样式取最终覆盖值
+        // 行内切换样式必须按位置分段：前段用 tag 之前的样式，后段用 tag 之后的样式。
+        //（原实现把整段合并成一个 span 并取"最终覆盖值"，等于行内样式失效 —— 已修正）
         val raw = "{\\b1}bold{\\b0}normal"
         val parsed = AssOverrideParser.parse(caption(raw), tto)
-        assertEquals(1, parsed.rawSpans.size)
-        assertEquals("boldnormal", parsed.rawSpans[0].text)
-        assertEquals(false, parsed.rawSpans[0].bold)
+        assertEquals(2, parsed.rawSpans.size)
+        assertEquals("bold", parsed.rawSpans[0].text)
+        assertEquals(true, parsed.rawSpans[0].bold)
+        assertEquals("normal", parsed.rawSpans[1].text)
+        assertEquals(false, parsed.rawSpans[1].bold)
     }
 
     @Test

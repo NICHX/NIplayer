@@ -219,17 +219,17 @@ object BlackBarDetector {
     /**
      * 判断内容区域比例是否命中已知成品比例（裁剪白名单判定）。
      *
-     * 自动对较长边/较短边做归一化（长边:短边），因此横屏宽银幕与竖屏 9:16
-     * 都能正确命中，无需关心视频旋转方向。
+     * 内部按较长边:较短边归一化，因此横屏宽银幕与竖屏 9:16 都能正确命中，
+     * 调用方传参顺序无关。
      *
-     * @param longSideLong 内容区域较长边像素
-     * @param shortSideLong 内容区域较短边像素
+     * @param sideA 内容区域一边的像素长度
+     * @param sideB 内容区域另一边的像素长度
      * @param tolerance 相对容差（0~1，相对已知比例的偏差），默认 4%
      * @return 命中任一已知比例返回 true
      */
-    fun matchesKnownAspect(longSide: Int, shortSide: Int, tolerance: Float = 0.04f): Boolean {
-        if (longSide <= 0 || shortSide <= 0) return false
-        val aspect = longSide.toFloat() / shortSide
+    fun matchesKnownAspect(sideA: Int, sideB: Int, tolerance: Float = 0.04f): Boolean {
+        if (sideA <= 0 || sideB <= 0) return false
+        val aspect = maxOf(sideA, sideB).toFloat() / minOf(sideA, sideB)
         return KNOWN_ASPECT_RATIOS.any { kotlin.math.abs(aspect - it) / it <= tolerance }
     }
 

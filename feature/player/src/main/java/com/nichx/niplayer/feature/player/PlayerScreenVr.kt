@@ -203,19 +203,3 @@ internal fun SmallRoundIconButton(
 // ===== 配置化 HUD 按钮系统 =====
 // 中部侧边按钮由配置列表驱动，增删/排序/调样式只需改 [HudButtonConfig] 列表。
 // 后续用户自定义只需在设置页读写同一份配置列表，无需改动渲染逻辑。
-
-/**
- * 依据原生画面宽高比粗略判定视频是否可能为 VR。
- *
- * VR 主流帧型：
- * - **2:1（aspect≈2.0）**：360° 等距矩形 / 左右(SBS) 180/360°
- * - **1:2（aspect≈0.5）**：上下(OU) 180/360°
- *
- * 仅作为「是否开放 VR 入口」的门槛，避免普通 16:9/4:3/宽银幕视频误入 VR 造成画面变形。
- * 无法区分的极端形状（如 16:9 的竖置 SBS、9:16 与 OU 撞型）不强制开放，由用户手动判定。
- */
-internal fun isLikelyVrVideo(width: Int, height: Int): Boolean {
-    if (width <= 0 || height <= 0) return false
-    val ar = width.toFloat() / height
-    return ar in 1.88f..2.12f || ar in 0.47f..0.53f
-}
