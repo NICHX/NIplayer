@@ -213,6 +213,36 @@ private val AbLoopIcon: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
     }.build()
 }
 
+/**
+ * VR 头戴显示器图标（与播放器内一致：凸起头带 + 两侧镜片，全描边）。
+ * home 模块不依赖 feature:player，故此处复制绘制，保证符号相同。
+ */
+private val VrHeadsetIcon: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
+    val band = PathParser().parsePathString(
+        "M5 9 C5 4.5 19 4.5 19 9 " +
+            "M5 9 Q5 13 6.5 14 L6.5 9 Z " +
+            "M19 9 Q19 13 17.5 14 L17.5 9 Z " +
+            "M6.5 14 Q5.5 15 5 14 L5 9 Q5 13 6.5 14 Z " +
+            "M17.5 14 Q18.5 15 19 14 L19 9 Q19 13 17.5 14 Z"
+    ).toNodes()
+    val frame = PathParser().parsePathString(
+        "M7.5 9.5 A1.5 1.5 0 1 1 7.49 9.5 " +
+            "M16.5 9.5 A1.5 1.5 0 1 1 16.49 9.5"
+    ).toNodes()
+    ImageVector.Builder(
+        name = "VrHeadset",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        addPath(pathData = band, stroke = SolidColor(Color.White), strokeLineWidth = 1.6f,
+            strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        addPath(pathData = frame, stroke = SolidColor(Color.White), strokeLineWidth = 1.4f,
+            strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+    }.build()
+}
+
 /** 控制功能 id → 与播放器一致的图标。 */
 private fun ctrlIcon(id: String): ImageVector = when (id) {
     "rotate" -> Icons.Rounded.ScreenRotation
@@ -225,6 +255,7 @@ private fun ctrlIcon(id: String): ImageVector = when (id) {
     "background_play" -> Icons.Rounded.HeadsetMic
     "sleep_timer" -> Icons.Rounded.Bedtime
     "media_info" -> Icons.Rounded.Info
+    "vr" -> VrHeadsetIcon
     else -> Icons.Rounded.Bookmark // bookmarks
 }
 
@@ -513,6 +544,7 @@ internal fun ctrlName(id: String): String = stringResource(
         "sleep_timer" -> R.string.player_ctrl_name_sleep_timer
         "media_info" -> R.string.player_ctrl_name_media_info
         "bookmarks" -> R.string.player_ctrl_name_bookmarks
+        "vr" -> R.string.player_ctrl_name_vr
         else -> R.string.player_ctrl_name_bookmarks
     },
 )

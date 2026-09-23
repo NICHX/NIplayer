@@ -658,16 +658,12 @@
     <!-- Player settings (PlayerSettingsScreen) -->
     <string name="player_settings_title">Player settings</string>
     <string name="player_ctrl_customize">Customize controls</string>
-    <string name="player_ctrl_customize_desc">Show / order / left-right</string>
-    <string name="player_ctrl_customize_hint">Tap a location tag (Left/Right/More) below a control to move it there; the switch toggles visibility; the arrows reorder items in the same location.</string>
+    <string name="player_ctrl_customize_desc">Order / left-right</string>
     <string name="player_ctrl_customize_instruction">Landscape and portrait have separate layouts. Long-press a control and drag it to a new spot — you can drag across columns and drop it into the target column.</string>
     <string name="player_ctrl_drag_hint">Long-press &amp; drag</string>
-    <string name="player_ctrl_show">Show</string>
     <string name="player_ctrl_side_left">Left</string>
     <string name="player_ctrl_side_right">Right</string>
     <string name="player_ctrl_side_more">More</string>
-    <string name="player_ctrl_move_up">Move up</string>
-    <string name="player_ctrl_move_down">Move down</string>
     <string name="player_ctrl_group_count">%d items</string>
     <string name="player_ctrl_reset">Reset default</string>
     <string name="player_ctrl_done">Done</string>
@@ -682,6 +678,7 @@
     <string name="player_ctrl_name_sleep_timer">Sleep timer</string>
     <string name="player_ctrl_name_media_info">Media info</string>
     <string name="player_ctrl_name_bookmarks">Bookmarks</string>
+    <string name="player_ctrl_name_vr">VR Look-around</string>
     <!-- 媒体库设置（MediaLibrarySettingsScreen） -->
     <string name="media_library_settings_title">Media library settings</string>
     <string name="player_kernel">Player kernel</string>

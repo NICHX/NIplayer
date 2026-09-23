@@ -659,15 +659,11 @@
     <string name="player_settings_title">播放器设置</string>
     <string name="player_ctrl_customize">控制栏自定义</string>
     <string name="player_ctrl_customize_desc">拖放调整顺序与位置</string>
-    <string name="player_ctrl_customize_hint">点功能下方的位置标签（左列/右列/更多）把它移到对应位置；开关控制是否显示；上下箭头调整同一位置的顺序。</string>
     <string name="player_ctrl_customize_instruction">横屏与竖屏可分别设置布局。长按某个功能拖到想放的位置，可跨列拖拽，松开即插入到目标列。</string>
     <string name="player_ctrl_drag_hint">长按拖动</string>
-    <string name="player_ctrl_show">显示</string>
     <string name="player_ctrl_side_left">左列</string>
     <string name="player_ctrl_side_right">右列</string>
     <string name="player_ctrl_side_more">更多</string>
-    <string name="player_ctrl_move_up">上移</string>
-    <string name="player_ctrl_move_down">下移</string>
     <string name="player_ctrl_group_count">%d 项</string>
     <string name="player_ctrl_reset">恢复默认</string>
     <string name="player_ctrl_done">完成</string>
@@ -682,6 +678,7 @@
     <string name="player_ctrl_name_sleep_timer">定时关闭</string>
     <string name="player_ctrl_name_media_info">媒体信息</string>
     <string name="player_ctrl_name_bookmarks">书签</string>
+    <string name="player_ctrl_name_vr">VR 环视</string>
     <!-- 媒体库设置（MediaLibrarySettingsScreen） -->
     <string name="media_library_settings_title">媒体库设置</string>
     <string name="player_kernel">播放器内核</string>
