@@ -107,7 +107,6 @@ internal fun PlayerProgressBar(
     onSeek: (Float) -> Unit,
     onSeekFinished: () -> Unit,
     onDragFractionChange: (Float?) -> Unit = {},
-    bookmarkPositions: List<Long> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val trackHeight = 4.dp
@@ -231,17 +230,6 @@ internal fun PlayerProgressBar(
                 )
             }
 
-            // F-19：书签标记（绿色小圆点）
-            if (bookmarkPositions.isNotEmpty() && durationMs > 0) {
-                bookmarkPositions.forEach { pos ->
-                    val x = (pos.toFloat() / durationMs).coerceIn(0f, 1f) * w
-                    drawCircle(
-                        color = Color(0xFF66BB6A),
-                        radius = 3.dp.toPx(),
-                        center = Offset(x, h / 2f),
-                    )
-                }
-            }
 
             val thumbX = w * display
             drawCircle(
@@ -478,10 +466,8 @@ internal fun PlayerControllerLayer(
     onToggleBlackBarCrop: () -> Unit = {},
     onPlayAtIndex: (Int) -> Unit,
     onTogglePlaylistDialog: () -> Unit,
-    bookmarkPositions: List<Long> = emptyList(),
     pipEnabled: Boolean = false,
     onPictureInPicture: () -> Unit = {},
-    onShowBookmarks: () -> Unit = {},
     onDownload: () -> Unit = {},
     /** 本地文件（已下载/缓存直链）来源时为 false，隐藏下载按钮。 */
     showDownload: Boolean = true,
@@ -670,7 +656,6 @@ internal fun PlayerControllerLayer(
                 abLoopB = abLoopB,
                 onSeek = onSeek,
                 onSeekFinished = onSeekFinished,
-                bookmarkPositions = bookmarkPositions,
             )
 
             Spacer(Modifier.height(6.dp))
@@ -1016,7 +1001,6 @@ private fun PlayerProgressSection(
     abLoopB: Long?,
     onSeek: (Float) -> Unit,
     onSeekFinished: () -> Unit,
-    bookmarkPositions: List<Long>,
 ) {
     val positionMs by positionMsFlow.collectAsStateWithLifecycle()
     val bufferedMs by bufferedMsFlow.collectAsStateWithLifecycle()
@@ -1032,7 +1016,6 @@ private fun PlayerProgressSection(
         onSeek = onSeek,
         onSeekFinished = onSeekFinished,
         onDragFractionChange = { dragFractionPreview = it },
-        bookmarkPositions = bookmarkPositions,
     )
 
     Spacer(Modifier.height(2.dp))

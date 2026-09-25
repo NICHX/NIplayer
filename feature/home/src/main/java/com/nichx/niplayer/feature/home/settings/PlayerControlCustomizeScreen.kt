@@ -24,7 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Bedtime
-import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.HeadsetMic
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Info
@@ -256,7 +256,7 @@ private fun ctrlIcon(id: String): ImageVector = when (id) {
     "sleep_timer" -> Icons.Rounded.Bedtime
     "media_info" -> Icons.Rounded.Info
     "vr" -> VrHeadsetIcon
-    else -> Icons.Rounded.Bookmark // bookmarks
+    else -> Icons.Rounded.Extension
 }
 
 /** 拖放式布局编辑器：左列 / 右列 / 更多 三栏，长按某功能拖动到新位置（可跨栏 / 栏内排序）。 */
@@ -543,9 +543,8 @@ internal fun ctrlName(id: String): String = stringResource(
         "background_play" -> R.string.player_ctrl_name_background_play
         "sleep_timer" -> R.string.player_ctrl_name_sleep_timer
         "media_info" -> R.string.player_ctrl_name_media_info
-        "bookmarks" -> R.string.player_ctrl_name_bookmarks
         "vr" -> R.string.player_ctrl_name_vr
-        else -> R.string.player_ctrl_name_bookmarks
+        else -> R.string.player_ctrl_name_unknown
     },
 )
 

@@ -91,20 +91,20 @@ fun NavGraphBuilder.homeNavGraph(
         HomeScreen(
             onNavigateToGlobal = { route -> navController.navigate(route) },
             onNavigateToSearch = {
-                navController.navigate(Routes.Local.SEARCH)
+                navController.navigate(Routes.Browse.SEARCH)
             },
             onNavigateToPlayHistory = { filter ->
-                navController.navigate(Routes.Local.playHistoryRoute(filter))
+                navController.navigate(Routes.Browse.playHistoryRoute(filter))
             },
             onNavigateToQuickAccess = {
-                navController.navigate(Routes.Local.QUICK_ACCESS)
+                navController.navigate(Routes.Browse.QUICK_ACCESS)
             },
             onPlayVideo = onPlayMedia,
             onNavigateToStoragePlus = { type, storageId ->
                 val route = if (type != null) {
-                    Routes.Stream.storagePlusRoute(type)
+                    Routes.Storage.storagePlusRoute(type)
                 } else {
-                    Routes.Stream.storagePlusEditRoute(storageId)
+                    Routes.Storage.storagePlusEditRoute(storageId)
                 }
                 navController.navigate(route)
             },
@@ -112,7 +112,7 @@ fun NavGraphBuilder.homeNavGraph(
                 navController.navigate(Routes.ImageViewer.VIEWER)
             },
             onNavigateToDownloadManager = {
-                navController.navigate(Routes.Stream.DOWNLOAD_MANAGER)
+                navController.navigate(Routes.Storage.DOWNLOAD_MANAGER)
             },
             pendingFileBrowser = state.pendingFileBrowser,
             onPendingFileBrowserConsumed = { state.pendingFileBrowser = null },
@@ -120,7 +120,7 @@ fun NavGraphBuilder.homeNavGraph(
         )
     }
     composable(
-        route = Routes.Stream.STORAGE_PLUS_ROUTE,
+        route = Routes.Storage.STORAGE_PLUS_ROUTE,
         arguments = listOf(
             navArgument("type") {
                 type = NavType.StringType
@@ -132,10 +132,10 @@ fun NavGraphBuilder.homeNavGraph(
             },
         ),
     ) {
-        StoragePlusScreen(onBack = { navController.popBackStack() })
+        StoragePlusScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.Local.PLAY_HISTORY_ROUTE,
+        route = Routes.Browse.PLAY_HISTORY_ROUTE,
         arguments = listOf(
             navArgument("filter") {
                 type = NavType.IntType
@@ -149,7 +149,7 @@ fun NavGraphBuilder.homeNavGraph(
         )
     }
     composable(
-        route = Routes.Local.QUICK_ACCESS,
+        route = Routes.Browse.QUICK_ACCESS,
     ) {
         QuickAccessScreen(
             onNavigateToStorageFile = { storageId, path ->
@@ -164,10 +164,10 @@ fun NavGraphBuilder.homeNavGraph(
         )
     }
     composable(
-        route = Routes.Local.SEARCH,
+        route = Routes.Browse.SEARCH,
     ) {
         SearchScreen(
-            onBack = { navController.popBackStack() },
+            onBack = navController.navBack(),
             onNavigateToPlayVideo = onPlayMedia,
             onNavigateToStorageFile = { storageId, path ->
                 // 交给 Home 在媒体库 tab 子栈打开文件浏览，返回栈回到搜索页
@@ -180,79 +180,79 @@ fun NavGraphBuilder.homeNavGraph(
         )
     }
     composable(
-        route = Routes.User.SWITCH_THEME,
+        route = Routes.Settings.SWITCH_THEME,
     ) {
-        ThemeScreen(onBack = { navController.popBackStack() })
+        ThemeScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.User.ICON,
+        route = Routes.Settings.ICON,
     ) {
-        IconScreen(onBack = { navController.popBackStack() })
+        IconScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.User.LANGUAGE,
+        route = Routes.Settings.LANGUAGE,
     ) {
-        LanguageScreen(onBack = { navController.popBackStack() })
+        LanguageScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.User.EXPERIMENTAL,
+        route = Routes.Settings.EXPERIMENTAL,
     ) {
-        ExperimentalScreen(onBack = { navController.popBackStack() })
+        ExperimentalScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.User.SETTING_PLAYER,
+        route = Routes.Settings.SETTING_PLAYER,
     ) {
-        PlayerSettingsScreen(onBack = { navController.popBackStack() })
+        PlayerSettingsScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.User.MEDIA_LIBRARY,
+        route = Routes.Settings.MEDIA_LIBRARY,
     ) {
-        MediaLibrarySettingsScreen(onBack = { navController.popBackStack() })
+        MediaLibrarySettingsScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.User.EQUALIZER,
+        route = Routes.Settings.EQUALIZER,
     ) {
         EqualizerSettingsScreen(
-            onBack = { navController.popBackStack() },
+            onBack = navController.navBack(),
             onApplyToPlayer = onApplyEqualizerToPlayer,
             onApplyLiveToPlayer = onApplyEqualizerLive,
         )
     }
     composable(
-        route = Routes.User.PLAYBACK_STATS,
+        route = Routes.Settings.PLAYBACK_STATS,
     ) {
-        PlaybackStatsScreen(onBack = { navController.popBackStack() })
+        PlaybackStatsScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.User.BACKUP,
+        route = Routes.Settings.BACKUP,
     ) {
-        BackupScreen(onBack = { navController.popBackStack() })
+        BackupScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.User.LRCAPI,
+        route = Routes.Settings.LRCAPI,
     ) {
-        LrcApiSettingsScreen(onBack = { navController.popBackStack() })
+        LrcApiSettingsScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.User.CACHE_MANAGER,
+        route = Routes.Settings.CACHE_MANAGER,
     ) {
-        CacheManagerScreen(onBack = { navController.popBackStack() })
+        CacheManagerScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.User.SCAN_MANAGER,
+        route = Routes.Settings.SCAN_MANAGER,
     ) {
-        ScanManagerScreen(onBack = { navController.popBackStack() })
+        ScanManagerScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.User.ABOUT,
+        route = Routes.Settings.ABOUT,
     ) {
-        AboutScreen(onBack = { navController.popBackStack() })
+        AboutScreen(onBack = navController.navBack())
     }
     composable(
-        route = Routes.Stream.DOWNLOAD_MANAGER,
+        route = Routes.Storage.DOWNLOAD_MANAGER,
     ) {
         TransferScreen(
-            onBack = { navController.popBackStack() },
+            onBack = navController.navBack(),
             onPlayVideo = onPlayMedia,
             onNavigateToImageViewer = {
                 navController.navigate(Routes.ImageViewer.VIEWER)
@@ -266,6 +266,15 @@ fun NavGraphBuilder.homeNavGraph(
         // 与普通子页一致：显式 pop 退出（淡出，无缩放），避免回退到内置 scaleOut
         popExitTransition = { fadeOut(tween(300)) },
     ) {
-        ImageViewerScreen(onBack = { navController.popBackStack() })
+        ImageViewerScreen(onBack = navController.navBack())
     }
 }
+
+/**
+ * 统一的「返回上一页」回调。
+ *
+ * `popBackStack()` 返回 Boolean（是否真的弹出了），而各 Screen 的 `onBack` 形参类型是 `() -> Unit`，
+ * 因此需要一层丢弃返回值的适配。收敛到一处是为了：将来若要在返回路径上统一加行为
+ * （埋点、转场控制等），只需改这里。
+ */
+private fun NavHostController.navBack(): () -> Unit = { popBackStack() }

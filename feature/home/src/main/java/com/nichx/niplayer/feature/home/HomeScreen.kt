@@ -264,7 +264,7 @@ private fun HomeTabContent(
                         onNavigateToStorageFile = onOpenFileBrowser,
                         onPlayVideo = onPlayVideo,
                         onNavigateToImageViewer = onNavigateToImageViewer,
-                        onNavigateToTheme = { onNavigateToGlobal(Routes.User.SWITCH_THEME) },
+                        onNavigateToTheme = { onNavigateToGlobal(Routes.Settings.SWITCH_THEME) },
                     )
                 }
                 1 -> CrossfadePage(

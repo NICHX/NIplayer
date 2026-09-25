@@ -110,8 +110,8 @@
     <string name="backup_load_failed">Failed to read backup: %1$s</string>
     <string name="backup_webdav_restore_failed">Failed to restore from server: %1$s</string>
     <string name="backup_restore_failed">Restore failed: %1$s</string>
-    <string name="backup_restore_confirm_body">This will restore all app settings from the selected file, including media libraries, quick access, video bookmarks, extended folders, encrypted folders, playlists and tracks, and theme/player/subtitle/equalizer/thumbnail/file browser settings. Default merge mode: backup items overwrite same-key entries while local-only data is kept. Play history is not affected. This action cannot be undone. Continue?</string>
-    <string name="backup_webdav_restore_confirm_body">This will download “%1$s” from the server and restore all app settings, including media libraries, quick access, video bookmarks, extended folders, encrypted folders, playlists and tracks, and theme/player/subtitle/equalizer/thumbnail/file browser settings. Default merge mode: backup items overwrite same-key entries while local-only data is kept. Play history is not affected. This action cannot be undone. Continue?</string>
+    <string name="backup_restore_confirm_body">This will restore all app settings from the selected file, including media libraries, quick access, extended folders, encrypted folders, playlists and tracks, and theme/player/subtitle/equalizer/thumbnail/file browser settings. Default merge mode: backup items overwrite same-key entries while local-only data is kept. Play history is not affected. This action cannot be undone. Continue?</string>
+    <string name="backup_webdav_restore_confirm_body">This will download “%1$s” from the server and restore all app settings, including media libraries, quick access, extended folders, encrypted folders, playlists and tracks, and theme/player/subtitle/equalizer/thumbnail/file browser settings. Default merge mode: backup items overwrite same-key entries while local-only data is kept. Play history is not affected. This action cannot be undone. Continue?</string>
     <string name="backup_last_sync_success">Last synced: %1$s</string>
     <string name="backup_last_sync_with_message">Last synced: %1$s (%2$s)</string>
     <string name="backup_error_create_dir">Cannot create backup directory: %1$s</string>
@@ -677,7 +677,7 @@
     <string name="player_ctrl_name_background_play">Background play</string>
     <string name="player_ctrl_name_sleep_timer">Sleep timer</string>
     <string name="player_ctrl_name_media_info">Media info</string>
-    <string name="player_ctrl_name_bookmarks">Bookmarks</string>
+    <string name="player_ctrl_name_unknown">Unknown</string>
     <string name="player_ctrl_name_vr">VR Look-around</string>
     <!-- 媒体库设置（MediaLibrarySettingsScreen） -->
     <string name="media_library_settings_title">Media library settings</string>

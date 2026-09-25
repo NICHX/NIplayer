@@ -125,6 +125,9 @@ class BackupManager @Inject constructor(
     private fun migrateV1ToV2(root: Map<String, Any?>): Map<String, Any?> {
         val payload = linkedMapOf<String, Any?>()
         // v1 顶层字段名与 v2 payload key 一致的直接搬入
+        // 注意：videoBookmarks 是 v1 备份格式的**历史 key**。视频书签功能已于 DB v20 移除，
+        // 该 key 不再对应任何 BackupItem，恢复时会被下方的 `itemByKey[key] ?: continue` 安全跳过。
+        // 保留它是为了让 v1→v2 的字段搬运保持忠实 —— 不改变历史备份文件的解析行为。
         val v1Keys = setOf(
             "mediaLibraries", "quickAccesses", "videoBookmarks",
             "extendFolders", "encryptedFolders", "appSettings",

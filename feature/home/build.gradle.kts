@@ -35,7 +35,7 @@ dependencies {
     implementation(project(":core:common"))
     // 阶段 5 接入 :core:designsystem（NiTheme / NiColorScheme / NiTypography）
     implementation(project(":core:designsystem"))
-    // 阶段 2 接入 :core:navigation（路由常量 Routes.Home.* / Routes.Stream.*）
+    // 阶段 2 接入 :core:navigation（路由常量 Routes.Home.* / Routes.Storage.*）
     implementation(project(":core:navigation"))
     // 阶段 5 接入 :core:database（MediaLibraryDao 注入，LibraryScreen / StorageFileScreen 读取存储源）
     implementation(project(":core:database"))

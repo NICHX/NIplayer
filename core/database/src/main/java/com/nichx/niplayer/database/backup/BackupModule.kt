@@ -5,7 +5,6 @@ import com.nichx.niplayer.database.backup.table.EncryptedFolderBackupTable
 import com.nichx.niplayer.database.backup.table.ExtendFolderBackupTable
 import com.nichx.niplayer.database.backup.table.MediaLibraryBackupTable
 import com.nichx.niplayer.database.backup.table.QuickAccessBackupTable
-import com.nichx.niplayer.database.backup.table.VideoBookmarkBackupTable
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -30,10 +29,6 @@ abstract class BackupModule {
     @Binds
     @IntoSet
     abstract fun bindQuickAccessTable(impl: QuickAccessBackupTable): BackupItem
-
-    @Binds
-    @IntoSet
-    abstract fun bindVideoBookmarkTable(impl: VideoBookmarkBackupTable): BackupItem
 
     @Binds
     @IntoSet

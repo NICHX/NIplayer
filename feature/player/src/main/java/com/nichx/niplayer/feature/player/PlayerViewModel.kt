@@ -14,11 +14,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.text.Cue
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.PlayHistoryDao
-import com.nichx.niplayer.database.dao.VideoBookmarkDao
 import com.nichx.niplayer.database.security.EncryptedFolderManager
 import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.entity.resumeStartPositionMs
-import com.nichx.niplayer.database.entity.VideoBookmarkEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.DownloadSettings
@@ -75,8 +73,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
@@ -116,7 +112,6 @@ class PlayerViewModel @Inject constructor(
     private val player: NxPlayer,
     playbackRequestHolder: PlaybackRequestHolder,
     private val playHistoryDao: PlayHistoryDao,
-    private val videoBookmarkDao: VideoBookmarkDao,
     private val mediaLibraryDao: MediaLibraryDao,
     private val storageFactory: StorageFactory,
     private val playlistHolder: PlaylistHolder,
@@ -453,21 +448,6 @@ class PlayerViewModel @Inject constructor(
     @Volatile
     private var currentHistory: HistoryDescriptor? = null
 
-    /** 当前视频的书签 key（uniqueKey + storageId），用于响应式查询书签列表（F-19）。 */
-    private val _currentBookmarkKey = MutableStateFlow<Pair<String, Int?>?>(null)
-
-    /** 当前视频的书签列表，按位置升序。UI 据此在进度条上显示标记（F-19）。 */
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val bookmarks: StateFlow<List<VideoBookmarkEntity>> = _currentBookmarkKey
-        .flatMapLatest { key ->
-            if (key != null) {
-                videoBookmarkDao.getBookmarksFlow(key.first, key.second)
-            } else {
-                flowOf(emptyList())
-            }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     /**
      * 最近一次播放请求。
      *
@@ -553,43 +533,6 @@ class PlayerViewModel @Inject constructor(
         PlayerSettings.pitchPreservationEnabled = enabled
         player.setPitchPreservationEnabled(enabled)
     }
-
-    // region F-19 视频书签
-
-    /**
-     * 在当前播放位置添加书签（F-19）。
-     *
-     * @param label 用户备注，可空
-     */
-    fun addBookmark(label: String? = null) {
-        val history = currentHistory ?: return
-        val position = player.positionMs.value
-        if (position <= 0) return
-        val title = _title.value.ifEmpty { history.uniqueKey }
-        appScope.launch {
-            videoBookmarkDao.insert(
-                VideoBookmarkEntity(
-                    uniqueKey = history.uniqueKey,
-                    storageId = history.storageId,
-                    videoName = title,
-                    positionMs = position,
-                    label = label,
-                )
-            )
-        }
-    }
-
-    /** 删除指定书签（F-19）。 */
-    fun removeBookmark(bookmarkId: Int) {
-        appScope.launch { videoBookmarkDao.delete(bookmarkId) }
-    }
-
-    /** 跳转到书签位置（F-19）。 */
-    fun seekToBookmark(positionMs: Long) {
-        player.seekTo(positionMs)
-    }
-
-    // endregion
 
     /** 长按开始：切到设置的长按倍速，UI 显示倍速 OSD。 */
     fun applyLongPressSpeed() {
@@ -960,7 +903,6 @@ class PlayerViewModel @Inject constructor(
             // 提前设置 currentHistory，让 loadAudioCover() 能正常获取 history
             request.history?.let { history ->
                 currentHistory = history
-                _currentBookmarkKey.value = history.uniqueKey to history.storageId
             }
 
             if (request.isAudio) {
@@ -1115,7 +1057,6 @@ class PlayerViewModel @Inject constructor(
         // 分别经 audioCoverPath / lrcText 暴露，UI 订阅 StateFlow 即可，无需重复加载）
         audioPlaybackManager.onTrackChanged = { descriptor ->
             currentHistory = descriptor
-            _currentBookmarkKey.value = descriptor.uniqueKey to (descriptor.storageId ?: -1)
         }
     }
 
@@ -1137,7 +1078,6 @@ class PlayerViewModel @Inject constructor(
         _currentIndex.value = mgrIndex
         _title.value = item.fileName
         currentHistory = audioPlaybackManager.currentHistory
-        _currentBookmarkKey.value = (currentHistory?.uniqueKey ?: "") to (currentHistory?.storageId ?: -1)
         registerAudioCallbacks()
         // 恢复路径不触发 onTrackChanged（无切歌）；封面/歌词均由 Manager 自管，
         // UI 订阅 audioCoverPath / lrcText 即可，此处无需主动刷新
@@ -1357,7 +1297,6 @@ class PlayerViewModel @Inject constructor(
                         fileSize = item.fileSize,
                         playlistId = currentHistory?.playlistId,
                     ).also {
-                        _currentBookmarkKey.value = it.uniqueKey to it.storageId
                     }
 
                     isAudioPlayback = false
