@@ -1,17 +1,16 @@
 package com.nichx.niplayer.navigation
 
-import android.net.Uri
-
 /**
  * 全局路由常量。
  *
  * 面向 androidx.navigation.compose 的字符串路由模型。
  *
- * 命名空间划分为 5 组（Local / User / Player / Stream / ImageViewer），
- * 路径采用扁平字符串（不含 `/local/` 前缀斜杠），便于与
- * NavHostBuilder.composable(route = Routes.X) 配合使用。
+ * 命名空间按**页面归属**划分为 6 组：Home（Tab 根）/ Browse（首页入口类子页）/
+ * Settings（设置中心及全部二级页）/ Player（音频播放）/ Storage（存储源与传输）/ ImageViewer。
  *
- * 阶段2 仅定义常量骨架，对应 Composable 实现将在阶段5 UI 重做时填充。
+ * ⚠️ 路由**字符串值**（如 `user/setting_player`、`stream/storage_plus`）是历史原样，**不要改**：
+ * 它们只在本应用内部使用，改动收益为零，却会波及 NavHost 已保存的返回栈状态。
+ * 2026-09-25 的清理只调整了 Kotlin 对象名，使其与模块归属一致。
  */
 object Routes {
 
@@ -34,8 +33,8 @@ object Routes {
         const val SETTINGS = "home/settings"
     }
 
-    /** 旧 RouteTable.Local namespace。 */
-    object Local {
+    /** 首页入口类子页：快速访问 / 播放历史 / 搜索。 */
+    object Browse {
         const val QUICK_ACCESS = "local/quick_access"
         /** 播放历史页路由模板，支持可选 ?filter=（0全部/1视频/2音频）。 */
         const val PLAY_HISTORY_ROUTE = "local/play_history?filter={filter}"
@@ -48,8 +47,8 @@ object Routes {
         }
     }
 
-    /** 旧 RouteTable.User namespace。 */
-    object User {
+    /** 设置中心及其全部二级页。 */
+    object Settings {
         const val SETTING_PLAYER = "user/setting_player"
         const val MEDIA_LIBRARY = "user/media_library"
         const val LRCAPI = "user/lrc_api"
@@ -66,7 +65,7 @@ object Routes {
     }
 
     /**
-     * 旧 RouteTable.Player namespace。
+     * 播放相关路由。
      *
      * 视频播放器已迁移为独立 Activity（PlayerActivity），不再占用导航路由；
      * 导航内仅保留音频播放页。
@@ -80,19 +79,13 @@ object Routes {
         const val AUDIO_PLAYER = "player/audio_player"
     }
 
-    /** 旧 RouteTable.Stream namespace。 */
-    object Stream {
-        const val STORAGE_FILE = "stream/storage_file"
-
-        /** 带参路由模板，注册到 NavHost：`stream/storage_file/{storageId}?path={path}`。 */
-        const val STORAGE_FILE_ROUTE = "$STORAGE_FILE/{storageId}?path={path}"
-
-        /** 构造导航用的完整路由字符串：`stream/storage_file/3` 或 `stream/storage_file/3?path=%2FMovies`。 */
-        fun storageFileRoute(storageId: Int, path: String = ""): String {
-            val base = "$STORAGE_FILE/$storageId"
-            return if (path.isNotEmpty()) "$base?path=${Uri.encode(path)}" else base
-        }
-
+    /**
+     * 存储源与传输相关页面。
+     *
+     * 说明：原先这里的 `STORAGE_FILE` / `STORAGE_FILE_ROUTE` / `storageFileRoute()` 从未注册到
+     * 任何 NavGraph（文件浏览实际由 HomeScreen 内联渲染，见 HomeNavGraphState），已于 2026-09-25 删除。
+     */
+    object Storage {
         const val STORAGE_PLUS = "stream/storage_plus"
 
         /**
@@ -123,7 +116,7 @@ object Routes {
         const val DOWNLOAD_MANAGER = "stream/download_manager"
     }
 
-    /** 旧 RouteTable.ImageViewer namespace。 */
+    /** 图片查看器。 */
     object ImageViewer {
         const val VIEWER = "image_viewer/viewer"
     }

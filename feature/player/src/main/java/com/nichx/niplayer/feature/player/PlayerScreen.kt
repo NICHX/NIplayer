@@ -58,7 +58,6 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.HeadsetMic
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Bedtime
-import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.BrightnessHigh
@@ -190,15 +189,9 @@ fun PlayerScreen(
     val inLockZone by viewModel.inLockZone.collectAsStateWithLifecycle()
     val abLoopA by viewModel.abLoopA.collectAsStateWithLifecycle()
     val abLoopB by viewModel.abLoopB.collectAsStateWithLifecycle()
-    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val showDownloadDialog by viewModel.showDownloadDialog.collectAsStateWithLifecycle()
     // 本地文件（已下载/缓存直链）来源时隐藏下载按钮
     val isLocalSource by viewModel.isLocalSource.collectAsStateWithLifecycle()
-    // P0-1 修复（2026-09-22）：原先在 PlayerControllerLayer 的实参位置直接写
-    // `bookmarks.map { it.positionMs }`，每次重组都新建一个 List —— 既产生垃圾，
-    // 又让该实参永远"不相等"。改为 remember(bookmarks) 缓存（List 为结构比较，
-    // bookmarks 未变时命中缓存并返回同一实例）。
-    val bookmarkPositions = remember(bookmarks) { bookmarks.map { it.positionMs } }
 
     val context = LocalContext.current
     val activity = context as? Activity
@@ -246,7 +239,6 @@ fun PlayerScreen(
     var showLongPressSpeedDialog by rememberSaveable { mutableStateOf(false) }
     var showAbLoopDialog by rememberSaveable { mutableStateOf(false) }
     var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
-    var showBookmarkDialog by rememberSaveable { mutableStateOf(false) }
     var surfaceViewRef by remember { mutableStateOf<SurfaceView?>(null) }
 
     // VR（环视）播放状态：切换到 GL 全景渲染路径，用陀螺仪 / 手指拖拽环视全景画面。
@@ -514,7 +506,6 @@ fun PlayerScreen(
             showLongPressSpeedDialog = false
             showAbLoopDialog = false
             showPlaylistDialog = false
-            showBookmarkDialog = false
         }
     }
 
@@ -757,14 +748,13 @@ fun PlayerScreen(
         showSpeedMenu, showMoreMenu, showAudioTrackMenu, showSubtitleMenu,
         showSubtitleSearch, showSubtitleStyle, showSubtitlePicker, showSleepTimerDialog,
         showMediaInfoDrawer,
-        showLongPressSpeedDialog, showAbLoopDialog, showPlaylistDialog, showBookmarkDialog,
+        showLongPressSpeedDialog, showAbLoopDialog, showPlaylistDialog,
     ) {
         if (controllerVisible && !locked
             && !showSpeedMenu && !showMoreMenu && !showAudioTrackMenu && !showSubtitleMenu
             && !showSubtitleSearch && !showSubtitleStyle && !showSubtitlePicker
             && !showSleepTimerDialog && !showMediaInfoDrawer
             && !showLongPressSpeedDialog && !showAbLoopDialog && !showPlaylistDialog
-            && !showBookmarkDialog
             && state is PlaybackState.Playing
             && (longPressSpeedActive == null || longPressSpeedLocked)
         ) {
@@ -1448,11 +1438,6 @@ fun PlayerScreen(
                 stringResource(R.string.player_media_info),
                 onClick = { showMediaInfoDrawer = true },
             )
-            "bookmarks" -> HudButtonConfig(
-                id, Icons.Rounded.Bookmark,
-                stringResource(R.string.player_bookmark),
-                onClick = { showBookmarkDialog = true },
-            )
             "vr" -> {
                 // 实验性功能：VR 播放未开启时整体禁用 VR 入口，开启后入口常驻可点。
                 //
@@ -1596,7 +1581,6 @@ fun PlayerScreen(
                     },
                     onPlayAtIndex = { viewModel.playAtIndex(it) },
                     onTogglePlaylistDialog = { showPlaylistDialog = true },
-                    bookmarkPositions = bookmarkPositions,
                     blackBarCropActive = autoBlackBarCrop,
                     onToggleBlackBarCrop = {
                         autoBlackBarCrop = !autoBlackBarCrop
@@ -1992,18 +1976,6 @@ fun PlayerScreen(
                     showPlaylistDialog = false
                 },
                 onDismiss = { showPlaylistDialog = false },
-            )
-        }
-
-        if (showBookmarkDialog) {
-            BookmarkListDialog(
-                bookmarks = bookmarks,
-                onSeek = { pos ->
-                    viewModel.seekToBookmark(pos)
-                    showBookmarkDialog = false
-                },
-                onDelete = { id -> viewModel.removeBookmark(id) },
-                onDismiss = { showBookmarkDialog = false },
             )
         }
 

@@ -11,7 +11,6 @@ import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.dao.UploadTaskDao
-import com.nichx.niplayer.database.dao.VideoBookmarkDao
 import com.nichx.niplayer.database.dao.VideoDao
 import dagger.Module
 import dagger.Provides
@@ -25,7 +24,7 @@ import javax.inject.Singleton
  *
  * 提供 [NiplayerDatabase] 单例与各 Dao。
  *
- * 迁移策略：注册 v6 → v19 的**完整**迁移链（见 [NiplayerDatabase] 的 companion object），
+ * 迁移策略：注册 v6 → v20 的**完整**迁移链（见 [NiplayerDatabase] 的 companion object），
  * 并只在 DB 版本 1~5 上允许破坏性重建。
  */
 @Module
@@ -36,21 +35,11 @@ object DatabaseModule {
     @Singleton
     fun provideNiplayerDatabase(@ApplicationContext ctx: Context): NiplayerDatabase =
         Room.databaseBuilder(ctx, NiplayerDatabase::class.java, NiplayerDatabase.DATABASE_NAME)
-            .addMigrations(
-                NiplayerDatabase.MIGRATION_6_7,
-                NiplayerDatabase.MIGRATION_7_8,
-                NiplayerDatabase.MIGRATION_8_9,
-                NiplayerDatabase.MIGRATION_9_10,
-                NiplayerDatabase.MIGRATION_10_11,
-                NiplayerDatabase.MIGRATION_11_12,
-                NiplayerDatabase.MIGRATION_12_13,
-                NiplayerDatabase.MIGRATION_13_14,
-                NiplayerDatabase.MIGRATION_14_15,
-                NiplayerDatabase.MIGRATION_15_16,
-                NiplayerDatabase.MIGRATION_16_17,
-                NiplayerDatabase.MIGRATION_17_18,
-                NiplayerDatabase.MIGRATION_18_19,
-            )
+            // 迁移列表的**唯一来源**是 NiplayerDatabase.ALL_MIGRATIONS —— 切勿在此逐个列举。
+            // 逐个列举的代价是：新增迁移时极易漏登记，而编译期与 MigrationTest 都发现不了，
+            // 直到用户升级时抛「A migration from X to Y was required but not found」崩溃
+            // （2026-09-25 移除书签功能时实际发生过）。
+            .addMigrations(*NiplayerDatabase.ALL_MIGRATIONS)
             // 破坏性回退范围收窄：原先的无参 fallbackToDestructiveMigration(true) 允许 Room 在
             // **任何**找不到迁移路径的情况下静默删除整库重建 —— 只要将来某次 DB 版本提升忘记补迁移，
             // 所有存量用户的媒体库配置、播放历史与进度、书签、加密目录记录、下载/上传任务、
@@ -88,9 +77,6 @@ object DatabaseModule {
 
     @Provides
     fun provideSyncDeleteLogDao(db: NiplayerDatabase): SyncDeleteLogDao = db.getSyncDeleteLogDao()
-
-    @Provides
-    fun provideVideoBookmarkDao(db: NiplayerDatabase): VideoBookmarkDao = db.getVideoBookmarkDao()
 
     @Provides
     fun provideEncryptedFolderDao(db: NiplayerDatabase): EncryptedFolderDao = db.getEncryptedFolderDao()

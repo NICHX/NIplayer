@@ -34,7 +34,8 @@ import org.robolectric.RobolectricTestRunner
  * | 15→16 | 新增 upload_task |
  * | 16→18 | 空迁移（16→17）+ 删除歌单表（17→18），**链式验证** |
  * | 18→19 | 删除播放历史云同步冲突表 sync_conflict |
- * | 10→19 | 全链路一次跑完，同时验证数据保留 |
+ * | 19→20 | 删除视频书签表 video_bookmark（书签功能下线） |
+ * | 10→20 | 全链路一次跑完，同时验证数据保留 |
  *
  * ## 为什么 16→17 不能单独验证
  *
@@ -169,7 +170,7 @@ class MigrationTest {
     }
 
     @Test
-    fun `10到19_全链路升级成功且用户数据零丢失`() {
+    fun `10到20_全链路升级成功且用户数据零丢失`() {
         helper.createDatabase(TEST_DB, 10).use { db ->
             insertLibrary(db, "smb://192.168.1.10", "家庭 NAS")
             insertLibrary(db, "webdav://nas.local/dav", "坚果云")
@@ -190,7 +191,7 @@ class MigrationTest {
 
         val db = helper.runMigrationsAndValidate(
             TEST_DB,
-            19,
+            20,
             true,
             NiplayerDatabase.MIGRATION_10_11,
             NiplayerDatabase.MIGRATION_11_12,
@@ -201,15 +202,15 @@ class MigrationTest {
             NiplayerDatabase.MIGRATION_16_17,
             NiplayerDatabase.MIGRATION_17_18,
             NiplayerDatabase.MIGRATION_18_19,
+            NiplayerDatabase.MIGRATION_19_20,
         )
 
         db.use {
             assertEquals("媒体库配置不能丢", 2, it.countRows("media_library"))
             assertEquals("播放历史不能丢", 2, it.countRows("play_history"))
             assertEquals("加密目录记录不能丢", 1, it.countRows("encrypted_folder"))
-            assertEquals("书签不能丢", 1, it.countRows("video_bookmark"))
+            assertFalse("video_bookmark 表应随书签功能下线被移除", it.hasTable("video_bookmark"))
             assertEquals("家庭 NAS", it.queryString("SELECT display_name FROM media_library WHERE url = 'smb://192.168.1.10'"))
-            assertEquals(12345L, it.queryLong("SELECT position_ms FROM video_bookmark"))
             assertFalse(it.hasTable("playlist"))
             assertFalse(it.hasTable("playlist_item"))
             assertFalse(it.hasTable("sync_conflict"))
@@ -230,7 +231,8 @@ class MigrationTest {
         assertTrue("schemas 目录未挂进测试 assets，迁移测试的前提不成立", files.isNotEmpty())
         assertTrue("缺少 16.json，16→18 链式验证无法进行", "16.json" in files)
         assertTrue("缺少 18.json，18→19 与链式验证无法进行", "18.json" in files)
-        assertTrue("缺少 19.json，最终 schema 无法校验", "19.json" in files)
+        assertTrue("缺少 19.json，18→19 与 19→20 的链式验证无法进行", "19.json" in files)
+        assertTrue("缺少 20.json，最终 schema 无法校验", "20.json" in files)
         assertFalse(
             "17.json 已被补出：请把 16→17 拆成独立的 runMigrationsAndValidate(TEST_DB, 17, ...) 用例",
             "17.json" in files,

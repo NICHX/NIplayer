@@ -242,7 +242,7 @@ class MainActivity : ComponentActivity() {
                     currentBackStackEntry?.destination?.route == Routes.Player.AUDIO_PLAYER ||
                             // 均衡器是播放器的子页：从全屏播放器进入时不显示 musicbar，
                             // 否则用户会误点 musicbar 再次进播放器，导致返回栈错乱
-                            currentBackStackEntry?.destination?.route == Routes.User.EQUALIZER
+                            currentBackStackEntry?.destination?.route == Routes.Settings.EQUALIZER
 
                 // 文件浏览多选态：由 HomeScreen 上抛，多选时隐藏音乐条，避免与多选操作栏堆叠
                 var fileBrowserMultiSelect by remember { mutableStateOf(false) }
@@ -292,7 +292,7 @@ class MainActivity : ComponentActivity() {
                         playerNavGraph(
                             navController = navController,
                             audioPlaybackManager = audioPlaybackManager,
-                            onOpenEqualizer = { navController.navigate(Routes.User.EQUALIZER) },
+                            onOpenEqualizer = { navController.navigate(Routes.Settings.EQUALIZER) },
                         )
                     }
 

@@ -46,7 +46,6 @@
     <string name="player_screenshot_saved">Screenshot saved: %1$s</string>
     <string name="player_seek_forward_seconds">Forward %1$ds</string>
     <string name="player_seek_backward_seconds">Backward %1$ds</string>
-    <string name="player_bookmark_added">Bookmark added</string>
     <string name="player_scale_hint">Aspect ratio: %1$s</string>
     <string name="player_speed_locked">%1$s  Locked · Tap to unlock</string>
     <string name="player_speed_long_press">%1$s  Hold to fast forward</string>
@@ -72,7 +71,6 @@
     <string name="player_media_info_unknown">Unknown</string>
     <string name="player_media_info_unsupported">Unsupported</string>
     <string name="player_picture_in_picture">Picture-in-picture</string>
-    <string name="player_bookmark">Bookmarks</string>
     <string name="player_resume_title">Resume playback</string>
     <string name="player_resume_text">You watched up to %1$s last time. Continue playing?</string>
     <string name="player_resume_continue">Continue</string>
@@ -94,15 +92,11 @@
     <string name="player_scale_stretch">Stretch</string>
     <string name="player_speed_menu_title">Playback speed</string>
 
-    <!-- Episodes / Bookmarks -->
+    <!-- Episodes -->
     <string name="player_episode_list">Episodes (%1$d/%2$d)</string>
     <string name="player_episode_list_icon">Episode list</string>
     <string name="player_episode_previous">Previous episode</string>
     <string name="player_episode_next">Next episode</string>
-    <string name="player_bookmark_list">Bookmarks (%1$d)</string>
-    <string name="player_bookmark_empty">No bookmarks yet. Tap the bookmark icon in the top bar to add a marker at the current position</string>
-    <string name="player_delete_bookmark">Delete bookmark</string>
-    <string name="player_add_bookmark">Add bookmark</string>
     <string name="player_unlock">Unlock</string>
     <string name="player_lock">Lock</string>
     <string name="player_rotate_screen">Rotate screen</string>

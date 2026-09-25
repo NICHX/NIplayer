@@ -16,7 +16,6 @@ import com.nichx.niplayer.database.dao.PlayHistoryDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.dao.UploadTaskDao
-import com.nichx.niplayer.database.dao.VideoBookmarkDao
 import com.nichx.niplayer.database.dao.VideoDao
 import com.nichx.niplayer.database.entity.DownloadTaskEntity
 import com.nichx.niplayer.database.entity.EncryptedFolderEntity
@@ -26,7 +25,6 @@ import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.database.entity.QuickAccessEntity
 import com.nichx.niplayer.database.entity.SyncDeleteLogEntity
 import com.nichx.niplayer.database.entity.UploadTaskEntity
-import com.nichx.niplayer.database.entity.VideoBookmarkEntity
 import com.nichx.niplayer.database.entity.VideoEntity
 
 /**
@@ -54,6 +52,7 @@ import com.nichx.niplayer.database.entity.VideoEntity
  * - v17: playlist_item 表重建——唯一索引纳入 library_id + 新增 CASCADE 外键
  * - v18: 移除歌单系统（playlist / playlist_item 表，play_history 遗留 playlist_id 列保留）
  * - v19: 移除播放历史云同步冲突表 sync_conflict（同步简化为纯 LWW，不再收集冲突）
+ * - v20: 移除视频书签功能（video_bookmark 表 / DAO / 备份项一并下线）
  */
 @Database(
     entities = [
@@ -64,11 +63,10 @@ import com.nichx.niplayer.database.entity.VideoEntity
         DownloadTaskEntity::class,
         QuickAccessEntity::class,
         SyncDeleteLogEntity::class,
-        VideoBookmarkEntity::class,
         EncryptedFolderEntity::class,
         UploadTaskEntity::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = true
 )
 @TypeConverters(
@@ -93,8 +91,6 @@ abstract class NiplayerDatabase : RoomDatabase() {
     abstract fun getQuickAccessDao(): QuickAccessDao
 
     abstract fun getSyncDeleteLogDao(): SyncDeleteLogDao
-
-    abstract fun getVideoBookmarkDao(): VideoBookmarkDao
 
     abstract fun getEncryptedFolderDao(): EncryptedFolderDao
 
@@ -367,5 +363,49 @@ abstract class NiplayerDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE IF EXISTS `sync_conflict`")
             }
         }
+
+        // v20：移除视频书签功能
+        //
+        // video_bookmark 表（v9 引入）随功能整体下线。该表只存用户手动打的视频书签点，
+        // 删除不影响播放历史 / 播放进度 / 快速访问等任何其他数据。
+        //
+        // 迁移写法遵循「历史迁移一律不动、只追加新迁移」：MIGRATION_8_9 仍然创建该表，
+        // 使从 v8 升级的链式路径中间态与历史 schema（9.json~19.json）保持一致，
+        // 最终由本段统一删除。DROP ... IF EXISTS 对「表不存在」的路径同样安全。
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `video_bookmark`")
+            }
+        }
+
+        /**
+         * 全部迁移的**唯一登记处**。
+         *
+         * ⚠️ 新增迁移时必须同步加入本数组。漏加**不会编译报错**，而是等到用户升级时抛出
+         * `IllegalStateException: A migration from X to Y was required but not found` 并崩溃 ——
+         * 这正是 2026-09-25 移除书签功能时实际发生的事故（迁移写了、但没登记到 Builder）。
+         *
+         * 之所以没被单测拦住：`MigrationTest` 是直接用 `MIGRATION_x_y` 常量跑迁移的，
+         * 根本不经过 `RoomDatabase.Builder`，因此对「漏登记」完全无感。
+         * [com.nichx.niplayer.database.MigrationRegistrationTest] 用反射补齐这道检查。
+         *
+         * `DatabaseModule` 以 `addMigrations(*ALL_MIGRATIONS)` 展开本数组。
+         */
+        val ALL_MIGRATIONS: Array<Migration> = arrayOf(
+            MIGRATION_6_7,
+            MIGRATION_7_8,
+            MIGRATION_8_9,
+            MIGRATION_9_10,
+            MIGRATION_10_11,
+            MIGRATION_11_12,
+            MIGRATION_12_13,
+            MIGRATION_13_14,
+            MIGRATION_14_15,
+            MIGRATION_15_16,
+            MIGRATION_16_17,
+            MIGRATION_17_18,
+            MIGRATION_18_19,
+            MIGRATION_19_20,
+        )
     }
 }
