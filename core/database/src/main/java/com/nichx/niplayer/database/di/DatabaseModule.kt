@@ -3,6 +3,7 @@ package com.nichx.niplayer.database.di
 import android.content.Context
 import androidx.room.Room
 import com.nichx.niplayer.database.NiplayerDatabase
+import com.nichx.niplayer.database.dao.AudioMatchDao
 import com.nichx.niplayer.database.dao.DownloadTaskDao
 import com.nichx.niplayer.database.dao.EncryptedFolderDao
 import com.nichx.niplayer.database.dao.ExtendFolderDao
@@ -24,7 +25,7 @@ import javax.inject.Singleton
  *
  * 提供 [NiplayerDatabase] 单例与各 Dao。
  *
- * 迁移策略：注册 v6 → v20 的**完整**迁移链（见 [NiplayerDatabase] 的 companion object），
+ * 迁移策略：注册 v6 → v21 的**完整**迁移链（见 [NiplayerDatabase] 的 companion object），
  * 并只在 DB 版本 1~5 上允许破坏性重建。
  */
 @Module
@@ -80,4 +81,7 @@ object DatabaseModule {
 
     @Provides
     fun provideEncryptedFolderDao(db: NiplayerDatabase): EncryptedFolderDao = db.getEncryptedFolderDao()
+
+    @Provides
+    fun provideAudioMatchDao(db: NiplayerDatabase): AudioMatchDao = db.getAudioMatchDao()
 }

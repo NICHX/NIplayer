@@ -321,6 +321,8 @@ fun FileBrowserScreen(
     var pendingDownloadFiles by remember { mutableStateOf<List<StorageFile>>(emptyList()) }
     var showTargetChooser by remember { mutableStateOf(false) }
     var showPermissionDialog by remember { mutableStateOf(false) }
+    // API 29- 没有「所有文件访问权限」可授，下载不可用 → 弹说明框，而不是弹一个点了没反应的授权框
+    var showDownloadUnsupported by remember { mutableStateOf(false) }
 
     /** 按给定目标下载（避免目录选择为单次时改动全局预设）。 */
     fun downloadFilesTo(files: List<StorageFile>, targetUrl: String?, targetName: String?) {
@@ -359,6 +361,12 @@ fun FileBrowserScreen(
     /** 下载入口：先保证存储权限，再弹出「预设 / 选择」目标选择器。 */
     fun startDownload(files: List<StorageFile>) {
         if (files.isEmpty()) return
+        // 旧系统（API 29-）拿不到「所有文件访问权限」，原生直写共享存储不可用。
+        // 如实告知并中止，避免用户陷入「弹授权框 → 确定 → 无反应」的死循环。
+        if (!StorageAccess.isNativeDownloadSupported()) {
+            showDownloadUnsupported = true
+            return
+        }
         pendingDownloadFiles = files
         if (!StorageAccess.canWriteSharedStorage(context)) {
             showPermissionDialog = true
@@ -1091,6 +1099,18 @@ fun FileBrowserScreen(
                 StorageAccess.openAllFilesAccessSettings(context)
             },
             onDismiss = { showPermissionDialog = false },
+        )
+    }
+
+    // 旧系统（API 29-）没有「所有文件访问权限」可授：如实说明下载不可用，
+    // 而不是提供一个点了没反应的授权入口
+    if (showDownloadUnsupported) {
+        NiConfirmDialog(
+            title = stringResource(R.string.download_unsupported_title),
+            text = stringResource(R.string.download_unsupported_message),
+            confirmText = stringResource(R.string.download_unsupported_confirm),
+            onConfirm = { showDownloadUnsupported = false },
+            onDismiss = { showDownloadUnsupported = false },
         )
     }
 

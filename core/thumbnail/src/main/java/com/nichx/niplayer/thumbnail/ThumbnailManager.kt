@@ -12,6 +12,8 @@ import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.common.media.MediaFileTypes
+import com.nichx.niplayer.metadata.cache.AudioTagCache
+import com.nichx.niplayer.metadata.tag.readAudioTagsFrom
 import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFactory
@@ -1352,6 +1354,7 @@ class ThumbnailManager @Inject constructor(
         storage: Storage,
         file: StorageFile,
         cacheFile: File,
+        tagCacheKey: String? = null,
     ): String? {
         val headerBytes = try {
             storage.readFileBytes(file, HEADER_READ_LIMIT)
@@ -1373,7 +1376,7 @@ class ThumbnailManager @Inject constructor(
             override fun close() {}
         }
 
-        return extractAudioCoverFromDataSource(dataSource, cacheFile)
+        return extractAudioCoverFromDataSource(dataSource, cacheFile, tagCacheKey)
     }
 
 
@@ -1477,9 +1480,14 @@ class ThumbnailManager @Inject constructor(
 
             val url = storage.createPlayUrl(file)
 
+            // 标签缓存键：与 AudioPlaybackManager.matchKeyFor 的约定一致
+            // （远程 `sid:<storageId>:<path>` / 本地 `local:<uri>`），
+            // 使浏览期读到的标签能被播放期直接命中。
+            val tagCacheKey = AudioTagCache.keyFor(storageId, file.path)
+
             // 1. 本地文件：尝试提取内嵌封面
             if (url != null && (url.startsWith("file") || url.startsWith("content"))) {
-                val embedded = extractAudioCoverFromUrl(context, url, cacheFile)
+                val embedded = extractAudioCoverFromUrl(context, url, cacheFile, tagCacheKey)
                 if (embedded != null) return@withLock embedded
             }
 
@@ -1491,10 +1499,10 @@ class ThumbnailManager @Inject constructor(
             val viaHeader: String? = if (url != null && url.startsWith("http", ignoreCase = true)) {
                 val headers = storage.getPlayHeaders()
                 if (headers.isNotEmpty()) {
-                    extractAudioCoverFromHeader(storage, file, cacheFile)
+                    extractAudioCoverFromHeader(storage, file, cacheFile, tagCacheKey)
                 } else null
             } else {
-                extractAudioCoverFromHeader(storage, file, cacheFile)
+                extractAudioCoverFromHeader(storage, file, cacheFile, tagCacheKey)
             }
             if (viaHeader != null) return@withLock viaHeader
 
@@ -1833,11 +1841,16 @@ class ThumbnailManager @Inject constructor(
 
     // ---------- 音频封面辅助 ----------
 
-    private fun extractAudioCoverFromUrl(context: Context, url: String, cacheFile: File): String? {
+    private fun extractAudioCoverFromUrl(
+        context: Context,
+        url: String,
+        cacheFile: File,
+        tagCacheKey: String? = null,
+    ): String? {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(context, Uri.parse(url))
-            return extractEmbeddedPicture(retriever, cacheFile)
+            return extractEmbeddedPicture(retriever, cacheFile, tagCacheKey)
         } catch (e: Exception) {
             // m-12 修复：原 `catch (_: Exception)` 静默吞掉，远程音频封面失败无法排查
             Log.w(TAG, "extractAudioCoverFromUrl(context,url) failed: ${e.message}", e)
@@ -1849,11 +1862,16 @@ class ThumbnailManager @Inject constructor(
         }
     }
 
-    private fun extractAudioCoverFromUrl(url: String, headers: Map<String, String>, cacheFile: File): String? {
+    private fun extractAudioCoverFromUrl(
+        url: String,
+        headers: Map<String, String>,
+        cacheFile: File,
+        tagCacheKey: String? = null,
+    ): String? {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(url, headers)
-            return extractEmbeddedPicture(retriever, cacheFile)
+            return extractEmbeddedPicture(retriever, cacheFile, tagCacheKey)
         } catch (e: Exception) {
             // m-12 修复：原 `catch (_: Exception)` 静默吞掉
             Log.w(TAG, "extractAudioCoverFromUrl(url,headers) failed: ${e.message}", e)
@@ -1865,11 +1883,15 @@ class ThumbnailManager @Inject constructor(
         }
     }
 
-    private fun extractAudioCoverFromDataSource(dataSource: MediaDataSource, cacheFile: File): String? {
+    private fun extractAudioCoverFromDataSource(
+        dataSource: MediaDataSource,
+        cacheFile: File,
+        tagCacheKey: String? = null,
+    ): String? {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(dataSource)
-            extractEmbeddedPicture(retriever, cacheFile)
+            extractEmbeddedPicture(retriever, cacheFile, tagCacheKey)
         } catch (e: Exception) {
             // m-12 修复：原 `catch (_: Exception)` 静默吞掉
             Log.w(TAG, "extractAudioCoverFromDataSource failed: ${e.message}", e)
@@ -1884,12 +1906,31 @@ class ThumbnailManager @Inject constructor(
         }
     }
 
-    private fun extractEmbeddedPicture(retriever: MediaMetadataRetriever, cacheFile: File): String? {
+    private fun extractEmbeddedPicture(
+        retriever: MediaMetadataRetriever,
+        cacheFile: File,
+        tagCacheKey: String? = null,
+    ): String? {
         // BUG-12 修复：部分损坏的 FLAC/OGG 在 embeddedPicture 调用时抛 RuntimeException，
         // 上层 try-catch 仅记录 "generateAudioCover failed" 不区分失败阶段，
         // 此处单独捕获并记录精确日志，便于排查音频格式兼容性问题
         return try {
-            val pictureData = retriever.embeddedPicture ?: return null
+            val pictureData = retriever.embeddedPicture
+            // 顺手读取标签并缓存：retriever 已打开，多读几个 extractMetadata 字段的
+            // 边际成本几乎为零。浏览期经此把标签预置好（含 SMB/WebDAV 远程文件，
+            // 远程走的是只含文件头的 MediaDataSource），播放期即可零延迟命中。
+            // 标签读取失败不影响封面提取，故单独捕获。
+            if (tagCacheKey != null) {
+                try {
+                    AudioTagCache.put(
+                        tagCacheKey,
+                        readAudioTagsFrom(retriever, hasEmbeddedPicture = pictureData != null),
+                    )
+                } catch (_: Exception) {
+                    // 忽略：标签缺失是常态，封面提取不受影响
+                }
+            }
+            if (pictureData == null) return null
             val bitmap = BitmapFactory.decodeByteArray(pictureData, 0, pictureData.size) ?: return null
             val scaled = scaleToMaxWidth(bitmap, MAX_WIDTH)
             cacheFile.parentFile?.mkdirs()

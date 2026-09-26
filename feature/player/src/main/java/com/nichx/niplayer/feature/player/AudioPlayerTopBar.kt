@@ -71,6 +71,7 @@ internal fun TopBarActions(
     onRematchLyrics: () -> Unit = {},
     onClearIgnoreLyrics: () -> Unit = {},
     onManualMatchLyrics: () -> Unit = {},
+    onPickCandidate: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
@@ -364,6 +365,28 @@ internal fun TopBarActions(
                         DropdownMenuItem(
                             text = {
                                 Text(
+                                    text = stringResource(R.string.player_lyrics_pick_candidate),
+                                    fontSize = 14.sp,
+                                    color = onSurface,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Check,
+                                    contentDescription = null,
+                                    tint = onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            contentPadding = menuItemPadding,
+                            onClick = {
+                                menuPage = MoreMenuPage.Idle
+                                onPickCandidate()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
                                     text = stringResource(R.string.player_lyrics_manual_match),
                                     fontSize = 14.sp,
                                     color = onSurface,
@@ -428,6 +451,7 @@ internal fun TopBar(
     onRematchLyrics: () -> Unit = {},
     onClearIgnoreLyrics: () -> Unit = {},
     onManualMatchLyrics: () -> Unit = {},
+    onPickCandidate: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     Row(
@@ -478,6 +502,7 @@ internal fun TopBar(
             onRematchLyrics = onRematchLyrics,
             onClearIgnoreLyrics = onClearIgnoreLyrics,
             onManualMatchLyrics = onManualMatchLyrics,
+            onPickCandidate = onPickCandidate,
         )
     }
 }

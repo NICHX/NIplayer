@@ -145,6 +145,7 @@ internal fun PortraitLayout(
     onRematchLyrics: () -> Unit = {},
     onClearIgnoreLyrics: () -> Unit = {},
     onManualMatchLyrics: () -> Unit = {},
+    onPickCandidate: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
 
@@ -167,6 +168,7 @@ internal fun PortraitLayout(
             onRematchLyrics = onRematchLyrics,
             onClearIgnoreLyrics = onClearIgnoreLyrics,
             onManualMatchLyrics = onManualMatchLyrics,
+            onPickCandidate = onPickCandidate,
         )
 
         Box(
@@ -343,6 +345,7 @@ internal fun LandscapeLayout(
     onRematchLyrics: () -> Unit = {},
     onClearIgnoreLyrics: () -> Unit = {},
     onManualMatchLyrics: () -> Unit = {},
+    onPickCandidate: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     // 大屏（平板/大屏手机横屏）下歌词行数更多，配合 LyricsView 内部字号/行高自适应放大
@@ -472,6 +475,7 @@ internal fun LandscapeLayout(
                             onRematchLyrics = onRematchLyrics,
                             onClearIgnoreLyrics = onClearIgnoreLyrics,
                             onManualMatchLyrics = onManualMatchLyrics,
+                            onPickCandidate = onPickCandidate,
                         )
                     }
 

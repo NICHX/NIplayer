@@ -1441,6 +1441,12 @@ class PlayerViewModel @Inject constructor(
      * 实际入队由 [downloadToPreset] / [downloadToPath] 在用户确认目标后触发。
      */
     fun requestDownload() {
+        // API 29- 没有「所有文件访问权限」可授，原生直写共享存储不可用 → 如实告知；
+        // 否则会提示用户去授予一个在该系统上根本授不到的权限
+        if (!StorageAccess.isNativeDownloadSupported()) {
+            _downloadEvent.tryEmit(appContext.getString(R.string.player_download_unsupported))
+            return
+        }
         if (!StorageAccess.canWriteSharedStorage(appContext)) {
             _downloadEvent.tryEmit(appContext.getString(R.string.player_download_no_permission))
             return
@@ -2136,7 +2142,7 @@ class PlayerViewModel @Inject constructor(
     /** 临时创建 [Storage] 执行 [block]，无论成败都关闭实例。 */
     private suspend fun <T> withStorage(storageId: Int, block: suspend (Storage) -> T): T? {
         val library = mediaLibraryDao.getById(storageId) ?: return null
-        val storage = storageFactory.create(library) ?: return null
+        val storage = storageFactory.createOrNull(library) ?: return null
         return try {
             block(storage)
         } finally {

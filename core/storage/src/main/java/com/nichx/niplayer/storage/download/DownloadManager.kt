@@ -314,7 +314,7 @@ class DownloadManager @Inject constructor(
                 return
             }
 
-        val storage = storageFactory.create(library)
+        val storage = storageFactory.createOrNull(library)
             ?: run {
                 downloadTaskDao.updateState(task.id, DownloadState.FAILED, context.getString(R.string.download_error_storage_connect))
                 return

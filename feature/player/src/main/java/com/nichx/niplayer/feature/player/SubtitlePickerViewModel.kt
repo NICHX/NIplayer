@@ -263,7 +263,7 @@ class SubtitlePickerViewModel @Inject constructor(
     ): Pair<List<Entry>, String?> {
         val library = mediaLibraryDao.getById(libraryId)
             ?: return emptyList<Entry>() to ERROR_LIBRARY_MISSING
-        val storage: Storage = storageFactory.create(library)
+        val storage: Storage = storageFactory.createOrNull(library)
             ?: return emptyList<Entry>() to ERROR_NOT_BROWSABLE
         return try {
             val entries = storage.listFiles(storageFileFor(path))

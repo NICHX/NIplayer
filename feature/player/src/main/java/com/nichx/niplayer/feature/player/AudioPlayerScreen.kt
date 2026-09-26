@@ -75,6 +75,7 @@ fun AudioPlayerScreen(
     val sleepTimerText = sleepTimerRemaining?.let { formatSleepTimer(it) } ?: ""
     var showSleepTimerDialog by rememberSaveable { mutableStateOf(false) }
     var showManualMatchDialog by rememberSaveable { mutableStateOf(false) }
+    var showCandidateDialog by rememberSaveable { mutableStateOf(false) }
 
     val hasActiveContent = title.isNotEmpty()
 
@@ -173,6 +174,7 @@ fun AudioPlayerScreen(
                 onRematchLyrics = { audioPlaybackManager?.forceRematchLyrics() },
                 onClearIgnoreLyrics = { audioPlaybackManager?.clearIgnoreCurrentLyrics() },
                 onManualMatchLyrics = { showManualMatchDialog = true },
+                onPickCandidate = { showCandidateDialog = true },
             )
         } else {
             PortraitLayout(
@@ -212,6 +214,7 @@ fun AudioPlayerScreen(
                 onRematchLyrics = { audioPlaybackManager?.forceRematchLyrics() },
                 onClearIgnoreLyrics = { audioPlaybackManager?.clearIgnoreCurrentLyrics() },
                 onManualMatchLyrics = { showManualMatchDialog = true },
+                onPickCandidate = { showCandidateDialog = true },
             )
         }
 
@@ -258,6 +261,17 @@ fun AudioPlayerScreen(
                 onDismiss = { showManualMatchDialog = false },
                 onConfirm = { t, a ->
                     showManualMatchDialog = false
+                    audioPlaybackManager?.manualMatchLyrics(t, a)
+                },
+            )
+        }
+
+        if (showCandidateDialog) {
+            MatchCandidateDialog(
+                candidates = audioPlaybackManager?.currentMatchCandidates().orEmpty(),
+                onDismiss = { showCandidateDialog = false },
+                onPick = { t, a ->
+                    showCandidateDialog = false
                     audioPlaybackManager?.manualMatchLyrics(t, a)
                 },
             )

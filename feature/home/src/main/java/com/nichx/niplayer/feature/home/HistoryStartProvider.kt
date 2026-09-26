@@ -63,7 +63,7 @@ class HistoryStartProvider @Inject constructor(
         val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(storageId) }
             ?: return PlayStartResult.Error(context.getString(R.string.play_error_library_deleted))
 
-        val storage = withContext(Dispatchers.IO) { storageFactory.create(library) }
+        val storage = withContext(Dispatchers.IO) { storageFactory.createOrNull(library) }
             ?: return PlayStartResult.Error(
                 context.getString(
                     R.string.play_error_unsupported_storage,
@@ -208,7 +208,7 @@ class HistoryStartProvider @Inject constructor(
         val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(item.libraryId) }
             ?: return PlayStartResult.Error(context.getString(R.string.play_error_library_deleted))
 
-        val storage = withContext(Dispatchers.IO) { storageFactory.create(library) }
+        val storage = withContext(Dispatchers.IO) { storageFactory.createOrNull(library) }
             ?: return PlayStartResult.Error(
                 context.getString(
                     R.string.play_error_unsupported_storage,

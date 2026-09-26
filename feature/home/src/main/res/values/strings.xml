@@ -502,6 +502,7 @@
     <string name="storage_plus_protocol">协议</string>
     <string name="storage_plus_server_url">服务器 URL</string>
     <string name="storage_plus_enter_url">输入服务器 URL</string>
+    <string name="storage_plus_invalid_url">地址格式无效：请检查是否含空格，或端口是否超出范围</string>
     <string name="storage_plus_ip">IP 地址</string>
     <string name="storage_plus_enter_ip">输入服务器地址</string>
     <string name="storage_plus_port">端口</string>
@@ -817,6 +818,9 @@
     <string name="download_dir_permission_title">需要存储权限</string>
     <string name="download_dir_permission_message">下载目录需写入共享存储，请开启「所有文件访问权限」以获得原生读写速度</string>
     <string name="download_dir_permission_grant">前往开启</string>
+    <string name="download_unsupported_title">无法下载到本地</string>
+    <string name="download_unsupported_message">Android 10 及以下系统不支持直接写入共享存储。可改用系统浏览器或其他设备下载。</string>
+    <string name="download_unsupported_confirm">知道了</string>
     <string name="download_manager_target_fallback">缓存</string>
     <string name="download_manager_saved_to">保存至：%1$s</string>
     <string name="download_manager_unknown_size">未知大小</string>

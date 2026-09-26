@@ -8,6 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.nichx.niplayer.database.converter.BooleanConverter
 import com.nichx.niplayer.database.converter.DateConverter
 import com.nichx.niplayer.database.converter.MediaTypeConverter
+import com.nichx.niplayer.database.dao.AudioMatchDao
 import com.nichx.niplayer.database.dao.DownloadTaskDao
 import com.nichx.niplayer.database.dao.EncryptedFolderDao
 import com.nichx.niplayer.database.dao.ExtendFolderDao
@@ -17,6 +18,7 @@ import com.nichx.niplayer.database.dao.QuickAccessDao
 import com.nichx.niplayer.database.dao.SyncDeleteLogDao
 import com.nichx.niplayer.database.dao.UploadTaskDao
 import com.nichx.niplayer.database.dao.VideoDao
+import com.nichx.niplayer.database.entity.AudioMatchEntity
 import com.nichx.niplayer.database.entity.DownloadTaskEntity
 import com.nichx.niplayer.database.entity.EncryptedFolderEntity
 import com.nichx.niplayer.database.entity.ExtendFolderEntity
@@ -53,6 +55,7 @@ import com.nichx.niplayer.database.entity.VideoEntity
  * - v18: 移除歌单系统（playlist / playlist_item 表，play_history 遗留 playlist_id 列保留）
  * - v19: 移除播放历史云同步冲突表 sync_conflict（同步简化为纯 LWW，不再收集冲突）
  * - v20: 移除视频书签功能（video_bookmark 表 / DAO / 备份项一并下线）
+ * - v21: 新增 audio_match 表（音频匹配结果持久化 + 用户锁定）
  */
 @Database(
     entities = [
@@ -64,9 +67,10 @@ import com.nichx.niplayer.database.entity.VideoEntity
         QuickAccessEntity::class,
         SyncDeleteLogEntity::class,
         EncryptedFolderEntity::class,
-        UploadTaskEntity::class
+        UploadTaskEntity::class,
+        AudioMatchEntity::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = true
 )
 @TypeConverters(
@@ -93,6 +97,8 @@ abstract class NiplayerDatabase : RoomDatabase() {
     abstract fun getSyncDeleteLogDao(): SyncDeleteLogDao
 
     abstract fun getEncryptedFolderDao(): EncryptedFolderDao
+
+    abstract fun getAudioMatchDao(): AudioMatchDao
 
     companion object {
         const val DATABASE_NAME = "niplayer.db"
@@ -378,6 +384,39 @@ abstract class NiplayerDatabase : RoomDatabase() {
             }
         }
 
+        // v21：新增 audio_match 表（音频匹配结果持久化）
+        //
+        // 音频匹配此前只把结果写进 cacheDir 文件（OnlineMatchCache），清缓存即丢，
+        // 连用户手动修正的结果也一并丢失，且无法表达「用户确认过、不要再改」。
+        // 本表把匹配结果落库：曲目信息 + 来源 + locked 锁定标志。
+        // 歌词 / 封面正文仍走缓存文件，本表只存路径。
+        //
+        // 迁移写法遵循「历史迁移一律不动、只追加新迁移」。
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `audio_match` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `file_key` TEXT NOT NULL,
+                        `storage_id` INTEGER,
+                        `file_path` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `artist` TEXT NOT NULL,
+                        `album` TEXT,
+                        `source` TEXT NOT NULL,
+                        `locked` INTEGER NOT NULL,
+                        `lrc_path` TEXT,
+                        `cover_path` TEXT,
+                        `updated_at` INTEGER NOT NULL DEFAULT 0
+                    )"""
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_audio_match_file_key` " +
+                        "ON `audio_match` (`file_key`)"
+                )
+            }
+        }
+
         /**
          * 全部迁移的**唯一登记处**。
          *
@@ -406,6 +445,7 @@ abstract class NiplayerDatabase : RoomDatabase() {
             MIGRATION_17_18,
             MIGRATION_18_19,
             MIGRATION_19_20,
+            MIGRATION_20_21,
         )
     }
 }
