@@ -26,7 +26,6 @@ import com.nichx.niplayer.feature.home.settings.EqualizerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.ExperimentalScreen
 import com.nichx.niplayer.feature.home.settings.IconScreen
 import com.nichx.niplayer.feature.home.settings.LanguageScreen
-import com.nichx.niplayer.feature.home.settings.LrcApiSettingsScreen
 import com.nichx.niplayer.feature.home.settings.MediaLibrarySettingsScreen
 import com.nichx.niplayer.feature.home.settings.PlaybackStatsScreen
 import com.nichx.niplayer.feature.home.settings.PlayerSettingsScreen
@@ -227,11 +226,6 @@ fun NavGraphBuilder.homeNavGraph(
         route = Routes.Settings.BACKUP,
     ) {
         BackupScreen(onBack = navController.navBack())
-    }
-    composable(
-        route = Routes.Settings.LRCAPI,
-    ) {
-        LrcApiSettingsScreen(onBack = navController.navBack())
     }
     composable(
         route = Routes.Settings.CACHE_MANAGER,

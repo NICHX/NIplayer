@@ -74,8 +74,6 @@ fun AudioPlayerScreen(
         ?: remember { mutableStateOf<Int?>(null) }
     val sleepTimerText = sleepTimerRemaining?.let { formatSleepTimer(it) } ?: ""
     var showSleepTimerDialog by rememberSaveable { mutableStateOf(false) }
-    var showManualMatchDialog by rememberSaveable { mutableStateOf(false) }
-    var showCandidateDialog by rememberSaveable { mutableStateOf(false) }
 
     val hasActiveContent = title.isNotEmpty()
 
@@ -171,10 +169,6 @@ fun AudioPlayerScreen(
                 showDownload = !isLocalSource,
                 sleepTimerText = sleepTimerText,
                 onSleepTimer = { showSleepTimerDialog = true },
-                onRematchLyrics = { audioPlaybackManager?.forceRematchLyrics() },
-                onClearIgnoreLyrics = { audioPlaybackManager?.clearIgnoreCurrentLyrics() },
-                onManualMatchLyrics = { showManualMatchDialog = true },
-                onPickCandidate = { showCandidateDialog = true },
             )
         } else {
             PortraitLayout(
@@ -211,10 +205,6 @@ fun AudioPlayerScreen(
                 showDownload = !isLocalSource,
                 sleepTimerText = sleepTimerText,
                 onSleepTimer = { showSleepTimerDialog = true },
-                onRematchLyrics = { audioPlaybackManager?.forceRematchLyrics() },
-                onClearIgnoreLyrics = { audioPlaybackManager?.clearIgnoreCurrentLyrics() },
-                onManualMatchLyrics = { showManualMatchDialog = true },
-                onPickCandidate = { showCandidateDialog = true },
             )
         }
 
@@ -253,27 +243,6 @@ fun AudioPlayerScreen(
                 title = stringResource(R.string.player_sleep_timer),
                 items = items,
                 onDismiss = { showSleepTimerDialog = false },
-            )
-        }
-
-        if (showManualMatchDialog) {
-            ManualMatchLyricsDialog(
-                onDismiss = { showManualMatchDialog = false },
-                onConfirm = { t, a ->
-                    showManualMatchDialog = false
-                    audioPlaybackManager?.manualMatchLyrics(t, a)
-                },
-            )
-        }
-
-        if (showCandidateDialog) {
-            MatchCandidateDialog(
-                candidates = audioPlaybackManager?.currentMatchCandidates().orEmpty(),
-                onDismiss = { showCandidateDialog = false },
-                onPick = { t, a ->
-                    showCandidateDialog = false
-                    audioPlaybackManager?.manualMatchLyrics(t, a)
-                },
             )
         }
 

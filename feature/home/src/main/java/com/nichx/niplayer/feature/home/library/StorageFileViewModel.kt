@@ -15,7 +15,6 @@ import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.database.security.EncryptedFolderManager
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.FileBrowserSettings
-import com.nichx.niplayer.datastore.LrcApiSettings
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SortConfig
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
@@ -1701,13 +1700,7 @@ class StorageFileViewModel @Inject constructor(
                         audioFiles.filter { file ->
                             _thumbnailUrls.value[file.path] == null &&
                                 batchAccumulator[file.path] == null &&
-                                (if (LrcApiSettings.isConfigured) {
-                                    // API 已配置：放行从未尝试过 API 的文件（即使有 no_cover）
-                                    !thumbnailManager.hasNoCover(libId, file.path) ||
-                                        !thumbnailManager.hasApiNoCover(libId, file.path)
-                                } else {
-                                    !thumbnailManager.hasNoCover(libId, file.path)
-                                })
+                                !thumbnailManager.hasNoCover(libId, file.path)
                         }
                     } else {
                         emptyList()

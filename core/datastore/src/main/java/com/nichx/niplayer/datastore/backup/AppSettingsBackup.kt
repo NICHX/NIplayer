@@ -7,7 +7,6 @@ import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.FileBrowserSettings
 import com.nichx.niplayer.datastore.GlassSettings
 import com.nichx.niplayer.datastore.LanguageSettings
-import com.nichx.niplayer.datastore.LrcApiSettings
 import com.nichx.niplayer.datastore.PlayHistorySyncSettings
 import com.nichx.niplayer.datastore.PlayerControlLayout
 import com.nichx.niplayer.datastore.PlayerSettings
@@ -117,9 +116,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             historySyncEnabled = PlayHistorySyncSettings.enabled,
             historySyncAutoSync = PlayHistorySyncSettings.autoSync,
             historySyncLibraryId = WebDavSettings.libraryId.takeIf { it >= 0 },
-            // 在线歌词/音乐 API 与 Assrt 字幕 token（v2 并入 appSettings，不再顶层字段）
-            lrcApiUrl = LrcApiSettings.apiUrl.ifBlank { null },
-            lrcApiAuth = LrcApiSettings.apiAuth.ifBlank { null },
+            // Assrt 字幕 token（v2 并入 appSettings，不再顶层字段）
             assrtToken = SubtitleSettings.assrtToken.ifBlank { null },
         )
         return adapter.toJsonValue(data)
@@ -207,9 +204,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             WebDavSettings.setLibraryId(s.historySyncLibraryId)
             PlayHistorySyncSettings.resetDeviceId()
         }
-        // 在线歌词/音乐 API 与 Assrt 字幕 token（仅非空时覆盖）
-        s.lrcApiUrl?.let { if (it.isNotBlank()) LrcApiSettings.apiUrl = it }
-        s.lrcApiAuth?.let { if (it.isNotBlank()) LrcApiSettings.apiAuth = it }
+        // Assrt 字幕 token（仅非空时覆盖）
         s.assrtToken?.let { if (it.isNotBlank()) SubtitleSettings.assrtToken = it }
     }
 
@@ -299,7 +294,7 @@ data class AppSettingsData(
     val historySyncEnabled: Boolean? = null,
     val historySyncAutoSync: Boolean? = null,
     val historySyncLibraryId: Int? = null,
-    // 在线歌词/音乐 API 配置（LrcApiSettings）— v2 从 BackupData 顶层并入
+    // 已下线的在线歌词/音乐 API 配置：仅保留字段以兼容旧备份解析，不再写入与恢复
     val lrcApiUrl: String? = null,
     val lrcApiAuth: String? = null,
     // Assrt 字幕搜索 API token（SubtitleSettings.assrtToken）— v2 从 BackupData 顶层并入

@@ -14,14 +14,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Bedtime
-import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
-import androidx.compose.material.icons.rounded.ImportContacts
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -51,7 +48,7 @@ import androidx.compose.ui.unit.sp
 
 
 /** 播放器顶栏"更多"下拉菜单的页面态（单一玻璃菜单原地切换，避免子菜单开合时闪烁）。 */
-internal enum class MoreMenuPage { Idle, Main, Speed, Metadata }
+internal enum class MoreMenuPage { Idle, Main, Speed }
 
 /**
  * 顶栏操作按钮组：更多（内含倍速二级菜单 / 均衡器 / 睡眠定时 / 下载）。
@@ -68,10 +65,6 @@ internal fun TopBarActions(
     showDownload: Boolean = true,
     sleepTimerText: String = "",
     onSleepTimer: () -> Unit = {},
-    onRematchLyrics: () -> Unit = {},
-    onClearIgnoreLyrics: () -> Unit = {},
-    onManualMatchLyrics: () -> Unit = {},
-    onPickCandidate: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
@@ -227,38 +220,6 @@ internal fun TopBarActions(
                                 onSleepTimer()
                             },
                         )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            thickness = 0.5.dp,
-                            color = onSurface.copy(alpha = 0.08f),
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = stringResource(R.string.player_metadata),
-                                    fontSize = 14.sp,
-                                    color = onSurface,
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.ImportContacts,
-                                    contentDescription = null,
-                                    tint = onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            },
-                            trailingIcon = {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                    contentDescription = null,
-                                    tint = onSurfaceVariant.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            },
-                            contentPadding = menuItemPadding,
-                            onClick = { menuPage = MoreMenuPage.Metadata },
-                        )
                         if (showDownload) {
                             DropdownMenuItem(
                                 text = {
@@ -326,109 +287,6 @@ internal fun TopBarActions(
                             )
                         }
                     }
-                    MoreMenuPage.Metadata -> {
-                        // 菜单标题
-                        Text(
-                            text = stringResource(R.string.player_metadata),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-                            thickness = 0.5.dp,
-                            color = onSurface.copy(alpha = 0.08f),
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = stringResource(R.string.player_lyrics_rematch),
-                                    fontSize = 14.sp,
-                                    color = onSurface,
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.Refresh,
-                                    contentDescription = null,
-                                    tint = onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            },
-                            contentPadding = menuItemPadding,
-                            onClick = {
-                                menuPage = MoreMenuPage.Idle
-                                onRematchLyrics()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = stringResource(R.string.player_lyrics_pick_candidate),
-                                    fontSize = 14.sp,
-                                    color = onSurface,
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.Check,
-                                    contentDescription = null,
-                                    tint = onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            },
-                            contentPadding = menuItemPadding,
-                            onClick = {
-                                menuPage = MoreMenuPage.Idle
-                                onPickCandidate()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = stringResource(R.string.player_lyrics_manual_match),
-                                    fontSize = 14.sp,
-                                    color = onSurface,
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.ImportContacts,
-                                    contentDescription = null,
-                                    tint = onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            },
-                            contentPadding = menuItemPadding,
-                            onClick = {
-                                menuPage = MoreMenuPage.Idle
-                                onManualMatchLyrics()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = stringResource(R.string.player_lyrics_clear_ignore),
-                                    fontSize = 14.sp,
-                                    color = onSurface,
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.Block,
-                                    contentDescription = null,
-                                    tint = onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            },
-                            contentPadding = menuItemPadding,
-                            onClick = {
-                                menuPage = MoreMenuPage.Idle
-                                onClearIgnoreLyrics()
-                            },
-                        )
-                    }
                     MoreMenuPage.Idle -> {}
                 }
             }
@@ -448,10 +306,6 @@ internal fun TopBar(
     showDownload: Boolean = true,
     sleepTimerText: String = "",
     onSleepTimer: () -> Unit = {},
-    onRematchLyrics: () -> Unit = {},
-    onClearIgnoreLyrics: () -> Unit = {},
-    onManualMatchLyrics: () -> Unit = {},
-    onPickCandidate: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     Row(
@@ -499,10 +353,6 @@ internal fun TopBar(
             showDownload = showDownload,
             sleepTimerText = sleepTimerText,
             onSleepTimer = onSleepTimer,
-            onRematchLyrics = onRematchLyrics,
-            onClearIgnoreLyrics = onClearIgnoreLyrics,
-            onManualMatchLyrics = onManualMatchLyrics,
-            onPickCandidate = onPickCandidate,
         )
     }
 }

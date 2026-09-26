@@ -283,8 +283,6 @@
     <string name="settings_entry_download_sub">Manage downloads and uploads</string>
     <string name="settings_entry_cache">Cache manager</string>
     <string name="settings_entry_cache_sub">Clear various caches</string>
-    <string name="settings_entry_lrcapi">Music metadata</string>
-    <string name="settings_entry_lrcapi_sub">Configure online lyrics &amp; cover API</string>
     <string name="settings_entry_player">Player</string>
     <string name="settings_entry_player_sub">Kernel, subtitles &amp; gestures</string>
     <string name="settings_entry_media_library">Media library</string>
@@ -442,8 +440,6 @@
     <string name="storage_file_type_file_ext">File · %1$s</string>
     <string name="storage_file_action_play">Play</string>
     <string name="storage_file_action_download">Download</string>
-    <string name="storage_file_action_clear_ignore_lyrics">Clear &amp; ignore this track\'s lyrics</string>
-    <string name="storage_file_action_clear_ignore_lyrics_done">Cleared &amp; ignored online lyrics for this track</string>
     <string name="storage_file_action_rename">Rename</string>
     <string name="storage_file_action_move">Move</string>
     <string name="storage_file_action_delete">Delete</string>
@@ -764,42 +760,10 @@
     <string name="thumbnail_writeback_disabled">Write back off</string>
     <string name="player_storage_help_writeback_detail">Write back to server:\nWrite back on: save generated thumbnails/covers back to the .thumb/ / .cover/ directory.\nWrite back off: only generate locally, never write to the server.\nOptional — if unset, follows the global “Save to server” switch.</string>
 
-    <!-- Lyrics API (LrcApiSettingsScreen) -->
-    <string name="lrcapi_title">Music metadata</string>
-    <string name="lrcapi_api_title">API endpoint</string>
-    <string name="lrcapi_help">Help</string>
-    <string name="lrcapi_url_label">API URL</string>
+    <!-- Subtitle API token display (SubtitleSettings.assrtToken; legacy names) -->
     <string name="lrcapi_not_set">Not set</string>
-    <string name="lrcapi_auth_label">Authentication</string>
     <string name="lrcapi_auth_set">Configured</string>
-    <string name="lrcapi_note_title">Notes</string>
-    <string name="lrcapi_lyrics_label">Lyrics fetching</string>
-    <string name="lrcapi_lyrics_value">Fetched automatically via the API while playing</string>
-    <string name="lrcapi_cover_label">Cover fetching</string>
-    <string name="lrcapi_cover_value">Falls back to the API automatically when browsing and playing</string>
-    <string name="lrcapi_url_dialog_title">API URL</string>
-    <string name="lrcapi_url_dialog_hint">Enter the lrcapi service address, e.g. http://192.168.1.100:8080.</string>
-    <string name="lrcapi_server_label">Server address</string>
-    <string name="lrcapi_auth_dialog_title">Authentication</string>
-    <string name="lrcapi_auth_dialog_hint">If the API requires an Authorization header, enter the token here. Leave empty if no authentication is needed.</string>
-    <string name="lrcapi_auth_placeholder">Enter Authorization token</string>
-    <string name="lrcapi_help_title">Music metadata API</string>
-    <string name="lrcapi_help_intro">After configuring an lrcapi service, NIplayer can fetch music metadata in the following scenarios:</string>
-    <string name="lrcapi_help_point1">1. When browsing folders, if an audio file has no embedded cover and there is no folder cover, it falls back to the API to fetch the cover.</string>
-    <string name="lrcapi_help_point2">2. When playing audio, it loads the lyric file in the same directory first; if none exists, it fetches lyrics via the API.</string>
-    <string name="lrcapi_help_api_title">API contract:</string>
-    <string name="lrcapi_help_api_body">• GET /lyrics?title=&amp;artist=&amp;album=&amp;path=\n• GET /cover?title=&amp;artist=&amp;album=</string>
-    <string name="lrcapi_guide_title">Setup guide</string>
-    <string name="lrcapi_guide_desc">lrcapi is a self-hosted lyrics / cover metadata service. Tap the link below to learn how to set it up.</string>
-    <string name="lrcapi_guide_link">github.com/HisAtri/LrcApi</string>
-    <string name="lrcapi_guide_open">Open project</string>
-    <string name="lrcapi_clear_title">Data management</string>
-    <string name="lrcapi_clear_label">Online-match cache &amp; ignore list</string>
-    <string name="lrcapi_clear_hint">Delete all online-matched lyrics/cover caches and reset the ignore list</string>
-    <string name="lrcapi_clear_action">Clear</string>
-    <string name="lrcapi_clear_confirm_title">Clear online-match data</string>
-    <string name="lrcapi_clear_confirm_body">This deletes all online-matched lyrics and cover caches and resets the ignore list. Local files and same-directory lyrics are unaffected. Continue?</string>
-    <string name="lrcapi_clear_done">Online-match cache &amp; ignore list cleared</string>
+    <string name="lrcapi_help">Help</string>
 
     <!-- Download manager page (DownloadManagerScreen) -->
     <string name="download_manager_title">Download manager</string>

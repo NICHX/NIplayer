@@ -3,7 +3,6 @@ package com.nichx.niplayer.database.di
 import android.content.Context
 import androidx.room.Room
 import com.nichx.niplayer.database.NiplayerDatabase
-import com.nichx.niplayer.database.dao.AudioMatchDao
 import com.nichx.niplayer.database.dao.DownloadTaskDao
 import com.nichx.niplayer.database.dao.EncryptedFolderDao
 import com.nichx.niplayer.database.dao.ExtendFolderDao
@@ -81,7 +80,4 @@ object DatabaseModule {
 
     @Provides
     fun provideEncryptedFolderDao(db: NiplayerDatabase): EncryptedFolderDao = db.getEncryptedFolderDao()
-
-    @Provides
-    fun provideAudioMatchDao(db: NiplayerDatabase): AudioMatchDao = db.getAudioMatchDao()
 }
