@@ -1,8 +1,11 @@
 package com.nichx.niplayer.database
 
+import androidx.room.AutoMigration
 import androidx.room.Database
+import androidx.room.DeleteTable
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.AutoMigrationSpec
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.nichx.niplayer.database.converter.BooleanConverter
@@ -74,6 +77,9 @@ import com.nichx.niplayer.database.entity.VideoEntity
         SyncDeleteLogEntity::class,
         EncryptedFolderEntity::class,
         UploadTaskEntity::class
+    ],
+    autoMigrations = [
+        AutoMigration(from = 19, to = 20, spec = DropVideoBookmarkSpec::class)
     ],
     version = 20,
     exportSchema = true
@@ -378,14 +384,10 @@ abstract class NiplayerDatabase : RoomDatabase() {
         // video_bookmark 表（v9 引入）随功能整体下线。该表只存用户手动打的视频书签点，
         // 删除不影响播放历史 / 播放进度 / 快速访问等任何其他数据。
         //
-        // 迁移写法遵循「历史迁移一律不动、只追加新迁移」：MIGRATION_8_9 仍然创建该表，
-        // 使从 v8 升级的链式路径中间态与历史 schema（9.json~19.json）保持一致，
-        // 最终由本段统一删除。DROP ... IF EXISTS 对「表不存在」的路径同样安全。
-        val MIGRATION_19_20 = object : Migration(19, 20) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("DROP TABLE IF EXISTS `video_bookmark`")
-            }
-        }
+        // 本段**不手写 SQL**：由 @Database(autoMigrations) 里的 AutoMigration(19, 20) 承担，
+        // Room 在编译期读 19.json 与当前实体做 diff，自动生成 DROP TABLE 并校验结果。
+        // 历史迁移（MIGRATION_8_9 创建该表）保持不动，使从 v8 升级的链式路径中间态与
+        // 历史 schema（9.json~19.json）一致，最终由 19→20 统一删除。
 
         /**
          * 全部迁移的**唯一登记处**。
@@ -414,7 +416,21 @@ abstract class NiplayerDatabase : RoomDatabase() {
             MIGRATION_16_17,
             MIGRATION_17_18,
             MIGRATION_18_19,
-            MIGRATION_19_20,
         )
     }
 }
+
+/**
+ * `AutoMigration(19, 20)` 的规格：删除 `video_bookmark` 表（v20 视频书签功能下线）。
+ *
+ * 为什么必须显式声明：Room 从 schema diff 只能看出「某张表消失了」，**无法判断这是删除
+ * 还是重命名**（重命名会同时出现一张新表名），因此删表必须由 [DeleteTable] 指明意图，
+ * 删列同理需要 `@DeleteColumn`。纯新增表 / 新增列则不需要任何 spec。
+ *
+ * 这是本仓库的第一个 AutoMigration：手写 `DROP TABLE` 换成声明式后，DDL 由 Room 在编译期
+ * 依据 `19.json` 与当前实体 diff 生成，`core/database/tools/verify_migrations.py` 不再校验
+ * 这一段（它只解析手写 SQL），改由「Room 编译期校验 + MigrationTest 里的真实 Builder
+ * 升级用例」覆盖。
+ */
+@DeleteTable(tableName = "video_bookmark")
+class DropVideoBookmarkSpec : AutoMigrationSpec

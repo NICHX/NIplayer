@@ -103,6 +103,26 @@ def _read_exec_sql_arg(src: str, pos: int) -> tuple[str, int]:
     raise ValueError("execSQL 括号未闭合")
 
 
+def parse_auto_migrations(path: Path) -> dict[tuple[int, int], str]:
+    """解析 `@Database(autoMigrations = [...])` 里声明的自动迁移。
+
+    返回 {(from, to): spec 描述}（无 spec 时为空串）。自动迁移的 DDL 由 Room 在编译期
+    依据 from 版本的 schema JSON 与当前实体 diff 生成，源码里没有 SQL ——
+    本工具无法也无法执行它，只把它计入链连续性检查，并在报告里显式说明边界。
+    """
+    src = path.read_text(encoding="utf-8")
+    out: dict[tuple[int, int], str] = {}
+    for m in re.finditer(r"AutoMigration\(([^)]*)\)", src, re.S):
+        body = m.group(1)
+        from_m = re.search(r"from\s*=\s*(\d+)", body)
+        to_m = re.search(r"to\s*=\s*(\d+)", body)
+        if not (from_m and to_m):
+            continue
+        spec_m = re.search(r"spec\s*=\s*([\w.]+)", body)
+        out[(int(from_m.group(1)), int(to_m.group(1)))] = spec_m.group(1) if spec_m else ""
+    return out
+
+
 def parse_migrations(path: Path) -> dict[tuple[int, int], list[str]]:
     src = path.read_text(encoding="utf-8")
     migrations: dict[tuple[int, int], list[str]] = {}
@@ -261,23 +281,51 @@ def resolve_start_schema(version: int) -> tuple[int, dict]:
 
 def verify(start_version: int) -> int:
     migrations = parse_migrations(KT_FILE)
-    target_version = max(v[1] for v in migrations)
-    target_schema = load_schema(target_version)
+    auto_hops = parse_auto_migrations(KT_FILE)
+    declared = set(migrations) | set(auto_hops)
+    declared_target = max((b for _, b in declared), default=0)
+    if declared_target == 0:
+        print("✗ 未从源码解析到任何迁移声明（既无 MIGRATION_x_y，也无 AutoMigration）")
+        return 1
 
     effective_start, start_schema = resolve_start_schema(start_version)
 
-    chain = []
+    # 链连续性：手写 + 自动一起查 —— 漏声明 AutoMigration 同样会让用户升级时崩溃
+    manual_chain: list[tuple[int, int]] = []
+    auto_boundary: tuple[int, int] | None = None
     v = effective_start
-    while v < target_version:
-        if (v, v + 1) not in migrations:
-            print(f"✗ 迁移链断裂：缺少 {v} → {v + 1}")
+    while v < declared_target:
+        hop = (v, v + 1)
+        if hop not in declared:
+            print(f"✗ 迁移链断裂：缺少 {v} → {v + 1}（既无手写 Migration，也无 AutoMigration）")
             return 1
-        chain.append((v, v + 1))
+        if hop in auto_hops:
+            if auto_boundary is None:
+                auto_boundary = hop
+        else:
+            if auto_boundary is not None:
+                print(
+                    f"✗ {hop[0]} → {hop[1]} 是手写迁移却排在自动迁移之后："
+                    f"离线执行模型无法跨越自动迁移段，请把 AutoMigration 放在链尾。"
+                )
+                return 1
+            manual_chain.append(hop)
         v += 1
 
-    print(f"迁移链：{effective_start} → {target_version}，共 {len(chain)} 段")
-    for a, b in chain:
+    # 本工具只能离线执行手写段；自动迁移段交给 Room 编译期 diff 与 Builder 级用例
+    manual_target = manual_chain[-1][1] if manual_chain else effective_start
+    target_schema = load_schema(manual_target)
+
+    chain_desc = [f"{a} → {b}" for a, b in manual_chain]
+    if auto_boundary:
+        chain_desc.append(f"{auto_boundary[0]} → {auto_boundary[1]}（AutoMigration，Room 生成）")
+    print(f"迁移链：{effective_start} → {declared_target}，共 {len(chain_desc)} 段")
+    for a, b in manual_chain:
         print(f"  {a:>2} → {b:<2}  {len(migrations[(a, b)])} 条语句")
+    if auto_boundary:
+        a, b = auto_boundary
+        spec = auto_hops[(a, b)]
+        print(f"  {a:>2} → {b:<2}  AutoMigration" + (f"（spec: {spec}）" if spec else ""))
 
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = OFF")
@@ -296,7 +344,7 @@ def verify(start_version: int) -> int:
     )
     conn.commit()
 
-    for a, b in chain:
+    for a, b in manual_chain:
         for stmt in migrations[(a, b)]:
             try:
                 conn.execute(stmt)
@@ -381,8 +429,17 @@ def verify(start_version: int) -> int:
             print(f"  - {p}")
         return 1
 
-    print(f"\n✓ {start_version} → {target_version} 迁移链校验通过")
-    print(f"  表 {len(expected_tables)} 张、列/索引/外键/数据保留均与 {target_version}.json 一致")
+    if auto_boundary:
+        a, b = auto_boundary
+        print(f"\n✓ 手写段 {start_version} → {manual_target} 校验通过（含链连续性）")
+        print(f"  表 {len(expected_tables)} 张、列/索引/外键/数据保留均与 {manual_target}.json 一致")
+        print(
+            f"  {a} → {b} 为 AutoMigration：DDL 由 Room 依据 {a}.json 在编译期生成，本工具不执行；"
+            f"\n  该段的正确性由「KSP 编译校验 + MigrationTest 的 Room Builder 升级用例」覆盖。"
+        )
+    else:
+        print(f"\n✓ {start_version} → {declared_target} 迁移链校验通过")
+        print(f"  表 {len(expected_tables)} 张、列/索引/外键/数据保留均与 {declared_target}.json 一致")
     return 0
 
 

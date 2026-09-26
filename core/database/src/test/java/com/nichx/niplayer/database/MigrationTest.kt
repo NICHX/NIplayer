@@ -1,5 +1,6 @@
 package com.nichx.niplayer.database
 
+import androidx.room.Room
 import androidx.room.testing.MigrationTestHelper
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.platform.app.InstrumentationRegistry
@@ -34,8 +35,16 @@ import org.robolectric.RobolectricTestRunner
  * | 15→16 | 新增 upload_task |
  * | 16→18 | 空迁移（16→17）+ 删除歌单表（17→18），**链式验证** |
  * | 18→19 | 删除播放历史云同步冲突表 sync_conflict |
- * | 19→20 | 删除视频书签表 video_bookmark（书签功能下线） |
- * | 10→20 | 全链路一次跑完，同时验证数据保留 |
+ * | 19→20 | 删除视频书签表 video_bookmark（**AutoMigration**，见下） |
+ * | 10→19 | 全链路一次跑完，同时验证数据保留 |
+ *
+ * ## 自动迁移（19→20）怎么验证
+ *
+ * 该段由 `@Database(autoMigrations)` 声明、Room 编译期生成 DDL，既不是 `Migration` 实例
+ * （无法传给 [MigrationTestHelper]），源码里也没有 SQL（`verify_migrations.py` 解析不到）。
+ * 因此它单独用**真实 Builder** 打开 v19 库文件来验证：既能触发自动迁移，又顺带覆盖
+ * 「是否登记进生成的实现」，结果另由 Room 的 `validateMigration` 校验。
+ * 手写段与自动段的分工边界由 `core/database/tools/verify_migrations.py` 显式打印。
  *
  * ## 为什么 16→17 不能单独验证
  *
@@ -170,7 +179,7 @@ class MigrationTest {
     }
 
     @Test
-    fun `10到20_全链路升级成功且用户数据零丢失`() {
+    fun `10到19_全链路升级成功且用户数据零丢失`() {
         helper.createDatabase(TEST_DB, 10).use { db ->
             insertLibrary(db, "smb://192.168.1.10", "家庭 NAS")
             insertLibrary(db, "webdav://nas.local/dav", "坚果云")
@@ -191,7 +200,7 @@ class MigrationTest {
 
         val db = helper.runMigrationsAndValidate(
             TEST_DB,
-            20,
+            19,
             true,
             NiplayerDatabase.MIGRATION_10_11,
             NiplayerDatabase.MIGRATION_11_12,
@@ -202,18 +211,57 @@ class MigrationTest {
             NiplayerDatabase.MIGRATION_16_17,
             NiplayerDatabase.MIGRATION_17_18,
             NiplayerDatabase.MIGRATION_18_19,
-            NiplayerDatabase.MIGRATION_19_20,
         )
 
         db.use {
             assertEquals("媒体库配置不能丢", 2, it.countRows("media_library"))
             assertEquals("播放历史不能丢", 2, it.countRows("play_history"))
             assertEquals("加密目录记录不能丢", 1, it.countRows("encrypted_folder"))
-            assertFalse("video_bookmark 表应随书签功能下线被移除", it.hasTable("video_bookmark"))
+            // v19 的中间态仍带 video_bookmark：删除它的是 19→20 的 AutoMigration（见下一个用例）
+            assertTrue("v19 中间态应仍保留 video_bookmark 表", it.hasTable("video_bookmark"))
             assertEquals("家庭 NAS", it.queryString("SELECT display_name FROM media_library WHERE url = 'smb://192.168.1.10'"))
             assertFalse(it.hasTable("playlist"))
             assertFalse(it.hasTable("playlist_item"))
             assertFalse(it.hasTable("sync_conflict"))
+        }
+    }
+
+    /**
+     * 19→20 是**自动迁移**，验证方式与其它用例不同。
+     *
+     * `@Database(autoMigrations = [...])` 声明的迁移不是 `Migration` 实例，无法作为参数传给
+     * [MigrationTestHelper]；其 DDL 由 Room 在编译期依据 `19.json` 与当前实体 diff 生成，
+     * `core/database/tools/verify_migrations.py` 也解析不到 SQL（该工具会显式报告手写段的边界）。
+     *
+     * 因此这里用**真实 Builder** 打开同一份 v19 库文件：既触发自动迁移，又顺带覆盖
+     * 「是否已登记进生成的实现」—— 漏声明 AutoMigration 会抛
+     * `A migration from 19 to 20 was required but not found`，使本用例失败。
+     * 迁移结果另由 Room 自身的 schema 校验（`validateMigration`）把关。
+     */
+    @Test
+    fun `19到20_自动迁移删除书签表且用户数据零丢失`() {
+        helper.createDatabase(TEST_DB, 19).use { db ->
+            insertLibrary(db, "smb://192.168.1.10", "家庭 NAS")
+            insertPlayHistory(db, "第 1 集.mkv")
+            db.execSQL(
+                "INSERT INTO video_bookmark (unique_key, storage_id, video_name, position_ms, created_at, updated_at) " +
+                    "VALUES ('k1', 1, '第 1 集.mkv', 12345, 100, 100)"
+            )
+        }
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.databaseBuilder(context, NiplayerDatabase::class.java, TEST_DB)
+            .addMigrations(*NiplayerDatabase.ALL_MIGRATIONS)
+            .fallbackToDestructiveMigrationFrom(true, 1, 2, 3, 4, 5)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val raw = db.openHelper.writableDatabase
+            assertFalse("video_bookmark 应随书签功能下线被移除", raw.hasTable("video_bookmark"))
+            assertEquals("媒体库配置不能丢", 1, raw.countRows("media_library"))
+            assertEquals("播放历史不能丢", 1, raw.countRows("play_history"))
+        } finally {
+            db.close()
         }
     }
 
