@@ -150,6 +150,8 @@ internal fun DownloadManagerTab(
     val context = LocalContext.current
     var showFolderPicker by remember { mutableStateOf(false) }
     var showPermissionDialog by remember { mutableStateOf(false) }
+    // API 29- 没有「所有文件访问权限」可授，下载不可用 → 弹说明框而非授权框
+    var showDownloadUnsupported by remember { mutableStateOf(false) }
 
     if (displayItems.isEmpty() && downloadDirInfo.path.isNotBlank()) {
         // 下载目录卡片始终显示（含空态时提供重设/清除），任务区用空态占位
@@ -294,7 +296,11 @@ internal fun DownloadManagerTab(
             downloadLrcWithAudio = downloadLrcWithAudio,
             onLrcEnabledChange = { viewModel.setDownloadLrcWithAudio(it) },
             onChooseDirectory = {
-                if (StorageAccess.canWriteSharedStorage(context)) {
+                // 旧系统（API 29-）拿不到「所有文件访问权限」，原生直写共享存储不可用
+                if (!StorageAccess.isNativeDownloadSupported()) {
+                    showDownloadSettings = false
+                    showDownloadUnsupported = true
+                } else if (StorageAccess.canWriteSharedStorage(context)) {
                     showDownloadSettings = false
                     showFolderPicker = true
                 } else {
@@ -317,6 +323,16 @@ internal fun DownloadManagerTab(
                 StorageAccess.openAllFilesAccessSettings(context)
             },
             onDismiss = { showPermissionDialog = false },
+        )
+    }
+
+    if (showDownloadUnsupported) {
+        NiConfirmDialog(
+            title = stringResource(R.string.download_unsupported_title),
+            text = stringResource(R.string.download_unsupported_message),
+            confirmText = stringResource(R.string.download_unsupported_confirm),
+            onConfirm = { showDownloadUnsupported = false },
+            onDismiss = { showDownloadUnsupported = false },
         )
     }
 }

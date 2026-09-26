@@ -1,6 +1,7 @@
 package com.nichx.niplayer.storage
 
 import android.content.Context
+import android.util.Log
 import com.nichx.niplayer.database.dao.VideoDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
@@ -10,6 +11,7 @@ import com.nichx.niplayer.storage.impl.VideoStorage
 import com.nichx.niplayer.storage.impl.WebDavStorage
 import com.nichx.niplayer.storage.scanner.VideoScanner
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import okhttp3.OkHttpClient
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -52,7 +54,29 @@ class StorageFactory @Inject constructor(
         MediaType.OTHER_STORAGE, MediaType.QUICK_ACCESS -> null
     }
 
+    /**
+     * 与 [create] 相同，但把**构造期异常**吞掉并返回 null。
+     *
+     * 各 [Storage] 实现的属性初始化器都可能抛异常（[WebDavStorage] 的 baseUrl、
+     * [SmbStorage] 的 host 均为 `?: throw IllegalArgumentException(...)`）。
+     * 在未包 try 的调用点上，这类异常会穿出协程、经 CrashHandler 交回系统
+     * KillApplicationHandler 直接终止进程；而这些调用点通常已有 `?: 兜底分支`
+     * （返回错误态 / 提前 return），故此处统一降级为 null 让兜底分支接管。
+     *
+     * 需要区分「该 mediaType 不需要 Storage」与「构造失败」时，请继续使用 [create]。
+     */
+    fun createOrNull(library: MediaLibraryEntity): Storage? = try {
+        create(library)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Storage 构造失败，按不可用处理: type=${library.mediaType}", e)
+        null
+    }
+
     companion object {
+        private const val TAG = "StorageFactory"
+
         /** 根目录占位，用于 [Storage.listFiles] 起始点。 */
         val ROOT: StorageFile = RootStorageFile
     }

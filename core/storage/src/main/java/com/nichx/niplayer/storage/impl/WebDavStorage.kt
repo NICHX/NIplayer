@@ -1081,6 +1081,19 @@ class WebDavStorage(
 
     companion object {
         private const val TAG = "WebDavStorage"
+
+        /**
+         * 校验 WebDAV 地址能否解析为合法 [HttpUrl]。
+         *
+         * 与构造期 [baseUrl] 的判据**完全一致**（同一个 [toHttpUrlOrNull]），
+         * 供表单在保存前拦截非法地址。
+         *
+         * 必要性：非法地址（含空格、端口越界、纯符号等）若入库，
+         * 之后任意 `StorageFactory.create()` 调用点都会因构造期抛
+         * [IllegalArgumentException] 而失败；其中未包 try 的调用点会直接终止进程。
+         */
+        fun isValidUrl(url: String): Boolean = url.toHttpUrlOrNull() != null
+
         private const val NS_DAV = "DAV:"
         /** 自动重连最大重试次数。 */
         private const val MAX_RETRY = 3

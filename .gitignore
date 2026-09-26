@@ -34,6 +34,10 @@ BUG_REPORT.md
 /OPTIMIZATION_REVIEW_*.md
 # 2026-09-25：功能点全清单（逐页扫描产物），同上——不入库。
 /FEATURE_INVENTORY_*.md
+# 2026-09-25：音频匹配重做方案、视频刮削方案、逐功能代码审计报告，同上——不入库。
+/AUDIO_MATCH_PLAN_*.md
+/SCRAPE_PLAN_*.md
+/CODE_AUDIT_*.md
 
 # 工具会话记忆目录：与代码演进无关的本地状态，不入库。
 /.workbuddy-ai/

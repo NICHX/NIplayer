@@ -141,6 +141,40 @@ class MigrationTest {
         }
     }
 
+    @Test
+    fun `20到21_建出_audio_match_表且既有数据保留`() {
+        helper.createDatabase(TEST_DB, 20).use { db ->
+            insertLibrary(db, "smb://192.168.1.10", "家庭 NAS")
+            insertPlayHistory(db, "第 1 集.mkv")
+        }
+        val db = helper.runMigrationsAndValidate(TEST_DB, 21, true, NiplayerDatabase.MIGRATION_20_21)
+        db.use {
+            assertTrue("audio_match 应被创建", it.hasTable("audio_match"))
+            assertEquals(0, it.countRows("audio_match"))
+            assertEquals("媒体库配置不能丢", 1, it.countRows("media_library"))
+            assertEquals("播放历史不能丢", 1, it.countRows("play_history"))
+        }
+    }
+
+    @Test
+    fun `audio_match_的_file_key_唯一索引生效`() {
+        helper.createDatabase(TEST_DB, 20).close()
+        val db = helper.runMigrationsAndValidate(TEST_DB, 21, true, NiplayerDatabase.MIGRATION_20_21)
+        db.use {
+            it.execSQL(
+                "INSERT INTO audio_match (file_key, file_path, title, artist, source, locked, updated_at) " +
+                    "VALUES ('local:/a.mp3', '/a.mp3', '稻香', '周杰伦', 'MANUAL', 1, 100)"
+            )
+            // REPLACE 语义：同一 file_key 再插一条不会报错，也不会留下两条
+            it.execSQL(
+                "INSERT OR REPLACE INTO audio_match (id, file_key, file_path, title, artist, source, locked, updated_at) " +
+                    "VALUES (1, 'local:/a.mp3', '/a.mp3', '稻香', '周杰伦', 'MANUAL', 1, 200)"
+            )
+            assertEquals("同一 file_key 只应有一条记录", 1, it.countRows("audio_match"))
+            assertEquals(200L, it.queryLong("SELECT updated_at FROM audio_match"))
+        }
+    }
+
     // ==================== 全链路 ====================
 
     @Test
@@ -170,7 +204,7 @@ class MigrationTest {
     }
 
     @Test
-    fun `10到20_全链路升级成功且用户数据零丢失`() {
+    fun `10到21_全链路升级成功且用户数据零丢失`() {
         helper.createDatabase(TEST_DB, 10).use { db ->
             insertLibrary(db, "smb://192.168.1.10", "家庭 NAS")
             insertLibrary(db, "webdav://nas.local/dav", "坚果云")
@@ -191,7 +225,7 @@ class MigrationTest {
 
         val db = helper.runMigrationsAndValidate(
             TEST_DB,
-            20,
+            21,
             true,
             NiplayerDatabase.MIGRATION_10_11,
             NiplayerDatabase.MIGRATION_11_12,
@@ -203,6 +237,7 @@ class MigrationTest {
             NiplayerDatabase.MIGRATION_17_18,
             NiplayerDatabase.MIGRATION_18_19,
             NiplayerDatabase.MIGRATION_19_20,
+            NiplayerDatabase.MIGRATION_20_21,
         )
 
         db.use {
@@ -232,7 +267,8 @@ class MigrationTest {
         assertTrue("缺少 16.json，16→18 链式验证无法进行", "16.json" in files)
         assertTrue("缺少 18.json，18→19 与链式验证无法进行", "18.json" in files)
         assertTrue("缺少 19.json，18→19 与 19→20 的链式验证无法进行", "19.json" in files)
-        assertTrue("缺少 20.json，最终 schema 无法校验", "20.json" in files)
+        assertTrue("缺少 20.json，19→20 与 20→21 的链式验证无法进行", "20.json" in files)
+        assertTrue("缺少 21.json，最终 schema 无法校验", "21.json" in files)
         assertFalse(
             "17.json 已被补出：请把 16→17 拆成独立的 runMigrationsAndValidate(TEST_DB, 17, ...) 用例",
             "17.json" in files,

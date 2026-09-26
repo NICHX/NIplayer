@@ -502,6 +502,7 @@
     <string name="storage_plus_protocol">Protocol</string>
     <string name="storage_plus_server_url">Server URL</string>
     <string name="storage_plus_enter_url">Enter the server URL</string>
+    <string name="storage_plus_invalid_url">Invalid address: check for spaces or an out-of-range port</string>
     <string name="storage_plus_ip">IP address</string>
     <string name="storage_plus_enter_ip">Enter the server address</string>
     <string name="storage_plus_port">Port</string>
@@ -817,6 +818,9 @@
     <string name="download_dir_permission_title">Storage permission required</string>
     <string name="download_dir_permission_message">The download directory needs to write to shared storage. Enable "All files access" for native read/write speed</string>
     <string name="download_dir_permission_grant">Go enable</string>
+    <string name="download_unsupported_title">Cannot download to local storage</string>
+    <string name="download_unsupported_message">Android 10 and below cannot write to shared storage directly. Use a system browser or another device instead.</string>
+    <string name="download_unsupported_confirm">Got it</string>
     <string name="download_manager_target_fallback">Cache</string>
     <string name="download_manager_saved_to">Saved to: %1$s</string>
     <string name="download_manager_unknown_size">Unknown size</string>

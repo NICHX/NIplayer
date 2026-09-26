@@ -13,7 +13,9 @@ import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
+import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFactory
+import com.nichx.niplayer.storage.impl.WebDavStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -166,8 +168,13 @@ class StoragePlusViewModel @Inject constructor(
             // 导致每次测试失败都泄漏一个 SMBClient + 部分建立的 Connection/Session。
             // 改为 try-finally 确保 storage 在任何路径下都被关闭。
             val library = buildLibrary(state)
-            val storage = withContext(Dispatchers.IO) { storageFactory.create(library) }
+            // ⚠️ create() 必须留在 try 内：各 Storage 实现的**构造期**就可能抛异常
+            // （WebDavStorage 的 baseUrl、SmbStorage 的 host 都是属性初始化器里的 `?: throw`）。
+            // 此处没有 CoroutineExceptionHandler，异常穿出 launch 会经 CrashHandler 交回
+            // 系统 KillApplicationHandler 直接终止进程。移入 try 后统一降级为「测试失败」。
+            var storage: Storage? = null
             try {
+                storage = withContext(Dispatchers.IO) { storageFactory.create(library) }
                 val ok = if (storage != null) {
                     withContext(Dispatchers.IO) { storage.testConnection() }
                 } else false
@@ -255,8 +262,14 @@ class StoragePlusViewModel @Inject constructor(
     private fun validate(state: StoragePlusUiState): String? {
         return when (state.mediaType) {
             MediaType.WEBDAV_SERVER -> {
+                // 前缀拼接方式必须与 buildLibrary 一致，才能用同一判据校验
+                val protocol = if (state.webDavUseHttps) "https://" else "http://"
                 if (state.url.isBlank()) context.getString(R.string.storage_plus_enter_url)
-                else if (!state.isAnonymous &&
+                // 非法地址（含空格 / 端口越界 / 纯符号）会被 WebDavStorage 构造期拒绝，
+                // 若放行入库，之后任意 create() 调用点都可能闪退，故在此拦截
+                else if (!WebDavStorage.isValidUrl(protocol + state.url)) {
+                    context.getString(R.string.storage_plus_invalid_url)
+                } else if (!state.isAnonymous &&
                     (state.account.isBlank() || state.password.isBlank())
                 ) context.getString(R.string.storage_plus_enter_account)
                 else null

@@ -1103,10 +1103,15 @@ fun PlayerScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(locked, isInPip) {
+                        // ⚠️ PiP 小窗内禁用全部手势（控制栏/OSD 均隐藏，避免误触干扰小窗画面）。
+                        // 判断必须放在 awaitEachGesture **之外**：isInPip 是 pointerInput 的 key，
+                        // 进入/退出 PiP 会重建整个手势块；若写在块内提前 return，block 立即返回后
+                        // awaitEachGesture 会调用 awaitAllPointersUp()，而此刻 currentEvent 是
+                        // EmptyPointerEvent（changes 为空）→ allPointersUp() 为 true → 不调用
+                        // awaitPointerEvent → while 循环失去唯一挂起点，在主线程空转直至 ANR。
+                        if (isInPip) return@pointerInput
                         val touchSlop = viewConfiguration.touchSlop
                         awaitEachGesture {
-                            // PiP 小窗内禁用全部手势（控制栏/OSD 均隐藏，避免误触干扰小窗画面）
-                            if (isInPip) return@awaitEachGesture
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val startX = down.position.x
                         val startY = down.position.y
