@@ -527,7 +527,7 @@ enum class SettingsGroup(
 ) {
     PLAYBACK(
         labelRes = R.string.settings_group_playback,
-        entries = listOf(SettingsEntry.PLAYER, SettingsEntry.MEDIA_LIBRARY, SettingsEntry.PLAYBACK_STATS, SettingsEntry.LRCAPI, SettingsEntry.SCAN, SettingsEntry.CACHE),
+        entries = listOf(SettingsEntry.PLAYER, SettingsEntry.MEDIA_LIBRARY, SettingsEntry.PLAYBACK_STATS, SettingsEntry.SCAN, SettingsEntry.CACHE),
     ),
     STORAGE(
         labelRes = R.string.settings_group_storage,
@@ -579,13 +579,6 @@ enum class SettingsEntry(
         subtitleRes = R.string.settings_entry_playback_stats_sub,
         icon = Icons.Filled.BarChart,
         iconBg = Color(0xFF26A69A),
-    ),
-    LRCAPI(
-        route = Routes.Settings.LRCAPI,
-        titleRes = R.string.settings_entry_lrcapi,
-        subtitleRes = R.string.settings_entry_lrcapi_sub,
-        icon = Icons.Filled.Link,
-        iconBg = Color(0xFFE91E63),
     ),
     SCAN(
         route = Routes.Settings.SCAN_MANAGER,

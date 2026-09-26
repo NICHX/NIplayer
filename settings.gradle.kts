@@ -27,7 +27,6 @@ rootProject.name = "NIplayer-v2"
 include(":app")
 include(":core:subtitle")
 include(":core:common")
-include(":core:metadata")
 include(":core:database")
 include(":core:network")
 include(":core:datastore")

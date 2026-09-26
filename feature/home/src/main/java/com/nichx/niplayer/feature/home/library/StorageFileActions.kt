@@ -21,7 +21,6 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
@@ -117,7 +116,6 @@ internal fun FileActionsSheet(
     onDownload: () -> Unit,
     onToggleQuickAccess: () -> Unit,
     onShowInfo: () -> Unit,
-    onClearIgnoreLyrics: () -> Unit = {},
     onRename: () -> Unit = {},
     onMove: () -> Unit = {},
     onDelete: () -> Unit = {},
@@ -158,14 +156,6 @@ internal fun FileActionsSheet(
                     icon = Icons.Rounded.Download,
                     text = stringResource(R.string.storage_file_action_download),
                     onClick = onDownload,
-                )
-            }
-            // 仅音频文件：手动清除该曲在线歌词（含误匹配的有声书）
-            if (!file.isDirectory && MediaFileTypes.isAudioFile(file.name)) {
-                ActionRow(
-                    icon = Icons.Rounded.Block,
-                    text = stringResource(R.string.storage_file_action_clear_ignore_lyrics),
-                    onClick = onClearIgnoreLyrics,
                 )
             }
             ActionRow(

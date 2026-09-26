@@ -97,8 +97,6 @@ import kotlinx.coroutines.launch
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.ExperimentalSettings
 import com.nichx.niplayer.datastore.FileBrowserSettings
-import com.nichx.niplayer.datastore.OnlineMatchBlacklist
-import com.nichx.niplayer.datastore.OnlineMatchCache
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
@@ -1140,14 +1138,6 @@ fun FileBrowserScreen(
             onShowInfo = {
                 fileMenu = null
                 showFileInfo = file
-            },
-            onClearIgnoreLyrics = {
-                fileMenu = null
-                // 与播放器 matchKeyFor 一致：远程/媒体库文件 `sid:<storageId>:<path>`
-                val matchKey = "sid:$storageId:${file.path}"
-                OnlineMatchCache.removeLrc(context, matchKey)
-                OnlineMatchBlacklist.skip(OnlineMatchBlacklist.Kind.LYRICS, matchKey)
-                messageController.post(NiMessage.info(context.getString(R.string.storage_file_action_clear_ignore_lyrics_done)))
             },
             onRename = {
                 fileMenu = null

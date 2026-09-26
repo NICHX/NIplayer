@@ -1049,10 +1049,6 @@ class PlayerViewModel @Inject constructor(
         audioPlaybackManager.onPlaybackError = { msg ->
             _messageEvent.tryEmit(msg)
         }
-        // 提示类消息（如"已通过 API 获取歌词"）转为 Snackbar
-        audioPlaybackManager.onMessage = { msg ->
-            _messageEvent.tryEmit(msg)
-        }
         // 切歌成功后同步当前历史描述符并刷新书签键（封面/歌词由 Manager 自管，
         // 分别经 audioCoverPath / lrcText 暴露，UI 订阅 StateFlow 即可，无需重复加载）
         audioPlaybackManager.onTrackChanged = { descriptor ->
@@ -2567,7 +2563,6 @@ class PlayerViewModel @Inject constructor(
 
         // 清理 AudioPlaybackManager 回调，避免 @Singleton 持有已销毁的 ViewModel 导致泄漏
         audioPlaybackManager.onPlaybackError = null
-        audioPlaybackManager.onMessage = null
         audioPlaybackManager.onTrackChanged = null
 
         // 快照 HDR 标志（player.release() 会清空 mediaInfo）。

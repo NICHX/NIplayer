@@ -12,8 +12,6 @@ import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.common.media.MediaFileTypes
-import com.nichx.niplayer.metadata.cache.AudioTagCache
-import com.nichx.niplayer.metadata.tag.readAudioTagsFrom
 import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFactory
@@ -532,59 +530,10 @@ class ThumbnailManager @Inject constructor(
     }
 
     /**
-     * 检查指定音频文件是否已通过 API 尝试过但仍无封面。
+     * 清除指定音频文件的全部本地封面缓存与标记。
      *
-     * 与 [hasNoCover] 配合使用：hasNoCover 为 true 但 hasApiNoCover 为 false 时，
-     * 说明该文件在 API 配置前已被标记，应放行让 API 再试一次。
-     */
-    fun hasApiNoCover(storageId: Int, filePath: String): Boolean {
-        return File(audioCacheDir, "${md5("$storageId-$filePath")}.no_cover_api").exists()
-    }
-
-    /**
-     * 标记指定音频文件通过 API 尝试后仍无封面。后续扫描同时跳过此文件。
-     */
-    fun markApiNoCover(storageId: Int, filePath: String) {
-        try {
-            File(audioCacheDir, "${md5("$storageId-$filePath")}.no_cover_api").createNewFile()
-        } catch (_: Exception) {}
-    }
-
-    /**
-     * 将在线匹配（lrcapi）获得的封面写入统一音频封面缓存槽位。
-     *
-     * 播放期在线兜底与手动"重新匹配"成功后调用，与本地提取封面共用同一
-     * MD5 key 槽位，后续 [getCachedAudioCoverPath] 直接命中。写入
-     * `.api_cover` 标记来源，并清除 no_cover 系列标记让封面立即可见。
-     *
-     * @return 本地缓存路径，写入失败返回 null
-     */
-    fun writeApiAudioCover(storageId: Int, filePath: String, bytes: ByteArray): String? {
-        if (bytes.isEmpty()) return null
-        return try {
-            audioCacheDir.mkdirs()
-            val baseKey = md5("$storageId-$filePath")
-            val cacheFile = File(audioCacheDir, "$baseKey.jpg")
-            FileOutputStream(cacheFile).use { out -> out.write(bytes) }
-            if (cacheFile.exists() && cacheFile.length() > 0) {
-                File(audioCacheDir, "$baseKey.no_cover").delete()
-                File(audioCacheDir, "$baseKey.no_cover_api").delete()
-                File(audioCacheDir, "$baseKey.api_cover").createNewFile()
-                cacheFile.absolutePath
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "writeApiAudioCover failed: ${e.message}")
-            null
-        }
-    }
-
-    /**
-     * 清除指定音频文件的全部本地封面缓存与标记（含 API 封面与 no_cover 标记）。
-     *
-     * 手动"清除封面"时调用；内嵌封面下次播放/扫描会重新提取，
-     * API 封面则依赖在线匹配黑名单阻止其再次写入。
+     * 手动"清除封面"时调用；内嵌封面 / 同级目录封面下次播放/扫描会重新提取。
+     * `no_cover_api` / `api_cover` 是已下线的在线匹配遗留标记，一并删除以清理旧安装的残留。
      */
     fun clearAudioCover(storageId: Int, filePath: String) {
         val baseKey = md5("$storageId-$filePath")
@@ -1354,7 +1303,6 @@ class ThumbnailManager @Inject constructor(
         storage: Storage,
         file: StorageFile,
         cacheFile: File,
-        tagCacheKey: String? = null,
     ): String? {
         val headerBytes = try {
             storage.readFileBytes(file, HEADER_READ_LIMIT)
@@ -1376,7 +1324,7 @@ class ThumbnailManager @Inject constructor(
             override fun close() {}
         }
 
-        return extractAudioCoverFromDataSource(dataSource, cacheFile, tagCacheKey)
+        return extractAudioCoverFromDataSource(dataSource, cacheFile)
     }
 
 
@@ -1480,14 +1428,9 @@ class ThumbnailManager @Inject constructor(
 
             val url = storage.createPlayUrl(file)
 
-            // 标签缓存键：与 AudioPlaybackManager.matchKeyFor 的约定一致
-            // （远程 `sid:<storageId>:<path>` / 本地 `local:<uri>`），
-            // 使浏览期读到的标签能被播放期直接命中。
-            val tagCacheKey = AudioTagCache.keyFor(storageId, file.path)
-
             // 1. 本地文件：尝试提取内嵌封面
             if (url != null && (url.startsWith("file") || url.startsWith("content"))) {
-                val embedded = extractAudioCoverFromUrl(context, url, cacheFile, tagCacheKey)
+                val embedded = extractAudioCoverFromUrl(context, url, cacheFile)
                 if (embedded != null) return@withLock embedded
             }
 
@@ -1499,17 +1442,14 @@ class ThumbnailManager @Inject constructor(
             val viaHeader: String? = if (url != null && url.startsWith("http", ignoreCase = true)) {
                 val headers = storage.getPlayHeaders()
                 if (headers.isNotEmpty()) {
-                    extractAudioCoverFromHeader(storage, file, cacheFile, tagCacheKey)
+                    extractAudioCoverFromHeader(storage, file, cacheFile)
                 } else null
             } else {
-                extractAudioCoverFromHeader(storage, file, cacheFile, tagCacheKey)
+                extractAudioCoverFromHeader(storage, file, cacheFile)
             }
             if (viaHeader != null) return@withLock viaHeader
 
             // 4. 本地提取均失败，标记 no_cover 避免下次重复尝试。
-            //    在线匹配（lrcapi）已上移至播放期由 AudioPlaybackManager 执行：
-            //    浏览/扫描期拿不到音频时长，无法用时长门控排除有声书，
-            //    按文件名盲目匹配会批量产生错误封面（有声书章节名必然搜出无关歌曲）。
             markNoCover(storageId, file.path)
             return@withLock null
         }
@@ -1845,12 +1785,11 @@ class ThumbnailManager @Inject constructor(
         context: Context,
         url: String,
         cacheFile: File,
-        tagCacheKey: String? = null,
     ): String? {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(context, Uri.parse(url))
-            return extractEmbeddedPicture(retriever, cacheFile, tagCacheKey)
+            return extractEmbeddedPicture(retriever, cacheFile)
         } catch (e: Exception) {
             // m-12 修复：原 `catch (_: Exception)` 静默吞掉，远程音频封面失败无法排查
             Log.w(TAG, "extractAudioCoverFromUrl(context,url) failed: ${e.message}", e)
@@ -1866,12 +1805,11 @@ class ThumbnailManager @Inject constructor(
         url: String,
         headers: Map<String, String>,
         cacheFile: File,
-        tagCacheKey: String? = null,
     ): String? {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(url, headers)
-            return extractEmbeddedPicture(retriever, cacheFile, tagCacheKey)
+            return extractEmbeddedPicture(retriever, cacheFile)
         } catch (e: Exception) {
             // m-12 修复：原 `catch (_: Exception)` 静默吞掉
             Log.w(TAG, "extractAudioCoverFromUrl(url,headers) failed: ${e.message}", e)
@@ -1886,12 +1824,11 @@ class ThumbnailManager @Inject constructor(
     private fun extractAudioCoverFromDataSource(
         dataSource: MediaDataSource,
         cacheFile: File,
-        tagCacheKey: String? = null,
     ): String? {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(dataSource)
-            extractEmbeddedPicture(retriever, cacheFile, tagCacheKey)
+            extractEmbeddedPicture(retriever, cacheFile)
         } catch (e: Exception) {
             // m-12 修复：原 `catch (_: Exception)` 静默吞掉
             Log.w(TAG, "extractAudioCoverFromDataSource failed: ${e.message}", e)
@@ -1909,27 +1846,12 @@ class ThumbnailManager @Inject constructor(
     private fun extractEmbeddedPicture(
         retriever: MediaMetadataRetriever,
         cacheFile: File,
-        tagCacheKey: String? = null,
     ): String? {
         // BUG-12 修复：部分损坏的 FLAC/OGG 在 embeddedPicture 调用时抛 RuntimeException，
         // 上层 try-catch 仅记录 "generateAudioCover failed" 不区分失败阶段，
         // 此处单独捕获并记录精确日志，便于排查音频格式兼容性问题
         return try {
             val pictureData = retriever.embeddedPicture
-            // 顺手读取标签并缓存：retriever 已打开，多读几个 extractMetadata 字段的
-            // 边际成本几乎为零。浏览期经此把标签预置好（含 SMB/WebDAV 远程文件，
-            // 远程走的是只含文件头的 MediaDataSource），播放期即可零延迟命中。
-            // 标签读取失败不影响封面提取，故单独捕获。
-            if (tagCacheKey != null) {
-                try {
-                    AudioTagCache.put(
-                        tagCacheKey,
-                        readAudioTagsFrom(retriever, hasEmbeddedPicture = pictureData != null),
-                    )
-                } catch (_: Exception) {
-                    // 忽略：标签缺失是常态，封面提取不受影响
-                }
-            }
             if (pictureData == null) return null
             val bitmap = BitmapFactory.decodeByteArray(pictureData, 0, pictureData.size) ?: return null
             val scaled = scaleToMaxWidth(bitmap, MAX_WIDTH)

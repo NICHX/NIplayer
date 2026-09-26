@@ -283,8 +283,6 @@
     <string name="settings_entry_download_sub">管理下载与上传任务</string>
     <string name="settings_entry_cache">缓存管理</string>
     <string name="settings_entry_cache_sub">清理各类缓存</string>
-    <string name="settings_entry_lrcapi">音乐元数据</string>
-    <string name="settings_entry_lrcapi_sub">配置在线歌词与封面接口</string>
     <string name="settings_entry_player">播放器</string>
     <string name="settings_entry_player_sub">播放内核、字幕与手势</string>
     <string name="settings_entry_media_library">媒体库</string>
@@ -442,8 +440,6 @@
     <string name="storage_file_type_file_ext">文件 · %1$s</string>
     <string name="storage_file_action_play">播放</string>
     <string name="storage_file_action_download">下载</string>
-    <string name="storage_file_action_clear_ignore_lyrics">清除并忽略该曲歌词</string>
-    <string name="storage_file_action_clear_ignore_lyrics_done">已清除并忽略该曲在线歌词</string>
     <string name="storage_file_action_rename">重命名</string>
     <string name="storage_file_action_move">移动</string>
     <string name="storage_file_action_delete">删除</string>
@@ -764,42 +760,10 @@
     <string name="thumbnail_writeback_disabled">关闭回写</string>
     <string name="player_storage_help_writeback_detail">回写服务器：\n开启回写：把生成的缩略图/封面存回服务器 .thumb/ / .cover/ 目录。\n关闭回写：仅在本地生成，不写入服务器。\n此项为可选，未设置时遵循全局“保存到服务器”开关。</string>
 
-    <!-- 歌词 API（LrcApiSettingsScreen） -->
-    <string name="lrcapi_title">音乐元数据</string>
-    <string name="lrcapi_api_title">API 接口</string>
-    <string name="lrcapi_help">帮助</string>
-    <string name="lrcapi_url_label">API 地址</string>
+    <!-- 字幕 API token 展示（SubtitleSettings.assrtToken，沿用历史命名） -->
     <string name="lrcapi_not_set">未设置</string>
-    <string name="lrcapi_auth_label">身份验证</string>
     <string name="lrcapi_auth_set">已设置</string>
-    <string name="lrcapi_note_title">说明</string>
-    <string name="lrcapi_lyrics_label">歌词获取</string>
-    <string name="lrcapi_lyrics_value">播放时自动通过 API 获取</string>
-    <string name="lrcapi_cover_label">封面获取</string>
-    <string name="lrcapi_cover_value">浏览及播放时自动回退到 API</string>
-    <string name="lrcapi_url_dialog_title">API 地址</string>
-    <string name="lrcapi_url_dialog_hint">请输入 lrcapi 服务地址，如 http://192.168.1.100:8080。</string>
-    <string name="lrcapi_server_label">服务器地址</string>
-    <string name="lrcapi_auth_dialog_title">身份验证</string>
-    <string name="lrcapi_auth_dialog_hint">如果 API 需要 Authorization header，在此输入 token 值。留空表示不需要验证。</string>
-    <string name="lrcapi_auth_placeholder">输入 Authorization token</string>
-    <string name="lrcapi_help_title">音乐元数据 API</string>
-    <string name="lrcapi_help_intro">配置 lrcapi 服务后，NIplayer 可在以下场景获取音乐元数据：</string>
-    <string name="lrcapi_help_point1">1. 浏览文件夹时，音频文件无内嵌封面和目录封面时自动回退到 API 获取封面。</string>
-    <string name="lrcapi_help_point2">2. 播放音频时，优先加载同目录歌词文件，不存在时通过 API 获取歌词。</string>
-    <string name="lrcapi_help_api_title">API 接口约定：</string>
-    <string name="lrcapi_help_api_body">• GET /lyrics?title=&amp;artist=&amp;album=&amp;path=\n• GET /cover?title=&amp;artist=&amp;album=</string>
-    <string name="lrcapi_guide_title">使用指引</string>
-    <string name="lrcapi_guide_desc">lrcapi 是自建的歌词 / 封面元数据服务，点击下方链接了解如何搭建。</string>
-    <string name="lrcapi_guide_link">github.com/HisAtri/LrcApi</string>
-    <string name="lrcapi_guide_open">打开项目</string>
-    <string name="lrcapi_clear_title">数据管理</string>
-    <string name="lrcapi_clear_label">在线匹配缓存与忽略列表</string>
-    <string name="lrcapi_clear_hint">删除所有在线匹配的歌词 / 封面缓存，并重置「忽略」列表</string>
-    <string name="lrcapi_clear_action">清空</string>
-    <string name="lrcapi_clear_confirm_title">清空在线匹配数据</string>
-    <string name="lrcapi_clear_confirm_body">将删除所有在线匹配的歌词与封面缓存，并重置忽略列表。本地文件或同目录歌词不受影响。确定继续吗？</string>
-    <string name="lrcapi_clear_done">已清空在线匹配缓存与忽略列表</string>
+    <string name="lrcapi_help">帮助</string>
 
     <!-- 下载管理页面（DownloadManagerScreen） -->
     <string name="download_manager_title">下载管理</string>
