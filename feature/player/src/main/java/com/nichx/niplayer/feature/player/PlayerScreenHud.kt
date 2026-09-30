@@ -10,6 +10,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -292,8 +294,8 @@ internal enum class HudButtonSide { LEFT, RIGHT }
  * 高度自适应用于防止「把全部按钮放到一侧」时溢出 / 错位：
  * - 竖屏 ([portrait] = true)：按钮列在画面中下部区域垂直居中，区域下方预留底栏高度；
  * - 横屏 ([portrait] = false)：整屏垂直居中；
- * - 当某侧按钮太多而放不下时，先收缩按钮间距，仍放不下则限制该侧数量（截断到可容纳数），
- *   保证任何排布都不超出屏幕。
+ * - 当某侧按钮太多而放不下时，先收缩按钮间距，再按单侧数量上限截断
+ *   （横屏 3 个 / 竖屏 4 个；竖屏可用高度不足时还会进一步收缩），保证任何排布都不超出屏幕。
  */
 @Composable
 internal fun HudButtonColumn(
@@ -318,14 +320,14 @@ internal fun HudButtonColumn(
         val minGap = 8.dp
         val idealGap = 12.dp
         val n = sideConfigs.size
-        // 横屏每侧最多 3 个（竖屏由可用高度自适应决定数量）
-        val maxPerSide = if (portrait) Int.MAX_VALUE else 3
+        // 每侧数量硬上限：横屏 3 个、竖屏 4 个（仍会按可用高度进一步收缩以免溢出）
+        val maxPerSide = if (portrait) 4 else 3
         // 间距自适应：优先 12dp，拥挤则收缩，下限 8dp
         val gap = when {
             n <= 1 -> 0.dp
             else -> maxOf(minGap, minOf((avail - btn * n) / (n - 1), idealGap))
         }
-        // 单边数量限制：横屏固定上限 3；竖屏仍放不下时收缩到可容纳数
+        // 单边数量限制：横屏 3 / 竖屏 4；仍放不下时再收缩到可容纳数
         val canFitAll = n <= 1 || (n <= maxPerSide && btn * n + minGap * (n - 1) <= avail)
         val shown = if (canFitAll) sideConfigs
         else sideConfigs.take(
@@ -473,6 +475,11 @@ internal fun PlayerControllerLayer(
     showDownload: Boolean = true,
     /** 已按用户自定义好的 HUD 按钮配置（含所在侧与序），用于渲染左右列。 */
     hudButtons: List<HudButtonConfig> = emptyList(),
+    /** 双指缩放是否处于放大态：为 true 时在进度条正上方显示「还原」按钮。 */
+    zoomActive: Boolean = false,
+    onResetZoom: () -> Unit = {},
+    /** 底部控制栏要渲染的功能按钮 id（由「控制栏自定义」决定，已按 order 排序）。 */
+    bottomEntryIds: List<String> = emptyList(),
 ) {
     val context = LocalContext.current
     val audioManager = remember { context.getSystemService(AudioManager::class.java) }
@@ -645,10 +652,35 @@ internal fun PlayerControllerLayer(
                 .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Bottom))
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         ) {
+            // 双指缩放还原：放大态下在进度条正上方居中显示（随控件一起显隐）
+            if (zoomActive) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .clickable { onResetZoom() }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.player_zoom_reset),
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+
             // P0-1 结构改造：进度条与时间文本是播放器里唯一必须每 500ms 刷新的部分。
-            // 订阅收敛到 PlayerProgressSection 内部，使本层其余内容（HUD 按钮、菜单、OSD）
-            // 不再因进度变化而重组。
-            PlayerProgressSection(
+            // 订阅收敛到 PlayerProgressInline 内部，使本层其余内容（HUD 按钮、菜单、OSD）
+            // 不再因进度变化而重组。时间放在进度条两侧以降低底栏高度。
+            PlayerProgressInline(
                 positionMsFlow = positionMsFlow,
                 bufferedMsFlow = bufferedMsFlow,
                 durationMs = durationMs,
@@ -661,81 +693,28 @@ internal fun PlayerControllerLayer(
             Spacer(Modifier.height(6.dp))
 
             if (isPortrait) {
-                // 竖屏：底部控制拆为两行布局，确保上/下一集与选集按钮可用
-                // 第一行：功能按钮（倍速/音量 | 选集/音轨/字幕）
-                Row(
+                // 竖屏：功能按钮行 + 核心播放控制行（居中对齐）
+                BottomFunctionButtons(
+                    ids = bottomEntryIds,
+                    speedIndex = speedIndex,
+                    speedLabel = speedLabel,
+                    scaleIndex = scaleIndex,
+                    showDownload = showDownload,
+                    playlist = playlist,
+                    audioManager = audioManager,
+                    previousMusicVolume = previousMusicVolume,
+                    onPreviousMusicVolumeChange = onPreviousMusicVolumeChange,
+                    onToggleSpeedMenu = onToggleSpeedMenu,
+                    onCycleScale = onCycleScale,
+                    onDownload = onDownload,
+                    onToggleAudioTrackMenu = onToggleAudioTrackMenu,
+                    onAddSubtitle = onAddSubtitle,
+                    onTogglePlaylistDialog = onTogglePlaylistDialog,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Start,
-                    ) {
-                        val primary = MaterialTheme.colorScheme.primary
-                        IconButton(onClick = onToggleSpeedMenu, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.Speed,
-                                contentDescription = stringResource(R.string.player_speed_icon),
-                                tint = if (speedIndex != 1) primary else Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        var muted by remember {
-                            mutableStateOf(audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0)
-                        }
-                        LaunchedEffect(previousMusicVolume) {
-                            muted = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
-                        }
-                        IconButton(
-                            onClick = {
-                                muted = toggleVolumeButton(audioManager, onPreviousMusicVolumeChange)
-                            },
-                            modifier = Modifier.size(44.dp),
-                        ) {
-                            Icon(
-                                imageVector = if (muted) Icons.AutoMirrored.Rounded.VolumeOff
-                                    else Icons.AutoMirrored.Rounded.VolumeUp,
-                                contentDescription = if (muted) stringResource(R.string.player_unmute) else stringResource(R.string.player_mute),
-                                tint = if (muted) primary else Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                    }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        if (playlist.isNotEmpty()) {
-                            IconButton(onClick = onTogglePlaylistDialog, modifier = Modifier.size(44.dp)) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.ViewList,
-                                    contentDescription = stringResource(R.string.player_episode_list_icon),
-                                    tint = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(22.dp),
-                                )
-                            }
-                        }
-                        IconButton(onClick = onToggleAudioTrackMenu, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.MusicNote,
-                                contentDescription = stringResource(R.string.player_audio_track),
-                                tint = Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        IconButton(onClick = onAddSubtitle, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.Subtitles,
-                                contentDescription = stringResource(R.string.player_subtitle),
-                                tint = Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                    }
-                }
+                )
 
                 Spacer(Modifier.height(6.dp))
 
@@ -797,163 +776,113 @@ internal fun PlayerControllerLayer(
                     }
                 }
             } else {
-                // 横屏：单行三层布局（功能 | 播放控制 | 功能）
+                // 横屏：以「播放控制」为界分左右两组——它之前的项与播放控制靠左、其后的项靠右
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Start,
-                    ) {
-                        val primary = MaterialTheme.colorScheme.primary
-                        TextButton(
-                            onClick = onToggleSpeedMenu,
-                            modifier = Modifier.height(44.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Speed,
-                                    contentDescription = null,
-                                    tint = if (speedIndex != 1) primary else Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(2.dp))
-                                Text(
-                                    text = speedLabel,
-                                    color = if (speedIndex != 1) primary else Color.White.copy(alpha = 0.85f),
-                                    fontSize = 14.sp,
-                                    fontWeight = if (speedIndex != 1) FontWeight.Bold else FontWeight.Normal,
-                                )
-                            }
-                        }
-                        IconButton(onClick = onCycleScale, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.AspectRatio,
-                                contentDescription = stringResource(R.string.player_scale_icon),
-                                tint = if (scaleIndex != 0) primary else Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        var muted by remember {
-                            mutableStateOf(audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0)
-                        }
-                        LaunchedEffect(previousMusicVolume) {
-                            muted = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
-                        }
-                        IconButton(
-                            onClick = {
-                                muted = toggleVolumeButton(audioManager, onPreviousMusicVolumeChange)
-                            },
-                            modifier = Modifier.size(44.dp),
-                        ) {
-                            Icon(
-                                imageVector = if (muted) Icons.AutoMirrored.Rounded.VolumeOff
-                                    else Icons.AutoMirrored.Rounded.VolumeUp,
-                                contentDescription = if (muted) stringResource(R.string.player_unmute) else stringResource(R.string.player_mute),
-                                tint = if (muted) primary else Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
+                    val playIdx = bottomEntryIds.indexOf("bar_playback")
+                    val before = if (playIdx >= 0) bottomEntryIds.subList(0, playIdx) else bottomEntryIds
+                    val after =
+                        if (playIdx >= 0) bottomEntryIds.subList(playIdx + 1, bottomEntryIds.size) else emptyList()
+                    // 左组：播放控制之前的项 + 播放控制整组
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (before.isNotEmpty()) {
+                        BottomFunctionButtons(
+                            ids = before,
+                            speedIndex = speedIndex,
+                            speedLabel = speedLabel,
+                            scaleIndex = scaleIndex,
+                            showDownload = showDownload,
+                            playlist = playlist,
+                            audioManager = audioManager,
+                            previousMusicVolume = previousMusicVolume,
+                            onPreviousMusicVolumeChange = onPreviousMusicVolumeChange,
+                            onToggleSpeedMenu = onToggleSpeedMenu,
+                            onCycleScale = onCycleScale,
+                            onDownload = onDownload,
+                            onToggleAudioTrackMenu = onToggleAudioTrackMenu,
+                            onAddSubtitle = onAddSubtitle,
+                            onTogglePlaylistDialog = onTogglePlaylistDialog,
+                        )
                     }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        if (playlist.size > 1) {
-                            IconButton(onClick = onSkipPrevious, modifier = Modifier.size(44.dp)) {
+                    if (playIdx >= 0) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            if (playlist.size > 1) {
+                                IconButton(onClick = onSkipPrevious, modifier = Modifier.size(44.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SkipPrevious,
+                                        contentDescription = stringResource(R.string.player_episode_previous),
+                                        tint = Color.White,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                            }
+                            IconButton(onClick = onRewind, modifier = Modifier.size(48.dp)) {
                                 Icon(
-                                    imageVector = Icons.Rounded.SkipPrevious,
-                                    contentDescription = stringResource(R.string.player_episode_previous),
+                                    imageVector = Icons.Rounded.Replay10,
+                                    contentDescription = stringResource(R.string.player_rewind_10s),
                                     tint = Color.White,
-                                    modifier = Modifier.size(24.dp),
+                                    modifier = Modifier.size(26.dp),
                                 )
                             }
-                        }
-                        IconButton(onClick = onRewind, modifier = Modifier.size(48.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.Replay10,
-                                contentDescription = stringResource(R.string.player_rewind_10s),
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp),
-                            )
-                        }
-                        IconButton(
-                            onClick = onTogglePlayPause,
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.18f)),
-                        ) {
-                            Icon(
-                                imageVector = if (state is PlaybackState.Playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = if (state is PlaybackState.Playing) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
-                                tint = Color.White,
-                                modifier = Modifier.size(32.dp),
-                            )
-                        }
-                        IconButton(onClick = onForward, modifier = Modifier.size(48.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.Forward10,
-                                contentDescription = stringResource(R.string.player_forward_10s),
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp),
-                            )
-                        }
-                        if (playlist.size > 1) {
-                            IconButton(onClick = onSkipNext, modifier = Modifier.size(44.dp)) {
+                            IconButton(
+                                onClick = onTogglePlayPause,
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.18f)),
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Rounded.SkipNext,
-                                    contentDescription = stringResource(R.string.player_episode_next),
+                                    imageVector = if (state is PlaybackState.Playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = if (state is PlaybackState.Playing) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
                                     tint = Color.White,
-                                    modifier = Modifier.size(24.dp),
+                                    modifier = Modifier.size(32.dp),
                                 )
+                            }
+                            IconButton(onClick = onForward, modifier = Modifier.size(48.dp)) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Forward10,
+                                    contentDescription = stringResource(R.string.player_forward_10s),
+                                    tint = Color.White,
+                                    modifier = Modifier.size(26.dp),
+                                )
+                            }
+                            if (playlist.size > 1) {
+                                IconButton(onClick = onSkipNext, modifier = Modifier.size(44.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SkipNext,
+                                        contentDescription = stringResource(R.string.player_episode_next),
+                                        tint = Color.White,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
                             }
                         }
                     }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        if (showDownload) {
-                            IconButton(onClick = onDownload, modifier = Modifier.size(44.dp)) {
-                                Icon(
-                                    imageVector = Icons.Rounded.ArrowDownward,
-                                    contentDescription = stringResource(R.string.player_download_icon),
-                                    tint = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(22.dp),
-                                )
-                            }
-                        }
-                        IconButton(onClick = onToggleAudioTrackMenu, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.MusicNote,
-                                contentDescription = stringResource(R.string.player_audio_track),
-                                tint = Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        IconButton(onClick = onAddSubtitle, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.Subtitles,
-                                contentDescription = stringResource(R.string.player_subtitle),
-                                tint = Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        if (playlist.isNotEmpty()) {
-                            IconButton(onClick = onTogglePlaylistDialog, modifier = Modifier.size(44.dp)) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.ViewList,
-                                    contentDescription = stringResource(R.string.player_episode_list_icon),
-                                    tint = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(22.dp),
-                                )
-                            }
-                        }
+                    }
+                    if (after.isNotEmpty()) {
+                        BottomFunctionButtons(
+                            ids = after,
+                            speedIndex = speedIndex,
+                            speedLabel = speedLabel,
+                            scaleIndex = scaleIndex,
+                            showDownload = showDownload,
+                            playlist = playlist,
+                            audioManager = audioManager,
+                            previousMusicVolume = previousMusicVolume,
+                            onPreviousMusicVolumeChange = onPreviousMusicVolumeChange,
+                            onToggleSpeedMenu = onToggleSpeedMenu,
+                            onCycleScale = onCycleScale,
+                            onDownload = onDownload,
+                            onToggleAudioTrackMenu = onToggleAudioTrackMenu,
+                            onAddSubtitle = onAddSubtitle,
+                            onTogglePlaylistDialog = onTogglePlaylistDialog,
+                        )
                     }
                 }
             }
@@ -985,15 +914,11 @@ private fun NetworkSpeedLabel(
 }
 
 /**
- * 进度条 + 时间文本区块（P0-1 结构改造，2026-09-22）。
- *
- * 这是播放器里唯一**必须**每 500ms 刷新的部分。把两个高频 StateFlow 的订阅收敛到本组件，
- * 使 [PlayerControllerLayer] 的参数不再包含高频值，从而在稳态下可被 Compose 跳过重组。
- *
- * 拖动预览逻辑（dragFractionPreview）原本就在这一区块内，一并迁入，语义逐字未变。
+ * 单手布局用的进度行：时间显示在进度条两侧（当前时间在左、剩余时间在右），
+ * 省去独立的时间行，从而降低底部控制栏高度。
  */
 @Composable
-private fun PlayerProgressSection(
+private fun PlayerProgressInline(
     positionMsFlow: StateFlow<Long>,
     bufferedMsFlow: StateFlow<Long>,
     durationMs: Long,
@@ -1004,26 +929,11 @@ private fun PlayerProgressSection(
 ) {
     val positionMs by positionMsFlow.collectAsStateWithLifecycle()
     val bufferedMs by bufferedMsFlow.collectAsStateWithLifecycle()
-
-    // 拖动进度条时记录预览位置（fraction），时间文本跟随显示目标时间
+    // 拖动进度条时记录预览位置（fraction），两侧时间跟随显示目标时间
     var dragFractionPreview by remember { mutableStateOf<Float?>(null) }
-    PlayerProgressBar(
-        positionFraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
-        bufferedFraction = if (durationMs > 0) bufferedMs.toFloat() / durationMs else 0f,
-        durationMs = durationMs,
-        abLoopA = abLoopA,
-        abLoopB = abLoopB,
-        onSeek = onSeek,
-        onSeekFinished = onSeekFinished,
-        onDragFractionChange = { dragFractionPreview = it },
-    )
-
-    Spacer(Modifier.height(2.dp))
-
     val previewPos = dragFractionPreview?.let { (it * durationMs).toLong() } ?: positionMs
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -1032,11 +942,142 @@ private fun PlayerProgressSection(
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
         )
+        PlayerProgressBar(
+            positionFraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
+            bufferedFraction = if (durationMs > 0) bufferedMs.toFloat() / durationMs else 0f,
+            durationMs = durationMs,
+            abLoopA = abLoopA,
+            abLoopB = abLoopB,
+            onSeek = onSeek,
+            onSeekFinished = onSeekFinished,
+            onDragFractionChange = { dragFractionPreview = it },
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 8.dp),
+        )
         Text(
             text = "-${formatDuration((durationMs - previewPos).coerceAtLeast(0L))}",
             color = Color.White.copy(alpha = 0.6f),
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
         )
+    }
+}
+
+/**
+ * 底部控制栏的功能按钮组（受「控制栏自定义」驱动）。
+ *
+ * [ids] 为要渲染的功能 id（已按 order 排序）：默认含 倍速 / 画面比例 / 音量 / 下载 /
+ * 音轨 / 字幕 / 选集。用户可在设置里隐藏、排序，或把某功能移到 HUD 左/右列或「更多」菜单
+ * （移出后不再出现在底栏）。
+ */
+@Composable
+private fun BottomFunctionButtons(
+    ids: List<String>,
+    speedIndex: Int,
+    speedLabel: String,
+    scaleIndex: Int,
+    showDownload: Boolean,
+    playlist: List<PlaylistItem>,
+    audioManager: AudioManager?,
+    previousMusicVolume: Int,
+    onPreviousMusicVolumeChange: (Int) -> Unit,
+    onToggleSpeedMenu: () -> Unit,
+    onCycleScale: () -> Unit,
+    onDownload: () -> Unit,
+    onToggleAudioTrackMenu: () -> Unit,
+    onAddSubtitle: () -> Unit,
+    onTogglePlaylistDialog: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    var muted by remember {
+        mutableStateOf(audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0)
+    }
+    LaunchedEffect(previousMusicVolume) {
+        muted = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+    }
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ids.forEach { id ->
+            // 「播放控制」整组单独渲染，不在这里出按钮
+            if (id == "bar_playback") return@forEach
+            when (id) {
+                "bar_speed" -> TextButton(onClick = onToggleSpeedMenu, modifier = Modifier.height(44.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Speed,
+                            contentDescription = stringResource(R.string.player_speed_icon),
+                            tint = if (speedIndex != 1) primary else Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        Text(
+                            text = speedLabel,
+                            color = if (speedIndex != 1) primary else Color.White.copy(alpha = 0.85f),
+                            fontSize = 14.sp,
+                            fontWeight = if (speedIndex != 1) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    }
+                }
+                "bar_scale" -> IconButton(onClick = onCycleScale, modifier = Modifier.size(44.dp)) {
+                    Icon(
+                        imageVector = Icons.Rounded.AspectRatio,
+                        contentDescription = stringResource(R.string.player_scale_icon),
+                        tint = if (scaleIndex != 0) primary else Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                "bar_volume" -> IconButton(
+                    onClick = { muted = toggleVolumeButton(audioManager, onPreviousMusicVolumeChange) },
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Icon(
+                        imageVector = if (muted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                        contentDescription = if (muted) stringResource(R.string.player_unmute) else stringResource(R.string.player_mute),
+                        tint = if (muted) primary else Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                "bar_download" -> if (showDownload) {
+                    IconButton(onClick = onDownload, modifier = Modifier.size(44.dp)) {
+                        Icon(
+                            imageVector = Icons.Rounded.ArrowDownward,
+                            contentDescription = stringResource(R.string.player_download_icon),
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+                "bar_audio" -> IconButton(onClick = onToggleAudioTrackMenu, modifier = Modifier.size(44.dp)) {
+                    Icon(
+                        imageVector = Icons.Rounded.MusicNote,
+                        contentDescription = stringResource(R.string.player_audio_track),
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                "bar_subtitle" -> IconButton(onClick = onAddSubtitle, modifier = Modifier.size(44.dp)) {
+                    Icon(
+                        imageVector = Icons.Rounded.Subtitles,
+                        contentDescription = stringResource(R.string.player_subtitle),
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                "bar_playlist" -> if (playlist.isNotEmpty()) {
+                    IconButton(onClick = onTogglePlaylistDialog, modifier = Modifier.size(44.dp)) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ViewList,
+                            contentDescription = stringResource(R.string.player_episode_list_icon),
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }

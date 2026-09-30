@@ -2,8 +2,8 @@ package com.nichx.niplayer.datastore
 
 import com.tencent.mmkv.MMKV
 
-/** 控制功能可放置的面：HUD 左列 / HUD 右列 / 更多菜单。 */
-enum class PlayerControlSurface { LEFT, RIGHT, MORE }
+/** 控制功能可放置的面：HUD 左列 / HUD 右列 / 更多菜单 / 底部控制栏。 */
+enum class PlayerControlSurface { LEFT, RIGHT, MORE, BOTTOM }
 
 /** 屏幕方向：竖屏 / 横屏各自独立保存一套布局。 */
 enum class PlayerControlOrientation { PORTRAIT, LANDSCAPE }
@@ -37,11 +37,20 @@ object PlayerControlLayout {
     val ALL_IDS: List<String> = listOf(
         "rotate", "ab_loop", "black_bar_crop", "lock", "screenshot",
         "long_press_speed", "pip", "background_play", "sleep_timer", "media_info", "vr",
+        // 底栏功能按钮（默认位于底部控制栏；可隐藏 / 排序 / 移到 HUD 或更多菜单）
+        // bar_playback 是「播放控制」整组（上一集/播放/下一集 等），作为一个整体参与排序
+        "bar_playback", "bar_speed", "bar_scale", "bar_volume", "bar_download",
+        "bar_audio", "bar_subtitle", "bar_playlist",
     )
 
     /** 全部可放置的面，固定顺序（用于循环切换）。 */
     val ALL_SURFACES: List<PlayerControlSurface> =
-        listOf(PlayerControlSurface.LEFT, PlayerControlSurface.RIGHT, PlayerControlSurface.MORE)
+        listOf(
+            PlayerControlSurface.LEFT,
+            PlayerControlSurface.RIGHT,
+            PlayerControlSurface.MORE,
+            PlayerControlSurface.BOTTOM,
+        )
 
     /** 持久化 key：按方向分桶。 */
     private fun key(id: String, orientation: PlayerControlOrientation): String = PREFIX + orientation.name + "_" + id
@@ -59,10 +68,19 @@ object PlayerControlLayout {
         "sleep_timer" to PlayerControlSurface.MORE,
         "media_info" to PlayerControlSurface.MORE,
         "vr" to PlayerControlSurface.RIGHT,
+        "bar_playback" to PlayerControlSurface.BOTTOM,
+        "bar_speed" to PlayerControlSurface.BOTTOM,
+        "bar_scale" to PlayerControlSurface.BOTTOM,
+        "bar_volume" to PlayerControlSurface.BOTTOM,
+        "bar_download" to PlayerControlSurface.BOTTOM,
+        "bar_audio" to PlayerControlSurface.BOTTOM,
+        "bar_subtitle" to PlayerControlSurface.BOTTOM,
+        "bar_playlist" to PlayerControlSurface.BOTTOM,
     )
 
     /** 是否为 HUD 面（左/右列），即画面侧边的近场按钮。 */
-    fun isHudSurface(surface: PlayerControlSurface): Boolean = surface != PlayerControlSurface.MORE
+    fun isHudSurface(surface: PlayerControlSurface): Boolean =
+        surface == PlayerControlSurface.LEFT || surface == PlayerControlSurface.RIGHT
 
     /** 默认面：HUD 功能的默认列；更多功能一律返回 [PlayerControlSurface.MORE]。 */
     fun defaultSurface(id: String): PlayerControlSurface =

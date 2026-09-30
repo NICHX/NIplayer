@@ -68,10 +68,27 @@ object PlayerSettings {
         get() = mmkv.decodeBool(KEY_PITCH_PRESERVATION, true)
         set(value) { mmkv.encode(KEY_PITCH_PRESERVATION, value) }
 
-    /** 长按画面触发临时倍速的时长（ms）。默认 300ms（系统默认约 400ms）。 */
+    /**
+     * 长按画面触发临时倍速的时长（ms）。默认 500ms。
+     *
+     * ⚠️ 2026-09-30 调整：原默认 300ms、选项 250/300/400 明显短于系统长按阈值
+     * （ViewConfiguration#getLongPressTimeout，通常 400~500ms）。偏短的时长会让
+     * 「按下后稍作停顿再滑动」的习惯在滑动生效前先触发长按倍速（误触）。
+     * 现整体上移为 400/500/600，默认 500，与系统手势节奏对齐。
+     *
+     * 读取时把历史遗留的小于 [LONG_PRESS_TIMEOUT_MIN_MS] 的值（旧 250/300）统一上抬到 500，
+     * 使老用户无需手动改设置即可摆脱误触。
+     */
     var longPressTimeoutMs: Int
-        get() = mmkv.decodeInt(KEY_LONG_PRESS_TIMEOUT_MS, 300)
+        get() = mmkv.decodeInt(KEY_LONG_PRESS_TIMEOUT_MS, DEFAULT_LONG_PRESS_TIMEOUT_MS)
+            .let { if (it < LONG_PRESS_TIMEOUT_MIN_MS) DEFAULT_LONG_PRESS_TIMEOUT_MS else it }
         set(value) { mmkv.encode(KEY_LONG_PRESS_TIMEOUT_MS, value) }
+
+    /** 长按倍速默认时长（ms）：与系统长按阈值对齐，避免抢占滑动意图。 */
+    const val DEFAULT_LONG_PRESS_TIMEOUT_MS = 500
+
+    /** 允许的最小长按时长（ms）。低于该值视为历史遗留配置，读取时上抬到默认值。 */
+    const val LONG_PRESS_TIMEOUT_MIN_MS = 400
 
     /**
      * 横滑快进灵敏度：滑动多少倍屏宽滑满整片时长。

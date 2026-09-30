@@ -88,8 +88,8 @@ fun PlayerSettingsScreen(
     }
 
     val longPressTimeoutLabel = when (longPressTimeoutMs) {
-        250 -> stringResource(R.string.player_speed_fast)
-        400 -> stringResource(R.string.player_speed_slow)
+        PlayerSettings.LONG_PRESS_TIMEOUT_MIN_MS -> stringResource(R.string.player_speed_fast)
+        600 -> stringResource(R.string.player_speed_slow)
         else -> stringResource(R.string.player_speed_standard)
     }
     val seekSensitivityLabel = when (seekSensitivity) {
@@ -334,9 +334,9 @@ fun PlayerSettingsScreen(
             title = stringResource(R.string.player_long_press_title),
             onDismiss = { showLongPressDialog = false },
             items = listOf(
-                250 to stringResource(R.string.player_long_press_fast),
-                300 to stringResource(R.string.player_long_press_standard),
-                400 to stringResource(R.string.player_long_press_slow),
+                400 to stringResource(R.string.player_long_press_fast),
+                500 to stringResource(R.string.player_long_press_standard),
+                600 to stringResource(R.string.player_long_press_slow),
             )
                 .map { (option, label) ->
                     NiDialogItem(

@@ -661,6 +661,7 @@
     <string name="player_ctrl_side_left">左列</string>
     <string name="player_ctrl_side_right">右列</string>
     <string name="player_ctrl_side_more">更多</string>
+    <string name="player_ctrl_side_bottom">底栏</string>
     <string name="player_ctrl_group_count">%d 项</string>
     <string name="player_ctrl_reset">恢复默认</string>
     <string name="player_ctrl_done">完成</string>
@@ -676,6 +677,14 @@
     <string name="player_ctrl_name_media_info">媒体信息</string>
     <string name="player_ctrl_name_unknown">未知功能</string>
     <string name="player_ctrl_name_vr">VR 环视</string>
+    <string name="player_ctrl_name_bar_playback">播放控制</string>
+    <string name="player_ctrl_name_bar_speed">倍速</string>
+    <string name="player_ctrl_name_bar_scale">画面比例</string>
+    <string name="player_ctrl_name_bar_volume">音量</string>
+    <string name="player_ctrl_name_bar_download">下载</string>
+    <string name="player_ctrl_name_bar_audio">音轨</string>
+    <string name="player_ctrl_name_bar_subtitle">字幕</string>
+    <string name="player_ctrl_name_bar_playlist">选集</string>
     <!-- 媒体库设置（MediaLibrarySettingsScreen） -->
     <string name="media_library_settings_title">媒体库设置</string>
     <string name="player_kernel">播放器内核</string>
@@ -736,9 +745,9 @@
     <string name="player_priority_hint">按逗号分隔的扩展名或语言标识，如 "chs,cht"。留空则按文件名排序。</string>
     <string name="player_priority_placeholder">如：chs,cht</string>
     <string name="player_long_press_title">长按倍速触发</string>
-    <string name="player_long_press_fast">快（0.25 秒）</string>
-    <string name="player_long_press_standard">标准（0.3 秒）</string>
-    <string name="player_long_press_slow">慢（0.4 秒）</string>
+    <string name="player_long_press_fast">快（0.4 秒）</string>
+    <string name="player_long_press_standard">标准（0.5 秒）</string>
+    <string name="player_long_press_slow">慢（0.6 秒）</string>
     <string name="player_slide_title">滑动快进灵敏度</string>
     <string name="player_slide_sensitive">灵敏（1 屏）</string>
     <string name="player_slide_standard">标准（1.5 屏）</string>

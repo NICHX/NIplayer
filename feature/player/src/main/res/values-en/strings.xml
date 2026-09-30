@@ -51,6 +51,7 @@
     <string name="player_speed_long_press">%1$s  Hold to fast forward</string>
     <string name="player_speed_lock_on_release">Release to lock %1$s</string>
     <string name="player_speed_release_to_lock">↓ Release to lock speed</string>
+    <string name="player_zoom_reset">Reset</string>
     <string name="player_crop_black_bar_on">Crop black bars: On</string>
     <string name="player_crop_black_bar_off">Crop black bars: Off</string>
     <string name="player_black_bar_crop_on">Smart black bar crop: On</string>

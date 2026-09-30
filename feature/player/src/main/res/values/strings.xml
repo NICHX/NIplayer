@@ -51,6 +51,7 @@
     <string name="player_speed_long_press">%1$s  长按快进</string>
     <string name="player_speed_lock_on_release">松手锁定 %1$s</string>
     <string name="player_speed_release_to_lock">↓ 松手锁定倍速</string>
+    <string name="player_zoom_reset">还原</string>
     <string name="player_crop_black_bar_on">去黑边：开</string>
     <string name="player_crop_black_bar_off">去黑边：关</string>
     <string name="player_black_bar_crop_on">智能去黑边：已开启</string>

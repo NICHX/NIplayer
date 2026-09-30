@@ -661,6 +661,7 @@
     <string name="player_ctrl_side_left">Left</string>
     <string name="player_ctrl_side_right">Right</string>
     <string name="player_ctrl_side_more">More</string>
+    <string name="player_ctrl_side_bottom">Bottom bar</string>
     <string name="player_ctrl_group_count">%d items</string>
     <string name="player_ctrl_reset">Reset default</string>
     <string name="player_ctrl_done">Done</string>
@@ -676,6 +677,14 @@
     <string name="player_ctrl_name_media_info">Media info</string>
     <string name="player_ctrl_name_unknown">Unknown</string>
     <string name="player_ctrl_name_vr">VR Look-around</string>
+    <string name="player_ctrl_name_bar_playback">Playback controls</string>
+    <string name="player_ctrl_name_bar_speed">Speed</string>
+    <string name="player_ctrl_name_bar_scale">Aspect</string>
+    <string name="player_ctrl_name_bar_volume">Volume</string>
+    <string name="player_ctrl_name_bar_download">Download</string>
+    <string name="player_ctrl_name_bar_audio">Audio track</string>
+    <string name="player_ctrl_name_bar_subtitle">Subtitle</string>
+    <string name="player_ctrl_name_bar_playlist">Episodes</string>
     <!-- 媒体库设置（MediaLibrarySettingsScreen） -->
     <string name="media_library_settings_title">Media library settings</string>
     <string name="player_kernel">Player kernel</string>
@@ -736,9 +745,9 @@
     <string name="player_priority_hint">Comma-separated extensions or language tags, e.g. "chs,cht". Leave empty to sort by file name.</string>
     <string name="player_priority_placeholder">e.g. chs,cht</string>
     <string name="player_long_press_title">Long-press speed trigger</string>
-    <string name="player_long_press_fast">Fast (0.25 s)</string>
-    <string name="player_long_press_standard">Standard (0.3 s)</string>
-    <string name="player_long_press_slow">Slow (0.4 s)</string>
+    <string name="player_long_press_fast">Fast (0.4 s)</string>
+    <string name="player_long_press_standard">Standard (0.5 s)</string>
+    <string name="player_long_press_slow">Slow (0.6 s)</string>
     <string name="player_slide_title">Slide seek sensitivity</string>
     <string name="player_slide_sensitive">Sensitive (1 screen)</string>
     <string name="player_slide_standard">Standard (1.5 screens)</string>

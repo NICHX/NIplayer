@@ -31,6 +31,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -49,23 +52,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ViewList
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.HeadsetMic
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.BrightnessHigh
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -83,14 +92,17 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.input.key.Key
@@ -134,10 +146,14 @@ import com.nichx.niplayer.player.kernel.NxVideoScaleMode
 import com.nichx.niplayer.player.kernel.VideoSize
 import com.nichx.niplayer.player.kernel.PlaybackEvent
 import com.nichx.niplayer.player.kernel.PlaybackState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
+
+/** 双指缩放画面的最大倍率。 */
+private const val MAX_ZOOM = 4f
 
 @Composable
 @SuppressLint("LocalContextGetResourceValueCall")
@@ -282,6 +298,21 @@ fun PlayerScreen(
     var keyboardMuteVolume by remember { mutableIntStateOf(-1) }
     var scaleHint by remember { mutableStateOf<String?>(null) }
     var infoOsd by remember { mutableStateOf<String?>(null) }
+    // 横滑快进的居中 OSD：文本为「目标时间\n±偏移」，forward 决定箭头图标方向
+    var seekOsdText by remember { mutableStateOf<String?>(null) }
+    var seekOsdForward by remember { mutableStateOf(true) }
+    // 双指缩放画面：[zoomScale] > 1 时可用双指按住拖拽平移；单指手势保持不变。
+    var zoomScale by remember { mutableFloatStateOf(1f) }
+    var zoomOffsetX by remember { mutableFloatStateOf(0f) }
+    var zoomOffsetY by remember { mutableFloatStateOf(0f) }
+    // 还原缩放（供底部控制栏「还原」按钮调用）；remember 保持引用稳定，避免控制层无谓重组
+    val resetZoom: () -> Unit = remember {
+        {
+            zoomScale = 1f
+            zoomOffsetX = 0f
+            zoomOffsetY = 0f
+        }
+    }
     // 三档循环：适应(Contain) / 填满(Cover) / 拉伸(Fill)，与 PlayerViewModel.SCALE_MODES 下标一致
     val scaleNames = listOf(
         stringResource(R.string.player_scale_fit),
@@ -290,6 +321,11 @@ fun PlayerScreen(
     )
     val tapHandler = remember { Handler(Looper.getMainLooper()) }
     var pendingSingleTap by remember { mutableStateOf<Runnable?>(null) }
+    // 长按倍速计时器需要「不依赖指针事件」的独立定时器，但 awaitEachGesture 的
+    // AwaitPointerEventScope 是受限挂起作用域：其中既不能读 coroutineContext（挂起属性），
+    // 也不能自行 launch/withTimeout。故从组合层借一个普通作用域，在受限块内只调用
+    // 非挂起的 launch()（这是被允许的），把计时逻辑托管到主线程作用域执行。
+    val gestureScope = rememberCoroutineScope()
 
     var resumeDialogMs by remember { mutableStateOf<Long?>(null) }
 
@@ -771,6 +807,14 @@ fun PlayerScreen(
         }
     }
 
+    LaunchedEffect(seekOsdText) {
+        // 拖动过程中 seekOsdText 每次变化都会重启该 effect，松手后才会真正倒计时隐藏
+        if (seekOsdText != null) {
+            delay(1200)
+            seekOsdText = null
+        }
+    }
+
     LaunchedEffect(scaleHint) {
         if (scaleHint != null) {
             delay(1200)
@@ -783,6 +827,13 @@ fun PlayerScreen(
         // 否则重新进入播放器只会恢复 UI 索引（显示对），实际播放仍为默认 1x。
         PlayerSettings.lastSpeedIndex = speedIndex
         viewModel.nxPlayer.setSpeed(SPEED_VALUES[speedIndex])
+    }
+
+    // 换视频/切集时重置双指缩放，避免沿用上一集的缩放与平移
+    LaunchedEffect(title, currentIndex) {
+        zoomScale = 1f
+        zoomOffsetX = 0f
+        zoomOffsetY = 0f
     }
 
     LaunchedEffect(Unit) {
@@ -988,7 +1039,12 @@ fun PlayerScreen(
                 bitmap = exitFrame!!.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
-                modifier = surfaceModifier,
+                modifier = surfaceModifier.graphicsLayer {
+                    scaleX = zoomScale
+                    scaleY = zoomScale
+                    translationX = zoomOffsetX
+                    translationY = zoomOffsetY
+                },
             )
         } else {
             AndroidView(
@@ -1014,6 +1070,14 @@ fun PlayerScreen(
                         keepScreenOn = true
                         surfaceViewRef = this
                     }
+                },
+                update = { view ->
+                    // 直接改 View 变换：SurfaceView 自 API 24 起支持 scale/translation，
+                    // 而 Compose 的 graphicsLayer 对外部 View 不生效，必须走 View 属性。
+                    view.scaleX = zoomScale
+                    view.scaleY = zoomScale
+                    view.translationX = zoomOffsetX
+                    view.translationY = zoomOffsetY
                 },
             )
         }
@@ -1119,34 +1183,134 @@ fun PlayerScreen(
                         val longPressTimeout = PlayerSettings.longPressTimeoutMs
                         val seekSensitivity = PlayerSettings.seekSensitivity
                         val doubleTapStepMs = PlayerSettings.doubleTapStepSeconds * 1000L
-                        var lastX = startX
-                        var lastY = startY
+                        // 与系统窗口对齐，减少双击漏判/单击误判（不再硬编码 280ms）
+                        val doubleTapTimeout = viewConfiguration.doubleTapTimeoutMillis
+                        // 误触抑制（2026-09-30）：手势触发过灵敏，根因是「刚过 touchSlop 就锁定模式」。
+                        // touchSlop 仅几 dp，轻微手抖/点击滑动就被判成亮度/音量/快进。
+                        // 改为：位移超过 [dragStartThreshold] 且主轴明显占优，才锁定具体手势。
+                        val dragStartThreshold = touchSlop * 2f
+                        val axisDominance = 1.3f
+                        var pointerMoved = false
                         var dragged = false
                         var longPressTriggered = false
                         var initialBrightness = 0.5f
                         var initialVolume = 0
+                        // 模式锁定时刻的指针位置：三种手势都以它为基准算增量，
+                        // 使起手「死区」不产生任何数值跳变（进一步降低灵敏度）。
+                        var anchorX = startX
+                        var anchorY = startY
+                        // 横滑快进：以手势起点进度为基准累加“总位移”，避免在 500ms 轮询的
+                        // positionMs 上逐帧叠加 dx 造成抖动/漂移；并用阈值节流 seekTo。
+                        var seekStartPositionMs = 0L
+                        var seekTargetMs = 0L
+                        var lastAppliedSeekMs = 0L
+                        // 长按期间横滑快进（轴向分离）：长按倍速激活后，横滑进入快进/快退，
+                        // 纵向滑到底部仍是「松手锁定倍速」。二者互斥，避免互相干扰。
+                        var lpSeekActive = false
+                        var lpSeekStartMs = 0L
+                        var lpSeekTargetMs = 0L
+                        var lpSeekLastAppliedMs = 0L
+                        var lpAnchorX = 0f
+                        // 双指缩放期间置位：期间吞掉所有事件，避免与单指手势互相干扰
+                        var pinchActive = false
+                        // 长按倍速计时器：与指针事件解耦。手指静止时不产生 move 事件，
+                        // 旧实现靠在事件循环里轮询超时，静止长按永远等不到事件 → 不触发。
+                        // 计时器跑在组合层作用域（gestureScope）内，抬手/拖动时显式取消。
+                        var longPressJob: Job? = null
+                        longPressJob = gestureScope.launch {
+                            delay(longPressTimeout.toLong())
+                            if (!pointerMoved && !longPressTriggered && !locked
+                                && state is PlaybackState.Playing
+                            ) {
+                                longPressTriggered = true
+                                // UX-2：长按倍速生效时给一次确认
+                                haptic.performHapticFeedback(strongHaptic)
+                                viewModel.applyLongPressSpeed()
+                            }
+                        }
 
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Main)
+
+                            // ---- 双指缩放画面（优先于单指手势；锁定态下禁用）----
+                            if (!locked && event.changes.count { it.pressed } >= 2) {
+                                pinchActive = true
+                            }
+                            if (pinchActive) {
+                                val zoom = event.calculateZoom()
+                                val pan = event.calculatePan()
+                                // 以双指中点为缩放中心：保持中点在画面中的落点不动（而非固定画面中心）
+                                val focus = event.calculateCentroid()
+                                val cx = size.width / 2f
+                                val cy = size.height / 2f
+                                val fx = if (focus.isSpecified) focus.x else cx
+                                val fy = if (focus.isSpecified) focus.y else cy
+                                if (zoom != 1f) {
+                                    val oldScale = zoomScale
+                                    val newScale = (oldScale * zoom).coerceIn(1f, MAX_ZOOM)
+                                    val actualZoom = newScale / oldScale
+                                    // 缩放前后保持焦点处内容不动：T' = T + (1 - actualZoom) * (focus - center - T)
+                                    zoomOffsetX += (1f - actualZoom) * (fx - cx - zoomOffsetX)
+                                    zoomOffsetY += (1f - actualZoom) * (fy - cy - zoomOffsetY)
+                                    zoomScale = newScale
+                                }
+                                if (zoomScale > 1f) {
+                                    val maxX = size.width * (zoomScale - 1f) / 2f
+                                    val maxY = size.height * (zoomScale - 1f) / 2f
+                                    zoomOffsetX = (zoomOffsetX + pan.x).coerceIn(-maxX, maxX)
+                                    zoomOffsetY = (zoomOffsetY + pan.y).coerceIn(-maxY, maxY)
+                                } else {
+                                    zoomScale = 1f
+                                    zoomOffsetX = 0f
+                                    zoomOffsetY = 0f
+                                }
+                                // 缩放优先：若此前已触发长按倍速，先结束它
+                                if (longPressTriggered) {
+                                    viewModel.releaseLongPressSpeed(SPEED_VALUES[speedIndex])
+                                    viewModel.setInLockZone(false)
+                                    longPressTriggered = false
+                                }
+                                longPressJob?.cancel()
+                                longPressJob = null
+                                event.changes.forEach { it.consume() }
+                                if (event.changes.none { it.pressed }) {
+                                    pinchActive = false
+                                    gestureMode = GestureMode.None
+                                    break
+                                }
+                                continue
+                            }
+
                             val change = event.changes.firstOrNull() ?: break
                             if (!change.pressed) {
+                                longPressJob?.cancel()
+                                longPressJob = null
                                 val duration = System.currentTimeMillis() - startTime
                                 if (longPressTriggered) {
-                                    if (inLockZone) {
+                                    if (lpSeekActive) {
+                                        // 长按横滑：松手精确落点一次，并按「未锁定」结束倍速
+                                        viewModel.seekTo(lpSeekTargetMs)
+                                        viewModel.releaseLongPressSpeed(SPEED_VALUES[speedIndex])
+                                    } else if (inLockZone) {
                                         viewModel.lockLongPressSpeed()
                                     } else {
                                         viewModel.releaseLongPressSpeed(SPEED_VALUES[speedIndex])
                                     }
                                     viewModel.setInLockZone(false)
                                     longPressTriggered = false
+                                    lpSeekActive = false
                                 }
-                                if (!dragged && duration < 250) {
+                                if (gestureMode == GestureMode.Seek) {
+                                    // 松手时精确落点一次，弥补拖动过程中的节流误差
+                                    viewModel.seekTo(seekTargetMs)
+                                }
+                                if (!pointerMoved && duration < longPressTimeout) {
                                     if (locked) {
                                         controllerVisible = !controllerVisible
                                         break
                                     }
                                     val now = System.currentTimeMillis()
-                                    if (now - lastTapTimeMs < 280) {
+                                    if (now - lastTapTimeMs < doubleTapTimeout) {
                                         pendingSingleTap?.let { tapHandler.removeCallbacks(it) }
                                         pendingSingleTap = null
                                         lastTapTimeMs = 0L
@@ -1181,7 +1345,7 @@ fun PlayerScreen(
                                             pendingSingleTap = null
                                         }
                                         pendingSingleTap = r
-                                        tapHandler.postDelayed(r, 280)
+                                        tapHandler.postDelayed(r, doubleTapTimeout)
                                     }
                                 }
                                 gestureMode = GestureMode.None
@@ -1190,53 +1354,138 @@ fun PlayerScreen(
 
                             if (locked) continue
 
-                            val dx = change.position.x - lastX
                             val totalDx = change.position.x - startX
                             val totalDy = change.position.y - startY
 
-                            if (!dragged && !longPressTriggered
-                                && System.currentTimeMillis() - startTime >= longPressTimeout
-                                && state is PlaybackState.Playing
-                            ) {
-                                longPressTriggered = true
-                                // UX-2：长按倍速生效时给一次确认
-                                haptic.performHapticFeedback(strongHaptic)
-                                viewModel.applyLongPressSpeed()
-                            }
-
                             if (longPressTriggered) {
-                                val inZone = change.position.y > size.height * 0.8f
-                                viewModel.setInLockZone(inZone)
+                                val lpDx = change.position.x - startX
+                                val lpDy = change.position.y - startY
+                                val lpAdx = abs(lpDx)
+                                val lpAdy = abs(lpDy)
+                                // 轴向分离：横滑位移达到起步阈值且横向明显占优 → 进入快进/快退
+                                if (!lpSeekActive
+                                    && lpAdx > dragStartThreshold
+                                    && lpAdx > lpAdy * axisDominance
+                                ) {
+                                    lpSeekActive = true
+                                    val maxPos = durationMs.takeIf { it > 0 } ?: 0L
+                                    lpSeekStartMs = viewModel.nxPlayer.positionMs.value
+                                        .coerceIn(0L, maxPos.coerceAtLeast(1L))
+                                    lpSeekTargetMs = lpSeekStartMs
+                                    lpSeekLastAppliedMs = lpSeekStartMs
+                                    lpAnchorX = change.position.x
+                                    // 进入横滑即脱离锁定区，避免松手被误判为锁定倍速
+                                    viewModel.setInLockZone(false)
+                                }
+                                if (lpSeekActive) {
+                                    // 保持倍速的同时快进/快退：节流 + 松手精确落点
+                                    val durationMsValue = durationMs.takeIf { it > 0 } ?: 0L
+                                    val deltaX = change.position.x - lpAnchorX
+                                    val pxToMs = if (size.width > 0) {
+                                        durationMsValue.toFloat() / (size.width * seekSensitivity)
+                                    } else 0f
+                                    lpSeekTargetMs = (lpSeekStartMs + (deltaX * pxToMs).toLong())
+                                        .coerceIn(0L, durationMsValue.coerceAtLeast(1L))
+                                    if (abs(lpSeekTargetMs - lpSeekLastAppliedMs) >= 150L) {
+                                        viewModel.seekTo(lpSeekTargetMs)
+                                        lpSeekLastAppliedMs = lpSeekTargetMs
+                                    }
+                                    val deltaMs = lpSeekTargetMs - lpSeekStartMs
+                                    seekOsdForward = deltaMs >= 0
+                                    seekOsdText = buildString {
+                                        append(formatDuration(lpSeekTargetMs))
+                                        append('\n')
+                                        append(if (deltaMs >= 0) "+" else "-")
+                                        append(formatDuration(abs(deltaMs)))
+                                    }
+                                } else {
+                                    // 纵向：下滑到底部 = 松手锁定倍速（原行为）
+                                    val inZone = change.position.y > size.height * 0.8f
+                                    viewModel.setInLockZone(inZone)
+                                }
                                 change.consume()
                             } else {
-                                if (!dragged && (abs(totalDx) > touchSlop || abs(totalDy) > touchSlop)) {
-                                    dragged = true
-                                    gestureMode = if (abs(totalDx) > abs(totalDy)) {
-                                        GestureMode.Seek
-                                    } else if (startX < size.width / 2f) {
-                                        initialBrightness = currentScreenBrightness()
-                                        GestureMode.Brightness
-                                    } else {
-                                        initialVolume = audioManager?.getStreamVolume(
-                                            AudioManager.STREAM_MUSIC
-                                        ) ?: 0
-                                        GestureMode.Volume
+                                // ① 位移超过 touchSlop：判定“确实动了”，取消长按、抬手不再按点击处理
+                                if (!pointerMoved
+                                    && (abs(totalDx) > touchSlop || abs(totalDy) > touchSlop)
+                                ) {
+                                    pointerMoved = true
+                                    longPressJob?.cancel()
+                                    longPressJob = null
+                                }
+                                // ② 位移达到「起步阈值」且主轴明显占优，才锁定具体手势模式。
+                                //    方向不明确（斜向抖动）时保持 None 继续观察，避免误判成手势。
+                                if (pointerMoved && !dragged) {
+                                    val adx = abs(totalDx)
+                                    val ady = abs(totalDy)
+                                    if (adx > dragStartThreshold || ady > dragStartThreshold) {
+                                        when {
+                                            adx > ady * axisDominance -> {
+                                                gestureMode = GestureMode.Seek
+                                                // 单手势互斥：清掉仍在自动隐藏窗口内的其它 OSD，避免同位置重叠
+                                                brightnessOsd = null
+                                                volumeOsd = null
+                                                val maxPos = durationMs.takeIf { it > 0 } ?: 0L
+                                                seekStartPositionMs = viewModel.nxPlayer.positionMs.value
+                                                    .coerceIn(0L, maxPos.coerceAtLeast(1L))
+                                                seekTargetMs = seekStartPositionMs
+                                                lastAppliedSeekMs = seekStartPositionMs
+                                                dragged = true
+                                            }
+                                            ady > adx * axisDominance -> {
+                                                dragged = true
+                                                if (startX < size.width / 2f) {
+                                                    gestureMode = GestureMode.Brightness
+                                                    volumeOsd = null
+                                                    seekOsdText = null
+                                                    initialBrightness = currentScreenBrightness()
+                                                } else {
+                                                    gestureMode = GestureMode.Volume
+                                                    brightnessOsd = null
+                                                    seekOsdText = null
+                                                    initialVolume = audioManager?.getStreamVolume(
+                                                        AudioManager.STREAM_MUSIC
+                                                    ) ?: 0
+                                                }
+                                            }
+                                            // 方向不明确：不锁定，继续等待更明确的位移
+                                        }
+                                        // 锁定成功后以当前位置重设基准：起手死区不产生数值跳变
+                                        if (dragged) {
+                                            anchorX = change.position.x
+                                            anchorY = change.position.y
+                                        }
                                     }
                                 }
                                 when (gestureMode) {
                                     GestureMode.Seek -> {
                                         val durationMsValue = durationMs.takeIf { it > 0 } ?: 0L
+                                        // 相对“锁定时刻”的位移，起手死区不计入，避免滑一点点就跳一大段
+                                        val deltaX = change.position.x - anchorX
                                         val pxToMs = if (size.width > 0) {
                                             durationMsValue.toFloat() / (size.width * seekSensitivity)
                                         } else 0f
-                                        val target = (viewModel.nxPlayer.positionMs.value + (dx * pxToMs).toLong())
+                                        seekTargetMs = (seekStartPositionMs + (deltaX * pxToMs).toLong())
                                             .coerceIn(0L, durationMsValue.coerceAtLeast(1L))
-                                        viewModel.seekTo(target)
+                                        // 节流：位移累计超过阈值才真正 seekTo，降低抖动与内核 seek 频次
+                                        if (abs(seekTargetMs - lastAppliedSeekMs) >= 150L) {
+                                            viewModel.seekTo(seekTargetMs)
+                                            lastAppliedSeekMs = seekTargetMs
+                                        }
+                                        val deltaMs = seekTargetMs - seekStartPositionMs
+                                        seekOsdForward = deltaMs >= 0
+                                        seekOsdText = buildString {
+                                            append(formatDuration(seekTargetMs))
+                                            append('\n')
+                                            append(if (deltaMs >= 0) "+" else "-")
+                                            append(formatDuration(abs(deltaMs)))
+                                        }
                                         change.consume()
                                     }
 
                                     GestureMode.Brightness -> {
-                                        val ratio = -totalDy / size.height
+                                        val deltaY = change.position.y - anchorY
+                                        val ratio = -deltaY / size.height
                                         val value = (initialBrightness + ratio).coerceIn(0f, 1f)
                                         applyBrightness(value)
                                         brightnessOsd = value
@@ -1247,7 +1496,8 @@ fun PlayerScreen(
                                         val max = audioManager?.getStreamMaxVolume(
                                             AudioManager.STREAM_MUSIC
                                         ) ?: 1
-                                        val ratio = -totalDy / size.height
+                                        val deltaY = change.position.y - anchorY
+                                        val ratio = -deltaY / size.height
                                         val value = (initialVolume + (ratio * max).toInt())
                                             .coerceIn(0, max)
                                         audioManager?.setStreamVolume(
@@ -1264,8 +1514,6 @@ fun PlayerScreen(
                                     GestureMode.None -> Unit
                                 }
                             }
-                            lastX = change.position.x
-                            lastY = change.position.y
                         }
                     }
                 },
@@ -1471,6 +1719,54 @@ fun PlayerScreen(
                     },
                 )
             }
+            // ---- 底栏功能按钮：默认在底部控制栏；被移到 HUD/更多时在此渲染 ----
+            "bar_speed" -> HudButtonConfig(
+                id, Icons.Rounded.Speed,
+                stringResource(R.string.player_speed_icon),
+                onClick = { showSpeedMenu = !showSpeedMenu },
+            )
+            "bar_scale" -> HudButtonConfig(
+                id, Icons.Rounded.AspectRatio,
+                stringResource(R.string.player_scale_icon),
+                tint = if (scaleIndex != 0) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.9f),
+                onClick = {
+                    val newIndex = viewModel.cycleScaleMode()
+                    scaleHint = scaleNames[newIndex]
+                },
+            )
+            "bar_volume" -> {
+                var barMuted by remember {
+                    mutableStateOf(audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0)
+                }
+                HudButtonConfig(
+                    id,
+                    if (barMuted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                    stringResource(if (barMuted) R.string.player_unmute else R.string.player_mute),
+                    onClick = {
+                        barMuted = toggleVolumeButton(audioManager) { previousMusicVolume = it }
+                    },
+                )
+            }
+            "bar_download" -> HudButtonConfig(
+                id, Icons.Rounded.ArrowDownward,
+                stringResource(R.string.player_download_icon),
+                onClick = { viewModel.requestDownload() },
+            )
+            "bar_audio" -> HudButtonConfig(
+                id, Icons.Rounded.MusicNote,
+                stringResource(R.string.player_audio_track),
+                onClick = { showAudioTrackMenu = !showAudioTrackMenu },
+            )
+            "bar_subtitle" -> HudButtonConfig(
+                id, Icons.Rounded.Subtitles,
+                stringResource(R.string.player_subtitle),
+                onClick = { showSubtitleMenu = true },
+            )
+            "bar_playlist" -> HudButtonConfig(
+                id, Icons.AutoMirrored.Rounded.ViewList,
+                stringResource(R.string.player_episode_list_icon),
+                onClick = { showPlaylistDialog = true },
+            )
             else -> null
         }
         // P0-1 修复（2026-09-22）：loadEntry 内部是 MMKV decodeString（JNI + split + valueOf 反射）。
@@ -1487,7 +1783,10 @@ fun PlayerScreen(
         }
         // HUD 侧边按钮：配置为 左/右 列且可见的功能
         val hudButtons = ctrlEntries
-            .filter { it.visible && it.surface != PlayerControlSurface.MORE }
+            .filter {
+                it.visible &&
+                    (it.surface == PlayerControlSurface.LEFT || it.surface == PlayerControlSurface.RIGHT)
+            }
             .sortedBy { it.order }
             .mapNotNull { e ->
                 ctrlButtonUnit(e.id)?.copy(
@@ -1495,6 +1794,11 @@ fun PlayerScreen(
                     side = if (e.surface == PlayerControlSurface.LEFT) HudButtonSide.LEFT else HudButtonSide.RIGHT,
                 )
             }
+        // 底部控制栏按钮：配置为「底栏」面且可见的功能（按 order 排序）
+        val bottomEntryIds = ctrlEntries
+            .filter { it.visible && it.surface == PlayerControlSurface.BOTTOM }
+            .sortedBy { it.order }
+            .map { it.id }
         // 更多菜单项：配置为「更多」面且可见的功能（pip 需有效尺寸才可点）
         val moreActions = ctrlEntries
             .filter { it.visible && it.surface == PlayerControlSurface.MORE }
@@ -1595,6 +1899,9 @@ fun PlayerScreen(
                     onDownload = { viewModel.requestDownload() },
                     showDownload = !isLocalSource,
                     hudButtons = hudButtons,
+                    zoomActive = zoomScale > 1f,
+                    onResetZoom = resetZoom,
+                    bottomEntryIds = bottomEntryIds,
                 )
             }
         }
@@ -1648,6 +1955,10 @@ fun PlayerScreen(
             )
         }
 
+        // 顶部 OSD 距顶距离跟随「播放器控件顶栏」：控制栏可见时让到顶栏下方，隐藏时贴近顶部。
+        // 顶栏高度 ≈ 44dp 图标 + 上下各 6dp = 56dp，此处取 64dp 留出缝隙。
+        val osdTopPadding = if (controllerVisible && !locked) 64.dp else 12.dp
+
         if (!isInPip) longPressSpeedActive?.let { speed ->
             val osdText = when {
                 longPressSpeedLocked -> stringResource(R.string.player_speed_locked, formatSpeed(speed))
@@ -1656,9 +1967,11 @@ fun PlayerScreen(
             }
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 56.dp)
+                    .align(Alignment.TopStart)
+                    .windowInsetsPadding(
+                        WindowInsets.displayCutout.only(WindowInsetsSides.Top + WindowInsetsSides.Start)
+                    )
+                    .padding(start = 16.dp, top = osdTopPadding)
                     .clip(RoundedCornerShape(20.dp))
                     .background(
                         if (longPressSpeedLocked) Color(0xFFFFAB40).copy(alpha = 0.35f)
@@ -1693,9 +2006,11 @@ fun PlayerScreen(
         if (!isInPip) scaleHint?.let { hint ->
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 56.dp)
+                    .align(Alignment.TopStart)
+                    .windowInsetsPadding(
+                        WindowInsets.displayCutout.only(WindowInsetsSides.Top + WindowInsetsSides.Start)
+                    )
+                    .padding(start = 16.dp, top = osdTopPadding)
                     .clip(RoundedCornerShape(20.dp))
                     .background(Color.Black.copy(alpha = 0.55f))
                     .padding(horizontal = 20.dp, vertical = 8.dp),
@@ -1722,9 +2037,11 @@ fun PlayerScreen(
         if (!isInPip) infoOsd?.let { text ->
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 56.dp)
+                    .align(Alignment.TopStart)
+                    .windowInsetsPadding(
+                        WindowInsets.displayCutout.only(WindowInsetsSides.Top + WindowInsetsSides.Start)
+                    )
+                    .padding(start = 16.dp, top = osdTopPadding)
                     .clip(RoundedCornerShape(20.dp))
                     .background(Color.Black.copy(alpha = 0.55f))
                     .padding(horizontal = 20.dp, vertical = 8.dp),
@@ -1776,6 +2093,14 @@ fun PlayerScreen(
             )
         }
 
+        if (!isInPip) seekOsdText?.let { text ->
+            GestureOsd(
+                icon = if (seekOsdForward) Icons.Rounded.FastForward else Icons.Rounded.FastRewind,
+                text = text,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+
         if (showSpeedMenu) {
             SpeedMenuDialog(
                 speedIndex = speedIndex,
@@ -1813,7 +2138,7 @@ fun PlayerScreen(
                     ))
                 }
             }
-            PlayerListDialog(
+            PlayerListDrawer(
                 title = stringResource(R.string.player_audio_track),
                 items = audioItems,
                 onDismiss = { showAudioTrackMenu = false },
@@ -1862,6 +2187,11 @@ fun PlayerScreen(
                     showSubtitlePicker = false
                     subtitleLauncher.launch(arrayOf("*/*"))
                 },
+                // 返回上一级：回到字幕菜单（菜单在进入本面板时已关闭，需重新打开）
+                onBack = {
+                    showSubtitlePicker = false
+                    showSubtitleMenu = true
+                },
                 onDismiss = { showSubtitlePicker = false },
             )
         }
@@ -1869,6 +2199,11 @@ fun PlayerScreen(
         if (showSubtitleStyle) {
             SubtitleStyleDialog(
                 onStyleChanged = { viewModel.refreshSubtitleStyle() },
+                // 返回上一级：回到字幕菜单（菜单在进入本面板时已关闭，需重新打开）
+                onBack = {
+                    showSubtitleStyle = false
+                    showSubtitleMenu = true
+                },
                 onDismiss = { showSubtitleStyle = false },
             )
         }

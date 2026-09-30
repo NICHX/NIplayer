@@ -2,7 +2,9 @@ package com.nichx.niplayer.feature.home.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,22 +19,28 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ViewList
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.HeadsetMic
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
+import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +52,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +65,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -75,6 +86,7 @@ import com.nichx.niplayer.datastore.PlayerControlSurface
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.feature.home.R
+import kotlinx.coroutines.launch
 
 /**
  * 控制栏自定义子页面：横屏 / 竖屏两个 Tab 各自独立布局；Tab 内用长按拖放调整。
@@ -256,10 +268,18 @@ private fun ctrlIcon(id: String): ImageVector = when (id) {
     "sleep_timer" -> Icons.Rounded.Bedtime
     "media_info" -> Icons.Rounded.Info
     "vr" -> VrHeadsetIcon
+    "bar_playback" -> Icons.Rounded.PlayCircleOutline
+    "bar_speed" -> Icons.Rounded.Speed
+    "bar_scale" -> Icons.Rounded.AspectRatio
+    "bar_volume" -> Icons.AutoMirrored.Rounded.VolumeUp
+    "bar_download" -> Icons.Rounded.ArrowDownward
+    "bar_audio" -> Icons.Rounded.MusicNote
+    "bar_subtitle" -> Icons.Rounded.Subtitles
+    "bar_playlist" -> Icons.AutoMirrored.Rounded.ViewList
     else -> Icons.Rounded.Extension
 }
 
-/** 拖放式布局编辑器：左列 / 右列 / 更多 三栏，长按某功能拖动到新位置（可跨栏 / 栏内排序）。 */
+/** 拖放式布局编辑器：左列 / 右列 / 更多 / 底栏 四面（2×2 网格），长按某功能拖动到新位置（可跨面 / 面内排序）。 */
 @Composable
 private fun ControlDragEditor(
     orientation: PlayerControlOrientation,
@@ -286,6 +306,8 @@ private fun ControlDragEditor(
     val density = LocalDensity.current
     val stepPx = with(density) { ChipStep.toPx() }
     val ghostWidthPx = with(density) { 110.dp.toPx() }
+    // HUD 左/右列的单侧数量上限（与播放器一致）：横屏 3、竖屏 4
+    val hudColumnLimit = if (orientation == PlayerControlOrientation.PORTRAIT) 4 else 3
 
     var draggingId by remember { mutableStateOf<String?>(null) }
     var dragPos by remember { mutableStateOf(Offset.Zero) }
@@ -295,6 +317,24 @@ private fun ControlDragEditor(
     val columnBounds = remember { mutableStateMapOf<PlayerControlSurface, Rect>() }
     val columnHeaderH = remember { mutableStateMapOf<PlayerControlSurface, Float>() }
 
+    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    // 每列各自的滚动状态：拖到列边缘时自动滚动，便于够到屏幕外的项
+    val columnScroll = remember { mutableMapOf<PlayerControlSurface, ScrollState>() }
+    val autoScrollEdgePx = with(density) { 56.dp.toPx() }
+    val autoScrollStepPx = with(density) { 14.dp.toPx() }
+
+    fun autoScroll(p: Offset) {
+        val s = hoverSurface ?: return
+        val b = columnBounds[s] ?: return
+        val state = columnScroll[s] ?: return
+        val top = b.top + (columnHeaderH[s] ?: 0f)
+        when {
+            p.y < top + autoScrollEdgePx -> scope.launch { state.scrollBy(-autoScrollStepPx) }
+            p.y > b.bottom - autoScrollEdgePx -> scope.launch { state.scrollBy(autoScrollStepPx) }
+        }
+    }
+
     fun colCount(surface: PlayerControlSurface): Int =
         entries.count { it.surface == surface && it.id != draggingId }
 
@@ -302,6 +342,17 @@ private fun ControlDragEditor(
         var surf: PlayerControlSurface? = null
         var idx = 0
         PlayerControlLayout.ALL_SURFACES.forEach { s ->
+            // 底栏面只接受底栏功能（bar_*）；HUD 类功能拖入底栏无处渲染，不作为落点
+            if (s == PlayerControlSurface.BOTTOM && draggingId?.startsWith("bar_") != true) return@forEach
+            // 「播放控制」整组只能留在底栏
+            if (draggingId == "bar_playback" && s != PlayerControlSurface.BOTTOM) return@forEach
+            // 左/右列已满（横屏 3 / 竖屏 4）且拖拽项来自别处时不作为落点
+            if ((s == PlayerControlSurface.LEFT || s == PlayerControlSurface.RIGHT) &&
+                entries.firstOrNull { it.id == draggingId }?.surface != s &&
+                colCount(s) >= hudColumnLimit
+            ) {
+                return@forEach
+            }
             val b = columnBounds[s] ?: return@forEach
             if (b.contains(p)) {
                 val contentTop = b.top + (columnHeaderH[s] ?: 0f)
@@ -328,6 +379,24 @@ private fun ControlDragEditor(
             cancelDrag()
             return
         }
+        // 底栏面只接受底栏功能（bar_*），HUD 类功能拖入底栏会无处渲染
+        if (target == PlayerControlSurface.BOTTOM && !id.startsWith("bar_")) {
+            cancelDrag()
+            return
+        }
+        // 「播放控制」整组只能留在底栏
+        if (id == "bar_playback" && target != PlayerControlSurface.BOTTOM) {
+            cancelDrag()
+            return
+        }
+        // 左/右列有数量上限（横屏 3 / 竖屏 4）：已满且来自别处时拒绝
+        if ((target == PlayerControlSurface.LEFT || target == PlayerControlSurface.RIGHT) &&
+            moving.surface != target &&
+            entries.count { it.surface == target && it.id != id } >= hudColumnLimit
+        ) {
+            cancelDrag()
+            return
+        }
         val rest = entries.filter { it.id != id }
         val bySurf = rest.groupBy { it.surface }
         val result = mutableListOf<PlayerControlEntry>()
@@ -348,50 +417,74 @@ private fun ControlDragEditor(
     }
 
     Box(modifier = modifier.onGloballyPositioned { editorTopLeft = it.positionInRoot() }) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PlayerControlLayout.ALL_SURFACES.forEach { surface ->
-                Column(
+        Column(
+            Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val surfaces = PlayerControlLayout.ALL_SURFACES
+            // 2×2 网格：第一行 左列/右列（项数有上限，行更矮）；第二行 更多/底栏（项多，行更高）
+            for (rowStart in surfaces.indices step 2) {
+                val rowWeight = if (rowStart == 0) 0.38f else 0.62f
+                Row(
                     Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .onGloballyPositioned { columnBounds[surface] = it.boundsInRoot() },
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                        .fillMaxWidth()
+                        .weight(rowWeight),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    ColumnHeader(
-                        surface = surface,
-                        count = entries.count { it.surface == surface },
-                        onHeight = { columnHeaderH[surface] = it },
-                    )
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState()),
-                    ) {
-                        var shown = 0
-                        entries.filter { it.surface == surface }.sortedBy { it.order }
-                            .forEach { entry ->
-                                val collapsed = entry.id == draggingId
-                                // 被拖拽项渲染为高度 0，保留其 pointerInput（否则拖动会被中断），由浮层展示影像
-                                if (!collapsed && surface == hoverSurface && hoverIndex == shown) InsertionGap()
-                                if (!collapsed) shown++
-                                DragChip(
-                                    entry = entry,
-                                    collapsed = collapsed,
-                                    onDragStart = { start ->
-                                        draggingId = entry.id
-                                        dragPos = start
-                                        computeHover(start)
-                                    },
-                                    onDragMove = { p ->
-                                        dragPos = p
-                                        computeHover(p)
-                                    },
-                                    onDragEnd = { id -> commitDrop(id) },
-                                    onDragCancel = ::cancelDrag,
-                                )
+                    for (i in rowStart until minOf(rowStart + 2, surfaces.size)) {
+                        val surface = surfaces[i]
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .onGloballyPositioned { columnBounds[surface] = it.boundsInRoot() },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            ColumnHeader(
+                                surface = surface,
+                                count = entries.count { it.surface == surface },
+                                onHeight = { columnHeaderH[surface] = it },
+                            )
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .verticalScroll(columnScroll.getOrPut(surface) { ScrollState(0) }),
+                            ) {
+                                var shown = 0
+                                entries.filter { it.surface == surface }.sortedBy { it.order }
+                                    .forEach { entry ->
+                                        val collapsed = entry.id == draggingId
+                                        // 被拖拽项渲染为高度 0，保留其 pointerInput（否则拖动会被中断），由浮层展示影像
+                                        if (!collapsed && surface == hoverSurface && hoverIndex == shown) InsertionGap()
+                                        if (!collapsed) shown++
+                                        DragChip(
+                                            entry = entry,
+                                            collapsed = collapsed,
+                                            onDragStart = { start ->
+                                                draggingId = entry.id
+                                                dragPos = start
+                                                computeHover(start)
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            },
+                                            onDragMove = { p ->
+                                                dragPos = p
+                                                computeHover(p)
+                                                autoScroll(p)
+                                            },
+                                            onDragEnd = { id ->
+                                                commitDrop(id)
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            },
+                                            onDragCancel = {
+                                                cancelDrag()
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            },
+                                        )
+                                    }
+                                if (surface == hoverSurface && hoverIndex == shown) InsertionGap()
                             }
-                        if (surface == hoverSurface && hoverIndex == shown) InsertionGap()
+                        }
                     }
                 }
             }
@@ -544,6 +637,14 @@ internal fun ctrlName(id: String): String = stringResource(
         "sleep_timer" -> R.string.player_ctrl_name_sleep_timer
         "media_info" -> R.string.player_ctrl_name_media_info
         "vr" -> R.string.player_ctrl_name_vr
+        "bar_playback" -> R.string.player_ctrl_name_bar_playback
+        "bar_speed" -> R.string.player_ctrl_name_bar_speed
+        "bar_scale" -> R.string.player_ctrl_name_bar_scale
+        "bar_volume" -> R.string.player_ctrl_name_bar_volume
+        "bar_download" -> R.string.player_ctrl_name_bar_download
+        "bar_audio" -> R.string.player_ctrl_name_bar_audio
+        "bar_subtitle" -> R.string.player_ctrl_name_bar_subtitle
+        "bar_playlist" -> R.string.player_ctrl_name_bar_playlist
         else -> R.string.player_ctrl_name_unknown
     },
 )
@@ -554,4 +655,5 @@ internal fun ctrlSurfaceLabel(surface: PlayerControlSurface): String = when (sur
     PlayerControlSurface.LEFT -> stringResource(R.string.player_ctrl_side_left)
     PlayerControlSurface.RIGHT -> stringResource(R.string.player_ctrl_side_right)
     PlayerControlSurface.MORE -> stringResource(R.string.player_ctrl_side_more)
+    PlayerControlSurface.BOTTOM -> stringResource(R.string.player_ctrl_side_bottom)
 }
