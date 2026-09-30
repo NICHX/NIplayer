@@ -43,7 +43,7 @@ import com.nichx.niplayer.designsystem.components.NiGlassSwitch
 import kotlin.math.roundToInt
 
 /**
- * 字幕样式设置二级 Dialog（集成在播放器字幕管理 Dialog 内）。
+ * 字幕样式设置右侧抽屉（集成在播放器字幕管理内）。
  *
  * 包含 7 项样式：字体、字号、文字颜色、描边宽度、描边颜色、底部边距、应用内嵌样式。
  * 每项修改后立即写入 [SubtitleSettings] 并触发 [onStyleChanged] 回调，
@@ -54,12 +54,14 @@ import kotlin.math.roundToInt
  * 设置页仅保留全局项（自动加载同名字幕、优先级、ASSRT Token）。
  *
  * @param onStyleChanged 任意样式修改后的回调（调用 viewModel.refreshSubtitleStyle）
- * @param onDismiss 关闭 Dialog
+ * @param onDismiss 关闭抽屉
+ * @param onBack 返回上一级（字幕菜单）；为 null 时不显示返回箭头
  */
 @Composable
 fun SubtitleStyleDialog(
     onStyleChanged: () -> Unit,
     onDismiss: () -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     // 本地 state（与 SubtitleSettings 同步）：用户修改后立即写回 MMKV 并触发 onStyleChanged
     var fontFamilyKey by remember { mutableStateOf(SubtitleSettings.fontFamilyKey) }
@@ -84,16 +86,11 @@ fun SubtitleStyleDialog(
         onStyleChanged()
     }
 
-    PlayerDialog(onDismiss = onDismiss, maxWidth = 320, maxHeight = 600) {
-        Text(
-            text = stringResource(R.string.subtitle_style_title),
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
-            color = PlayerDialogColors.textPrimary,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        PlayerDialogDivider()
-
+    PlayerSideDrawer(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.subtitle_style_title),
+        onBack = onBack,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -158,15 +155,6 @@ fun SubtitleStyleDialog(
                     applyAndNotify()
                 },
             )
-        }
-
-        TextButton(
-            onClick = onDismiss,
-            modifier = Modifier
-                .align(Alignment.End)
-                .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
-        ) {
-            Text(stringResource(R.string.subtitle_done))
         }
     }
 

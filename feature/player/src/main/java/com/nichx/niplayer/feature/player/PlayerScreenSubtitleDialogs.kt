@@ -11,17 +11,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -56,7 +55,7 @@ private enum class SubtitleDialogPage { Menu, Tracks, Delay }
 /**
  * 字幕管理（单窗口 + 内部翻页）。
  *
- * 布局：一个 Dialog，三页原地切换 —— 主菜单（5 个功能入口）、轨道列表、延迟调整。
+ * 布局：一个右侧抽屉，三页原地切换 —— 主菜单（5 个功能入口）、轨道列表、延迟调整。
  *
  * 为什么不用嵌套 Dialog（原实现把「轨道」和「延迟」各做成第二个 Dialog 窗口）：
  * 1. 两个窗口的层级取决于**谁后被 show**，父窗口一旦后创建就会把子窗口整个盖住，
@@ -111,15 +110,27 @@ internal fun SubtitleManageDialog(
         else -> "0ms"
     }
 
-    // 固定 maxHeight：三页共用同一尺寸，翻页时窗口高度不跳
-    PlayerDialog(onDismiss = onDismiss, maxWidth = 360, maxHeight = 460) {
+    val drawerTitle = when (page) {
+        SubtitleDialogPage.Tracks -> stringResource(R.string.player_subtitle_track)
+        SubtitleDialogPage.Delay -> stringResource(R.string.player_subtitle_delay)
+        SubtitleDialogPage.Menu -> stringResource(R.string.player_subtitle)
+    }
+    // 子页面左上角显示返回；主菜单页无返回
+    val onBack: (() -> Unit)? = if (page == SubtitleDialogPage.Menu) {
+        null
+    } else {
+        { page = SubtitleDialogPage.Menu }
+    }
+
+    PlayerSideDrawer(
+        onDismiss = onDismiss,
+        title = drawerTitle,
+        onBack = onBack,
+        // Tracks 页内含 LazyColumn 自滚动；Menu/Delay 页内容较短无需本组件滚动
+        scrollable = false,
+    ) {
         when (page) {
             SubtitleDialogPage.Tracks -> {
-                SubtitlePageTitle(
-                    title = stringResource(R.string.player_subtitle_track),
-                    onBack = { page = SubtitleDialogPage.Menu },
-                )
-                PlayerDialogDivider()
                 SubtitleStatusRow(loadState)
                 SubtitleTrackList(
                     subtitleTracks = subtitleTracks,
@@ -134,15 +145,12 @@ internal fun SubtitleManageDialog(
                         onSelectSameDirSubtitle(name)
                         onDismiss()
                     },
+                    modifier = Modifier.weight(1f),
                 )
             }
 
             SubtitleDialogPage.Delay -> {
-                SubtitlePageTitle(
-                    title = stringResource(R.string.player_subtitle_delay),
-                    onBack = { page = SubtitleDialogPage.Menu },
-                )
-                PlayerDialogDivider()
+                SubtitleStatusRow(loadState)
                 SubtitleDelayControls(
                     offsetMs = offsetMs,
                     onAdjustOffset = onAdjustOffset,
@@ -151,16 +159,7 @@ internal fun SubtitleManageDialog(
             }
 
             SubtitleDialogPage.Menu -> {
-                Text(
-                    text = stringResource(R.string.player_subtitle),
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
-                    color = PlayerDialogColors.textPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                PlayerDialogDivider()
                 SubtitleStatusRow(loadState)
-
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -196,35 +195,6 @@ internal fun SubtitleManageDialog(
                 }
             }
         }
-    }
-}
-
-/** 子页面标题行：返回箭头 + 标题。 */
-@Composable
-private fun SubtitlePageTitle(title: String, onBack: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-            contentDescription = stringResource(R.string.player_subtitle_back),
-            tint = PlayerDialogColors.textPrimary,
-            modifier = Modifier
-                .clip(CircleShape)
-                .clickable(onClick = onBack)
-                .padding(6.dp)
-                .size(20.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = title,
-            color = PlayerDialogColors.textPrimary,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
     }
 }
 
@@ -279,6 +249,7 @@ private fun SubtitleTrackList(
     activeExternalSubtitle: String?,
     onSelectTrack: (Int) -> Unit,
     onSelectSameDirSubtitle: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val autoSelectedTrack = if (selectedIndex == -1) {
         subtitleTracks.firstOrNull { it.isAutoSelected }
@@ -315,13 +286,8 @@ private fun SubtitleTrackList(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = 320.dp)
-            .verticalScroll(rememberScrollState()),
-    ) {
-        embeddedRows.forEach { row ->
+    LazyColumn(modifier = modifier.fillMaxWidth()) {
+        items(embeddedRows) { row ->
             TrackRow(
                 label = row.label,
                 description = row.description,
@@ -332,14 +298,16 @@ private fun SubtitleTrackList(
 
         // 同目录字幕：选中后由 SubtitleEngine 外挂渲染（本地 / SMB / WebDAV 通用）
         if (sameDirSubtitles.isNotEmpty()) {
-            Text(
-                text = stringResource(R.string.player_subtitle_same_dir),
-                color = PlayerDialogColors.textSecondary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(start = 20.dp, top = 10.dp, bottom = 2.dp),
-            )
-            sameDirSubtitles.forEach { name ->
+            item {
+                Text(
+                    text = stringResource(R.string.player_subtitle_same_dir),
+                    color = PlayerDialogColors.textSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(start = 20.dp, top = 10.dp, bottom = 2.dp),
+                )
+            }
+            items(sameDirSubtitles) { name ->
                 TrackRow(
                     label = name,
                     description = null,

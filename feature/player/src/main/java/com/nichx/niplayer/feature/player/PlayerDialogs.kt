@@ -1,14 +1,24 @@
 package com.nichx.niplayer.feature.player
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -17,17 +27,27 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +63,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nichx.niplayer.designsystem.components.NiDialogItem
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 播放器内 Dialog 统一样式定义。
@@ -197,6 +219,171 @@ fun PlayerDialog(
     }
 }
 
+/** 抽屉入场/退场时长（ms），退场时长同时用于延迟销毁窗口。 */
+private const val DRAWER_ENTER_MS = 280
+private const val DRAWER_EXIT_MS = 220
+
+/**
+ * 播放器右侧抽屉面板（视频场景专用）。
+ *
+ * 与居中 [PlayerDialog] 共用同一「液态玻璃」材质（[PlayerDialogSurface]），但贴右侧、全高、从右滑入。
+ * 视频播放以「边看边操作」为主，列表 / 信息 / 设置类弹层改用抽屉可避免遮挡画面中心。
+ *
+ * 交互：
+ * - 打开：从右滑入 + 淡入（[DRAWER_ENTER_MS]）
+ * - 关闭：外部点击 / 返回键 / 右上角关闭 均先播放滑出动画，动画结束后再回调 [onDismiss]
+ *   （若直接回调，外层 `if (show)` 会立刻移除窗口，看不到退场）
+ * - 内容区默认由本组件提供纵向滚动；[scrollable] = false 时交给内容自行滚动，
+ *   用于内容内含 LazyColumn 等自身可滚动组件的场景，避免嵌套滚动崩溃
+ *
+ * @param onDismiss 关闭回调
+ * @param title 标题
+ * @param modifier 额外修饰符
+ * @param maxWidth 最大宽度（默认 360dp，仍按屏宽自适应收缩）
+ * @param onBack 左上角返回回调；为 null 时不显示返回箭头
+ * @param scrollable 内容区是否由本组件提供纵向滚动（默认 true）
+ * @param content 内容（具备 ColumnScope，可用 weight 占满剩余高度）
+ */
+@Composable
+fun PlayerSideDrawer(
+    onDismiss: () -> Unit,
+    title: String,
+    modifier: Modifier = Modifier,
+    maxWidth: Int = 360,
+    onBack: (() -> Unit)? = null,
+    scrollable: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    var visible by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { visible = true }
+
+    // 先播退场动画，再通知外部销毁窗口
+    val requestClose: () -> Unit = {
+        if (visible) {
+            visible = false
+            scope.launch {
+                delay(DRAWER_EXIT_MS.toLong())
+                onDismiss()
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = requestClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        val drawerWidth = adaptiveDialogMaxWidth(maxWidth)
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            // 点击抽屉外的画面区域关闭。
+            // 自绘背板：满屏内容下 Dialog 的窗口级 outside-click 不可靠，这里显式处理。
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = requestClose,
+                    ),
+            )
+            AnimatedVisibility(
+                visible = visible,
+                enter = slideInHorizontally(
+                    initialOffsetX = { it },
+                    animationSpec = tween(DRAWER_ENTER_MS, easing = FastOutSlowInEasing),
+                ) + fadeIn(animationSpec = tween(DRAWER_ENTER_MS)),
+                exit = slideOutHorizontally(
+                    targetOffsetX = { it },
+                    animationSpec = tween(DRAWER_EXIT_MS, easing = FastOutSlowInEasing),
+                ) + fadeOut(animationSpec = tween(DRAWER_EXIT_MS)),
+                modifier = Modifier.align(Alignment.CenterEnd),
+            ) {
+                // 吸收面板空白处的点击，避免穿透到背板误关闭
+                Box(
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { /* 拦截穿透 */ },
+                ) {
+                    // 贴右全高：仅左侧圆角，右侧与屏幕边缘对齐
+                    PlayerDialogSurface(
+                        shape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),
+                        modifier = modifier
+                            .fillMaxHeight()
+                            .width(drawerWidth.dp),
+                    ) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // 头部：可选返回 + 标题 + 关闭
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 8.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                            ) {
+                                if (onBack != null) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                        contentDescription = stringResource(R.string.player_subtitle_back),
+                                        tint = PlayerTextPrimary,
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .clickable(onClick = onBack)
+                                            .padding(8.dp)
+                                            .size(20.dp),
+                                    )
+                                } else {
+                                    Spacer(Modifier.width(12.dp))
+                                }
+                                Text(
+                                    text = title,
+                                    color = PlayerTextPrimary,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(start = 4.dp),
+                                )
+                                IconButton(
+                                    onClick = requestClose,
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Close,
+                                        contentDescription = stringResource(R.string.player_close),
+                                        tint = PlayerTextSecondary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                            HorizontalDivider(
+                                color = PlayerDivider,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                            val bodyModifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                            if (scrollable) {
+                                Column(modifier = bodyModifier.verticalScroll(rememberScrollState())) {
+                                    content()
+                                }
+                            } else {
+                                Column(modifier = bodyModifier) {
+                                    content()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /**
  * 播放器列表选择 Dialog（替代 [com.nichx.niplayer.designsystem.components.NiListItemDialog]）。
  *
@@ -230,9 +417,32 @@ fun PlayerListDialog(
 }
 
 /**
- * 播放器信息展示 Dialog（替代 [com.nichx.niplayer.designsystem.components.NiInfoDialog]）。
+ * 播放器列表选择「抽屉版」（与 [PlayerListDialog] 内容一致，改为右侧抽屉）。
  *
- * 标题 + 分隔线 + 自定义内容。内容超长时自动滚动。
+ * 用于视频场景下的长列表选择（如音轨）；标题由抽屉头部承载。
+ */
+@Composable
+fun PlayerListDrawer(
+    title: String,
+    items: List<NiDialogItem>,
+    onDismiss: () -> Unit,
+) {
+    PlayerSideDrawer(onDismiss = onDismiss, title = title) {
+        Spacer(Modifier.height(4.dp))
+        items.forEachIndexed { index, item ->
+            PlayerItemRow(item)
+            if (index < items.size - 1) {
+                Spacer(Modifier.height(2.dp))
+            }
+        }
+    }
+}
+
+/**
+ * 播放器信息展示「抽屉版」（替代 [com.nichx.niplayer.designsystem.components.NiInfoDialog] 的播放器场景实现）。
+ *
+ * 标题 + 分隔线 + 自定义内容，改为右侧抽屉（媒体信息等长文本在横屏下更易读、不挡画面中心）。
+ * 内容超长时自动滚动。
  *
  * @param title 标题
  * @param onDismiss 关闭回调
@@ -244,12 +454,7 @@ fun PlayerInfoDialog(
     onDismiss: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    PlayerDialog(onDismiss = onDismiss, maxHeight = 600) {
-        PlayerDialogTitle(text = title)
-        HorizontalDivider(
-            color = PlayerDivider,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
+    PlayerSideDrawer(onDismiss = onDismiss, title = title) {
         Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
             content()
         }

@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,14 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -64,6 +60,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  *   直接删掉会是一次能力回退。为 null 时不展示该入口。
  * @param initialLocalPath 本地浏览起始目录（通常是当前视频所在目录），null 用外部存储根
  * @param initialRemote 网络存储起始位置（库 ID + 库内目录）；两者都为空时停在根页面
+ * @param onBack 返回上一级（字幕菜单）；为 null 时不显示返回箭头
  */
 @Composable
 internal fun SubtitleFilePickerDialog(
@@ -72,6 +69,7 @@ internal fun SubtitleFilePickerDialog(
     onPickFromSystem: (() -> Unit)? = null,
     initialLocalPath: String? = null,
     initialRemote: Pair<Int, String>? = null,
+    onBack: (() -> Unit)? = null,
     viewModel: SubtitlePickerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -86,85 +84,58 @@ internal fun SubtitleFilePickerDialog(
 
     val location = state.location
 
-    // 刻意不用 PlayerDialog：它按内容自适应高度（heightIn(max)），
-    // 而文件列表的行数会随目录变化 —— 进目录/返回上级时窗口高度会跟着跳。
-    // 选择器直接指定固定尺寸，内部列表自己滚动。
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+    // 抽屉贴右全高：文件列表行数随目录变化，但抽屉高度恒定，
+    // 不会出现居中窗口那样「进目录/返回上级时窗口高度跳动」的问题。
+    // 内部列表自行滚动（scrollable = false 时由内容承担滚动）。
+    PlayerSideDrawer(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.player_subtitle_pick_file),
+        maxWidth = 380,
+        onBack = onBack,
+        scrollable = false,
     ) {
-        // 只按屏幕收缩，保证小屏/横屏下不超出可视区；其余情况恒为 PICKER_*_DP
-        val screen = LocalConfiguration.current
-        val dialogWidth = minOf(PICKER_WIDTH_DP, screen.screenWidthDp - DIALOG_SCREEN_MARGIN_DP)
-            .coerceAtLeast(MIN_DIALOG_WIDTH_DP)
-        val dialogHeight = minOf(
-            PICKER_HEIGHT_DP,
-            (screen.screenHeightDp * DIALOG_SCREEN_HEIGHT_RATIO).toInt(),
-        ).coerceAtLeast(MIN_DIALOG_HEIGHT_DP)
+        // 当前路径摘要：根页面不显示，浏览中显示「本地文件 / a / b」或「库名 / a / b」
+        if (location != null) {
+            Text(
+                text = locationLabel(location, state.path),
+                color = secondary,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 2.dp),
+            )
+        }
 
-        PlayerDialogSurface(
+        // 列表独占剩余高度并自行滚动：标题与路径行固定不动
+        Column(
             modifier = Modifier
-                .width(dialogWidth.dp)
-                .height(dialogHeight.dp),
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                PlayerDialogTitle(text = stringResource(R.string.player_subtitle_pick_file))
-                PlayerDialogDivider()
-
-                // 当前路径摘要：根页面不显示，浏览中显示「本地文件 / a / b」或「库名 / a / b」
-                if (location != null) {
-                    Text(
-                        text = locationLabel(location, state.path),
-                        color = secondary,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 2.dp),
-                    )
-                }
-
-                // 列表独占剩余高度并自行滚动：标题与路径行固定不动
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    when {
-                        state.loading -> LoadingRow()
-                        state.error != null -> HintRow(text = pickErrorText(state.error!!))
-                        location == null -> RootList(
-                            libraries = state.libraries,
-                            onOpenLocal = viewModel::openLocal,
-                            onOpenLibrary = viewModel::openLibrary,
-                            onPickFromSystem = onPickFromSystem,
-                        )
-                        else -> BrowseList(
-                            entries = state.entries,
-                            onNavigateUp = viewModel::navigateUp,
-                            onOpenEntry = viewModel::openEntry,
-                            onPickFile = { name ->
-                                onPicked(storageIdOf(location), state.path, name)
-                            },
-                        )
-                    }
-                }
+            when {
+                state.loading -> LoadingRow()
+                state.error != null -> HintRow(text = pickErrorText(state.error!!))
+                location == null -> RootList(
+                    libraries = state.libraries,
+                    onOpenLocal = viewModel::openLocal,
+                    onOpenLibrary = viewModel::openLibrary,
+                    onPickFromSystem = onPickFromSystem,
+                )
+                else -> BrowseList(
+                    entries = state.entries,
+                    onNavigateUp = viewModel::navigateUp,
+                    onOpenEntry = viewModel::openEntry,
+                    onPickFile = { name ->
+                        onPicked(storageIdOf(location), state.path, name)
+                    },
+                )
             }
         }
     }
 }
-
-/** 选择器固定尺寸（dp）。内容多少不影响窗口大小。 */
-private const val PICKER_WIDTH_DP = 380
-private const val PICKER_HEIGHT_DP = 520
-
-/** 小屏兜底：左右各留 [DIALOG_SCREEN_MARGIN_DP] / 2，高度最多占屏高 [DIALOG_SCREEN_HEIGHT_RATIO]。 */
-private const val DIALOG_SCREEN_MARGIN_DP = 32
-private const val DIALOG_SCREEN_HEIGHT_RATIO = 0.72f
-private const val MIN_DIALOG_WIDTH_DP = 260
-private const val MIN_DIALOG_HEIGHT_DP = 300
 
 /** 根页面：本地入口 + 存储源列表 + 系统选择器兜底入口。 */
 @Composable

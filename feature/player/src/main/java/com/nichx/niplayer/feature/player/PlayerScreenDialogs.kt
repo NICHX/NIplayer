@@ -2,7 +2,6 @@ package com.nichx.niplayer.feature.player
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,10 +28,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.nichx.niplayer.player.kernel.PlaylistItem
 
+/**
+ * 选集列表（右侧抽屉）。
+ *
+ * 从居中模态改为右侧抽屉：剧集列表是典型的「边看边切」场景，抽屉不遮挡画面中心，
+ * 且独占全高，可见条目远多于居中盒子的限高。
+ */
 @Composable
 internal fun PlaylistDialog(
     playlist: List<PlaylistItem>,
@@ -43,72 +45,59 @@ internal fun PlaylistDialog(
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val onSurface = PlayerDialogColors.textPrimary
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+    PlayerSideDrawer(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.player_episode_list, currentIndex + 1, playlist.size),
+        // 内含 LazyColumn 自身可滚动：交给内容处理，避免嵌套滚动
+        scrollable = false,
     ) {
-        val dialogMaxW = adaptiveDialogMaxWidth(340)
-        PlayerDialogSurface(
-            modifier = Modifier.widthIn(min = 260.dp, max = dialogMaxW.dp),
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
         ) {
-            Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                Text(
-                    text = stringResource(R.string.player_episode_list, currentIndex + 1, playlist.size),
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                    color = onSurface,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                PlayerDialogDivider()
-                LazyColumn(
+            itemsIndexed(playlist) { index, item ->
+                val isCurrent = index == currentIndex
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height((playlist.size.coerceAtMost(8) * 52).dp),
+                        .height(48.dp)
+                        .padding(horizontal = 12.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (isCurrent) primary.copy(alpha = 0.1f)
+                            else Color.Transparent
+                        )
+                        .clickable { onPlayAtIndex(index) }
+                        .padding(horizontal = 8.dp),
                 ) {
-                    itemsIndexed(playlist) { index, item ->
-                        val isCurrent = index == currentIndex
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .padding(horizontal = 12.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(
-                                    if (isCurrent) primary.copy(alpha = 0.1f)
-                                    else Color.Transparent
-                                )
-                                .clickable { onPlayAtIndex(index) }
-                                .padding(horizontal = 8.dp),
-                        ) {
-                            Text(
-                                text = "${index + 1}",
-                                color = if (isCurrent) primary
-                                else onSurface.copy(alpha = 0.4f),
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                modifier = Modifier.width(28.dp),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = item.fileName,
-                                color = if (isCurrent) primary else onSurface,
-                                fontSize = 14.sp,
-                                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (isCurrent) {
-                                Icon(
-                                    imageVector = Icons.Rounded.PlayArrow,
-                                    contentDescription = null,
-                                    tint = primary,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        }
+                    Text(
+                        text = "${index + 1}",
+                        color = if (isCurrent) primary
+                        else onSurface.copy(alpha = 0.4f),
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier.width(28.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = item.fileName,
+                        color = if (isCurrent) primary else onSurface,
+                        fontSize = 14.sp,
+                        fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (isCurrent) {
+                        Icon(
+                            imageVector = Icons.Rounded.PlayArrow,
+                            contentDescription = null,
+                            tint = primary,
+                            modifier = Modifier.size(18.dp),
+                        )
                     }
                 }
             }
