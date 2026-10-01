@@ -32,9 +32,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -52,6 +57,51 @@ import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiSpacings
 import kotlinx.coroutines.launch
+
+/** 媒体库列表的一行：分节标签行 / 存储源行。 */
+private sealed interface LibraryListRow {
+    data class Header(val labelRes: Int, val count: Int, val barColor: Color) : LibraryListRow
+
+    data class Source(val library: MediaLibraryEntity) : LibraryListRow
+}
+
+private fun LibraryListRow.listKey(): String = when (this) {
+    is LibraryListRow.Header -> "header_$labelRes"
+    is LibraryListRow.Source -> "library_${library.id}"
+}
+
+/** 面板内的分节标签行：沿用 [SectionHeader] 样式，作为连续面板中的一行（其下方不画分割线）。 */
+@Composable
+private fun LibrarySectionRow(
+    labelRes: Int,
+    count: Int,
+    barColor: Color,
+    shape: Shape,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(NiExtraColors.current.surfaceLevel2),
+    ) {
+        SectionHeader(
+            label = stringResource(labelRes),
+            count = count,
+            color = barColor,
+        )
+    }
+}
+
+/** 统一面板下按行位置给出圆角：首行只圆上角、末行只圆下角、中间行直角。 */
+private fun libraryCardShape(index: Int, count: Int): Shape {
+    val r = 12.dp
+    return when {
+        count <= 1 -> RoundedCornerShape(r)
+        index == 0 -> RoundedCornerShape(topStart = r, topEnd = r, bottomStart = 0.dp, bottomEnd = 0.dp)
+        index == count - 1 -> RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = r, bottomEnd = r)
+        else -> RoundedCornerShape(0.dp)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -164,7 +214,17 @@ fun LibraryScreen(
                     modifier = Modifier.weight(1f),
                 )
             } else {
-                val grouped = currentFiltered.groupBy { it.mediaType }
+                // 全页存储源拼成一块连续玻璃面板：分节标题作为面板内的标签行，整块无间隙、行间发丝分割线
+                val extraColors = NiExtraColors.current
+                val rows = remember(currentFiltered, extraColors, context) {
+                    currentFiltered.groupBy { it.mediaType }.flatMap { (type, libs) ->
+                        val typeInfo = storageTypeInfo(type, extraColors, context)
+                        buildList {
+                            add(LibraryListRow.Header(type.storageNameRes, libs.size, typeInfo.color))
+                            libs.forEach { add(LibraryListRow.Source(it)) }
+                        }
+                    }
+                }
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(
@@ -173,39 +233,41 @@ fun LibraryScreen(
                         top = 0.dp,
                         bottom = 88.dp,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
                     item(key = "section_count") {
                         Text(
                             text = stringResource(R.string.library_storage_count, currentFiltered.size),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
                         )
                     }
 
-                    grouped.forEach { (type, libs) ->
-                        item(key = "header_${type.value}") {
-                            val typeInfo = storageTypeInfo(type, NiExtraColors.current, context)
-                            SectionHeader(
-                                label = stringResource(type.storageNameRes),
-                                count = libs.size,
-                                color = typeInfo.color,
+                    itemsIndexed(
+                        items = rows,
+                        key = { _, row -> row.listKey() },
+                    ) { index, row ->
+                        val shape = libraryCardShape(index, rows.size)
+                        val showDivider = index != rows.lastIndex
+                        when (row) {
+                            is LibraryListRow.Header -> LibrarySectionRow(
+                                labelRes = row.labelRes,
+                                count = row.count,
+                                barColor = row.barColor,
+                                shape = shape,
                             )
-                        }
-                        itemsIndexed(
-                            items = libs,
-                            key = { _, item -> "library_${item.id}" },
-                        ) { _, library ->
-                            LibrarySourceCard(
-                                library = library,
-                                onClick = { onNavigateToStorageFile(library.id, "") },
+                            is LibraryListRow.Source -> LibrarySourceCard(
+                                library = row.library,
+                                onClick = { onNavigateToStorageFile(row.library.id, "") },
                                 onEdit = {
-                                    onNavigateToStoragePlus(null, library.id)
+                                    onNavigateToStoragePlus(null, row.library.id)
                                 },
                                 onDelete = {
-                                    deleteTarget = library
+                                    deleteTarget = row.library
                                 },
+                                shape = shape,
+                                showDivider = showDivider,
                             )
                         }
                     }

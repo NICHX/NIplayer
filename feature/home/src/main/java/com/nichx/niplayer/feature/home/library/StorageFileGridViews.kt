@@ -51,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -60,6 +61,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.nichx.niplayer.designsystem.components.NiAutoSizeText
+import com.nichx.niplayer.designsystem.components.niCardOpacity
+import com.nichx.niplayer.designsystem.components.niHasCustomBackground
+import com.nichx.niplayer.designsystem.components.niNestedSurface
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
@@ -170,7 +174,14 @@ internal fun GridFileCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .shadow(elevation = 1.dp, shape = cardShape, clip = false)
+                // 启用自定义背景图时取消阴影，避免投影透过半透明卡片形成暗色分层
+                .then(
+                    if (niHasCustomBackground) {
+                        Modifier
+                    } else {
+                        Modifier.shadow(elevation = 1.dp, shape = cardShape, clip = false)
+                    },
+                )
                 .clip(cardShape)
                 .then(
                     if (isSelected) {
@@ -209,12 +220,17 @@ internal fun GridFileCard(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.primaryContainer,
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                                ),
-                            ),
+                            if (niHasCustomBackground) {
+                                // 自定义背景下用均匀半透明填充（不用渐变）：文件夹卡片同样透出背景图
+                                SolidColor(MaterialTheme.colorScheme.primaryContainer.copy(alpha = niCardOpacity))
+                            } else {
+                                Brush.verticalGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.primaryContainer,
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                    ),
+                                )
+                            },
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -246,10 +262,12 @@ internal fun GridFileCard(
                 }
             } else {
                 // 文件：统一 16:9 缩略图比例，音乐视频混存时卡片高度对齐。
-                val thumbBg: Color = when {
-                    isAudio -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                    else -> NiExtraColors.current.surfaceLevel3
-                }
+                val thumbBg: Color = niNestedSurface(
+                    when {
+                        isAudio -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                        else -> NiExtraColors.current.surfaceLevel3
+                    },
+                )
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -334,7 +352,7 @@ internal fun GridFileCard(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .background(
-                                    if (isAudio) Brush.linearGradient(
+                                    if (isAudio && !niHasCustomBackground) Brush.linearGradient(
                                         listOf(
                                             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                                             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f),

@@ -71,7 +71,8 @@ fun NiVideoThumbnail(
     contentScale: ContentScale = ContentScale.Crop,
 ) {
     Box(
-        modifier = modifier.background(NiExtraColors.current.thumbnailPlaceholder),
+        // 缩略图底：启用自定义背景图时用透明画刷，避免不透明占位渐变与半透明卡片底叠加形成分层
+        modifier = modifier.background(niNestedSurfaceBrush(NiExtraColors.current.thumbnailPlaceholder)),
     ) {
         when (model) {
             null -> { /* 纯渐变占位 */ }

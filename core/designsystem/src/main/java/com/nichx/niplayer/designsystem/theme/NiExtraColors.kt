@@ -52,6 +52,24 @@ data class NiExtraColors(
     val brand80 get() = brandScale[8]
     val brand90 get() = brandScale[9]
 
+    /**
+     * 卡片表面按 [cardOpacity] 转为半透明，使自定义背景图能透出（保留层级：越高层越实，维持视觉层次）。
+     *
+     * 仅在启用自定义背景图时由 [NiTheme] 调用；未启用时表面保持不透明，既有观感不变。
+     *
+     * @param cardOpacity 卡片表面（surfaceLevel2）的目标不透明度（0..1）；level1 略更实、level3 略更透
+     */
+    fun withCardTranslucency(cardOpacity: Float): NiExtraColors {
+        val level2 = cardOpacity.coerceIn(0f, 1f)
+        val level1 = (level2 + 0.06f).coerceAtMost(1f)
+        val level3 = (level2 - 0.08f).coerceAtLeast(0f)
+        return copy(
+            surfaceLevel1 = surfaceLevel1.copy(alpha = level1),
+            surfaceLevel2 = surfaceLevel2.copy(alpha = level2),
+            surfaceLevel3 = surfaceLevel3.copy(alpha = level3),
+        )
+    }
+
     companion object {
         private val BrandScaleLight = listOf(
             Color(0xFF001B3D),

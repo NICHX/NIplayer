@@ -30,7 +30,8 @@ import dev.chrisbanes.haze.HazeState
  * @param bottomBar      底栏（通常为 null，底部导航由 HomeScreen 统一悬浮）
  * @param snackbarHost   Snackbar 宿主
  * @param contentWindowInsets 内容系统窗口 inset，默认跟随 Scaffold 默认值
- * @param containerColor 页面容器背景色，默认取主题 background
+ * @param containerColor 页面容器背景色；为 null（默认）时按当前背景决定：启用了自定义背景图
+ *                       （[LocalNiCustomBackground]）则透明以透出根布局的背景图，否则取主题 background
  * @param content        页面内容；参数为 Scaffold innerPadding（含状态栏+顶栏高度/底栏/导航栏），
  *                       应并入滚动区的 contentPadding
  */
@@ -41,11 +42,17 @@ fun NiScaffold(
     bottomBar: @Composable () -> Unit = {},
     snackbarHost: @Composable () -> Unit = {},
     contentWindowInsets: WindowInsets = ScaffoldDefaults.contentWindowInsets,
-    containerColor: Color = MaterialTheme.colorScheme.background,
+    containerColor: Color? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
-    // 每个页面自建模糊状态，顶栏与内容层共享同一实例
+    // 每页自建模糊状态，顶栏与内容层共享同一实例
     val hazeState = remember { HazeState() }
+    // 启用自定义背景图时页面容器透明，让根布局绘制的背景图透出；否则用主题背景色
+    val resolvedContainerColor = containerColor ?: if (niHasCustomBackground) {
+        Color.Transparent
+    } else {
+        MaterialTheme.colorScheme.background
+    }
     CompositionLocalProvider(LocalHazeState provides hazeState) {
         Scaffold(
             modifier = modifier,
@@ -53,7 +60,7 @@ fun NiScaffold(
             bottomBar = bottomBar,
             snackbarHost = snackbarHost,
             // 由调用方决定容器色，避免在模糊背后叠一层不透明块
-            containerColor = containerColor,
+            containerColor = resolvedContainerColor,
             contentWindowInsets = contentWindowInsets,
         ) { innerPadding ->
             // 内容层满铺全屏（含顶栏背后区域），并标记为顶栏模糊来源

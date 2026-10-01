@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -34,6 +35,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.LocalHazeState
+import com.nichx.niplayer.designsystem.components.niHasCustomBackground
 import com.nichx.niplayer.designsystem.components.niHazeSource
 import com.nichx.niplayer.designsystem.components.rememberNiHazeState
 import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
@@ -167,8 +169,9 @@ fun HomeScreen(
 
     // 创建共享 Haze 状态：内容层（niHazeSource）与浮层共享，实现真实背景模糊
     val hazeState = rememberNiHazeState()
-    // 玻璃底栏背景画布：先铺一层 surface 作为统一底色，再捕获页面内容（drawContent）供模糊
-    val floatingBarSurface = MaterialTheme.colorScheme.surface
+    // 玻璃底栏背景画布：先铺一层 surface 作为统一底色，再捕获页面内容（drawContent）供模糊。
+    // 启用自定义背景图时底色改透明：否则不透明底会填实模糊结果，背景图无法透过底栏露出来。
+    val floatingBarSurface = if (niHasCustomBackground) Color.Transparent else MaterialTheme.colorScheme.surface
     val floatingBarBackdrop = rememberLayerBackdrop {
         drawRect(floatingBarSurface)
         drawContent()
@@ -329,8 +332,9 @@ private fun CrossfadePage(
             // 刚离开的页面淡出
             alpha.animateTo(0f, tween(durationMillis = TabCrossfadeDurationMs))
         } else {
-            // 其它页保持透明
-            alpha.snapTo(0f)
+            // 其它页淡出到透明。用动画而非 snap：切换瞬间 previousPage 会滞后一帧，
+            // 直接 snapTo(0) 会让刚离开的页面（及顶栏渐变遮罩）瞬间闪一下，故统一走淡出
+            alpha.animateTo(0f, tween(durationMillis = TabCrossfadeDurationMs))
         }
     }
     Box(

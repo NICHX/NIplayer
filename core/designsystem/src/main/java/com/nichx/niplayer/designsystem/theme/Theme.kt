@@ -6,6 +6,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import com.nichx.niplayer.designsystem.components.LocalNiCustomBackground
 
 /**
  * 应用主题入口。
@@ -36,8 +37,11 @@ fun NiTheme(
     val colorScheme = remember(darkTheme, scheme) {
         if (darkTheme) NiSchemes.buildDark(scheme) else NiSchemes.buildLight(scheme)
     }
-    val extraColors = remember(darkTheme, scheme) {
-        if (darkTheme) NiSchemes.buildDarkExtra(scheme) else NiSchemes.buildLightExtra(scheme)
+    // 启用自定义背景图时，卡片表面按可调不透明度转为半透明以透出背景图；否则保持不透明
+    val customBackground = LocalNiCustomBackground.current
+    val extraColors = remember(darkTheme, scheme, customBackground?.cardOpacity) {
+        val base = if (darkTheme) NiSchemes.buildDarkExtra(scheme) else NiSchemes.buildLightExtra(scheme)
+        if (customBackground != null) base.withCardTranslucency(customBackground.cardOpacity) else base
     }
 
     val configuration = LocalConfiguration.current

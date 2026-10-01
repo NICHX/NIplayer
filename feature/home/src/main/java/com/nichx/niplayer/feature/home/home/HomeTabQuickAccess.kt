@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -36,6 +37,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.nichx.niplayer.designsystem.components.NiAutoSizeText
+import com.nichx.niplayer.designsystem.components.niCardOpacity
+import com.nichx.niplayer.designsystem.components.niHasCustomBackground
+import com.nichx.niplayer.designsystem.components.niNestedSurface
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.common.media.MediaFileTypes
@@ -125,7 +129,14 @@ internal fun HomeQuickAccessGridItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .shadow(elevation = 1.dp, shape = cardShape, clip = false)
+                // 启用自定义背景图时取消阴影，避免投影透过半透明卡片形成暗色分层
+                .then(
+                    if (niHasCustomBackground) {
+                        Modifier
+                    } else {
+                        Modifier.shadow(elevation = 1.dp, shape = cardShape, clip = false)
+                    },
+                )
                 .clip(cardShape)
                 .background(NiExtraColors.current.surfaceLevel3)
                 .clickable(
@@ -140,7 +151,14 @@ internal fun HomeQuickAccessGridItem(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Brush.verticalGradient(gradientColors)),
+                        .background(
+                            if (niHasCustomBackground) {
+                                // 自定义背景下用均匀半透明填充（不用渐变）：文件夹卡片同样透出背景图
+                                SolidColor(pc.copy(alpha = niCardOpacity))
+                            } else {
+                                Brush.verticalGradient(gradientColors)
+                            },
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -151,9 +169,13 @@ internal fun HomeQuickAccessGridItem(
                     )
                 }
             } else {
-                val thumbBg = if (isAudio)
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                else NiExtraColors.current.surfaceLevel3
+                val thumbBg = niNestedSurface(
+                    if (isAudio) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    } else {
+                        NiExtraColors.current.surfaceLevel3
+                    },
+                )
                 Box(
                     modifier = Modifier.fillMaxSize().background(thumbBg),
                 ) {

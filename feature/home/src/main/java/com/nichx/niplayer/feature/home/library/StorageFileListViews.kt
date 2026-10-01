@@ -70,6 +70,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.nichx.niplayer.designsystem.components.NiAutoSizeText
+import com.nichx.niplayer.designsystem.components.niHasCustomBackground
+import com.nichx.niplayer.designsystem.components.niNestedSurface
 import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
 import com.nichx.niplayer.designsystem.iconstyle.NiStyleIcon
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
@@ -261,8 +263,9 @@ internal fun FileRow(
             .fillMaxWidth()
             .graphicsLayer { this.alpha = bgAlpha }
             // 多选模式下取消阴影：列表保持平整，选中态用边框+背景区分，避免阴影干扰视觉
+            // 启用自定义背景图时同样取消阴影：投影会透过半透明卡片形成一层暗色分层
             .then(
-                if (isMultiSelect) {
+                if (isMultiSelect || niHasCustomBackground) {
                     Modifier
                 } else {
                     Modifier.shadow(elevation = 1.dp, shape = rowShape, clip = false)
@@ -320,9 +323,13 @@ internal fun FileRow(
             // 视频/图片保持 88×56 16:9 影视感。
             val thumbWidth = if (isAudio) 56.dp else 88.dp
             val thumbHeight = 56.dp
-            val thumbBgColor: Color = if (isAudio)
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-            else NiExtraColors.current.surfaceLevel3
+            val thumbBgColor: Color = niNestedSurface(
+                if (isAudio) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                } else {
+                    NiExtraColors.current.surfaceLevel3
+                },
+            )
             Box(
                 modifier = Modifier
                     .size(width = thumbWidth, height = thumbHeight)
@@ -435,7 +442,7 @@ internal fun FileRow(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(NiExtraColors.current.surfaceLevel3),
+                    .background(niNestedSurface(NiExtraColors.current.surfaceLevel3)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -695,8 +702,9 @@ internal fun FlatFolderRow(
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer { this.alpha = bgAlpha }
+            // 启用自定义背景图时取消阴影，避免投影透过半透明卡片形成暗色分层
             .then(
-                if (isMultiSelect) {
+                if (isMultiSelect || niHasCustomBackground) {
                     Modifier
                 } else {
                     Modifier.shadow(elevation = 1.dp, shape = rowShape, clip = false)

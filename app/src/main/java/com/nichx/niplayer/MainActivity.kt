@@ -36,7 +36,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
@@ -53,15 +55,18 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.common.message.AppMessageController
 import kotlinx.coroutines.delay
+import com.nichx.niplayer.datastore.BackgroundSettings
 import com.nichx.niplayer.datastore.LanguageSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.datastore.GlassSettings
 import com.nichx.niplayer.designsystem.components.AppMessageHost
 import com.nichx.niplayer.designsystem.components.LocalNiBackdrop
+import com.nichx.niplayer.designsystem.components.LocalNiCustomBackground
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassTopBarOpacity
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
+import com.nichx.niplayer.designsystem.components.NiCustomBackground
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayHost
 import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
 import androidx.compose.ui.unit.dp
@@ -78,7 +83,9 @@ import com.nichx.niplayer.feature.player.MusicBar
 import com.nichx.niplayer.feature.player.PlayerActivity
 import com.nichx.niplayer.navigation.NiNavHost
 import com.nichx.niplayer.navigation.Routes
+import coil3.compose.AsyncImage
 import dagger.hilt.android.AndroidEntryPoint
+import java.io.File
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -109,11 +116,26 @@ class MainActivity : ComponentActivity() {
             val glassTopBarOpacity by GlassSettings.topBarOpacityFlow.collectAsStateWithLifecycle()
             // 面板（对话框/菜单）不透明度：与薄浮层分开设置，经 LocalNiGlassPanelOpacity 下发
             val glassPanelOpacity by GlassSettings.panelOpacityFlow.collectAsStateWithLifecycle()
+            // 自定义背景图：路径 + 不透明度，绘制在内容层最底部，经 LocalNiCustomBackground 下发
+            // （视频播放器为独立 PlayerActivity，天然不受此处影响，符合"不含播放器"的生效范围）
+            val backgroundImagePath by BackgroundSettings.imagePathFlow.collectAsStateWithLifecycle()
+            val backgroundOpacity by BackgroundSettings.opacityFlow.collectAsStateWithLifecycle()
+            val backgroundCardOpacity by BackgroundSettings.cardOpacityFlow.collectAsStateWithLifecycle()
             val darkTheme = when (themeConfig.mode) {
                 ThemeSettings.Mode.LIGHT -> false
                 ThemeSettings.Mode.DARK -> true
                 ThemeSettings.Mode.SYSTEM -> isSystemInDarkTheme()
             }
+            // 自定义背景需在 NiTheme 之上提供：NiTheme 依此决定卡片表面是否半透明，
+            // 各页面骨架（NiScaffold）也依此绘制背景图并透出
+            val customBackground = backgroundImagePath?.let {
+                NiCustomBackground(
+                    imagePath = it,
+                    opacity = backgroundOpacity,
+                    cardOpacity = backgroundCardOpacity,
+                )
+            }
+            CompositionLocalProvider(LocalNiCustomBackground provides customBackground) {
             NiTheme(
                 darkTheme = darkTheme,
                 // A1 修复：datastore 只存序号，在 UI 边界还原为配色方案枚举
@@ -276,6 +298,19 @@ class MainActivity : ComponentActivity() {
                             .drawBehind { if (prewarmStep != 0) {} }
                             .layerBackdrop(glassBackdrop),
                     ) {
+                    // 自定义背景图：绘制在内容层底部（页面容器透明处透出），并作为 glass backdrop
+                    // 的一部分被玻璃浮层模糊采样。置于 NavHost 之外——不参与 Tab 切换的透明度动画，
+                    // 避免切换时背景图随之淡入淡出导致闪白
+                    customBackground?.let { bg ->
+                        AsyncImage(
+                            model = File(bg.imagePath),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { alpha = bg.opacity },
+                        )
+                    }
                     // A2 架构修复：路由由各 feature 自己注册（homeNavGraph / playerNavGraph），
                     // :app 只负责装配与提供宿主侧能力，不再逐个 import feature 的屏幕
                     NiNavHost(
@@ -321,6 +356,7 @@ class MainActivity : ComponentActivity() {
                     }
                     }
                 }
+            }
             }
         }
     }

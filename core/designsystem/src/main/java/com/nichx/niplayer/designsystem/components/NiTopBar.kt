@@ -52,6 +52,8 @@ fun NiTopBar(
     fadeFromRatio: Float = 0f,
 ) {
     val hazeState = LocalHazeState.current
+    // 启用自定义背景图时，模糊底衬改为透明，使顶栏透出背景图（而非被页面背景色填实）
+    val customBackgroundActive = LocalNiCustomBackground.current != null
     // 顶栏透明度独立于底栏（NiGlassBottomBar），由 LocalNiGlassTopBarOpacity 驱动，设置内可单独调节
     val glassOpacity = LocalNiGlassTopBarOpacity.current
     // 100%：完全不透明，跳过渐进模糊叠层，避免任何半透明段
@@ -68,10 +70,10 @@ fun NiTopBar(
             1f to topBackground.copy(alpha = glassOpacity),
         )
     }
-
     when {
         // ===== 真实渐进模糊路径（NiScaffold 作用域，且未到 100%）=====
-        hazeState != null && !solid -> Column(
+        // 启用自定义背景图时不走模糊：背景图绘制在模糊源之外，模糊源为空易发白，改用渐变遮罩
+        hazeState != null && !solid && !customBackgroundActive -> Column(
             modifier = modifier
                 .fillMaxWidth()
                 // 先铺一层半透明 scrim 保证可读性
@@ -95,6 +97,14 @@ fun NiTopBar(
         ) {
             TopBarRow(title = title, subtitle = subtitle, navigationIcon = navigationIcon, actions = actions)
         }
+        // ===== 自定义背景图：顶栏不铺任何遮罩，直接透出背景图（避免遮罩与 tab 切换动画叠加闪烁）=====
+        customBackgroundActive -> TopBarRow(
+            modifier = modifier,
+            title = title,
+            subtitle = subtitle,
+            navigationIcon = navigationIcon,
+            actions = actions,
+        )
         // ===== 光栅渐变回退路径（无 LocalHazeState，保持原视觉）=====
         else -> TopBarRow(
             modifier = modifier.drawBehind { drawRect(brush = fadeBrush, size = size) },

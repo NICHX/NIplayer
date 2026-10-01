@@ -1,5 +1,13 @@
 package com.nichx.niplayer.feature.home.settings
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +34,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -33,21 +43,29 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import com.nichx.niplayer.datastore.BackgroundSettings
 import com.nichx.niplayer.datastore.GlassSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.designsystem.components.NiScaffold
@@ -56,6 +74,10 @@ import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiScheme
 import com.nichx.niplayer.designsystem.theme.NiSchemes
 import com.nichx.niplayer.feature.home.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,9 +101,51 @@ fun ThemeScreen(
     val glassTopBarOpacity by GlassSettings.topBarOpacityFlow.collectAsStateWithLifecycle()
     val glassPanelOpacity by GlassSettings.panelOpacityFlow.collectAsStateWithLifecycle()
 
+    // 自定义背景：图片路径 + 不透明度，实时驱动全局页面背景与下方预览
+    val context = LocalContext.current
+    val backgroundScope = rememberCoroutineScope()
+    val backgroundImagePath by BackgroundSettings.imagePathFlow.collectAsStateWithLifecycle()
+    val backgroundOpacity by BackgroundSettings.opacityFlow.collectAsStateWithLifecycle()
+    val backgroundCardOpacity by BackgroundSettings.cardOpacityFlow.collectAsStateWithLifecycle()
+
+    // 选图：先解码为位图，再进入裁剪页；裁剪确认后落盘并写入设置。
+    // I/O 放到 IO 线程，避免大图解码/拷贝阻塞主线程。
+    var pendingCropSource by remember { mutableStateOf<Bitmap?>(null) }
+    val pickBackgroundLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            backgroundScope.launch {
+                val bitmap = withContext(Dispatchers.IO) { decodeBackgroundBitmap(context, uri) }
+                if (bitmap != null) pendingCropSource = bitmap
+            }
+        }
+    }
+
     // 选中的配色分类：默认定位到当前方案所属分类
     var selectedCategoryRes by remember {
         mutableIntStateOf(currentScheme.categoryRes)
+    }
+
+    // 选图后进入全屏裁剪：拖动 / 缩放选定要显示的画面区域，确认后保存为背景
+    val cropSource = pendingCropSource
+    if (cropSource != null) {
+        BackgroundCropScreen(
+            source = cropSource,
+            onCancel = { pendingCropSource = null },
+            onConfirm = { cropped ->
+                pendingCropSource = null
+                backgroundScope.launch {
+                    val savedPath = withContext(Dispatchers.IO) { saveBackgroundBitmap(context, cropped) }
+                    if (savedPath != null) {
+                        val old = BackgroundSettings.imagePath
+                        BackgroundSettings.imagePath = savedPath
+                        old?.let { runCatching { File(it).delete() } }
+                    }
+                }
+            },
+        )
+        return
     }
 
     NiScaffold(
@@ -165,6 +229,35 @@ fun ThemeScreen(
                     .padding(16.dp),
             )
 
+            // ── 自定义背景（图片 + 不透明度） ──
+            Spacer(Modifier.height(4.dp))
+            SectionLabel(text = stringResource(R.string.theme_custom_background))
+            CustomBackgroundCard(
+                imagePath = backgroundImagePath,
+                opacity = backgroundOpacity,
+                onPick = { pickBackgroundLauncher.launch("image/*") },
+                onRemove = {
+                    backgroundImagePath?.let { runCatching { File(it).delete() } }
+                    BackgroundSettings.imagePath = null
+                },
+            )
+            if (backgroundImagePath != null) {
+                GlassOpacitySlider(
+                    label = stringResource(R.string.theme_custom_background_opacity),
+                    value = backgroundOpacity,
+                    min = BackgroundSettings.MIN_OPACITY,
+                    max = BackgroundSettings.MAX_OPACITY,
+                    onValueChange = { BackgroundSettings.opacity = it },
+                )
+                GlassOpacitySlider(
+                    label = stringResource(R.string.theme_custom_background_card_opacity),
+                    value = backgroundCardOpacity,
+                    min = BackgroundSettings.MIN_CARD_OPACITY,
+                    max = BackgroundSettings.MAX_CARD_OPACITY,
+                    onValueChange = { BackgroundSettings.cardOpacity = it },
+                )
+            }
+
             // ── 玻璃不透明度（顶栏/导航栏/面板分开调节） ──
             SectionLabel(text = stringResource(R.string.settings_glass_title))
             GlassOpacitySlider(
@@ -235,6 +328,88 @@ private fun GlassOpacitySlider(
             onValueChange = onValueChange,
             valueRange = min..max,
         )
+    }
+}
+
+/**
+ * 自定义背景卡片：
+ * - 未设置时展示可点击的占位框（提示选择图片）；
+ * - 已设置时以所选不透明度预览图片（叠在主题背景色之上），并提供更换 / 移除操作。
+ */
+@Composable
+private fun CustomBackgroundCard(
+    imagePath: String?,
+    opacity: Float,
+    onPick: () -> Unit,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(NiExtraColors.current.surfaceLevel2)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(104.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.background)
+                .border(
+                    width = 1.dp,
+                    color = NiExtraColors.current.outlineSoft.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(12.dp),
+                )
+                .then(if (imagePath == null) Modifier.clickable(onClick = onPick) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (imagePath == null) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Image,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(26.dp),
+                    )
+                    Text(
+                        text = stringResource(R.string.theme_custom_background_pick),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+            } else {
+                AsyncImage(
+                    model = File(imagePath),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = opacity },
+                )
+            }
+        }
+        if (imagePath != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onPick) {
+                    Text(stringResource(R.string.theme_custom_background_change))
+                }
+                TextButton(onClick = onRemove) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.theme_custom_background_remove))
+                }
+            }
+        }
     }
 }
 
@@ -558,3 +733,41 @@ private fun NiScheme.descriptionRes(): Int = when (this) {
     NiScheme.MAUVE -> R.string.theme_scheme_mauve_desc
     NiScheme.SAGE -> R.string.theme_scheme_sage_desc
 }
+
+/** 自定义背景图片在应用私有目录中的文件名前缀。 */
+private const val CUSTOM_BACKGROUND_FILE_PREFIX = "custom_background_"
+
+/** 解码选取的背景图片为软件位图（限制最长边，避免大图占用过多内存）。 */
+private fun decodeBackgroundBitmap(context: Context, uri: Uri, maxDim: Int = 2048): Bitmap? =
+    runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val source = ImageDecoder.createSource(context.contentResolver, uri)
+            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                // 软件分配 + 不可变：保证后续 Bitmap.createBitmap 裁剪可读取像素，且自动纠正 EXIF 方向
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                decoder.isMutableRequired = false
+                val longest = maxOf(info.size.width, info.size.height)
+                if (longest > maxDim) {
+                    val scale = maxDim.toFloat() / longest
+                    decoder.setTargetSize(
+                        (info.size.width * scale).toInt().coerceAtLeast(1),
+                        (info.size.height * scale).toInt().coerceAtLeast(1),
+                    )
+                }
+            }
+        } else {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(input)
+            }
+        }
+    }.getOrNull()
+
+/** 将裁剪后的位图保存到应用私有目录，返回文件绝对路径（失败返回 null）。 */
+private fun saveBackgroundBitmap(context: Context, bitmap: Bitmap): String? =
+    runCatching {
+        val dest = File(context.filesDir, "$CUSTOM_BACKGROUND_FILE_PREFIX${System.currentTimeMillis()}")
+        dest.outputStream().use { output ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, output)
+        }
+        dest.takeIf { it.length() > 0L }?.absolutePath
+    }.getOrNull()

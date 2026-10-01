@@ -101,6 +101,7 @@ import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
+import com.nichx.niplayer.designsystem.components.LocalNiCustomBackground
 import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
 import com.nichx.niplayer.designsystem.iconstyle.NiStyleIcon
 import com.nichx.niplayer.storage.StorageFile
@@ -448,15 +449,19 @@ fun FileBrowserScreen(
     }
 
     // 页面内容层的本地液态玻璃捕获：多选操作栏与顶栏按钮共用，供 drawBackdrop 做真实模糊 + 高光
-    val contentBackdropSurface = MaterialTheme.colorScheme.background
+    // 启用自定义背景图时底衬透明，让背景图透出；否则用页面背景色
+    val contentBackdropSurface = if (LocalNiCustomBackground.current != null) {
+        Color.Transparent
+    } else {
+        MaterialTheme.colorScheme.background
+    }
     val multiSelectBarBackdrop = rememberLayerBackdrop {
         drawRect(contentBackdropSurface)
         drawContent()
     }
 
     NiScaffold(
-        // 独立全屏目的地，用不透明底色承载页面内容
-        containerColor = MaterialTheme.colorScheme.background,
+        // 容器色交由 NiScaffold 依当前背景决定：启用自定义背景图时透明以透出背景，否则用页面背景色
         topBar = {
             if (isMultiSelect) {
                 NiTopBar(

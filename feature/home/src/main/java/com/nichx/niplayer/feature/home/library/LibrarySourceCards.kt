@@ -51,7 +51,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
@@ -80,6 +83,8 @@ internal fun LibrarySourceCard(
     onClick: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    shape: Shape = cardShape,
+    showDivider: Boolean = false,
 ) {
     val extraColors = NiExtraColors.current
     val context = LocalContext.current
@@ -94,6 +99,8 @@ internal fun LibrarySourceCard(
     val brandColor = typeInfo.color
     val colorAlpha10 = remember(brandColor) { brandColor.copy(alpha = 0.1f) }
     val outlineAlpha40 = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    // 统一面板下：行间分割线复用设置页样式（outlineVariant@50%、左侧内缩 56dp）
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
 
     Box {
         Row(
@@ -102,8 +109,23 @@ internal fun LibrarySourceCard(
                 .height(64.dp)
                 // 语义合并：图标/名称/描述合并为单一节点，降低语义树节点数
                 .semantics(mergeDescendants = true) {}
-                .clip(cardShape)
+                .clip(shape)
                 .background(extraColors.surfaceLevel2)
+                .then(
+                    if (showDivider) {
+                        Modifier.drawBehind {
+                            val stroke = 1.dp.toPx()
+                            drawLine(
+                                color = dividerColor,
+                                start = Offset(56.dp.toPx(), size.height - stroke / 2f),
+                                end = Offset(size.width, size.height - stroke / 2f),
+                                strokeWidth = stroke,
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = if (canModify) { { showMenu = true } } else null,

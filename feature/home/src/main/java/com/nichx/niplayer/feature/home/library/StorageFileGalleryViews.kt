@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -59,6 +60,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.nichx.niplayer.designsystem.components.NiEmptyState
+import com.nichx.niplayer.designsystem.components.niCardOpacity
+import com.nichx.niplayer.designsystem.components.niHasCustomBackground
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.common.media.MediaFileTypes
@@ -226,12 +229,17 @@ internal fun GalleryCell(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                            ),
-                        ),
+                        if (niHasCustomBackground) {
+                            // 自定义背景下用均匀半透明填充（不用渐变）：文件夹卡片同样透出背景图
+                            SolidColor(MaterialTheme.colorScheme.primaryContainer.copy(alpha = niCardOpacity))
+                        } else {
+                            Brush.verticalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                ),
+                            )
+                        },
                     ),
                 contentAlignment = Alignment.Center,
             ) {

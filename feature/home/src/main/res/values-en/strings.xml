@@ -585,6 +585,13 @@
     <string name="theme_scheme_mauve_desc">Mauve, soft and elegant</string>
     <string name="theme_scheme_sage_desc">Sage, quiet and refined</string>
     <string name="theme_preview">Theme preview</string>
+    <string name="theme_custom_background">Custom background</string>
+    <string name="theme_custom_background_pick">Choose image</string>
+    <string name="theme_custom_background_change">Change image</string>
+    <string name="theme_custom_background_remove">Remove background</string>
+    <string name="theme_custom_background_opacity">Background opacity</string>
+    <string name="theme_custom_background_card_opacity">Card opacity</string>
+    <string name="theme_custom_background_crop_hint">Drag or pinch to adjust the visible area</string>
 
     <!-- Language (LanguageScreen) -->
     <string name="language_title">Language</string>

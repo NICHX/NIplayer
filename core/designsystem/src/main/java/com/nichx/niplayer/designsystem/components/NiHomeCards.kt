@@ -39,7 +39,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -104,7 +103,7 @@ fun NiHeroResumeCard(
                 scaleY = scale
                 this.alpha = alpha
             }
-            .shadow(elevation = 1.dp, shape = RoundedCornerShape(16.dp), clip = false)
+            .niCardShadow(RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
             .background(NiExtraColors.current.surfaceLevel2)
             .clickable(
@@ -228,7 +227,7 @@ fun NiThumbCard(
                     scaleY = scale
                     this.alpha = alpha
                 }
-                .shadow(elevation = 1.dp, shape = RoundedCornerShape(16.dp), clip = false)
+                .niCardShadow(RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(NiExtraColors.current.surfaceLevel2)
                 .clickableOrLongClickable(
@@ -243,7 +242,7 @@ fun NiThumbCard(
                 modifier = Modifier
                     .size(if (squareCover) 50.dp else 88.dp, 50.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(NiExtraColors.current.surfaceLevel2),
+                    .background(niNestedSurface(NiExtraColors.current.surfaceLevel2)),
             ) {
                 if (thumbnailModel != null) {
                     NiVideoThumbnail(
@@ -334,7 +333,7 @@ fun NiThumbCard(
                     scaleY = scale
                     this.alpha = alpha
                 }
-                .shadow(elevation = 1.dp, shape = RoundedCornerShape(16.dp), clip = false)
+                .niCardShadow(RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(NiExtraColors.current.surfaceLevel2)
                 .clickable(
@@ -464,7 +463,7 @@ fun NiQuickAccessGridItem(
             // 语义合并：图标/名称/来源合并为单一节点，降低语义树节点数
             .semantics(mergeDescendants = true) {}
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(elevation = 1.dp, shape = RoundedCornerShape(12.dp), clip = false)
+            .niCardShadow(RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
             .background(NiExtraColors.current.surfaceLevel2)
             .clickable(
