@@ -213,7 +213,12 @@ class DownloadManagerCancelRaceTest {
         coEvery { storage.close() } returns Unit
 
         val factory = mockk<StorageFactory>(relaxed = true)
-        every { factory.create(any()) } returns storage
+        // 必须打桩 createOrNull（而非 create）——DownloadManager 实际调用的就是它。
+        // 若只桩 create，松散的 mock 会把 createOrNull 单独拦截并返回一个**子 mock Storage**，
+        // 其 openInputStream 又返回松散 mock InputStream，read() 恒返回 0 → 写入循环永无进展、
+        // 无任何挂起点地空转，每次 read 都让 MockK 记录一个 Invocation（含栈快照），
+        // 数秒内即可堆满测试 worker 堆并 OOM（表现为 CI「Build & Unit Test」卡死到超时）。
+        every { factory.createOrNull(any()) } returns storage
 
         return DownloadManager(context, factory, taskDao, libraryDao)
     }
