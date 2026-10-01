@@ -1,12 +1,15 @@
 package com.nichx.niplayer.feature.player
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -224,13 +227,16 @@ private const val DRAWER_ENTER_MS = 280
 private const val DRAWER_EXIT_MS = 220
 
 /**
- * 播放器右侧抽屉面板（视频场景专用）。
+ * 播放器侧边 / 底部弹层（视频场景专用）。
  *
- * 与居中 [PlayerDialog] 共用同一「液态玻璃」材质（[PlayerDialogSurface]），但贴右侧、全高、从右滑入。
- * 视频播放以「边看边操作」为主，列表 / 信息 / 设置类弹层改用抽屉可避免遮挡画面中心。
+ * 与居中 [PlayerDialog] 共用同一「液态玻璃」材质（[PlayerDialogSurface]），
+ * 但会随屏幕方向切换形态：
+ * - 横屏：贴右侧、全高，从右滑入；
+ * - 竖屏：贴底部、通栏、限高，从下滑入 —— 竖屏下右侧抽屉几乎占满屏宽且全高，
+ *   既遮挡画面又不利于单手操作，改为底部弹层更符合手机使用习惯。
  *
  * 交互：
- * - 打开：从右滑入 + 淡入（[DRAWER_ENTER_MS]）
+ * - 打开：滑入 + 淡入（[DRAWER_ENTER_MS]）
  * - 关闭：外部点击 / 返回键 / 右上角关闭 均先播放滑出动画，动画结束后再回调 [onDismiss]
  *   （若直接回调，外层 `if (show)` 会立刻移除窗口，看不到退场）
  * - 内容区默认由本组件提供纵向滚动；[scrollable] = false 时交给内容自行滚动，
@@ -239,7 +245,7 @@ private const val DRAWER_EXIT_MS = 220
  * @param onDismiss 关闭回调
  * @param title 标题
  * @param modifier 额外修饰符
- * @param maxWidth 最大宽度（默认 360dp，仍按屏宽自适应收缩）
+ * @param maxWidth 横屏抽屉最大宽度（默认 360dp，仍按屏宽自适应收缩）
  * @param onBack 左上角返回回调；为 null 时不显示返回箭头
  * @param scrollable 内容区是否由本组件提供纵向滚动（默认 true）
  * @param content 内容（具备 ColumnScope，可用 weight 占满剩余高度）
@@ -258,6 +264,11 @@ fun PlayerSideDrawer(
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { visible = true }
 
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+    // 竖屏底部弹层限高：内容短时按内容收缩，列表长时最多占屏高约 72%
+    val sheetMaxHeight = (configuration.screenHeightDp * 0.72f).toInt().coerceAtLeast(320).dp
+
     // 先播退场动画，再通知外部销毁窗口
     val requestClose: () -> Unit = {
         if (visible) {
@@ -274,11 +285,12 @@ fun PlayerSideDrawer(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         val drawerWidth = adaptiveDialogMaxWidth(maxWidth)
+        val sheetAlignment = if (isPortrait) Alignment.BottomCenter else Alignment.CenterEnd
         Box(
             modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.CenterEnd,
+            contentAlignment = sheetAlignment,
         ) {
-            // 点击抽屉外的画面区域关闭。
+            // 点击面板外的画面区域关闭。
             // 自绘背板：满屏内容下 Dialog 的窗口级 outside-click 不可靠，这里显式处理。
             Box(
                 modifier = Modifier
@@ -291,15 +303,29 @@ fun PlayerSideDrawer(
             )
             AnimatedVisibility(
                 visible = visible,
-                enter = slideInHorizontally(
-                    initialOffsetX = { it },
-                    animationSpec = tween(DRAWER_ENTER_MS, easing = FastOutSlowInEasing),
-                ) + fadeIn(animationSpec = tween(DRAWER_ENTER_MS)),
-                exit = slideOutHorizontally(
-                    targetOffsetX = { it },
-                    animationSpec = tween(DRAWER_EXIT_MS, easing = FastOutSlowInEasing),
-                ) + fadeOut(animationSpec = tween(DRAWER_EXIT_MS)),
-                modifier = Modifier.align(Alignment.CenterEnd),
+                enter = if (isPortrait) {
+                    slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = tween(DRAWER_ENTER_MS, easing = FastOutSlowInEasing),
+                    ) + fadeIn(animationSpec = tween(DRAWER_ENTER_MS))
+                } else {
+                    slideInHorizontally(
+                        initialOffsetX = { it },
+                        animationSpec = tween(DRAWER_ENTER_MS, easing = FastOutSlowInEasing),
+                    ) + fadeIn(animationSpec = tween(DRAWER_ENTER_MS))
+                },
+                exit = if (isPortrait) {
+                    slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = tween(DRAWER_EXIT_MS, easing = FastOutSlowInEasing),
+                    ) + fadeOut(animationSpec = tween(DRAWER_EXIT_MS))
+                } else {
+                    slideOutHorizontally(
+                        targetOffsetX = { it },
+                        animationSpec = tween(DRAWER_EXIT_MS, easing = FastOutSlowInEasing),
+                    ) + fadeOut(animationSpec = tween(DRAWER_EXIT_MS))
+                },
+                modifier = Modifier.align(sheetAlignment),
             ) {
                 // 吸收面板空白处的点击，避免穿透到背板误关闭
                 Box(
@@ -308,14 +334,36 @@ fun PlayerSideDrawer(
                         indication = null,
                     ) { /* 拦截穿透 */ },
                 ) {
-                    // 贴右全高：仅左侧圆角，右侧与屏幕边缘对齐
+                    // 竖屏贴底通栏（仅上方圆角）；横屏贴右全高（仅左侧圆角）
+                    val surfaceShape = if (isPortrait) {
+                        RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+                    } else {
+                        RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp)
+                    }
                     PlayerDialogSurface(
-                        shape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),
-                        modifier = modifier
-                            .fillMaxHeight()
-                            .width(drawerWidth.dp),
+                        shape = surfaceShape,
+                        modifier = if (isPortrait) {
+                            modifier
+                                .fillMaxWidth()
+                                .heightIn(max = sheetMaxHeight)
+                        } else {
+                            modifier
+                                .fillMaxHeight()
+                                .width(drawerWidth.dp)
+                        },
                     ) {
-                        Column(modifier = Modifier.fillMaxSize()) {
+                        Column(modifier = if (isPortrait) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
+                            if (isPortrait) {
+                                // 底部弹层拖拽指示条
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 8.dp, bottom = 2.dp)
+                                        .size(width = 32.dp, height = 4.dp)
+                                        .clip(CircleShape)
+                                        .background(PlayerTextSecondary.copy(alpha = 0.4f))
+                                        .align(Alignment.CenterHorizontally),
+                                )
+                            }
                             // 头部：可选返回 + 标题 + 关闭
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -364,9 +412,14 @@ fun PlayerSideDrawer(
                                 color = PlayerDivider,
                                 modifier = Modifier.padding(horizontal = 16.dp),
                             )
-                            val bodyModifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
+                            val bodyModifier = if (isPortrait) {
+                                // 竖屏让内容按需撑高：短内容得到矮面板，长列表才占到限高
+                                Modifier.fillMaxWidth()
+                            } else {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                            }
                             if (scrollable) {
                                 Column(modifier = bodyModifier.verticalScroll(rememberScrollState())) {
                                     content()
