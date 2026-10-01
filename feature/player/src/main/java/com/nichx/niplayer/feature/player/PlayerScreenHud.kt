@@ -480,6 +480,11 @@ internal fun PlayerControllerLayer(
     onResetZoom: () -> Unit = {},
     /** 底部控制栏要渲染的功能按钮 id（由「控制栏自定义」决定，已按 order 排序）。 */
     bottomEntryIds: List<String> = emptyList(),
+    /**
+     * 任意功能 id → HUD 按钮配置。让底栏能够渲染 HUD 类功能（旋转/截图/画中画…），
+     * 与 HUD 列/「更多」菜单互为通用，从而实现「除播放控制外任意功能可放任意位置」。
+     */
+    ctrlButton: @Composable (String) -> HudButtonConfig? = { null },
 ) {
     val context = LocalContext.current
     val audioManager = remember { context.getSystemService(AudioManager::class.java) }
@@ -693,9 +698,12 @@ internal fun PlayerControllerLayer(
             Spacer(Modifier.height(6.dp))
 
             if (isPortrait) {
-                // 竖屏：功能按钮行 + 核心播放控制行（居中对齐）
+                // 竖屏：功能按钮行（≤7 个均匀分布，超出可横向滑动）+ 核心播放控制行
+                val fnCount = bottomEntryIds.count { it != "bar_playback" }
+                val fnScrollable = fnCount > 7
                 BottomFunctionButtons(
                     ids = bottomEntryIds,
+                    ctrlButton = ctrlButton,
                     speedIndex = speedIndex,
                     speedLabel = speedLabel,
                     scaleIndex = scaleIndex,
@@ -712,177 +720,133 @@ internal fun PlayerControllerLayer(
                     onTogglePlaylistDialog = onTogglePlaylistDialog,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
+                        .then(
+                            if (fnScrollable) {
+                                Modifier.horizontalScroll(rememberScrollState())
+                            } else {
+                                Modifier
+                            },
+                        )
                         .padding(horizontal = 8.dp),
+                    arrangement = if (fnScrollable) Arrangement.Start else Arrangement.SpaceEvenly,
                 )
 
                 Spacer(Modifier.height(6.dp))
 
-                // 第二行：核心播放控制（上一集/快退/播放/快进/下一集）
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (playlist.size > 1) {
-                        IconButton(onClick = onSkipPrevious, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.SkipPrevious,
-                                contentDescription = stringResource(R.string.player_episode_previous),
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
-                    }
-                    IconButton(onClick = onRewind, modifier = Modifier.size(48.dp)) {
-                        Icon(
-                            imageVector = Icons.Rounded.Replay10,
-                            contentDescription = stringResource(R.string.player_rewind_10s),
-                            tint = Color.White,
-                            modifier = Modifier.size(26.dp),
-                        )
-                    }
-                    IconButton(
-                        onClick = onTogglePlayPause,
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.18f)),
-                    ) {
-                        Icon(
-                            imageVector = if (state is PlaybackState.Playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = if (state is PlaybackState.Playing) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp),
-                        )
-                    }
-                    IconButton(onClick = onForward, modifier = Modifier.size(48.dp)) {
-                        Icon(
-                            imageVector = Icons.Rounded.Forward10,
-                            contentDescription = stringResource(R.string.player_forward_10s),
-                            tint = Color.White,
-                            modifier = Modifier.size(26.dp),
-                        )
-                    }
-                    if (playlist.size > 1) {
-                        IconButton(onClick = onSkipNext, modifier = Modifier.size(44.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.SkipNext,
-                                contentDescription = stringResource(R.string.player_episode_next),
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
-                    }
-                }
+                // 第二行：核心播放控制（默认居中；「播放控制」位于最左时整行靠左）
+                PlaybackControlsRow(
+                    state = state,
+                    hasEpisodes = playlist.size > 1,
+                    onSkipPrevious = onSkipPrevious,
+                    onRewind = onRewind,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onForward = onForward,
+                    onSkipNext = onSkipNext,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    arrangement = if (bottomEntryIds.firstOrNull() == "bar_playback") {
+                        Arrangement.Start
+                    } else {
+                        Arrangement.Center
+                    },
+                )
             } else {
-                // 横屏：以「播放控制」为界分左右两组——它之前的项与播放控制靠左、其后的项靠右
+                // 横屏：与编辑器一致——「播放控制」居中时左侧按钮左对齐、右侧按钮右对齐；
+                // 「播放控制」最左时功能按钮右对齐
+                val playIdx = bottomEntryIds.indexOf("bar_playback")
+                val before = if (playIdx > 0) bottomEntryIds.subList(0, playIdx) else emptyList()
+                val after =
+                    if (playIdx >= 0) bottomEntryIds.subList(playIdx + 1, bottomEntryIds.size) else emptyList()
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val playIdx = bottomEntryIds.indexOf("bar_playback")
-                    val before = if (playIdx >= 0) bottomEntryIds.subList(0, playIdx) else bottomEntryIds
-                    val after =
-                        if (playIdx >= 0) bottomEntryIds.subList(playIdx + 1, bottomEntryIds.size) else emptyList()
-                    // 左组：播放控制之前的项 + 播放控制整组
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (before.isNotEmpty()) {
-                        BottomFunctionButtons(
-                            ids = before,
-                            speedIndex = speedIndex,
-                            speedLabel = speedLabel,
-                            scaleIndex = scaleIndex,
-                            showDownload = showDownload,
-                            playlist = playlist,
-                            audioManager = audioManager,
-                            previousMusicVolume = previousMusicVolume,
-                            onPreviousMusicVolumeChange = onPreviousMusicVolumeChange,
-                            onToggleSpeedMenu = onToggleSpeedMenu,
-                            onCycleScale = onCycleScale,
-                            onDownload = onDownload,
-                            onToggleAudioTrackMenu = onToggleAudioTrackMenu,
-                            onAddSubtitle = onAddSubtitle,
-                            onTogglePlaylistDialog = onTogglePlaylistDialog,
+                    if (playIdx == 0) {
+                        // 最左：播放控制贴左，功能按钮右对齐
+                        PlaybackControlsRow(
+                            state = state,
+                            hasEpisodes = playlist.size > 1,
+                            onSkipPrevious = onSkipPrevious,
+                            onRewind = onRewind,
+                            onTogglePlayPause = onTogglePlayPause,
+                            onForward = onForward,
+                            onSkipNext = onSkipNext,
                         )
-                    }
-                    if (playIdx >= 0) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                        ) {
-                            if (playlist.size > 1) {
-                                IconButton(onClick = onSkipPrevious, modifier = Modifier.size(44.dp)) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.SkipPrevious,
-                                        contentDescription = stringResource(R.string.player_episode_previous),
-                                        tint = Color.White,
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                }
-                            }
-                            IconButton(onClick = onRewind, modifier = Modifier.size(48.dp)) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Replay10,
-                                    contentDescription = stringResource(R.string.player_rewind_10s),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(26.dp),
+                        Spacer(Modifier.weight(1f))
+                        if (after.isNotEmpty()) {
+                            BottomFunctionButtons(
+                                ids = after,
+                                ctrlButton = ctrlButton,
+                                speedIndex = speedIndex,
+                                speedLabel = speedLabel,
+                                scaleIndex = scaleIndex,
+                                showDownload = showDownload,
+                                playlist = playlist,
+                                audioManager = audioManager,
+                                previousMusicVolume = previousMusicVolume,
+                                onPreviousMusicVolumeChange = onPreviousMusicVolumeChange,
+                                onToggleSpeedMenu = onToggleSpeedMenu,
+                                onCycleScale = onCycleScale,
+                                onDownload = onDownload,
+                                onToggleAudioTrackMenu = onToggleAudioTrackMenu,
+                                onAddSubtitle = onAddSubtitle,
+                                onTogglePlaylistDialog = onTogglePlaylistDialog,
+                            )
+                        }
+                    } else {
+                        // 居中：左区左对齐 · 播放控制居中 · 右区右对齐
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            if (before.isNotEmpty()) {
+                                BottomFunctionButtons(
+                                    ids = before,
+                                    ctrlButton = ctrlButton,
+                                    speedIndex = speedIndex,
+                                    speedLabel = speedLabel,
+                                    scaleIndex = scaleIndex,
+                                    showDownload = showDownload,
+                                    playlist = playlist,
+                                    audioManager = audioManager,
+                                    previousMusicVolume = previousMusicVolume,
+                                    onPreviousMusicVolumeChange = onPreviousMusicVolumeChange,
+                                    onToggleSpeedMenu = onToggleSpeedMenu,
+                                    onCycleScale = onCycleScale,
+                                    onDownload = onDownload,
+                                    onToggleAudioTrackMenu = onToggleAudioTrackMenu,
+                                    onAddSubtitle = onAddSubtitle,
+                                    onTogglePlaylistDialog = onTogglePlaylistDialog,
                                 )
-                            }
-                            IconButton(
-                                onClick = onTogglePlayPause,
-                                modifier = Modifier
-                                    .size(56.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.18f)),
-                            ) {
-                                Icon(
-                                    imageVector = if (state is PlaybackState.Playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                    contentDescription = if (state is PlaybackState.Playing) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(32.dp),
-                                )
-                            }
-                            IconButton(onClick = onForward, modifier = Modifier.size(48.dp)) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Forward10,
-                                    contentDescription = stringResource(R.string.player_forward_10s),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(26.dp),
-                                )
-                            }
-                            if (playlist.size > 1) {
-                                IconButton(onClick = onSkipNext, modifier = Modifier.size(44.dp)) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.SkipNext,
-                                        contentDescription = stringResource(R.string.player_episode_next),
-                                        tint = Color.White,
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                }
                             }
                         }
-                    }
-                    }
-                    if (after.isNotEmpty()) {
-                        BottomFunctionButtons(
-                            ids = after,
-                            speedIndex = speedIndex,
-                            speedLabel = speedLabel,
-                            scaleIndex = scaleIndex,
-                            showDownload = showDownload,
-                            playlist = playlist,
-                            audioManager = audioManager,
-                            previousMusicVolume = previousMusicVolume,
-                            onPreviousMusicVolumeChange = onPreviousMusicVolumeChange,
-                            onToggleSpeedMenu = onToggleSpeedMenu,
-                            onCycleScale = onCycleScale,
-                            onDownload = onDownload,
-                            onToggleAudioTrackMenu = onToggleAudioTrackMenu,
-                            onAddSubtitle = onAddSubtitle,
-                            onTogglePlaylistDialog = onTogglePlaylistDialog,
+                        PlaybackControlsRow(
+                            state = state,
+                            hasEpisodes = playlist.size > 1,
+                            onSkipPrevious = onSkipPrevious,
+                            onRewind = onRewind,
+                            onTogglePlayPause = onTogglePlayPause,
+                            onForward = onForward,
+                            onSkipNext = onSkipNext,
                         )
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                            if (after.isNotEmpty()) {
+                                BottomFunctionButtons(
+                                    ids = after,
+                                    ctrlButton = ctrlButton,
+                                    speedIndex = speedIndex,
+                                    speedLabel = speedLabel,
+                                    scaleIndex = scaleIndex,
+                                    showDownload = showDownload,
+                                    playlist = playlist,
+                                    audioManager = audioManager,
+                                    previousMusicVolume = previousMusicVolume,
+                                    onPreviousMusicVolumeChange = onPreviousMusicVolumeChange,
+                                    onToggleSpeedMenu = onToggleSpeedMenu,
+                                    onCycleScale = onCycleScale,
+                                    onDownload = onDownload,
+                                    onToggleAudioTrackMenu = onToggleAudioTrackMenu,
+                                    onAddSubtitle = onAddSubtitle,
+                                    onTogglePlaylistDialog = onTogglePlaylistDialog,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -965,6 +929,82 @@ private fun PlayerProgressInline(
 }
 
 /**
+ * 核心播放控制行（上一集 / 快退 / 播放暂停 / 快进 / 下一集），竖屏与横屏共用。
+ *
+ * [arrangement] 决定整行在可用宽度内的对齐方式：竖屏「居中」预设用 Center、
+ * 「最左」预设用 Start；横屏由外层三段式布局决定位置。
+ */
+@Composable
+private fun PlaybackControlsRow(
+    state: PlaybackState,
+    hasEpisodes: Boolean,
+    onSkipPrevious: () -> Unit,
+    onRewind: () -> Unit,
+    onTogglePlayPause: () -> Unit,
+    onForward: () -> Unit,
+    onSkipNext: () -> Unit,
+    modifier: Modifier = Modifier,
+    arrangement: Arrangement.Horizontal = Arrangement.Center,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = arrangement,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (hasEpisodes) {
+            IconButton(onClick = onSkipPrevious, modifier = Modifier.size(44.dp)) {
+                Icon(
+                    imageVector = Icons.Rounded.SkipPrevious,
+                    contentDescription = stringResource(R.string.player_episode_previous),
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+        IconButton(onClick = onRewind, modifier = Modifier.size(48.dp)) {
+            Icon(
+                imageVector = Icons.Rounded.Replay10,
+                contentDescription = stringResource(R.string.player_rewind_10s),
+                tint = Color.White,
+                modifier = Modifier.size(26.dp),
+            )
+        }
+        IconButton(
+            onClick = onTogglePlayPause,
+            modifier = Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.18f)),
+        ) {
+            Icon(
+                imageVector = if (state is PlaybackState.Playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = if (state is PlaybackState.Playing) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
+                tint = Color.White,
+                modifier = Modifier.size(32.dp),
+            )
+        }
+        IconButton(onClick = onForward, modifier = Modifier.size(48.dp)) {
+            Icon(
+                imageVector = Icons.Rounded.Forward10,
+                contentDescription = stringResource(R.string.player_forward_10s),
+                tint = Color.White,
+                modifier = Modifier.size(26.dp),
+            )
+        }
+        if (hasEpisodes) {
+            IconButton(onClick = onSkipNext, modifier = Modifier.size(44.dp)) {
+                Icon(
+                    imageVector = Icons.Rounded.SkipNext,
+                    contentDescription = stringResource(R.string.player_episode_next),
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
  * 底部控制栏的功能按钮组（受「控制栏自定义」驱动）。
  *
  * [ids] 为要渲染的功能 id（已按 order 排序）：默认含 倍速 / 画面比例 / 音量 / 下载 /
@@ -974,6 +1014,7 @@ private fun PlayerProgressInline(
 @Composable
 private fun BottomFunctionButtons(
     ids: List<String>,
+    ctrlButton: @Composable (String) -> HudButtonConfig?,
     speedIndex: Int,
     speedLabel: String,
     scaleIndex: Int,
@@ -989,6 +1030,7 @@ private fun BottomFunctionButtons(
     onAddSubtitle: () -> Unit,
     onTogglePlaylistDialog: () -> Unit,
     modifier: Modifier = Modifier,
+    arrangement: Arrangement.Horizontal = Arrangement.Start,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     var muted by remember {
@@ -999,6 +1041,7 @@ private fun BottomFunctionButtons(
     }
     Row(
         modifier = modifier,
+        horizontalArrangement = arrangement,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ids.forEach { id ->
@@ -1073,6 +1116,21 @@ private fun BottomFunctionButtons(
                             imageVector = Icons.AutoMirrored.Rounded.ViewList,
                             contentDescription = stringResource(R.string.player_episode_list_icon),
                             tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+                // 其余任意功能（HUD 类：旋转 / 截图 / 画中画 / 后台播放 / 锁屏 / AB 循环…）
+                // 统一按 HUD 按钮配置渲染，实现「除播放控制外任意功能可放任意位置」
+                else -> ctrlButton(id)?.let { cfg ->
+                    IconButton(
+                        onClick = { if (cfg.enabled) cfg.onClick() },
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Icon(
+                            imageVector = cfg.icon,
+                            contentDescription = cfg.contentDescription,
+                            tint = cfg.tint.copy(alpha = if (cfg.enabled) 0.85f else 0.35f),
                             modifier = Modifier.size(22.dp),
                         )
                     }

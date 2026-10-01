@@ -38,6 +38,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.nichx.niplayer.datastore.PlayerControlOrientation
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.designsystem.components.NiDialogItem
@@ -79,11 +80,11 @@ fun PlayerSettingsScreen(
     var showLongPressDialog by remember { mutableStateOf(false) }
     var showSeekDialog by remember { mutableStateOf(false) }
     var showDoubleTapDialog by remember { mutableStateOf(false) }
-    var showControlCustomize by remember { mutableStateOf(false) }
+    // 要编辑控制栏的方向（null = 未进入）；进入后整页替换为全屏播放器编辑页。
+    var editingControl by remember { mutableStateOf<PlayerControlOrientation?>(null) }
 
-    // 控制栏自定义为独立子页面（占满整屏、含返回栏），进入时整页替换设置页内容。
-    if (showControlCustomize) {
-        PlayerControlCustomizeScreen(onBack = { showControlCustomize = false })
+    editingControl?.let { orientation ->
+        PlayerControlEditorScreen(orientation = orientation, onBack = { editingControl = null })
         return
     }
 
@@ -149,9 +150,15 @@ fun PlayerSettingsScreen(
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingClickRow(
-                    label = stringResource(R.string.player_ctrl_customize),
+                    label = stringResource(R.string.player_ctrl_portrait),
                     value = stringResource(R.string.player_ctrl_customize_desc),
-                    onClick = { showControlCustomize = true },
+                    onClick = { editingControl = PlayerControlOrientation.PORTRAIT },
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SettingClickRow(
+                    label = stringResource(R.string.player_ctrl_landscape),
+                    value = stringResource(R.string.player_ctrl_customize_desc),
+                    onClick = { editingControl = PlayerControlOrientation.LANDSCAPE },
                 )
             }
 

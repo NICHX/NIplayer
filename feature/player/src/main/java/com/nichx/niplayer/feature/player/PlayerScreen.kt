@@ -1772,7 +1772,7 @@ fun PlayerScreen(
         // P0-1 修复（2026-09-22）：loadEntry 内部是 MMKV decodeString（JNI + split + valueOf 反射）。
         // 原先每次重组都重读全部 11 项，而顶层 collect 的 positionMs 每 500ms 触发一次重组
         // → 稳态下 22 次 MMKV 读/秒，只为重建一份几乎从不变化的布局配置。
-        // 布局只在「设置 → 播放器设置 → 播放器控制自定义」写入（PlayerControlCustomizeScreen），
+        // 布局只在「设置 → 播放器设置 → 竖屏/横屏控制栏」写入（PlayerControlEditorScreen），
         // 该页位于导航栈更底层，PlayerScreen 不可能与其同屏，故按方向缓存即可。
         // ⚠️ ctrlOrientation 必须作为 key：PlayerActivity 声明了 configChanges=orientation，
         //    旋转时不重建 Activity，若用无 key 的 remember 会沿用旧方向的布局。
@@ -1902,6 +1902,7 @@ fun PlayerScreen(
                     zoomActive = zoomScale > 1f,
                     onResetZoom = resetZoom,
                     bottomEntryIds = bottomEntryIds,
+                    ctrlButton = { id -> ctrlButtonUnit(id) },
                 )
             }
         }

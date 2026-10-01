@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.player
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,8 +45,15 @@ internal fun MoreMenuDialog(
     actions: List<MoreAction>,
 ) {
     val onSurface = PlayerDialogColors.textPrimary
+    // 横屏与编辑器「更多」面板保持一致：宽度放宽 + 4 列；竖屏保持 3 列
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val columns = if (landscape) 4 else 3
     // scrollable = true：把所有功能放进「更多」时项很多，容器在限高内滚动，避免内容超出窗口被裁切。
-    PlayerDialog(onDismiss = onDismiss, maxWidth = 340, scrollable = true) {
+    PlayerDialog(
+        onDismiss = onDismiss,
+        maxWidth = if (landscape) 384 else 340,
+        scrollable = true,
+    ) {
         Text(
             text = stringResource(R.string.player_more),
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -54,14 +63,14 @@ internal fun MoreMenuDialog(
         )
         PlayerDialogDivider()
         Spacer(Modifier.height(4.dp))
-        actions.chunked(3).forEach { row ->
+        actions.chunked(columns).forEach { row ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 2.dp, vertical = 3.dp),
             ) {
-                // 固定 3 等份槽位，保证各行的图标/项目落在同一列，末行项数不足也不错位
-                repeat(3) { i ->
+                // 固定等份槽位（横屏 4 / 竖屏 3），保证各行的图标/项目落在同一列，末行项数不足也不错位
+                repeat(columns) { i ->
                     val action = row.getOrNull(i)
                     Box(
                         modifier = Modifier.weight(1f),
