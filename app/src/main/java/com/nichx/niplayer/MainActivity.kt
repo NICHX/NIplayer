@@ -106,8 +106,7 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window?.isNavigationBarContrastEnforced = false
         }
-        requestMediaPermissions()
-        requestLocalNetworkPermission()
+        requestStartupPermissions()
         setContent {
             val themeConfig by ThemeSettings.themeFlow.collectAsStateWithLifecycle()
             // 液态玻璃不透明度：收集设置改动，经 LocalNiGlassOpacity 下发到全部底部玻璃浮层（导航栏等）
@@ -361,35 +360,38 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestMediaPermissions() {
-        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_VIDEO
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
-        if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(permission), REQUEST_MEDIA_CODE)
-        }
-    }
-
-    private fun requestLocalNetworkPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
-            // Android 17 (API 37+): 需要主动申请本地网络访问权限
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_LOCAL_NETWORK)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK),
-                    REQUEST_LOCAL_NETWORK_CODE
-                )
+    /**
+     * 启动时一次性申请媒体读取 + 本地网络访问权限。
+     *
+     * 关键：两者必须在**同一次** [ActivityCompat.requestPermissions] 中提交。
+     * `Activity.requestPermissions` 同一时刻只接受一个请求，紧接着的第二次调用会被
+     * 直接丢弃（仅回调空结果、不弹窗）。此前分两次依次调用，新装首启时本地网络权限
+     * 请求正好被媒体权限请求挤掉、从未弹出，导致用户直接恢复含 SMB/WebDAV 媒体库的
+     * 备份后无法连接局域网。合并为一次请求即可消除该竞态。
+     */
+    private fun requestStartupPermissions() {
+        val permissions = buildList {
+            add(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    Manifest.permission.READ_MEDIA_VIDEO
+                } else {
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                }
+            )
+            // Android 17 (API 37+): 本地网络访问（SMB/FTP/WebDAV 等局域网设备）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
+                add(Manifest.permission.ACCESS_LOCAL_NETWORK)
             }
+        }.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (permissions.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, permissions.toTypedArray(), REQUEST_STARTUP_CODE)
         }
     }
 
     private companion object {
-        const val REQUEST_MEDIA_CODE = 1001
-        const val REQUEST_LOCAL_NETWORK_CODE = 1002
+        const val REQUEST_STARTUP_CODE = 1001
     }
 }
 
