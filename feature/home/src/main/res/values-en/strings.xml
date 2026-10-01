@@ -73,7 +73,7 @@
     <!-- Backup & restore (BackupScreen / BackupViewModel) -->
     <string name="backup_title">Backup &amp; Restore</string>
     <string name="backup_cloud_sync">Cloud sync</string>
-    <string name="backup_cloud_sync_desc">Automatically back up settings to a WebDAV server</string>
+    <string name="backup_cloud_sync_desc">Sync play history across devices via WebDAV</string>
     <string name="backup_cloud_sync_enable_hint">Enable cloud sync to set up a WebDAV server</string>
     <string name="backup_auto_sync_hint">Auto sync (after launching / exiting the player)</string>
     <string name="backup_local_title">Local backup</string>

@@ -28,6 +28,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,9 +37,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,10 +55,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.datastore.PlayHistorySyncConfig
+import com.nichx.niplayer.designsystem.components.NiGlassOverlay
+import com.nichx.niplayer.designsystem.components.NiGlassOverlayKind
+import com.nichx.niplayer.designsystem.components.NiGlassOverlayRequest
 import com.nichx.niplayer.designsystem.components.NiGlassSwitch
-import com.nichx.niplayer.designsystem.components.NiInfoDialog
 import com.nichx.niplayer.designsystem.components.NiTextField
 import com.nichx.niplayer.designsystem.components.NiTextFieldDefaults
+import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.sync.SyncUiState
 import com.nichx.niplayer.storage.StorageFile
@@ -157,7 +164,8 @@ internal fun WebDavServerCard(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false },
                     shape = shape,
-                    containerColor = extraColors.surfaceLevel1,
+                    // 菜单用不透明磨砂色：半透明会透出背景图并与下方卡片叠加导致分层
+                    containerColor = niFrostSurfaceColor(),
                     border = BorderStroke(1.dp, extraColors.outlineSoft),
                 ) {
                     libraries.forEach { library ->
@@ -480,7 +488,8 @@ internal fun WebDavBackupCard(
                         expanded = fileMenuExpanded,
                         onDismissRequest = { fileMenuExpanded = false },
                         shape = shape,
-                        containerColor = extraColors.surfaceLevel1,
+                        // 菜单用不透明磨砂色：半透明会透出背景图并与下方卡片叠加导致分层
+                        containerColor = niFrostSurfaceColor(),
                         border = BorderStroke(1.dp, extraColors.outlineSoft),
                     ) {
                         backupFiles.forEach { file ->
@@ -617,23 +626,143 @@ internal fun LocalBackupCard(
     }
 }
 
+/**
+ * 备份/恢复弹窗的统一状态。
+ *
+ * 「确认恢复 → 处理中 → 结果」三个阶段由 [BackupDialogHost] 用**同一个固定 overlay id**
+ * 原地刷新渲染，不销毁重建 —— 与更新弹窗同因同治：此前三个阶段分别是独立的浮层/遮罩
+ * （各自新 id），切换时「旧窗退场 + 新窗进场」会多闪一次。
+ */
+internal sealed interface BackupDialogState {
+    /** 弹窗标题；[Working] 无需标题。 */
+    val title: String?
+
+    /** 恢复前确认（本机文件与 WebDAV 共用）。 */
+    data class ConfirmRestore(
+        override val title: String,
+        val message: String,
+    ) : BackupDialogState
+
+    /** 处理中（导出 / 导入 / 上传 / 下载），不可关闭。 */
+    data object Working : BackupDialogState {
+        override val title: String? get() = null
+    }
+
+    /** 结果（成功或失败）。 */
+    data class Result(
+        override val title: String,
+        val message: String,
+    ) : BackupDialogState
+}
+
+/** 备份/恢复弹窗固定 overlay id：状态切换时原地更新同一弹窗，不关闭重开。 */
+private const val BACKUP_DIALOG_ID = "backup_dialog"
+
+/**
+ * 备份/恢复弹窗宿主：订阅 [state]，用固定 id 原地刷新同一弹窗。
+ *
+ * 复用更新弹窗的机制（[NiGlassOverlay.showOrUpdate]），消除「确认 → 处理中 → 结果」
+ * 切换时的关闭重开闪动。
+ *
+ * @param state 当前弹窗状态；null 表示关闭弹窗
+ * @param onDismiss 取消（确认态）/ 关闭（结果态）；处理中态不生效
+ * @param onConfirmRestore 确认执行恢复
+ */
 @Composable
-internal fun ResultDialog(
-    title: String,
-    message: String,
+internal fun BackupDialogHost(
+    state: BackupDialogState?,
     onDismiss: () -> Unit,
+    onConfirmRestore: () -> Unit,
 ) {
-    NiInfoDialog(
-        title = title,
-        onDismiss = onDismiss,
-        actions = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.confirm)) }
-        },
-    ) {
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodySmall,
+    // 弹窗内容由根宿主延迟渲染，回调用 rememberUpdatedState 保证始终读到最新闭包
+    val currentDismiss by rememberUpdatedState(onDismiss)
+    val currentConfirm by rememberUpdatedState(onConfirmRestore)
+
+    LaunchedEffect(state) {
+        val s = state
+        if (s == null) {
+            NiGlassOverlay.dismiss(BACKUP_DIALOG_ID)
+            return@LaunchedEffect
+        }
+        // 处理中不可关闭；确认态关闭=取消，结果态关闭=确认
+        val dismiss: () -> Unit =
+            if (s is BackupDialogState.Working) ({}) else ({ currentDismiss() })
+
+        NiGlassOverlay.showOrUpdate(
+            NiGlassOverlayRequest(
+                id = BACKUP_DIALOG_ID,
+                kind = NiGlassOverlayKind.Dialog,
+                title = s.title,
+                onDismiss = dismiss,
+            ) {
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                ) {
+                    when (s) {
+                        is BackupDialogState.ConfirmRestore -> Text(
+                            text = s.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        BackupDialogState.Working -> Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.size(10.dp))
+                            Text(
+                                text = stringResource(R.string.working),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        is BackupDialogState.Result -> Text(
+                            text = s.message,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                when (s) {
+                    is BackupDialogState.ConfirmRestore -> Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = { currentDismiss() }) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                        TextButton(onClick = { currentConfirm() }) {
+                            Text(stringResource(R.string.restore))
+                        }
+                    }
+                    is BackupDialogState.Result -> Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = { currentDismiss() }) {
+                            Text(stringResource(R.string.confirm))
+                        }
+                    }
+                    BackupDialogState.Working -> Unit
+                }
+            },
         )
+    }
+    DisposableEffect(Unit) {
+        onDispose { NiGlassOverlay.dismiss(BACKUP_DIALOG_ID) }
     }
 }
 

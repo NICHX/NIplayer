@@ -73,7 +73,7 @@
     <!-- 备份与恢复（BackupScreen / BackupViewModel） -->
     <string name="backup_title">备份与恢复</string>
     <string name="backup_cloud_sync">云同步</string>
-    <string name="backup_cloud_sync_desc">自动将配置备份到 WebDAV 服务器</string>
+    <string name="backup_cloud_sync_desc">通过 WebDAV 在多台设备间同步播放历史</string>
     <string name="backup_cloud_sync_enable_hint">启用云同步后可设置 WebDAV 服务器</string>
     <string name="backup_auto_sync_hint">自动同步（启动 / 退出播放器后）</string>
     <string name="backup_local_title">本地备份</string>
