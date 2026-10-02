@@ -184,7 +184,7 @@ internal fun LibrarySourceCard(
                         Text(
                             text = " · $describe",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -296,7 +296,7 @@ internal fun LibrarySourceGrid(
             Text(
                 text = stringResource(R.string.library_storage_count, count),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
             )
         }
@@ -401,7 +401,7 @@ internal fun LibrarySourceGridCard(
             Text(
                 text = describeLine,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

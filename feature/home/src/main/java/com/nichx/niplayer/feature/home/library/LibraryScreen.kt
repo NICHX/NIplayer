@@ -239,7 +239,7 @@ fun LibraryScreen(
                         Text(
                             text = stringResource(R.string.library_storage_count, currentFiltered.size),
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.outline,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
                         )
                     }

@@ -62,12 +62,12 @@ internal fun ThumbnailProgressBar(progress: Int) {
             Text(
                 text = stringResource(R.string.storage_file_generating_thumbnails),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
                 text = "$progress%",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Spacer(Modifier.height(4.dp))
@@ -211,7 +211,7 @@ internal fun LoadingState() {
             Text(
                 text = stringResource(R.string.storage_file_connecting),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -53,6 +54,14 @@ fun NiScaffold(
     } else {
         MaterialTheme.colorScheme.background
     }
+    // 容器透明时 Scaffold 的 contentColorFor(Transparent) 会回落到默认前景色（黑色），
+    // 导致深色模式下**未显式指定颜色**的文字不可读（如分区标题、设置项标题）。
+    // 此处显式下发主题 onBackground；容器非透明时保持 Scaffold 原有推导。
+    val resolvedContentColor = if (resolvedContainerColor == Color.Transparent) {
+        MaterialTheme.colorScheme.onBackground
+    } else {
+        contentColorFor(resolvedContainerColor)
+    }
     CompositionLocalProvider(LocalHazeState provides hazeState) {
         Scaffold(
             modifier = modifier,
@@ -61,6 +70,10 @@ fun NiScaffold(
             snackbarHost = snackbarHost,
             // 由调用方决定容器色，避免在模糊背后叠一层不透明块
             containerColor = resolvedContainerColor,
+            // 显式下发内容色：透明容器下 Scaffold 的 contentColorFor(Transparent) 会回落到
+            // 默认前景色（黑色），导致深色模式下未显式指定颜色的文字与图标不可见
+            // （分区标题、设置项标题、顶栏返回箭头等）。显式传入可同时覆盖顶栏/底栏/内容。
+            contentColor = resolvedContentColor,
             contentWindowInsets = contentWindowInsets,
         ) { innerPadding ->
             // 内容层满铺全屏（含顶栏背后区域），并标记为顶栏模糊来源

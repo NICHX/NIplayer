@@ -253,7 +253,7 @@ fun PlayerSettingsScreen(
             Text(
                 stringResource(R.string.player_orientation_auto_hint),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -274,7 +274,7 @@ fun PlayerSettingsScreen(
             Text(
                 stringResource(R.string.player_assrt_token_hint),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.size(8.dp))
             NiTextField(
@@ -287,7 +287,7 @@ fun PlayerSettingsScreen(
             Text(
                 stringResource(R.string.player_assrt_token_guide_desc),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             val uriHandler = LocalUriHandler.current
             Text(
@@ -324,7 +324,7 @@ fun PlayerSettingsScreen(
             Text(
                 stringResource(R.string.player_priority_hint),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.size(8.dp))
             NiTextField(

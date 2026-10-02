@@ -214,7 +214,7 @@ fun SettingsScreen(
                     Text(
                         text = stringResource(group.labelRes),
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp, start = 4.dp),
                     )
@@ -289,13 +289,13 @@ private fun AppInfoCard() {
                     Text(
                         text = versionName,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = stringResource(R.string.settings_build_code, versionCode),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     )
                     Spacer(Modifier.width(8.dp))
                     BuildTypeBadge(isDebug)
@@ -368,7 +368,7 @@ private fun SettingsItemRow(
                 Text(
                     text = stringResource(subRes),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 2.dp),
@@ -430,7 +430,7 @@ private fun OtherGroupCard(promo: PromoInfo?, onOpen: (String) -> Unit) {
                         Text(
                             text = stringResource(R.string.promo_view_hint),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(top = 2.dp),
@@ -480,7 +480,7 @@ private fun OtherGroupCard(promo: PromoInfo?, onOpen: (String) -> Unit) {
                     Text(
                         text = stringResource(R.string.promo_sponsor_sub),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 2.dp),

@@ -266,7 +266,7 @@ private fun UploadTaskCard(
         Text(
             text = stringResource(R.string.transfer_upload_to, task.storageName),
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.outline,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 2.dp),
@@ -291,7 +291,7 @@ private fun UploadTaskCard(
                         stringResource(R.string.transfer_upload_waiting_unknown)
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (state == DownloadState.DOWNLOADING && item.speedBytesPerSec > 0) {
                     Text(

@@ -426,13 +426,13 @@ fun MediaLibrarySettingsScreen(
             Text(
                 stringResource(R.string.player_storage_help_detail),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.size(12.dp))
             Text(
                 stringResource(R.string.player_storage_help_writeback_detail),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

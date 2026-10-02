@@ -221,7 +221,7 @@ fun ThemeScreen(
             Text(
                 text = stringResource(currentScheme.descriptionRes()),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
@@ -320,7 +320,7 @@ private fun GlassOpacitySlider(
             Text(
                 text = "${(value * 100).roundToInt()}%",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Slider(
@@ -380,7 +380,7 @@ private fun CustomBackgroundCard(
                     Text(
                         text = stringResource(R.string.theme_custom_background_pick),
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             } else {
@@ -420,7 +420,7 @@ private fun SectionLabel(text: String) {
         text = text,
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.outline,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 4.dp, top = 4.dp),
     )
 }
@@ -650,13 +650,13 @@ private fun ThemePreviewCard(
                 text = stringResource(R.string.theme_preview),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.weight(1f))
             Text(
                 text = stringResource(scheme.labelRes),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.8f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
             )
         }
 

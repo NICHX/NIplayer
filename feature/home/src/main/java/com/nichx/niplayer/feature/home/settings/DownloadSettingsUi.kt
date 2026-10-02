@@ -72,7 +72,7 @@ internal fun DownloadSettingsCard(
             Text(
                 text = if (hasDir) dirInfo.path else stringResource(R.string.download_manager_no_dir),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

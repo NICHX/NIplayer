@@ -286,7 +286,7 @@ fun NiThumbCard(
                         Text(
                             text = subtitleText,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.width(8.dp))
                     }
@@ -508,7 +508,7 @@ fun NiQuickAccessGridItem(
         Text(
             text = sourceText,
             style = MaterialTheme.typography.bodySmall,
-            color = if (isValid) MaterialTheme.colorScheme.outline
+            color = if (isValid) MaterialTheme.colorScheme.onSurfaceVariant
             else MaterialTheme.colorScheme.error,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

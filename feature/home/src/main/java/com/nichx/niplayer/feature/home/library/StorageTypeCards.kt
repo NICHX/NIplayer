@@ -90,7 +90,7 @@ internal fun StorageTypeBadge(
                 Text(
                     text = stringResource(R.string.storage_plus_type),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

@@ -113,7 +113,7 @@ internal fun SectionHeader(
         Text(
             text = "$count",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.outline,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

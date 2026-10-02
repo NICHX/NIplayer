@@ -81,7 +81,7 @@ internal fun DownloadTaskCard(
         Text(
             text = stringResource(R.string.download_manager_saved_to, targetLabel),
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.outline,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 2.dp),
@@ -105,7 +105,7 @@ internal fun DownloadTaskCard(
                     else
                         "${formatFileSize(display.downloadedBytes)} / ${stringResource(R.string.download_manager_unknown_size)}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (display.speed.isNotEmpty()) {
                     Text(
@@ -118,7 +118,7 @@ internal fun DownloadTaskCard(
                     Text(
                         text = stringResource(R.string.download_manager_waiting),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

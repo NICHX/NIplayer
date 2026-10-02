@@ -49,6 +49,8 @@ fun NiSectionHeader(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
+            // 显式 onSurface：启用自定义背景图时容器透明，避免依赖继承色导致深色模式标题不可读
+            color = MaterialTheme.colorScheme.onSurface,
         )
         if (count != null) {
             Spacer(Modifier.width(8.dp))

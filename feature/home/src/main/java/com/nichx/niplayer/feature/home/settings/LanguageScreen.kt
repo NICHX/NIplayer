@@ -82,7 +82,7 @@ fun LanguageScreen(
                 text = stringResource(R.string.language_mode),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, top = 4.dp),
             )
             Box(
@@ -125,7 +125,7 @@ fun LanguageScreen(
                 Text(
                     text = stringResource(R.string.language_hint),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Spacer(Modifier.height(padding.calculateBottomPadding()))

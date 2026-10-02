@@ -140,7 +140,7 @@ fun EqualizerSettingsScreen(
                         Text(
                             text = stringResource(R.string.equalizer_enable_desc),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 2.dp),
                         )
                     }
@@ -233,7 +233,7 @@ fun EqualizerSettingsScreen(
                         stringResource(R.string.equalizer_disabled_hint)
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Spacer(Modifier.height(padding.calculateBottomPadding()))

@@ -133,7 +133,7 @@ fun AboutScreen(
                             Text(
                                 text = versionName.orEmpty(),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.outline,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(Modifier.width(8.dp))
                             BuildTypeBadge(isDebug)

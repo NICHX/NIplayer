@@ -471,7 +471,7 @@ internal fun FileRow(
                 Text(
                     text = stringResource(R.string.storage_file_folder),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -838,7 +838,7 @@ internal fun FlatFolderRow(
                 text = if (isLoading) stringResource(R.string.storage_file_folder_loading)
                 else stringResource(R.string.storage_file_folder),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Spacer(Modifier.width(8.dp))

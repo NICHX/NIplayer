@@ -92,7 +92,7 @@ fun IconScreen(onBack: () -> Unit = {}) {
             Text(
                 text = stringResource(R.string.app_icon_presets),
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 4.dp, start = 4.dp),
             )
@@ -142,7 +142,7 @@ private fun CurrentIconCard(icon: IconSettings.AppIcon) {
             Text(
                 text = stringResource(R.string.app_icon_current),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
                 text = stringResource(icon.labelRes()),
@@ -153,7 +153,7 @@ private fun CurrentIconCard(icon: IconSettings.AppIcon) {
             Text(
                 text = stringResource(R.string.app_icon_swit_hint),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -265,7 +265,7 @@ private fun IconOptionCard(
                     Text(
                         text = stringResource(R.string.app_icon_badge_default),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                     )
                 }

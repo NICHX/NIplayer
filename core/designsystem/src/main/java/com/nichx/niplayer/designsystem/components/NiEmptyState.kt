@@ -63,7 +63,7 @@ fun NiEmptyState(
         Text(
             text = hint,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.outline,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (actionText != null && onAction != null) {
             Spacer(Modifier.height(4.dp))
