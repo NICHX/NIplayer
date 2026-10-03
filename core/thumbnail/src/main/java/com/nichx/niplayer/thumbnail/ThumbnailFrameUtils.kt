@@ -7,8 +7,12 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.media.MediaMetadataRetriever
 import android.os.Build
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
+
+/** 落盘写缓冲大小（JPEG 帧约几十 KB，64KB 一次写回，减少 syscall）。 */
+private const val WRITE_BUFFER_SIZE = 64 * 1024
 
 
 // ---------- 生成 ----------
@@ -127,11 +131,7 @@ internal fun extractAndSaveFrameAt(
 
     var frame: Bitmap? = null
     for (posMs in fallbackPositions) {
-        frame = try {
-            retriever.getFrameAtTime(posMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-        } catch (e: Exception) {
-            null
-        }
+        frame = retriever.frameAt(posMs * 1000L, ThumbnailManager.MAX_WIDTH)
         if (frame != null) break
     }
     if (frame == null) return ThumbnailResult.Failed
@@ -141,7 +141,7 @@ internal fun extractAndSaveFrameAt(
 
     val scaled = scaleToMaxWidth(frame, ThumbnailManager.MAX_WIDTH)
     cacheFile.parentFile?.mkdirs()
-    FileOutputStream(cacheFile).use { out ->
+    BufferedOutputStream(FileOutputStream(cacheFile), WRITE_BUFFER_SIZE).use { out ->
         scaled.compress(Bitmap.CompressFormat.JPEG, ThumbnailManager.JPEG_QUALITY, out)
     }
     return ThumbnailResult.Success(cacheFile.absolutePath)
@@ -191,11 +191,7 @@ internal fun extractAndSaveFrame(
 
     var frame: Bitmap? = null
     for (posMs in fallbackPositions) {
-        frame = try {
-            retriever.getFrameAtTime(posMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-        } catch (e: Exception) {
-            null
-        }
+        frame = retriever.frameAt(posMs * 1000L, ThumbnailManager.MAX_WIDTH)
         if (frame != null) break
     }
     if (frame == null) return ThumbnailResult.Failed
@@ -205,7 +201,7 @@ internal fun extractAndSaveFrame(
 
     val scaled = scaleToMaxWidth(frame, ThumbnailManager.MAX_WIDTH)
     cacheFile.parentFile?.mkdirs()
-    FileOutputStream(cacheFile).use { out ->
+    BufferedOutputStream(FileOutputStream(cacheFile), WRITE_BUFFER_SIZE).use { out ->
         scaled.compress(Bitmap.CompressFormat.JPEG, ThumbnailManager.JPEG_QUALITY, out)
     }
     return ThumbnailResult.Success(cacheFile.absolutePath)
@@ -230,4 +226,53 @@ internal fun computeInSampleSize(srcWidth: Int, srcHeight: Int, maxDimension: In
         sampleSize *= 2
     }
     return sampleSize
+}
+
+/**
+ * 按接近 [maxWidth] 的目标尺寸解码指定时间点的帧（B1 优化）。
+ *
+ * API 27+（[Build.VERSION_CODES.O_MR1]）优先使用
+ * [MediaMetadataRetriever.getScaledFrameAtTime] 直接解码到目标尺寸，避免先解出全分辨率帧
+ * （4K ≈ 33MB ARGB_8888）再 [scaleToMaxWidth] 缩小，显著降低内存峰值与 CPU 开销。
+ *
+ * 仅当视频无旋转（rotation 为 0/180）时启用：`getScaledFrameAtTime` 的目标宽高以**编码尺寸**
+ * 为基准，旋转 90/270 的视频若仍按编码宽高比请求可能产生拉伸，故此类视频回退到
+ * [MediaMetadataRetriever.getFrameAtTime] + [scaleToMaxWidth]（与原实现一致）。
+ *
+ * 任何异常（含部分机型 `getScaledFrameAtTime` 抛 [UnsupportedOperationException]）均回退到
+ * [getFrameAtTime]，保证取帧成功率不下降。
+ *
+ * @param positionUs 取帧位置（微秒）
+ * @param maxWidth 目标最大宽度（px）
+ * @return 解码出的帧，或 null 表示取帧失败
+ */
+internal fun MediaMetadataRetriever.frameAt(positionUs: Long, maxWidth: Int): Bitmap? {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+        val rotation = extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+            ?.toIntOrNull() ?: 0
+        if (rotation == 0 || rotation == 180) {
+            val width = extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
+            val height = extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
+            if (width != null && height != null && width > 0 && height > 0) {
+                val ratio = if (width > maxWidth) maxWidth.toFloat() / width else 1f
+                val dstWidth = (width * ratio).toInt().coerceAtLeast(1)
+                val dstHeight = (height * ratio).toInt().coerceAtLeast(1)
+                try {
+                    return getScaledFrameAtTime(
+                        positionUs,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                        dstWidth,
+                        dstHeight,
+                    )
+                } catch (_: Exception) {
+                    // 回退到 getFrameAtTime
+                }
+            }
+        }
+    }
+    return try {
+        getFrameAtTime(positionUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+    } catch (_: Exception) {
+        null
+    }
 }

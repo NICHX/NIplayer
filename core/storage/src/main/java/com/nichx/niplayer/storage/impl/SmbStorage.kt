@@ -204,8 +204,15 @@ class SmbStorage(
         playRootPrefix = if (sub.isEmpty()) "" else "$sub/"
     }
 
-    /** SMB 缩略图生成建议并发数。 */
-    override val thumbnailConcurrency: Int get() = 2
+    /**
+     * SMB 缩略图生成建议并发数。
+     *
+     * 原为 2，过于保守：SMB2/3 在单个 session 上多路复用请求，jcifs 的
+     * [SmbMediaDataSource] 每个视频仅持有一个 [org.codelibs.jcifs.smb.SmbRandomAccess]
+     * 文件句柄（无预读线程），并发取帧不会造成句柄暴涨。提高到 4 可显著降低大批量
+     * 目录的缩略图生成耗时；公网/低带宽场景仍受 [Storage.thumbnailConcurrency] 上限约束。
+     */
+    override val thumbnailConcurrency: Int get() = 4
 
     override suspend fun listFiles(directory: StorageFile): List<StorageFile> {
         var lastException: Exception? = null

@@ -31,6 +31,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import javax.inject.Inject
@@ -122,6 +123,16 @@ class ThumbnailManager @Inject constructor(
     // 若仍有其他协程在等待锁则保留（tryLock 返回 false 不移除）。
     private val mutexMap = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
 
+    /**
+     * 每个缓存目录上次执行 [trimCacheIfNeeded] 的时间戳（A1 优化）。
+     *
+     * 批量生成时每张缩略图都全量扫描缓存目录（listFiles + stat + sort）代价极高，
+     * 通过节流把扫描频率限制为每目录 [CACHE_TRIM_INTERVAL_MS] 一次；用 [AtomicLong] + CAS
+     * 保证同一时间窗口内只有一个协程真正进入扫描。
+     */
+    private val lastTrimAt =
+        java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicLong>()
+
     private fun getMutex(key: String): Mutex = mutexMap.computeIfAbsent(key) { Mutex() }
 
     /**
@@ -168,6 +179,7 @@ class ThumbnailManager @Inject constructor(
             require(MediaFileTypes.isVideoFile(file.name)) {
                 "generateThumbnail 要求视频文件，收到 ${file.name}"
             }
+            val startedAt = System.currentTimeMillis()
             val cacheFile = File(cacheDir, "${md5("$storageId-${file.path}")}.jpg")
 
             // 本地缓存命中直接返回
@@ -187,50 +199,78 @@ class ThumbnailManager @Inject constructor(
                 // BUG-T-m9 修复：本地视频跳过 <15s 时长检查，始终生成缩略图
                 val skipDurationCheck = storage.library.mediaType == MediaType.LOCAL_STORAGE
 
-                val url = storage.createPlayUrl(file)
-                if (url != null && (url.startsWith("file") || url.startsWith("content"))
-                ) {
-                    // Local / DocumentFile：通过 URL 取帧
-                    generateFromUrl(url, cacheFile, positionKey, skipDurationCheck)
-                } else if (url != null && url.startsWith("http", ignoreCase = true)) {
-                    // WebDAV / HTTP URL：优先使用 URL + Headers 取帧（Android 内建 HTTP 栈
-                    // 比自定义 MediaDataSource 更稳定），回退到 MediaDataSource
-                    //
-                    // W-M6 修复：自签 HTTPS 证书场景（storage.trustAllCertificates=true）下，
-                    // MediaMetadataRetriever.setDataSource(url, headers) 走系统 HTTP 栈，
-                    // 不使用 WebDavStorage 内部的 trust-all SSL 配置，URL+Headers 路径必失败。
-                    // 此时跳过 URL+Headers，直接走 MediaDataSource（用 WebDavStorage 的 trust-all
-                    // client 发 Range 请求），避免每个视频都先发一次必失败的请求。
-                    if (!storage.trustAllCertificates) {
-                        val headers = storage.getPlayHeaders()
-                        if (headers.isNotEmpty()) {
-                            val r = generateFromUrl(url, headers, cacheFile, positionKey, skipDurationCheck)
-                            if (r is ThumbnailResult.Success) return@withLock r
-                        }
-                    }
-                    val dataSource = storage.openMediaDataSource(file)
-                    if (dataSource != null) {
-                        generateFromDataSource(dataSource, cacheFile, positionKey, skipDurationCheck)
-                    } else {
-                        generateFromUrl(url, cacheFile, positionKey, skipDurationCheck)
-                    }
-                } else {
-                    // SMB：通过 MediaDataSource 随机读取取帧
-                    Log.d(TAG, "Generating thumbnail via MediaDataSource for ${file.path} (size=${file.length})")
-                    val dataSource = storage.openMediaDataSource(file)
-                    if (dataSource == null) {
-                        Log.w(TAG, "openMediaDataSource returned null for ${file.path}")
-                        return@withLock ThumbnailResult.Failed
-                    }
-                    generateFromDataSource(dataSource, cacheFile, positionKey, skipDurationCheck)
+                // CPU 密集取帧：经全局闸门 [decodeGate] 限制同时解码数，
+                // 批量生成时不会把 CPU 打满、与列表滚动争抢核心导致掉帧。
+                decodeGate.withPermit {
+                    extractFrameFor(storage, file, cacheFile, positionKey, skipDurationCheck)
                 }
             }
             // BUG-T7 修复：生成后检查缓存目录大小，超出阈值时淘汰最旧文件
             trimCacheIfNeeded(cacheDir)
             // W-N5 修复：生成完成后尝试清理 mutexMap 中的空闲 Mutex，避免长期累积
             releaseMutexIfIdle(cacheFile.name, mutex)
+            if (result is ThumbnailResult.Success) {
+                Log.d(TAG, "generateThumbnail 用时 ${System.currentTimeMillis() - startedAt}ms: ${file.name}")
+            }
             result
         }
+
+    /**
+     * 选择取帧方式并解码，是缩略图生成里最重的一步（[MediaMetadataRetriever] 解码整帧）。
+     *
+     * 由 [generateThumbnail] 在 per-key Mutex 内、全局闸门 `decodeGate` 下调用，
+     * 保证同时进行的重解码数受控，不与 UI 滚动争抢 CPU。
+     */
+    private suspend fun extractFrameFor(
+        storage: Storage,
+        file: StorageFile,
+        cacheFile: File,
+        positionKey: String,
+        skipDurationCheck: Boolean,
+    ): ThumbnailResult {
+        val url = storage.createPlayUrl(file)
+        return when {
+            // Local / DocumentFile：通过 URL 取帧
+            url != null && (url.startsWith("file") || url.startsWith("content")) ->
+                generateFromUrl(url, cacheFile, positionKey, skipDurationCheck)
+
+            // WebDAV / HTTP URL：优先使用 URL + Headers 取帧（Android 内建 HTTP 栈比自定义
+            // MediaDataSource 更稳定），回退到 MediaDataSource。
+            //
+            // W-M6 修复：自签 HTTPS 证书场景（storage.trustAllCertificates=true）下，
+            // MediaMetadataRetriever.setDataSource(url, headers) 走系统 HTTP 栈，不使用
+            // WebDavStorage 内部的 trust-all SSL 配置，URL+Headers 路径必失败。此时跳过
+            // URL+Headers，直接走 MediaDataSource（用 trust-all client 发 Range 请求），
+            // 避免每个视频都先发一次必失败的请求。
+            url != null && url.startsWith("http", ignoreCase = true) -> {
+                if (!storage.trustAllCertificates) {
+                    val headers = storage.getPlayHeaders()
+                    if (headers.isNotEmpty()) {
+                        val r = generateFromUrl(url, headers, cacheFile, positionKey, skipDurationCheck)
+                        if (r is ThumbnailResult.Success) return r
+                    }
+                }
+                val dataSource = storage.openMediaDataSource(file)
+                if (dataSource != null) {
+                    generateFromDataSource(dataSource, cacheFile, positionKey, skipDurationCheck)
+                } else {
+                    generateFromUrl(url, cacheFile, positionKey, skipDurationCheck)
+                }
+            }
+
+            // SMB：通过 MediaDataSource 随机读取取帧
+            else -> {
+                Log.d(TAG, "Generating thumbnail via MediaDataSource for ${file.path} (size=${file.length})")
+                val dataSource = storage.openMediaDataSource(file)
+                if (dataSource == null) {
+                    Log.w(TAG, "openMediaDataSource returned null for ${file.path}")
+                    ThumbnailResult.Failed
+                } else {
+                    generateFromDataSource(dataSource, cacheFile, positionKey, skipDurationCheck)
+                }
+            }
+        }
+    }
 
     /**
      * 上传已生成的缩略图到服务端 `{视频目录}/.thumb/{视频去扩展名}-thumb.jpg`。
@@ -750,7 +790,7 @@ class ThumbnailManager @Inject constructor(
             // 由 GC 管理（BUG-P4 竞态保护）。
             val compensated = if (isHdr) applyHdrToneMapCompensation(bitmap) else bitmap
             val scaled = scaleToMaxWidth(compensated, MAX_WIDTH)
-            FileOutputStream(cacheFile).use { out ->
+            BufferedOutputStream(FileOutputStream(cacheFile), BUFFER_SIZE).use { out ->
                 scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
             }
             // 回收语义（原 bitmap 由调用方 GC 管理，BUG-P4 竞态保护，不可回收）：
@@ -783,6 +823,8 @@ class ThumbnailManager @Inject constructor(
             dir.deleteRecursively()
             dir.mkdirs()
         }
+        // C 优化：目录封面探测缓存基于服务端状态，清空缓存时一并失效，避免残留旧结论
+        dirCoverCache.clear()
     }
 
     /**
@@ -860,6 +902,15 @@ class ThumbnailManager @Inject constructor(
      * 避免长期使用后缓存膨胀到数百 MB 需用户手动清理。
      */
     private fun trimCacheIfNeeded(dir: File) {
+        // A1 优化：节流。批量生成时逐张调用本方法会导致 N 次全量目录扫描（listFiles + stat + sort），
+        // 缩略图积累到数千后其开销甚至超过取帧。仅在距上次扫描超过 CACHE_TRIM_INTERVAL_MS 时
+        // 真正执行，并以 CAS 保证同一窗口内只有一个协程进入扫描，其余即时返回。
+        val holder = lastTrimAt.computeIfAbsent(dir.path) { java.util.concurrent.atomic.AtomicLong(0L) }
+        val now = System.currentTimeMillis()
+        val prev = holder.get()
+        if (now - prev < CACHE_TRIM_INTERVAL_MS) return
+        if (!holder.compareAndSet(prev, now)) return
+
         val files = dir.listFiles()?.toMutableList() ?: return
         if (files.isEmpty()) return
         var totalSize = files.sumOf { it.length() }
@@ -1007,7 +1058,7 @@ class ThumbnailManager @Inject constructor(
         return try {
             val input = storage.openInputStream(thumbFile)
             cacheFile.parentFile?.mkdirs()
-            FileOutputStream(cacheFile).use { out ->
+            BufferedOutputStream(FileOutputStream(cacheFile), BUFFER_SIZE).use { out ->
                 input.use { it.copyTo(out) }
             }
             written = true
@@ -1201,7 +1252,7 @@ class ThumbnailManager @Inject constructor(
                 val cacheFile = File(audioCacheDir, "${md5("$storageId-${file.path}")}.jpg")
                 cacheFile.parentFile?.mkdirs()
                 try {
-                    FileOutputStream(cacheFile).use { it.write(coverBytes) }
+                    BufferedOutputStream(FileOutputStream(cacheFile), BUFFER_SIZE).use { it.write(coverBytes) }
                     if (cacheFile.exists() && cacheFile.length() > 0) {
                         onLoaded(file.path, cacheFile.absolutePath)
                         loadedFromDirCover.add(file.path)
@@ -1270,7 +1321,7 @@ class ThumbnailManager @Inject constructor(
         return try {
             val input = storage.openInputStream(coverFile)
             cacheFile.parentFile?.mkdirs()
-            FileOutputStream(cacheFile).use { out ->
+            BufferedOutputStream(FileOutputStream(cacheFile), BUFFER_SIZE).use { out ->
                 input.use { it.copyTo(out) }
             }
             written = true
@@ -1334,10 +1385,13 @@ class ThumbnailManager @Inject constructor(
      *
      * v1 启发：在调用 [MediaMetadataRetriever.embeddedPicture] 全量读取远程音频
      * 文件之前，先检查同级目录下是否有自然存在的封面文件（如 `cover.jpg`、
-     * `folder.jpg`、`{文件名}.jpg` 等）。对 SMB/WebDAV 而言只需一次轻量的
+     * `folder.jpg`、`{文件名}.jpg` 等）。对 SMB/WebDAV 而言只需轻量的
      * [Storage.fileExists] 元数据查询，远快于传输整个音频文件。
      *
      * 命中后将封面复制到 `audio_cover/` 缓存目录，后续走本地缓存路径。
+     *
+     * C 优化：目录级候选（cover/folder/album）的探测结果按目录缓存（[dirCoverCache]），
+     * 同一目录下多个音频共享一次探测，避免每个文件重复发起 9 次目录级探测。
      *
      * @param storage 存储协议实现
      * @param storageId 媒体库 id，参与本地缓存 key
@@ -1352,41 +1406,98 @@ class ThumbnailManager @Inject constructor(
         cacheFile: File,
     ): String? {
         val dirPath = file.path.substringBeforeLast('/', "")
+
+        // C 优化：目录级候选（cover/folder/album）与文件名无关，按目录缓存探测结果，
+        // 避免同一目录下每个音频文件都重复探测（原实现每文件最多 9 次目录级 fileExists）。
+        val dirCoverPath = resolveDirLevelCover(storage, dirPath)
+        if (dirCoverPath != null && copyCoverToCache(storage, dirCoverPath, cacheFile)) {
+            return cacheFile.absolutePath
+        }
+
+        // 文件级候选：{文件名去扩展名}.jpg/.jpeg/.png（逐文件探测，不缓存）
         val nameWithoutExt = file.name.substringBeforeLast(".")
-
-        val candidates = listOf(
-            "cover.jpg", "cover.jpeg", "cover.png",
-            "folder.jpg", "folder.jpeg", "folder.png",
-            "album.jpg", "album.jpeg", "album.png",
-            "${nameWithoutExt}.jpg", "${nameWithoutExt}.jpeg", "${nameWithoutExt}.png",
-        )
-
-        for (candidate in candidates) {
+        for (ext in COVER_EXTS) {
+            val candidate = "$nameWithoutExt$ext"
             val coverPath = if (dirPath.isEmpty()) candidate else "$dirPath/$candidate"
-            try {
-                if (storage.fileExists(coverPath)) {
-                    cacheFile.parentFile?.mkdirs()
-                    val coverFile = object : AbstractStorageFile(
-                        path = coverPath,
-                        name = candidate,
-                        isDirectory = false,
-                    ) {}
-                    storage.openInputStream(coverFile)?.use { input ->
-                        FileOutputStream(cacheFile).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    if (cacheFile.exists() && cacheFile.length() > 0) {
-                        return cacheFile.absolutePath
-                    }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // 单个候选文件失败不影响其他候选
+            if (copyCoverToCache(storage, coverPath, cacheFile)) {
+                return cacheFile.absolutePath
             }
         }
         return null
+    }
+
+    /**
+     * 探测目录级封面候选（cover/folder/album × jpg/jpeg/png），结果按目录缓存（C 优化）。
+     *
+     * 目录级候选与具体音频文件无关，同一目录下所有音频共享一次探测结果，
+     * 把无目录封面目录的 N×9 次远程 [Storage.fileExists] 降为每目录 ≤9 次。
+     *
+     * @return 命中的封面路径，或 null 表示该目录无目录级封面
+     */
+    private suspend fun resolveDirLevelCover(storage: Storage, dirPath: String): String? {
+        val now = System.currentTimeMillis()
+        // key 含 storageId：不同媒体库可能存在相同的 dirPath（如都用 "/movies"），须隔离
+        val cacheKey = "${storage.library.id}/$dirPath"
+        dirCoverCache[cacheKey]?.let { entry ->
+            if (entry.expireAt > now) return entry.path
+        }
+        var found: String? = null
+        outer@ for (base in DIR_COVER_BASES) {
+            for (ext in COVER_EXTS) {
+                val candidate = "$base$ext"
+                val coverPath = if (dirPath.isEmpty()) candidate else "$dirPath/$candidate"
+                val exists = try {
+                    storage.fileExists(coverPath)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    false
+                }
+                if (exists) {
+                    found = coverPath
+                    break@outer
+                }
+            }
+        }
+        dirCoverCache[cacheKey] = DirCoverEntry(now + DIR_COVER_TTL_MS, found)
+        return found
+    }
+
+    /**
+     * 把服务端封面复制到本地缓存 [cacheFile]。
+     *
+     * @return true 表示复制成功（文件存在且非空）
+     */
+    private suspend fun copyCoverToCache(
+        storage: Storage,
+        coverPath: String,
+        cacheFile: File,
+    ): Boolean {
+        return try {
+            val coverFile = object : AbstractStorageFile(
+                path = coverPath,
+                name = coverPath.substringAfterLast('/'),
+                isDirectory = false,
+            ) {}
+            val input = storage.openInputStream(coverFile) ?: return false
+            cacheFile.parentFile?.mkdirs()
+            input.use { ins ->
+                BufferedOutputStream(FileOutputStream(cacheFile), BUFFER_SIZE).use { out ->
+                    ins.copyTo(out)
+                }
+            }
+            if (cacheFile.exists() && cacheFile.length() > 0) {
+                true
+            } else {
+                cacheFile.delete()
+                false
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            cacheFile.delete()
+            false
+        }
     }
 
     /**
@@ -1417,6 +1528,7 @@ class ThumbnailManager @Inject constructor(
         require(MediaFileTypes.isAudioFile(file.name)) {
             "generateAudioCover 要求音频文件，收到 ${file.name}"
         }
+        val startedAt = System.currentTimeMillis()
         val cacheFile = File(audioCacheDir, "${md5("$storageId-${file.path}")}.jpg")
         if (cacheFile.exists()) return@withContext cacheFile.absolutePath
 
@@ -1457,6 +1569,9 @@ class ThumbnailManager @Inject constructor(
         trimCacheIfNeeded(audioCacheDir)
         // W-N5 修复：清理空闲 Mutex
         releaseMutexIfIdle(cacheFile.name, mutex)
+        if (result != null) {
+            Log.d(TAG, "generateAudioCover 用时 ${System.currentTimeMillis() - startedAt}ms: ${file.name}")
+        }
         result
     }
 
@@ -1528,11 +1643,13 @@ class ThumbnailManager @Inject constructor(
                         isDirectory = false,
                     ) {}
                 }
+                // F1 修复：用 filePath→url 映射替代回调内线性 find，避免 O(n²) 匹配
+                val urlByFilePath = videoGroup.associate { it.filePath to it.url }
                 val loaded = java.util.Collections.synchronizedSet(mutableSetOf<String>())
                 preloadThumbnails(storage, storageId, videoFiles, onLoaded = { filePath, thumbPath ->
-                    val matched = videoGroup.find { it.filePath == filePath }
-                    if (matched != null && loaded.add(matched.url)) {
-                        onLoaded(matched.url, thumbPath)
+                    val url = urlByFilePath[filePath]
+                    if (url != null && loaded.add(url)) {
+                        onLoaded(url, thumbPath)
                     }
                 })
 
@@ -1622,11 +1739,13 @@ class ThumbnailManager @Inject constructor(
                         isDirectory = false,
                     ) {}
                 }
+                // F1 修复：用 filePath→url 映射替代回调内线性 find，避免 O(n²) 匹配
+                val urlByFilePath = audioGroup.associate { it.filePath to it.url }
                 val loaded = java.util.Collections.synchronizedSet(mutableSetOf<String>())
                 preloadAudioCovers(storage, storageId, audioFiles, onLoaded = { filePath, coverPath ->
-                    val matched = audioGroup.find { it.filePath == filePath }
-                    if (matched != null && loaded.add(matched.url)) {
-                        onLoaded(matched.url, coverPath)
+                    val url = urlByFilePath[filePath]
+                    if (url != null && loaded.add(url)) {
+                        onLoaded(url, coverPath)
                     }
                 })
 
@@ -1717,6 +1836,7 @@ class ThumbnailManager @Inject constructor(
         require(MediaFileTypes.isImageFile(file.name)) {
             "generateImageThumbnail 要求图片文件，收到 ${file.name}"
         }
+        val startedAt = System.currentTimeMillis()
         val cacheFile = File(imageCacheDir, "${md5("$storageId-${file.path}")}.jpg")
         if (cacheFile.exists()) return@withContext cacheFile.absolutePath
 
@@ -1760,13 +1880,15 @@ class ThumbnailManager @Inject constructor(
                     val decodeOpts = BitmapFactory.Options().apply {
                         inSampleSize = sampleSize
                         inJustDecodeBounds = false
+                        // D3 优化：缩略图输出为 JPEG（不支持 alpha），用 RGB_565 减半像素内存并加快编码
+                        inPreferredConfig = Bitmap.Config.RGB_565
                     }
                     BitmapFactory.decodeStream(stream, null, decodeOpts)
                 }
             } ?: return@withLock null
 
             cacheFile.parentFile?.mkdirs()
-            FileOutputStream(cacheFile).use { out ->
+            BufferedOutputStream(FileOutputStream(cacheFile), BUFFER_SIZE).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
             }
             cacheFile.absolutePath
@@ -1776,6 +1898,9 @@ class ThumbnailManager @Inject constructor(
         trimCacheIfNeeded(imageCacheDir)
         // W-N5 修复：清理空闲 Mutex
         releaseMutexIfIdle(cacheFile.name, mutex)
+        if (result != null) {
+            Log.d(TAG, "generateImageThumbnail 用时 ${System.currentTimeMillis() - startedAt}ms: ${file.name}")
+        }
         result
     }
 
@@ -1856,7 +1981,7 @@ class ThumbnailManager @Inject constructor(
             val bitmap = BitmapFactory.decodeByteArray(pictureData, 0, pictureData.size) ?: return null
             val scaled = scaleToMaxWidth(bitmap, MAX_WIDTH)
             cacheFile.parentFile?.mkdirs()
-            FileOutputStream(cacheFile).use { out ->
+            BufferedOutputStream(FileOutputStream(cacheFile), BUFFER_SIZE).use { out ->
                 scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
             }
             cacheFile.absolutePath
@@ -1914,16 +2039,13 @@ class ThumbnailManager @Inject constructor(
                     if (headers.isNotEmpty()) {
                         try {
                             retriever!!.setDataSource(url, headers)
-                            var frame = retriever.getFrameAtTime(
-                                positionMs * 1000L,
-                                MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                            )
+                            var frame = retriever.frameAt(positionMs * 1000L, MAX_WIDTH)
                             if (frame != null) {
                                 // HDR 软件色调映射补偿（API 34+ 系统自动处理）
                                 frame = applyHdrCompensationIfNeeded(frame, isHdrVideo(retriever!!))
                                 val scaled = scaleToMaxWidth(frame, MAX_WIDTH)
                                 cacheFile.parentFile?.mkdirs()
-                                FileOutputStream(cacheFile).use { out ->
+                                BufferedOutputStream(FileOutputStream(cacheFile), BUFFER_SIZE).use { out ->
                                     scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
                                 }
                                 cleanupSeekCache()
@@ -1952,17 +2074,15 @@ class ThumbnailManager @Inject constructor(
                     } else {
                         retriever2.setDataSource(context, Uri.parse(url))
                     }
-                    var frame = retriever2.getFrameAtTime(
-                        positionMs * 1000L,
-                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                    ) ?: return@withLock null
+                    var frame = retriever2.frameAt(positionMs * 1000L, MAX_WIDTH)
+                        ?: return@withLock null
 
                     // HDR 软件色调映射补偿（API 34+ 系统自动处理）
                     frame = applyHdrCompensationIfNeeded(frame, isHdrVideo(retriever2))
 
                     val scaled = scaleToMaxWidth(frame, MAX_WIDTH)
                     cacheFile.parentFile?.mkdirs()
-                    FileOutputStream(cacheFile).use { out ->
+                    BufferedOutputStream(FileOutputStream(cacheFile), BUFFER_SIZE).use { out ->
                         scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
                     }
 
@@ -1974,17 +2094,15 @@ class ThumbnailManager @Inject constructor(
                     retriever!!.setDataSource(dataSource)
                 }
 
-                var frame = retriever!!.getFrameAtTime(
-                    positionMs * 1000L,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                ) ?: return@withLock null
+                var frame = retriever!!.frameAt(positionMs * 1000L, MAX_WIDTH)
+                    ?: return@withLock null
 
                 // HDR 软件色调映射补偿（API 34+ 系统自动处理）
                 frame = applyHdrCompensationIfNeeded(frame, isHdrVideo(retriever!!))
 
                 val scaled = scaleToMaxWidth(frame, MAX_WIDTH)
                 cacheFile.parentFile?.mkdirs()
-                FileOutputStream(cacheFile).use { out ->
+                BufferedOutputStream(FileOutputStream(cacheFile), BUFFER_SIZE).use { out ->
                     scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
                 }
 
@@ -2062,6 +2180,41 @@ class ThumbnailManager @Inject constructor(
          */
         private val failureRetryAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
+        /**
+         * A1 优化：同一缓存目录两次全量淘汰扫描之间的最小间隔（10s）。
+         * 批量生成时逐张扫描退化为每目录最多每 10s 一次。
+         */
+        private const val CACHE_TRIM_INTERVAL_MS = 10_000L
+
+        /** C 优化：目录级封面探测结果缓存有效期（10 分钟）。 */
+        private const val DIR_COVER_TTL_MS = 10 * 60 * 1000L
+
+        /** C 优化：目录级封面候选基名（与文件名无关，可跨文件复用）。 */
+        private val DIR_COVER_BASES = listOf("cover", "folder", "album")
+
+        /** 封面文件扩展名（目录级 + 文件级探测共用）。 */
+        private val COVER_EXTS = listOf(".jpg", ".jpeg", ".png")
+
+        /**
+         * C 优化：目录级封面探测结果缓存：`storageId/dirPath` → (过期时间, 命中的封面路径或 null)。
+         *
+         * 避免同一目录下每个音频文件重复发起多次 [Storage.fileExists] 探测。
+         */
+        private val dirCoverCache =
+            java.util.concurrent.ConcurrentHashMap<String, DirCoverEntry>()
+
+        /**
+         * CPU 密集取帧的**全局**并发闸门。
+         *
+         * 视频取帧（[MediaMetadataRetriever] 解码整帧）是 CPU / 内存带宽密集型操作。此前仅由各存储源的
+         * [Storage.thumbnailConcurrency]（默认 6）控制，批量生成时会把 CPU 打满，与列表滚动争抢核心导致掉帧。
+         * 改为全局最多同时解码 [DECODE_CONCURRENCY] 路：网络类操作（服务端缩略图预加载 / 上传）仍按各自
+         * 并发跑，只有真正耗 CPU 的解码被限制。
+         */
+        private const val DECODE_CONCURRENCY = 2
+
+        private val decodeGate = Semaphore(DECODE_CONCURRENCY)
+
         private fun failureKey(storageId: Int, req: RemoteThumbnailRequest): String =
             "$storageId-${req.filePath}"
 
@@ -2121,3 +2274,6 @@ private class CoverDirFile(override val path: String) : StorageFile {
     override val etag = null
     override val isHidden = false
 }
+
+/** C 优化：目录级封面探测缓存项。`path` 为命中的封面路径，null 表示该目录无目录级封面。 */
+private data class DirCoverEntry(val expireAt: Long, val path: String?)

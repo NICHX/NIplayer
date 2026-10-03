@@ -315,6 +315,21 @@ fun FileBrowserScreen(
         }
     }
 
+    // 滚动状态上报：滚动期间暂停缩略图取帧，把 CPU 让给滑动。
+    // 原先进目录即对全目录并发生成缩略图（取帧是 CPU 密集型解码），边生成边滑会把 CPU 打满导致掉帧。
+    val scrollInProgress by remember(isGridView, isGalleryView) {
+        derivedStateOf {
+            when {
+                isGalleryView -> galleryState.isScrollInProgress
+                isGridView -> gridState.isScrollInProgress
+                else -> listState.isScrollInProgress
+            }
+        }
+    }
+    LaunchedEffect(scrollInProgress) {
+        viewModel.setScrollInProgress(scrollInProgress)
+    }
+
     val context = LocalContext.current
     // 待下载文件与下载目标选择状态
     var pendingDownloadFiles by remember { mutableStateOf<List<StorageFile>>(emptyList()) }

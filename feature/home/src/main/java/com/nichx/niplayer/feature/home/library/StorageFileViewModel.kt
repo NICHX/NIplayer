@@ -65,6 +65,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -255,6 +256,19 @@ class StorageFileViewModel @Inject constructor(
     /** 缩略图生成进度（0-100），-1 表示未在生成。 */
     private val _thumbnailProgress = MutableStateFlow(-1)
     val thumbnailProgress: StateFlow<Int> = _thumbnailProgress.asStateFlow()
+
+    /** 文件列表是否正在滚动：滚动期间挂起缩略图取帧，把 CPU 让给滑动，避免边生成边滑掉帧。 */
+    private val scrollInProgress = MutableStateFlow(false)
+
+    /** 由 UI 上报列表/网格滚动状态（见 [FileBrowserScreen] 的 `isScrollInProgress` 监听）。 */
+    fun setScrollInProgress(inProgress: Boolean) {
+        scrollInProgress.value = inProgress
+    }
+
+    /** 滚动中挂起，直到停止滚动；取帧前调用，让出 CPU 给滑动。 */
+    private suspend fun awaitScrollIdle() {
+        if (scrollInProgress.value) scrollInProgress.first { !it }
+    }
 
     /** 活跃下载任务数（WAITING + DOWNLOADING），> 0 时顶栏显示下载按钮角标。 */
     val activeDownloadCount: StateFlow<Int> = downloadManager.activeDownloadCount
@@ -1652,6 +1666,8 @@ class StorageFileViewModel @Inject constructor(
                         coroutineScope {
                             for (file in toGenerateImages) {
                                 launch {
+                                    // 滚动中挂起取帧，停止滚动后再继续（避免与滑动争抢 CPU）
+                                    awaitScrollIdle()
                                     imageSemaphore.withPermit {
                                         try {
                                             val path = thumbnailManager.generateImageThumbnail(s, libId, file)
@@ -1727,6 +1743,8 @@ class StorageFileViewModel @Inject constructor(
                         coroutineScope {
                             for (file in toGenerate) {
                                 launch {
+                                    // 滚动中挂起取帧，停止滚动后再继续（避免与滑动争抢 CPU）
+                                    awaitScrollIdle()
                                     audioSemaphore.withPermit {
                                         try {
                                             val path = thumbnailManager.generateAudioCover(s, libId, file)
@@ -1825,6 +1843,8 @@ class StorageFileViewModel @Inject constructor(
                         coroutineScope {
                             for (file in toGenerate) {
                                 launch {
+                                    // 滚动中挂起取帧，停止滚动后再继续（避免与滑动争抢 CPU）
+                                    awaitScrollIdle()
                                     semaphore.withPermit {
                                         try {
                                             when (val result = thumbnailManager.generateThumbnail(
