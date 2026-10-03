@@ -21,6 +21,7 @@ import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import com.nichx.niplayer.common.error.NiMessage
+import com.nichx.niplayer.common.permission.LocalNetworkPermission
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
@@ -85,6 +86,28 @@ fun StoragePlusScreen(
                 StoragePlusEvent.NavigateBack -> onBack()
                 StoragePlusEvent.Saved -> Unit
             }
+        }
+    }
+
+    // 本地网络权限：Android 17+ 访问局域网 SMB/WebDAV 必须授权，否则连接只会表现为超时。
+    // 启动时已申请过一次，此处为用户拒绝/日后撤销后提供按需再次申请 + 设置页引导的兜底入口。
+    var showLocalNetworkDialog by remember { mutableStateOf(false) }
+    val localNetworkLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.testConnection()
+        } else {
+            showLocalNetworkDialog = true
+        }
+    }
+    // 点击「测试连接」：已有权限（或无需权限的版本）直接测试，否则先申请。
+    val requestTestConnection: () -> Unit = {
+        val permission = LocalNetworkPermission.requiredPermission()
+        if (permission == null || LocalNetworkPermission.isGranted(context)) {
+            viewModel.testConnection()
+        } else {
+            localNetworkLauncher.launch(permission)
         }
     }
 
@@ -163,7 +186,7 @@ fun StoragePlusScreen(
 
             StorageFormActions(
                 state = state,
-                onTest = viewModel::testConnection,
+                onTest = requestTestConnection,
                 onSave = viewModel::save,
             )
             }
@@ -181,6 +204,21 @@ fun StoragePlusScreen(
             },
             onDismiss = { showDeleteDialog = false },
             confirmText = stringResource(R.string.delete),
+        )
+    }
+
+    // 本地网络权限被拒后的说明 + 跳系统设置引导
+    if (showLocalNetworkDialog) {
+        NiConfirmDialog(
+            title = stringResource(R.string.storage_plus_local_network_title),
+            text = stringResource(R.string.storage_plus_local_network_message),
+            onConfirm = {
+                showLocalNetworkDialog = false
+                LocalNetworkPermission.openAppSettings(context)
+            },
+            onDismiss = { showLocalNetworkDialog = false },
+            confirmText = stringResource(R.string.storage_plus_go_to_settings),
+            dismissText = stringResource(R.string.cancel),
         )
     }
 

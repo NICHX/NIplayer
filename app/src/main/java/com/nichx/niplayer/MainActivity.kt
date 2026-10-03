@@ -43,7 +43,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.text.SimpleDateFormat
@@ -54,6 +53,7 @@ import androidx.navigation.compose.rememberNavController
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.common.message.AppMessageController
+import com.nichx.niplayer.common.permission.LocalNetworkPermission
 import kotlinx.coroutines.delay
 import com.nichx.niplayer.datastore.BackgroundSettings
 import com.nichx.niplayer.datastore.LanguageSettings
@@ -94,6 +94,22 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var audioPlaybackManager: AudioPlaybackManager
 
     @Inject lateinit var appMessageController: AppMessageController
+
+    /**
+     * 启动权限请求器（Activity Result API）。
+     *
+     * 用 [ActivityResultContracts.RequestMultiplePermissions] 取代已废弃的
+     * [onRequestPermissionsResult]：媒体读取与本地网络权限必须**一次提交**——
+     * `requestPermissions` 同一时刻只接受一个请求，分两次时后者会被静默丢弃。
+     */
+    private val startupPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        // 本地网络权限被拒：局域网 TCP 只会表现为超时，明确告知用户而非静默失败。
+        if (result[Manifest.permission.ACCESS_LOCAL_NETWORK] == false) {
+            appMessageController.postInfo(getString(R.string.access_local_network_permission_denied))
+        }
+    }
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LanguageSettings.wrap(newBase))
@@ -363,11 +379,13 @@ class MainActivity : ComponentActivity() {
     /**
      * 启动时一次性申请媒体读取 + 本地网络访问权限。
      *
-     * 关键：两者必须在**同一次** [ActivityCompat.requestPermissions] 中提交。
-     * `Activity.requestPermissions` 同一时刻只接受一个请求，紧接着的第二次调用会被
-     * 直接丢弃（仅回调空结果、不弹窗）。此前分两次依次调用，新装首启时本地网络权限
-     * 请求正好被媒体权限请求挤掉、从未弹出，导致用户直接恢复含 SMB/WebDAV 媒体库的
-     * 备份后无法连接局域网。合并为一次请求即可消除该竞态。
+     * 关键：两者必须在**同一次**请求中提交（[startupPermissionLauncher] 的
+     * [ActivityResultContracts.RequestMultiplePermissions]）。分两次提交时，第二组权限
+     * 会被系统静默丢弃（不弹窗、回调为空），新装首启时本地网络权限请求正好被媒体权限
+     * 请求挤掉，导致用户直接恢复含 SMB/WebDAV 媒体库的备份后无法连接局域网。
+     *
+     * 本地网络权限只在 Android 17+ 需要（见 [LocalNetworkPermission]）；用户在启动时拒绝后，
+     * 仍可在添加/编辑 SMB、WebDAV 存储时按需再次申请（见 StoragePlusScreen）。
      */
     private fun requestStartupPermissions() {
         val permissions = buildList {
@@ -378,20 +396,14 @@ class MainActivity : ComponentActivity() {
                     Manifest.permission.READ_EXTERNAL_STORAGE
                 }
             )
-            // Android 17 (API 37+): 本地网络访问（SMB/FTP/WebDAV 等局域网设备）
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
-                add(Manifest.permission.ACCESS_LOCAL_NETWORK)
-            }
+            // Android 17 (API 37+)：本地网络访问（SMB/FTP/WebDAV 等局域网设备）
+            LocalNetworkPermission.requiredPermission()?.let { add(it) }
         }.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
         if (permissions.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, permissions.toTypedArray(), REQUEST_STARTUP_CODE)
+            startupPermissionLauncher.launch(permissions.toTypedArray())
         }
-    }
-
-    private companion object {
-        const val REQUEST_STARTUP_CODE = 1001
     }
 }
 

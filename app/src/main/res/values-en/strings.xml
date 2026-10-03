@@ -10,4 +10,6 @@
     <string name="crash_dialog_save_as_txt">Save as txt</string>
     <!-- Notification permission (UX-1): shown once, only if the user denies -->
     <string name="audio_notification_permission_denied">Notification permission not granted — background playback controls in the notification shade and lock screen won\'t be available. You can enable it in system settings.</string>
+    <!-- Local network permission: shown after the startup request is denied (required for LAN SMB/WebDAV on Android 17+) -->
+    <string name="access_local_network_permission_denied">Local network permission not granted — you won\'t be able to reach SMB / WebDAV servers on your local network. Enable it in system settings, or grant it again when adding a storage.</string>
 </resources>

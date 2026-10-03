@@ -533,6 +533,10 @@
     <string name="storage_plus_test_connection">测试连接</string>
     <string name="storage_plus_connect_success">连接成功</string>
     <string name="storage_plus_connect_failed">连接失败</string>
+    <string name="storage_plus_local_network_title">需要本地网络权限</string>
+    <string name="storage_plus_local_network_message">从 Android 17 起，访问局域网内的 SMB / WebDAV 服务器需要「本地网络」权限。请授予该权限后重试；若此前拒绝过，可前往系统设置为本应用开启「本地网络 / 附近的设备」权限。</string>
+    <string name="storage_plus_local_network_required">无法连接局域网：缺少「本地网络」权限。请在系统设置中为 NIplayer 开启该权限后重试。</string>
+    <string name="storage_plus_go_to_settings">去设置</string>
     <string name="storage_plus_duplicate_url">相同地址的存储已存在</string>
     <string name="storage_plus_save_failed">保存失败</string>
     <string name="storage_plus_delete_failed">删除失败</string>

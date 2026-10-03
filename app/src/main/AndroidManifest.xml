@@ -23,8 +23,16 @@
     <!-- Android 13+ 通知权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Android 17+ 本地网络访问权限（SMB/FTP/WebDAV 等局域网设备） -->
+    <!-- Android 17+ 本地网络访问权限（SMB/FTP/WebDAV 等局域网设备）。
+         本地网络保护（LNP）自 Android 17 起对 targetSdk>=37 的应用强制生效，
+         未授权时局域网流量会被网络栈拦截（TCP 表现为超时），必须运行时申请。 -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <!-- Android 16（API 36）本地网络保护为 opt-in，测试期使用同组权限 NEARBY_WIFI_DEVICES，
+         声明后用户才能在同组「附近的设备」中授权；API 37+ 已由 ACCESS_LOCAL_NETWORK 覆盖，
+         故用 maxSdkVersion 限制到 36，避免在新系统上重复申请。 -->
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:maxSdkVersion="36" />
 
     <!-- 在线更新：安装未知来源 APK 所需的声明（实际授予由用户在系统设置中操作） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />

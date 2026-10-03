@@ -533,6 +533,10 @@
     <string name="storage_plus_test_connection">Test connection</string>
     <string name="storage_plus_connect_success">Connected</string>
     <string name="storage_plus_connect_failed">Connection failed</string>
+    <string name="storage_plus_local_network_title">Local network permission required</string>
+    <string name="storage_plus_local_network_message">Starting with Android 17, accessing SMB / WebDAV servers on your local network requires the Local Network permission. Grant it and try again. If you previously denied it, enable \"Local network / Nearby devices\" for this app in system settings.</string>
+    <string name="storage_plus_local_network_required">Cannot reach the local network: the Local Network permission is missing. Enable it for NIplayer in system settings and try again.</string>
+    <string name="storage_plus_go_to_settings">Open settings</string>
     <string name="storage_plus_duplicate_url">A storage with the same address already exists</string>
     <string name="storage_plus_save_failed">Failed to save</string>
     <string name="storage_plus_delete_failed">Failed to delete</string>

@@ -9,4 +9,6 @@
     <string name="crash_dialog_save_as_txt">保存为txt</string>
     <!-- 通知权限（UX-1）：仅在用户拒绝后提示一次 -->
     <string name="audio_notification_permission_denied">未获得通知权限，后台播放的通知栏与锁屏控制将不可用。可在系统设置中开启。</string>
+    <!-- 本地网络权限：启动时被拒后提示（Android 17+ 访问局域网 SMB/WebDAV 必需） -->
+    <string name="access_local_network_permission_denied">未授予「本地网络」权限，将无法连接局域网内的 SMB / WebDAV 服务器。可在系统设置中开启，或在添加存储时再次授权。</string>
 </resources>

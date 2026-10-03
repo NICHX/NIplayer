@@ -20,6 +20,7 @@ import com.nichx.niplayer.datastore.SortConfig
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.common.media.MediaFileTypes
+import com.nichx.niplayer.common.permission.LocalNetworkPermission
 import com.nichx.niplayer.feature.home.PrePlayAspectReader
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequest
 import com.nichx.niplayer.feature.home.imageviewer.ImageViewerRequestHolder
@@ -184,12 +185,21 @@ class StorageFileViewModel @Inject constructor(
      * - [java.net.UnknownHostException] / [java.net.SocketTimeoutException]：网络异常提示
      * - 其他：回退到 e.message 或通用错误
      */
-    private fun Throwable.toFriendlyMessage(): String = when (this) {
-        is WebDavHttpException -> context.getString(friendlyMessageRes, code)
-        is java.net.UnknownHostException -> context.getString(R.string.error_network_host)
-        is java.net.SocketTimeoutException -> context.getString(R.string.error_network_timeout)
-        is java.net.ConnectException -> context.getString(R.string.error_network_connect)
-        else -> message ?: context.getString(R.string.error_unknown)
+    private fun Throwable.toFriendlyMessage(): String {
+        // 本地网络权限缺失（Android 17+ 未授权）时，局域网流量被网络栈拦截，仅表现为超时/连接失败；
+        // 对远程局域网存储优先提示权限问题，避免误导为普通网络错误。本地/SAF 存储不受影响。
+        val remoteLan = currentLibrary?.mediaType == MediaType.SMB_SERVER ||
+            currentLibrary?.mediaType == MediaType.WEBDAV_SERVER
+        if (remoteLan && !LocalNetworkPermission.isGranted(context)) {
+            return context.getString(R.string.storage_plus_local_network_required)
+        }
+        return when (this) {
+            is WebDavHttpException -> context.getString(friendlyMessageRes, code)
+            is java.net.UnknownHostException -> context.getString(R.string.error_network_host)
+            is java.net.SocketTimeoutException -> context.getString(R.string.error_network_timeout)
+            is java.net.ConnectException -> context.getString(R.string.error_network_connect)
+            else -> message ?: context.getString(R.string.error_unknown)
+        }
     }
 
     /** 当前 Storage 实例，loadRoot 成功后赋值。 */

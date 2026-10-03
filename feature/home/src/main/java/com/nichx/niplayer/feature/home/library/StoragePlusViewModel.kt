@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nichx.niplayer.common.permission.LocalNetworkPermission
 import com.nichx.niplayer.database.dao.DownloadTaskDao
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.dao.QuickAccessDao
@@ -181,6 +182,14 @@ class StoragePlusViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(isTesting = false, testResult = ok)
                 }
+                // 权限缺失时局域网连接只会超时，明确提示权限问题而非笼统失败
+                if (!ok && !LocalNetworkPermission.isGranted(context)) {
+                    _events.tryEmit(
+                        StoragePlusEvent.ShowError(
+                            context.getString(R.string.storage_plus_local_network_required),
+                        ),
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -188,7 +197,7 @@ class StoragePlusViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(isTesting = false, testResult = false)
                 }
-                _events.tryEmit(StoragePlusEvent.ShowError(e.message ?: context.getString(R.string.storage_plus_connect_failed)))
+                _events.tryEmit(StoragePlusEvent.ShowError(testFailureMessage(e)))
             }
             // BUG-10：storage 必须在任何路径下都被关闭。清理**移出 finally** —— finally 里的 suspend 调用
             // 在协程取消时会被直接跳过，而 detekt 只接受「finally 里裸 withContext(NonCancellable)」，
@@ -196,6 +205,17 @@ class StoragePlusViewModel @Inject constructor(
             withContext(Dispatchers.IO + NonCancellable) { storage?.close() }
         }
     }
+
+    /**
+     * 连接失败文案：本地网络权限缺失时（Android 17+ 未授权）优先提示权限问题，
+     * 否则回退到异常原文 / 通用失败文案。
+     */
+    private fun testFailureMessage(e: Exception): String =
+        if (!LocalNetworkPermission.isGranted(context)) {
+            context.getString(R.string.storage_plus_local_network_required)
+        } else {
+            e.message ?: context.getString(R.string.storage_plus_connect_failed)
+        }
 
     // ---- 保存 ----
 
