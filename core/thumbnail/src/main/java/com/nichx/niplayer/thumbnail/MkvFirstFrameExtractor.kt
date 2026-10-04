@@ -55,6 +55,12 @@ internal object MkvFirstFrameExtractor {
     /** 判定「黑场」的平均亮度阈值（limited range 纯黑 Y=16，实测有画面时 ≥33）。 */
     private const val BLACK_LUMA_THRESHOLD = 24
 
+    /** 亮度达到该值即认为足够亮、提前采用；否则取窗口内最亮的一帧。 */
+    private const val GOOD_LUMA = 80
+
+    /** 仅当亮度比当前最佳高出该幅度才重新转换，避免每帧都做 YUV→RGB。 */
+    private const val LUMA_IMPROVE_MARGIN = 12
+
     /** YUV→RGB 抽样后的目标短边像素数（缩略图足够，且把转换量降一个数量级）。 */
     private const val TARGET_SHORT_SIDE = 360
 
@@ -276,8 +282,13 @@ internal object MkvFirstFrameExtractor {
             val deadline = SystemClock.elapsedRealtime() + DECODE_TIMEOUT_US / 1000
             var fed = 0
             var eosQueued = false
-            // 黑场跳过：开头约 2.2s 是纯黑，第一帧不可用；保留首个黑帧仅作最终兜底。
+            // 黑场跳过：开头约 2.2s 是纯黑。黑帧仅作最终兜底。
+            // 帧选择：越过黑场后画面仍在渐亮，若取「第一个非黑帧」会得到刚结束黑场的暗帧
+            // （实测平均亮度仅 20，而 3~5s 的正常画面约 48），明显比刮削缩略图暗。
+            // 故取窗口内**最亮**的一帧；亮到 [GOOD_LUMA] 即提前返回。
             var blackFallback: Bitmap? = null
+            var bestFrame: Bitmap? = null
+            var bestLuma = -1
             var lastLuma = -1
             while (SystemClock.elapsedRealtime() < deadline) {
                 // 边投喂边收帧：输入缓冲有限，不能一次全喂完再等输出
@@ -313,34 +324,52 @@ internal object MkvFirstFrameExtractor {
                         continue
                     }
                     val luma = meanLuma(image)
+                    lastLuma = luma
                     val isBlack = luma < BLACK_LUMA_THRESHOLD
-                    // 黑帧且已有兜底帧时不再重复转换（转换是这里最贵的一步）
+                    // 只在「需要」时转换（YUV→RGB 是这里最贵的一步）
+                    val shouldConvert = when {
+                        isBlack -> blackFallback == null
+                        bestFrame == null -> true
+                        luma >= GOOD_LUMA -> true
+                        luma >= bestLuma + LUMA_IMPROVE_MARGIN -> true
+                        else -> false
+                    }
                     val bitmap = try {
-                        if (isBlack && blackFallback != null) null else yuvToBitmap(image)
+                        if (shouldConvert) yuvToBitmap(image) else null
                     } finally {
                         image.close()
                     }
                     codec.releaseOutputBuffer(outIndex, false)
-                    lastLuma = luma
                     if (bitmap != null) {
-                        if (!isBlack) {
+                        if (isBlack) {
                             blackFallback?.recycle()
-                            Log.d(TAG, "decoded ok: fed=$fed/${frames.size} luma=$luma ${bitmap.width}x${bitmap.height}")
-                            return bitmap
+                            blackFallback = bitmap
+                        } else {
+                            bestFrame?.recycle()
+                            bestFrame = bitmap
+                            bestLuma = luma
+                            if (luma >= GOOD_LUMA) {
+                                blackFallback?.recycle()
+                                Log.d(
+                                    TAG,
+                                    "decoded ok: fed=$fed/${frames.size} luma=$luma ${bitmap.width}x${bitmap.height}",
+                                )
+                                return bitmap
+                            }
                         }
-                        blackFallback?.recycle()
-                        blackFallback = bitmap
                     }
                 } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                     Log.d(TAG, "output format: ${codec.outputFormat}")
                 }
             }
-            if (blackFallback != null) {
-                Log.w(TAG, "全程黑场，采用兜底黑帧: fed=$fed/${frames.size} lastLuma=$lastLuma")
-            } else {
-                Log.w(TAG, "decode timeout: fed=$fed/${frames.size} eos=$eosQueued lastLuma=$lastLuma")
-            }
-            return blackFallback
+            val picked = bestFrame ?: blackFallback
+            if (picked === bestFrame) blackFallback?.recycle()
+            Log.d(
+                TAG,
+                "decode end: fed=$fed/${frames.size} eos=$eosQueued bestLuma=$bestLuma lastLuma=$lastLuma " +
+                    "picked=${if (picked == null) "null" else "${picked.width}x${picked.height}"}",
+            )
+            return picked
         } catch (e: Exception) {
             Log.w(TAG, "decode failed: ${e.message}")
             return null
