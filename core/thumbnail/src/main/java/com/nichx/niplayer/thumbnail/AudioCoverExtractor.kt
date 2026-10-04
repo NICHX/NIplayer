@@ -45,13 +45,18 @@ internal class AudioCoverExtractor(
         // 3. 头部读取内嵌封面（远程文件）
         val viaHeader = if (url != null && url.startsWith("http", ignoreCase = true)) {
             val headers = storage.getPlayHeaders()
-            if (headers.isNotEmpty()) extractEmbeddedFromHeader(storage, file, cacheFile) else false
+            if (headers.isNotEmpty()) extractEmbeddedFromHeader(storage, file, cacheFile) else CoverOutcome.ABSENT
         } else {
             extractEmbeddedFromHeader(storage, file, cacheFile)
         }
-        if (viaHeader) return true
+        when (viaHeader) {
+            CoverOutcome.FOUND -> return true
+            // 读取过程出错（网络/IO）：不落 no_cover，下次浏览可重试
+            CoverOutcome.FAILED -> return false
+            CoverOutcome.ABSENT -> {}
+        }
 
-        // 4. 均失败 → 标记 no_cover，避免下次重复尝试
+        // 4. 确认无封面 → 标记 no_cover，避免下次重复扫描
         store.markNoCover(storageId, file.path)
         return false
     }
@@ -61,7 +66,7 @@ internal class AudioCoverExtractor(
         dirCoverCache.clear()
     }
 
-    private suspend fun extractEmbeddedFromHeader(storage: Storage, file: StorageFile, cacheFile: File): Boolean {
+    private suspend fun extractEmbeddedFromHeader(storage: Storage, file: StorageFile, cacheFile: File): CoverOutcome {
         val headerBytes = try {
             storage.readFileBytes(file, HEADER_READ_LIMIT)
         } catch (e: CancellationException) {
@@ -69,7 +74,7 @@ internal class AudioCoverExtractor(
         } catch (e: Exception) {
             Log.w(TAG, "header read failed: ${e.message}")
             null
-        } ?: return false
+        } ?: return CoverOutcome.FAILED
 
         val dataSource = object : MediaDataSource() {
             override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
@@ -162,7 +167,7 @@ internal class AudioCoverExtractor(
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, Uri.parse(url))
-            extractEmbeddedPicture(retriever, cacheFile)
+            extractEmbeddedPicture(retriever, cacheFile) == CoverOutcome.FOUND
         } catch (e: Exception) {
             Log.w(TAG, "embedded(url) failed: ${e.message}", e)
             false
@@ -171,14 +176,14 @@ internal class AudioCoverExtractor(
         }
     }
 
-    private fun extractEmbeddedFromDataSource(dataSource: MediaDataSource, cacheFile: File): Boolean {
+    private fun extractEmbeddedFromDataSource(dataSource: MediaDataSource, cacheFile: File): CoverOutcome {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(dataSource)
             extractEmbeddedPicture(retriever, cacheFile)
         } catch (e: Exception) {
             Log.w(TAG, "embedded(dataSource) failed: ${e.message}", e)
-            false
+            CoverOutcome.FAILED
         } finally {
             releaseQuietly(retriever)
             try {
@@ -189,18 +194,22 @@ internal class AudioCoverExtractor(
         }
     }
 
-    private fun extractEmbeddedPicture(retriever: MediaMetadataRetriever, cacheFile: File): Boolean {
+    private fun extractEmbeddedPicture(retriever: MediaMetadataRetriever, cacheFile: File): CoverOutcome {
         return try {
-            val pictureData = retriever.embeddedPicture ?: return false
-            val bitmap = BitmapFactory.decodeByteArray(pictureData, 0, pictureData.size) ?: return false
+            val pictureData = retriever.embeddedPicture ?: return CoverOutcome.ABSENT
+            val bitmap = BitmapFactory.decodeByteArray(pictureData, 0, pictureData.size) ?: return CoverOutcome.ABSENT
             val scaled = scaleToMaxWidth(bitmap, ThumbnailManager.MAX_WIDTH)
+            if (scaled !== bitmap) bitmap.recycle()
             store.writeJpeg(cacheFile, scaled)
-            true
+            CoverOutcome.FOUND
         } catch (e: Exception) {
             Log.w(TAG, "extractEmbeddedPicture failed: ${e.message}")
-            false
+            CoverOutcome.FAILED
         }
     }
+
+    /** 封面提取结果：命中 / 确认无封面 / 读取失败（可重试）。 */
+    private enum class CoverOutcome { FOUND, ABSENT, FAILED }
 
     private fun releaseQuietly(retriever: MediaMetadataRetriever) {
         try {

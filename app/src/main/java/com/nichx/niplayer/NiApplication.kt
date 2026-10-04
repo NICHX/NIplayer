@@ -10,6 +10,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import com.nichx.niplayer.common.coroutine.AppCoroutineScope
 import com.nichx.niplayer.common.crash.CrashHandler
+import com.nichx.niplayer.common.startup.StartupTrace
 import com.nichx.niplayer.database.dao.MediaLibraryDao
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
@@ -20,6 +21,9 @@ import com.nichx.niplayer.sync.PlayHistorySyncManager
 import com.tencent.mmkv.MMKV
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -51,22 +55,36 @@ class NiApplication : Application(), SingletonImageLoader.Factory {
     @Inject
     lateinit var playHistorySyncManager: PlayHistorySyncManager
 
-    /** 上次崩溃日志，启动时由 [checkPreviousCrash] 填充，供 UI 层提示用户上报。 */
-    @Volatile
-    var previousCrashLog: String? = null
-        private set
+    /**
+     * 上次崩溃日志，启动时由 [checkPreviousCrash] 在后台异步填充，供 UI 层（MainActivity）订阅提示。
+     *
+     * 之所以是 [StateFlow] 而非普通字段：读取崩溃日志是磁盘 IO，已从主线程移入 [appScope]，
+     * UI 侧用 `collectAsStateWithLifecycle` 订阅即可在读取完成时收到通知，无需在冷启动时同步等待。
+     */
+    private val _previousCrashLog = MutableStateFlow<String?>(null)
+    val previousCrashLog: StateFlow<String?> = _previousCrashLog.asStateFlow()
 
     override fun onCreate() {
         super.onCreate()
+        StartupTrace.mark("app.onCreate")
         // O-12：尽早安装崩溃捕获（Hilt 字段注入在 super.onCreate() 中完成，此后才可使用），
         // 覆盖后续 MMKV / 本地存储初始化阶段
         crashHandler.install()
         MMKV.initialize(this)
         // 主动触发 ThemeSettings 初始化，确保 MMKV 就绪后才加载主题模式配置
         ThemeSettings.themeFlow.value
-        // 将 manifest 中 activity-alias 的启停状态校正为当前所选图表，保证桌面图标一致
-        IconSettings.apply(this)
-        checkPreviousCrash()
+        StartupTrace.mark("app.mmkv+theme")
+        // 图标校正（PackageManager IPC）与上次崩溃日志读取（文件 IO）都是阻塞操作，统一放到后台线程，
+        // 让首帧绘制不再等待它们 —— 这是冷启动卡顿的主要来源之一。
+        appScope.launch {
+            // 将 manifest 中 activity-alias 的启停状态校正为当前所选图标，保证桌面图标一致
+            IconSettings.apply(this@NiApplication)
+            StartupTrace.mark("bg.iconApply")
+        }
+        appScope.launch {
+            checkPreviousCrash()
+            StartupTrace.mark("bg.consumeCrash")
+        }
         appScope.launch { ensureLocalStorageExists() }
         // 启动时自动同步播放历史（若启用自动同步）；延迟等待数据库就绪
         if (PlayHistorySyncSettings.autoSync) {
@@ -75,16 +93,17 @@ class NiApplication : Application(), SingletonImageLoader.Factory {
                 playHistorySyncManager.sync(auto = true)
             }
         }
+        StartupTrace.mark("app.onCreate end")
     }
 
     /**
      * 检查上次崩溃日志并消费（O-12）。
      *
-     * 若存在未读崩溃，填充 [previousCrashLog]，UI 层（MainActivity）据此弹出提示对话框。
-     * 消费即删除，避免下次启动重复提示。
+     * 若存在未读崩溃，发布到 [previousCrashLog]，UI 层（MainActivity）订阅后弹出提示对话框。
+     * 消费即删除，避免下次启动重复提示。在 [appScope] 后台线程执行（文件 IO 不占主线程）。
      */
     private fun checkPreviousCrash() {
-        previousCrashLog = crashHandler.consumePreviousCrash()
+        _previousCrashLog.value = crashHandler.consumePreviousCrash()
     }
 
     /**

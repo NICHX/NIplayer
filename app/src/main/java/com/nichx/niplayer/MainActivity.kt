@@ -52,6 +52,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.common.message.AppMessageController
 import com.nichx.niplayer.common.permission.LocalNetworkPermission
+import com.nichx.niplayer.common.startup.StartupTrace
 import kotlinx.coroutines.delay
 import com.nichx.niplayer.datastore.BackgroundSettings
 import com.nichx.niplayer.datastore.LanguageSettings
@@ -114,6 +115,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        StartupTrace.mark("activity.onCreate")
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -153,10 +155,12 @@ class MainActivity : ComponentActivity() {
                 // A1 修复：datastore 只存序号，在 UI 边界还原为配色方案枚举
                 scheme = NiScheme.fromKey(themeConfig.schemeKey),
             ) {
-                // O-12：上次崩溃日志提示，启动时读取一次（消费即清除）
-                var crashLog by remember {
-                    mutableStateOf((application as NiApplication).previousCrashLog)
-                }
+                // O-12：上次崩溃日志提示。日志在 Application 后台线程读取（不阻塞冷启动），
+                // 这里订阅；取到即弹窗，用户忽略后本会话不再重复弹（rememberSaveable 跨旋转保留）。
+                val startupCrashLog by (application as NiApplication)
+                    .previousCrashLog.collectAsStateWithLifecycle()
+                var crashLogDismissed by rememberSaveable { mutableStateOf(false) }
+                val crashLog = startupCrashLog.takeIf { !crashLogDismissed }
                 crashLog?.let { log ->
                     val crashDialogTitle = stringResource(R.string.crash_dialog_title)
                     val crashDialogIgnore = stringResource(R.string.crash_dialog_ignore)
@@ -183,9 +187,9 @@ class MainActivity : ComponentActivity() {
                     }
                     NiInfoDialog(
                         title = crashDialogTitle,
-                        onDismiss = { crashLog = null },
+                        onDismiss = { crashLogDismissed = true },
                         actions = {
-                            TextButton(onClick = { crashLog = null }) { Text(crashDialogIgnore) }
+                            TextButton(onClick = { crashLogDismissed = true }) { Text(crashDialogIgnore) }
                             TextButton(onClick = {
                                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE)
                                     as ClipboardManager
@@ -299,6 +303,9 @@ class MainActivity : ComponentActivity() {
                     var prewarmStep by remember { mutableStateOf(0) }
                     LaunchedEffect(Unit) {
                         withFrameNanos { }  // 等首帧
+                        // 首帧已上屏：记录 TTFD 节点，并通知系统移除启动窗口（结束搜索上报）
+                        StartupTrace.mark("first frame")
+                        this@MainActivity.reportFullyDrawn()
                         delay(220)          // 等启动初始化稳定
                         prewarmStep = 1     // 触发一次主内容 / glass backdrop 重绘
                     }

@@ -199,26 +199,7 @@ class HomeTabViewModel @Inject constructor(
                 }
 
                 // 先扫描本地缓存（视频 + 音频），已存在的缩略图立即可用。
-                // getCached* 为文件系统 exists() 检查（IO），搬到 IO 线程避免在主线程逐条阻塞。
-                val uncached = plays.filter { it.url !in _thumbnailUrls.value }
-                    .filter { it.storageId != null && !it.storagePath.isNullOrEmpty() }
-                val cached = withContext(Dispatchers.IO) {
-                    uncached.mapNotNull { item ->
-                        val path = if (MediaFileTypes.isAudioFile(item.videoName)) {
-                            thumbnailManager.getCachedAudioCoverPath(
-                                item.storageId!!, item.storagePath!!
-                            )
-                        } else {
-                            thumbnailManager.getCachedThumbnailPath(
-                                item.storageId!!, item.storagePath!!
-                            )
-                        }
-                        if (path != null) item.url to path else null
-                    }.toMap()
-                }
-                if (cached.isNotEmpty()) {
-                    _thumbnailUrls.update { it + cached }
-                }
+                mergeCachedThumbnails(plays)
 
                 // 仅对无本地缓存的项走远程生成
                 generateRemoteThumbnails(plays, _thumbnailUrls.value)
@@ -289,6 +270,11 @@ class HomeTabViewModel @Inject constructor(
                     _thumbnailUrls.update {
                         it + (entry.key to "$cleanPath?t=${System.currentTimeMillis()}")
                     }
+                } else {
+                    // 该缩略图此前无任何映射：首次生成，或 HDR/杜比视频退出播放后需重新取帧、
+                    // 生成完成时首页已扫描过一遍缓存（生成晚于扫描）。此时补挂新缓存，否则缩略图
+                    // 不会自动出现在首页，需手动下拉刷新。
+                    mergeCachedThumbnails(recentPlays.value)
                 }
             }
         }
@@ -361,6 +347,32 @@ class HomeTabViewModel @Inject constructor(
     }
 
     /**
+     * 扫描本地已有缩略图缓存，补充到 [_thumbnailUrls]（仅处理尚无映射的条目）。
+     *
+     * getCached* 为文件系统 exists() 检查（IO），统一在 IO 线程执行避免逐条阻塞主线程。
+     * 既用于最近播放列表刷新，也用于「退出播放后异步生成缩略图」完成晚于本次扫描时补挂，
+     * 保证 HDR/杜比视频延迟生成的新缩略图也能自动出现在首页。
+     */
+    private suspend fun mergeCachedThumbnails(plays: List<PlayHistoryEntity>) {
+        val uncached = plays.filter { it.url !in _thumbnailUrls.value }
+            .filter { it.storageId != null && !it.storagePath.isNullOrEmpty() }
+        if (uncached.isEmpty()) return
+        val cached = withContext(Dispatchers.IO) {
+            uncached.mapNotNull { item ->
+                val path = if (MediaFileTypes.isAudioFile(item.videoName)) {
+                    thumbnailManager.getCachedAudioCoverPath(item.storageId!!, item.storagePath!!)
+                } else {
+                    thumbnailManager.getCachedThumbnailPath(item.storageId!!, item.storagePath!!)
+                }
+                if (path != null) item.url to path else null
+            }.toMap()
+        }
+        if (cached.isNotEmpty()) {
+            _thumbnailUrls.update { it + cached }
+        }
+    }
+
+    /**
      * 批量提交累积的缩略图结果到 [_thumbnailUrls]。
      *
      * BUG-T-m7 修复：通过快照 + clear 原子化取出累积结果，一次性 update 到 StateFlow，
@@ -419,6 +431,7 @@ class HomeTabViewModel @Inject constructor(
                                     fileName = name,
                                     url = item.entity.storagePath,
                                     isAudio = isAudio,
+                                    isImage = isImage,
                                 )
                             }
                             if (requests.isEmpty()) continue

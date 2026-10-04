@@ -8,14 +8,20 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -35,8 +41,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,6 +77,7 @@ import coil3.compose.AsyncImage
 import com.nichx.niplayer.datastore.BackgroundSettings
 import com.nichx.niplayer.datastore.GlassSettings
 import com.nichx.niplayer.datastore.ThemeSettings
+import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
@@ -107,6 +117,11 @@ fun ThemeScreen(
     val backgroundImagePath by BackgroundSettings.imagePathFlow.collectAsStateWithLifecycle()
     val backgroundOpacity by BackgroundSettings.opacityFlow.collectAsStateWithLifecycle()
     val backgroundCardOpacity by BackgroundSettings.cardOpacityFlow.collectAsStateWithLifecycle()
+    // 最近使用过的背景图（最近在前），用于内联快速切换 / 删除
+    val recentBackgrounds by BackgroundSettings.recentImagesFlow.collectAsStateWithLifecycle()
+    // 危险操作确认弹窗状态
+    var recentPendingDelete by remember { mutableStateOf<String?>(null) }
+    var showResetConfirm by remember { mutableStateOf(false) }
 
     // 选图：先解码为位图，再进入裁剪页；裁剪确认后落盘并写入设置。
     // I/O 放到 IO 线程，避免大图解码/拷贝阻塞主线程。
@@ -137,11 +152,8 @@ fun ThemeScreen(
                 pendingCropSource = null
                 backgroundScope.launch {
                     val savedPath = withContext(Dispatchers.IO) { saveBackgroundBitmap(context, cropped) }
-                    if (savedPath != null) {
-                        val old = BackgroundSettings.imagePath
-                        BackgroundSettings.imagePath = savedPath
-                        old?.let { runCatching { File(it).delete() } }
-                    }
+                    // 应用新图并把旧图保留进「最近使用」，供后续一键回选
+                    if (savedPath != null) BackgroundSettings.applyImage(savedPath)
                 }
             },
         )
@@ -229,17 +241,23 @@ fun ThemeScreen(
                     .padding(16.dp),
             )
 
-            // ── 自定义背景（图片 + 不透明度） ──
+            // ── 自定义背景（图片 + 不透明度 + 最近使用） ──
             Spacer(Modifier.height(4.dp))
             SectionLabel(text = stringResource(R.string.theme_custom_background))
-            CustomBackgroundCard(
+            BackgroundHero(
                 imagePath = backgroundImagePath,
                 opacity = backgroundOpacity,
                 onPick = { pickBackgroundLauncher.launch("image/*") },
-                onRemove = {
-                    backgroundImagePath?.let { runCatching { File(it).delete() } }
-                    BackgroundSettings.imagePath = null
-                },
+                // 移除仅清除当前背景，图片仍保留在「最近使用」中，便于回选
+                onRemove = { BackgroundSettings.imagePath = null },
+            )
+            BackgroundRecents(
+                imagePath = backgroundImagePath,
+                recentImages = recentBackgrounds,
+                // 点选最近图片直接应用（已是裁剪成品，无需再次裁剪）
+                onApplyRecent = { BackgroundSettings.applyImage(it) },
+                onRequestDeleteRecent = { recentPendingDelete = it },
+                onRequestReset = { showResetConfirm = true },
             )
             if (backgroundImagePath != null) {
                 GlassOpacitySlider(
@@ -296,6 +314,34 @@ fun ThemeScreen(
             Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
     }
+
+    // ── 危险操作确认（删除单张最近图片 / 一键重置背景） ──
+    recentPendingDelete?.let { path ->
+        NiConfirmDialog(
+            title = stringResource(R.string.theme_background_delete_title),
+            text = stringResource(R.string.theme_background_delete_message),
+            confirmText = stringResource(R.string.delete),
+            onConfirm = {
+                BackgroundSettings.removeRecent(path)
+                recentPendingDelete = null
+            },
+            onDismiss = { recentPendingDelete = null },
+            confirmDanger = true,
+        )
+    }
+    if (showResetConfirm) {
+        NiConfirmDialog(
+            title = stringResource(R.string.theme_background_reset_title),
+            text = stringResource(R.string.theme_background_reset_message),
+            confirmText = stringResource(R.string.theme_custom_background_reset),
+            onConfirm = {
+                BackgroundSettings.reset()
+                showResetConfirm = false
+            },
+            onDismiss = { showResetConfirm = false },
+            confirmDanger = true,
+        )
+    }
 }
 
 /** 单条透明度滑条：标题 + 百分比 + Slider。 */
@@ -332,82 +378,288 @@ private fun GlassOpacitySlider(
 }
 
 /**
- * 自定义背景卡片：
- * - 未设置时展示可点击的占位框（提示选择图片）；
- * - 已设置时以所选不透明度预览图片（叠在主题背景色之上），并提供更换 / 移除操作。
+ * 背景主预览：
+ * - 未设置：柔和渐变底 + 圆形图标 + 标题说明 + 实心「从相册选择」按钮（整块可点）；
+ * - 已设置：图片按不透明度铺满，底部渐变蒙层叠加「当前背景」文案与更换 / 移除圆形按钮。
  */
 @Composable
-private fun CustomBackgroundCard(
+private fun BackgroundHero(
     imagePath: String?,
     opacity: Float,
     onPick: () -> Unit,
     onRemove: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
+    val shape = RoundedCornerShape(18.dp)
+    Box(
+        modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(NiExtraColors.current.surfaceLevel2)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .height(176.dp)
+            .clip(shape)
+            .then(
+                if (imagePath == null) {
+                    Modifier
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                                    NiExtraColors.current.surfaceLevel3,
+                                ),
+                            ),
+                        )
+                        .border(1.dp, NiExtraColors.current.outlineSoft.copy(alpha = 0.5f), shape)
+                        .clickable(onClick = onPick)
+                } else {
+                    Modifier.background(NiExtraColors.current.surfaceLevel3)
+                },
+            ),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(104.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.background)
-                .border(
-                    width = 1.dp,
-                    color = NiExtraColors.current.outlineSoft.copy(alpha = 0.6f),
-                    shape = RoundedCornerShape(12.dp),
-                )
-                .then(if (imagePath == null) Modifier.clickable(onClick = onPick) else Modifier),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (imagePath == null) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+        if (imagePath == null) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Image,
+                        imageVector = Icons.Filled.PhotoLibrary,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(26.dp),
                     )
-                    Text(
-                        text = stringResource(R.string.theme_custom_background_pick),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
-            } else {
-                AsyncImage(
-                    model = File(imagePath),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = opacity },
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = stringResource(R.string.theme_background_add_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
-            }
-        }
-        if (imagePath != null) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onPick) {
-                    Text(stringResource(R.string.theme_custom_background_change))
-                }
-                TextButton(onClick = onRemove) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.theme_background_add_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(16.dp))
+                Button(onClick = onPick, shape = RoundedCornerShape(50)) {
                     Icon(
-                        imageVector = Icons.Filled.Delete,
+                        imageVector = Icons.Filled.PhotoLibrary,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
                     )
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.theme_custom_background_remove))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.theme_background_pick_action))
                 }
+            }
+        } else {
+            AsyncImage(
+                model = File(imagePath),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = opacity },
+            )
+            // 底部渐变蒙层：保证文案与按钮在任意图片上都清晰可读
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(88.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.62f)),
+                        ),
+                    ),
+            )
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.theme_background_current),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    modifier = Modifier.weight(1f),
+                )
+                HeroCircleAction(
+                    icon = Icons.Filled.Edit,
+                    contentDescription = stringResource(R.string.theme_custom_background_change),
+                    onClick = onPick,
+                )
+                Spacer(Modifier.width(10.dp))
+                HeroCircleAction(
+                    icon = Icons.Filled.Delete,
+                    contentDescription = stringResource(R.string.theme_custom_background_remove),
+                    onClick = onRemove,
+                )
+            }
+        }
+    }
+}
+
+/** 蒙层上的半透明圆形操作按钮（更换 / 移除）。 */
+@Composable
+private fun HeroCircleAction(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.18f))
+            .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color.White,
+            modifier = Modifier.size(19.dp),
+        )
+    }
+}
+
+/**
+ * 「最近使用」缩略图条：
+ * - 点按缩略图一键切换背景（已是裁剪成品，无需再次裁剪）；
+ * - 长按请求删除单张；
+ * - 通过「重置背景」清空当前背景与全部最近记录。
+ */
+@Composable
+private fun BackgroundRecents(
+    imagePath: String?,
+    recentImages: List<String>,
+    onApplyRecent: (String) -> Unit,
+    onRequestDeleteRecent: (String) -> Unit,
+    onRequestReset: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (recentImages.isEmpty() && imagePath == null) return
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.theme_background_recent),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            ResetBackgroundButton(onClick = onRequestReset)
+        }
+        if (recentImages.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(recentImages, key = { it }) { path ->
+                    RecentBackgroundThumb(
+                        path = path,
+                        selected = path == imagePath,
+                        onClick = { onApplyRecent(path) },
+                        onLongClick = { onRequestDeleteRecent(path) },
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.theme_background_hint),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.padding(start = 2.dp),
+            )
+        }
+    }
+}
+
+/** 「重置背景」文字按钮（次要样式，弱化存在感）。 */
+@Composable
+private fun ResetBackgroundButton(onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.RestartAlt,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = stringResource(R.string.theme_custom_background_reset),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 最近背景缩略图：点按应用；长按请求删除；当前使用中的以主色描边并显示勾选。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RecentBackgroundThumb(
+    path: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        modifier = Modifier
+            // 3:4 竖版比例，贴合作为全屏背景的观感
+            .width(78.dp)
+            .aspectRatio(3f / 4f)
+            .clip(shape)
+            .border(
+                width = if (selected) 2.5.dp else 1.dp,
+                color = if (selected) MaterialTheme.colorScheme.primary
+                else NiExtraColors.current.outlineSoft.copy(alpha = 0.6f),
+                shape = shape,
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    ) {
+        AsyncImage(
+            model = File(path),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = stringResource(R.string.selected),
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(13.dp),
+                )
             }
         }
     }

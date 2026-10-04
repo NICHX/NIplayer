@@ -194,7 +194,6 @@ private val CACHE_DIR_NAME_RES = mapOf(
     "video_cover" to R.string.cache_type_video_cover,
     "audio_cover" to R.string.cache_type_audio_cover,
     "image_thumb" to R.string.cache_type_image_thumb,
-    "seek_preview" to R.string.cache_type_seek_preview,
     "subtitle" to R.string.cache_type_subtitle,
     com.nichx.niplayer.player.kernel.di.PlayerModule.EXO_MEDIA_CACHE_DIR to R.string.cache_type_player_cache,
 )

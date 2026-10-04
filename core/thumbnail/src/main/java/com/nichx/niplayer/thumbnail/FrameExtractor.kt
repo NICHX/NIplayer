@@ -270,17 +270,19 @@ internal fun readFrame(retriever: MediaMetadataRetriever, positions: List<Long>)
         if (frame != null) break
     }
     if (frame == null) return FrameExtraction.Failed
-    return FrameExtraction.Ok(scaleToMaxWidth(applyHdrCompensationIfNeeded(frame, isHdr), ThumbnailManager.MAX_WIDTH))
+    val compensated = applyHdrCompensationIfNeeded(frame, isHdr)
+    val scaled = scaleToMaxWidth(compensated, ThumbnailManager.MAX_WIDTH)
+    // 缩放到新实例后回收补偿/原始帧，避免内存累积
+    if (scaled !== compensated) compensated.recycle()
+    return FrameExtraction.Ok(scaled)
 }
 
-/** 等比缩放到 [maxWidth]，宽度不超时不复制。 */
+/** 等比缩放到 [maxWidth]，宽度不超时不复制、直接返回 [src]（不回收 [src]，中间产物由调用方回收）。 */
 internal fun scaleToMaxWidth(src: Bitmap, maxWidth: Int): Bitmap {
     if (src.width <= maxWidth) return src
     val ratio = maxWidth.toFloat() / src.width
-    val newHeight = (src.height * ratio).toInt()
-    return Bitmap.createScaledBitmap(src, maxWidth, newHeight, true).also {
-        if (it !== src) src.recycle()
-    }
+    val newHeight = (src.height * ratio).toInt().coerceAtLeast(1)
+    return Bitmap.createScaledBitmap(src, maxWidth, newHeight, true)
 }
 
 /** 计算 [inSampleSize]：2 的幂倍，使原图至少一边不超 [maxDimension]。 */

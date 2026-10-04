@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -245,6 +246,23 @@ internal fun EmptyDirState() {
             icon = Icons.Rounded.FolderOpen,
             text = stringResource(R.string.storage_file_empty_dir),
             hint = stringResource(R.string.storage_file_empty_dir_hint),
+        )
+    }
+}
+
+/** 本级目录搜索无匹配结果态：展示关键词，提示当前目录没有名称匹配项。 */
+@Composable
+internal fun SearchEmptyResultState(query: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        contentAlignment = Alignment.Center,
+    ) {
+        NiEmptyState(
+            icon = Icons.Rounded.Search,
+            text = stringResource(R.string.storage_file_search_empty),
+            hint = stringResource(R.string.storage_file_search_empty_hint, query),
         )
     }
 }

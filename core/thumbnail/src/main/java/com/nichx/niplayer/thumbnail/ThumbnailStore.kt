@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * 缩略图本地缓存存取。
  *
- * 统一管理四个缓存目录（`video_cover` / `audio_cover` / `image_thumb` / `seek_preview`）、
+ * 统一管理三个缓存目录（`video_cover` / `audio_cover` / `image_thumb`）、
  * 缓存文件命名（`MD5("$storageId-$filePath").jpg`）、JPEG 落盘、容量淘汰与清理逻辑。
  *
  * 与旧 [ThumbnailManager] 的差别：把原先散落在管理器里的缓存相关私有方法集中到此，
@@ -109,20 +109,6 @@ internal class ThumbnailStore(context: Context) {
             File(imageDir, key).delete()
             val baseKey = md5("$storageId-${file.path}")
             File(audioDir, "$baseKey.no_cover").delete()
-        }
-    }
-
-    /** 删除指定音频的封面缓存与全部标记。 */
-    fun clearAudioCover(storageId: Int, filePath: String) {
-        val baseKey = md5("$storageId-$filePath")
-        listOf(
-            "$baseKey.jpg",
-            "$baseKey.no_cover",
-            "$baseKey.no_cover_api",
-            "$baseKey.api_cover",
-            "$baseKey.tmp.jpg",
-        ).forEach { suffix ->
-            runCatching { File(audioDir, suffix).delete() }
         }
     }
 

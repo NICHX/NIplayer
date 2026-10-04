@@ -25,6 +25,9 @@ object IconSettings {
     private const val ALIAS_PREFIX = "MainActivity."
     private const val KEY_ICON = "app_icon"
 
+    /** 上次已实际校正到的图标值；与当前值一致时可跳过组件校正（见 [apply]）。 */
+    private const val KEY_APPLIED_ICON = "app_icon_applied"
+
     /** 应用图标预设，[suffix] 与 Manifest 中 activity-alias 同名后缀对应。 */
     enum class AppIcon(val value: Int, val suffix: String) {
         // 常量名按「图样」命名（衬线 N），suffix 是冻结的 Manifest alias id，两者不必一致：
@@ -76,14 +79,26 @@ object IconSettings {
     fun setIcon(context: Context, icon: AppIcon) {
         applyComponent(context, icon)
         store(icon)
+        // 记录「已应用」状态，供下次启动 apply() 快速跳过（见 apply）
+        mmkv.encode(KEY_APPLIED_ICON, icon.value)
     }
 
     /**
      * 将组件开关状态同步为当前设置（用于应用启动时校正，保证桌面图标一致）。
      * 不落库、不更新 StateFlow。
+     *
+     * 快速路径：若 [KEY_APPLIED_ICON] 已等于当前图标，说明上次校正后组件状态未变
+     * （组件启停状态由系统持久化，不会自行变化），直接返回，省掉 8 次 PackageManager IPC
+     * —— 这是冷启动主线程开销的大头。
+     *
+     * 仅当 MMKV 被清空（用户「清除数据」）、全新安装、或从备份恢复到新设备时，
+     * 该键为默认 -1，才走完整校正。
      */
     fun apply(context: Context) {
-        applyComponent(context, _iconFlow.value)
+        val current = _iconFlow.value
+        if (mmkv.decodeInt(KEY_APPLIED_ICON, -1) == current.value) return
+        applyComponent(context, current)
+        mmkv.encode(KEY_APPLIED_ICON, current.value)
     }
 
     private fun applyComponent(context: Context, icon: AppIcon) {

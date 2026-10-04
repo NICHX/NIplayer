@@ -190,6 +190,19 @@ internal fun MediaInfoRow(label: String, value: String) {
 }
 
 @Composable
+internal fun MediaInfoSectionTitle(text: String) {
+    Text(
+        text = text,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 14.dp, bottom = 2.dp),
+        color = MaterialTheme.colorScheme.primary,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+    )
+}
+
+@Composable
 internal fun SpeedMenuDialog(
     speedIndex: Int,
     onSelectPreset: (Int) -> Unit,

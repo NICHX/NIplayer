@@ -10,6 +10,7 @@ import com.nichx.niplayer.storage.StorageFile
  * 再按 [FileBrowserSettings.showOnlyMediaFiles] 过滤非媒体文件，
  * 再按 [FileBrowserSettings.mediaFilter] 过滤媒体类型，
  * 再按 [FileBrowserSettings.hideNoMediaFolders] 过滤无媒体文件夹，
+ * 再按 [query] 过滤名称不匹配的条目（本级目录搜索，不递归子目录），
  * 最后按 [FileBrowserSettings] 排序。
  *
  * 无媒体文件夹过滤依赖 ViewModel 异步扫描的判定缓存：已知"无媒体"的文件夹移除，
@@ -18,11 +19,14 @@ import com.nichx.niplayer.storage.StorageFile
  * 排序规则：目录始终在前；同类型内按 [SortConfig.sortBy] 排序，
  * [SortConfig.ascending] 控制升降序。名称排序用自然排序（不区分大小写，
  * 连续数字按数值比较，如 "2" < "10"）。
+ *
+ * @param query 本级目录搜索关键词，空串表示不过滤；匹配为大小写不敏感的名称包含。
  */
 internal fun filterAndSortStorageFiles(
     files: List<StorageFile>,
     config: SortConfig,
     folderMediaVerdicts: Map<String, Boolean>,
+    query: String = "",
 ): List<StorageFile> {
     // 始终过滤应用生成的 .thumb 缩略图文件夹（即便开启显示隐藏文件也不展示，可通过开关放行）
     val thumbFiltered = if (config.hideThumbFolder) {
@@ -55,7 +59,14 @@ internal fun filterAndSortStorageFiles(
         typeFiltered
     }
 
-    return verdictFiltered.sortedWith(storageFileComparator(config))
+    val queryFiltered = if (query.isBlank()) {
+        verdictFiltered
+    } else {
+        val keyword = query.trim()
+        verdictFiltered.filter { it.name.contains(keyword, ignoreCase = true) }
+    }
+
+    return queryFiltered.sortedWith(storageFileComparator(config))
 }
 
 /**

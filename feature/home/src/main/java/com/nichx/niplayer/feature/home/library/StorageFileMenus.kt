@@ -1,11 +1,15 @@
 package com.nichx.niplayer.feature.home.library
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -21,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -181,4 +186,63 @@ internal fun FilterMenuItem(
         },
         onClick = onClick,
     )
+}
+
+/**
+ * 菜单内的网格列数选择行：左侧标签，右侧为可选列数胶囊（含「自适应」）。
+ *
+ * 点击胶囊即时生效但**不关闭菜单**，便于连续微调；选中项以主色高亮。
+ * 列数上限由调用方按窗口宽度类传入（手机 4 / 平板 6 / 大屏 8）。
+ */
+@Composable
+internal fun GridColumnsMenuItem(
+    label: String,
+    autoLabel: String,
+    current: Int,
+    maxColumns: Int,
+    onSelect: (Int) -> Unit,
+) {
+    val options = buildList {
+        add(FileBrowserSettings.GRID_COLUMNS_AUTO)
+        for (count in 2..maxColumns) add(count)
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(end = 12.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            options.forEach { value ->
+                val selected = value == current
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { onSelect(value) }
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        text = if (value == FileBrowserSettings.GRID_COLUMNS_AUTO) autoLabel else value.toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
 }

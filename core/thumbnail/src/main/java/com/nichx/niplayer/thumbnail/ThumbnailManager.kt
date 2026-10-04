@@ -123,31 +123,27 @@ class ThumbnailManager @Inject constructor(
         val cacheFile = store.fileFor(store.videoDir, storageId, file.path)
         val tmpFile = File(store.videoDir, "${cacheFile.nameWithoutExtension}.tmp.jpg")
 
-        val raw = lockFor(cacheFile.name).withLock {
+        // 落临时文件 + 原子覆盖均在锁内完成，避免同一文件并发时 tmp 被彼此覆盖/改名
+        val result = lockFor(cacheFile.name).withLock {
             val skipDurationCheck = storage.library.mediaType == MediaType.LOCAL_STORAGE
             when (val extraction = videoExtractor.extractAt(storage, file, positionMs, skipDurationCheck)) {
-                is FrameExtraction.Ok -> ThumbnailResult.Success(
-                    store.writeJpeg(tmpFile, extraction.bitmap),
-                )
-                FrameExtraction.Failed -> ThumbnailResult.Failed
-                FrameExtraction.PermanentFailure -> ThumbnailResult.PermanentFailure
-            }
-        }
-        val result = when (raw) {
-            is ThumbnailResult.Success ->
-                if (tmpFile.exists()) {
+                is FrameExtraction.Ok -> {
+                    store.writeJpeg(tmpFile, extraction.bitmap)
                     if (tmpFile.renameTo(cacheFile)) {
                         ThumbnailResult.Success(cacheFile.absolutePath)
                     } else {
                         tmpFile.delete()
                         ThumbnailResult.Failed
                     }
-                } else {
-                    raw
                 }
-            ThumbnailResult.TooShort, ThumbnailResult.Failed, ThumbnailResult.PermanentFailure -> {
-                tmpFile.delete()
-                raw
+                FrameExtraction.Failed -> {
+                    tmpFile.delete()
+                    ThumbnailResult.Failed
+                }
+                FrameExtraction.PermanentFailure -> {
+                    tmpFile.delete()
+                    ThumbnailResult.PermanentFailure
+                }
             }
         }
         store.trimIfNeeded(store.videoDir)
@@ -175,11 +171,8 @@ class ThumbnailManager @Inject constructor(
             val scaled = scaleToMaxWidth(compensated, MAX_WIDTH)
             store.writeJpeg(cacheFile, scaled)
             // 回收语义：原 bitmap 归调用方 GC 管理不可回收；仅回收本方法产生/缩放的副本
-            if (scaled !== compensated) {
-                scaled.recycle()
-            } else if (compensated !== bitmap) {
-                compensated.recycle()
-            }
+            if (scaled !== compensated) scaled.recycle()
+            if (compensated !== bitmap) compensated.recycle()
             store.trimIfNeeded(store.videoDir)
             _thumbnailUpdated.tryEmit(cacheFile.absolutePath)
             cacheFile.absolutePath
@@ -257,7 +250,12 @@ class ThumbnailManager @Inject constructor(
         val browseGenerationAllowed = mode == ThumbnailGenerationMode.ALL
 
         if (ThumbnailSettings.generateForVideo) {
-            generateRemoteVideos(storage, storageId, requests.filter { !it.isAudio }, browseGenerationAllowed, onLoaded)
+            generateRemoteVideos(
+                storage, storageId, requests.filter { !it.isAudio && !it.isImage }, browseGenerationAllowed, onLoaded,
+            )
+        }
+        if (ThumbnailSettings.generateForImage) {
+            generateRemoteImages(storage, storageId, requests.filter { it.isImage }, browseGenerationAllowed, onLoaded)
         }
         if (ThumbnailSettings.generateForAudio) {
             generateRemoteAudios(storage, storageId, requests.filter { it.isAudio }, browseGenerationAllowed, onLoaded)
@@ -302,6 +300,44 @@ class ThumbnailManager @Inject constructor(
             }
         }
         uploadInParallel(storage, successFiles) { remoteSync.uploadThumbnail(storage, it) }
+    }
+
+    /**
+     * 为远程图片批量生成缩略图（本地缓存查看 + 本地降采样解码，无服务端同步）。
+     *
+     * 图片无 `.thumb/` 服务端缓存约定，因此仅：命中本地缓存回填 + 浏览允许时并发生成。
+     */
+    private suspend fun generateRemoteImages(
+        storage: Storage,
+        storageId: Int,
+        group: List<RemoteThumbnailRequest>,
+        browseGenerationAllowed: Boolean,
+        onLoaded: (url: String, thumbPath: String) -> Unit,
+    ) {
+        if (group.isEmpty()) return
+        for (req in group) {
+            val cached = store.cachedPath(store.imageDir, storageId, req.filePath)
+            if (cached != null) onLoaded(req.url, cached)
+        }
+        if (!browseGenerationAllowed) return
+        val remaining = group.filter { store.cachedPath(store.imageDir, storageId, it.filePath) == null }
+        if (remaining.isEmpty()) return
+        val semaphore = Semaphore(minOf(storage.thumbnailConcurrency, remaining.size))
+        coroutineScope {
+            for (req in remaining) {
+                launch {
+                    semaphore.withPermit {
+                        try {
+                            val file = req.toStorageFile()
+                            val path = generateImageThumbnail(storage, storageId, file)
+                            if (path != null) onLoaded(req.url, path)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "generateRemoteThumbnails image failed: ${e.message}", e)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private suspend fun generateRemoteAudios(
@@ -474,7 +510,8 @@ fun calculateFramePositionMs(durationMs: Long, positionKey: String): Long {
         "50pct" -> (durationMs * 0.5).toLong()
         else -> 5000L
     }
-    return frameMs.coerceIn(0, durationMs)
+    val upper = durationMs.coerceAtLeast(0L)
+    return frameMs.coerceIn(0L, upper)
 }
 
 /** 默认取帧位置（第 5 秒）。 */

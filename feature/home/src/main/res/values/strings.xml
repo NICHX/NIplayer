@@ -369,6 +369,13 @@
     <string name="storage_file_view_list">列表视图</string>
     <string name="storage_file_view_gallery">画廊视图</string>
     <string name="storage_file_view_flat_list">平铺列表</string>
+    <string name="storage_file_search">搜索当前目录</string>
+    <string name="storage_file_search_hint">搜索当前目录文件</string>
+    <string name="storage_file_search_close">关闭搜索</string>
+    <string name="storage_file_search_empty">未找到匹配项</string>
+    <string name="storage_file_search_empty_hint">当前目录没有名称包含「%1$s」的文件</string>
+    <string name="storage_file_view_columns">列数</string>
+    <string name="storage_file_view_columns_auto">自适应</string>
     <string name="storage_file_folder_loading">加载中…</string>
     <string name="storage_file_toggle_folder">展开/折叠文件夹</string>
     <string name="storage_file_gallery_empty">此目录暂无媒体</string>
@@ -590,12 +597,22 @@
     <string name="theme_scheme_sage_desc">苔绿 · 灰绿配沙灰，静谧雅致</string>
     <string name="theme_preview">主题预览</string>
     <string name="theme_custom_background">自定义背景</string>
-    <string name="theme_custom_background_pick">选择图片</string>
     <string name="theme_custom_background_change">更换图片</string>
     <string name="theme_custom_background_remove">移除背景</string>
     <string name="theme_custom_background_opacity">背景不透明度</string>
     <string name="theme_custom_background_card_opacity">卡片不透明度</string>
     <string name="theme_custom_background_crop_hint">拖动或双指缩放，调整要显示的画面</string>
+    <string name="theme_custom_background_reset">重置背景</string>
+    <string name="theme_background_add_title">添加背景图片</string>
+    <string name="theme_background_add_subtitle">从相册选择一张图片作为背景</string>
+    <string name="theme_background_pick_action">从相册选择</string>
+    <string name="theme_background_current">当前背景</string>
+    <string name="theme_background_recent">最近使用</string>
+    <string name="theme_background_hint">点按切换 · 长按删除</string>
+    <string name="theme_background_delete_title">删除这张背景图？</string>
+    <string name="theme_background_delete_message">将从「最近使用」中移除并删除该图片文件；若它正在使用，将恢复为主题背景色。</string>
+    <string name="theme_background_reset_title">重置背景设置？</string>
+    <string name="theme_background_reset_message">将清除当前背景与「最近使用」的全部图片（含文件），并把背景 / 卡片不透明度恢复为默认值。</string>
 
     <!-- 语言（LanguageScreen） -->
     <string name="language_title">语言</string>

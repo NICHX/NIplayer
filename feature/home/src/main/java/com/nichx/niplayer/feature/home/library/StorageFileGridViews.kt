@@ -65,12 +65,31 @@ import com.nichx.niplayer.designsystem.components.niCardOpacity
 import com.nichx.niplayer.designsystem.components.niHasCustomBackground
 import com.nichx.niplayer.designsystem.components.niNestedSurface
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
+import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
+import com.nichx.niplayer.designsystem.theme.NiWindowWidthSizeClass
 import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.common.media.MediaFileTypes.isImageFile
+import com.nichx.niplayer.datastore.FileBrowserSettings
 import com.nichx.niplayer.storage.StorageFile
 
+
+/** 自适应模式下单个网格单元的最小宽度。 */
+private val GridAutoMinCellSize = 160.dp
+
+/**
+ * 网格列数可调范围（含手动覆盖上、下限），按窗口宽度类收窄：
+ * 手机（Compact）2..4 / 平板（Medium）2..6 / 大屏（Expanded）2..8。
+ *
+ * 下限 2：1 列等同列表，失去网格意义；上限 8：内容区约 960dp 时单元格仍 ≥100dp，
+ * 再窄无法辨识缩略图与文件名。
+ */
+internal fun gridColumnRange(width: NiWindowWidthSizeClass): IntRange = when (width) {
+    NiWindowWidthSizeClass.Compact -> 2..4
+    NiWindowWidthSizeClass.Medium -> 2..6
+    NiWindowWidthSizeClass.Expanded -> 2..8
+}
 
 @Composable
 internal fun FileGrid(
@@ -90,10 +109,19 @@ internal fun FileGrid(
     gridState: LazyGridState = rememberLazyGridState(),
     contentTopInset: Dp = 0.dp,
     header: (@Composable () -> Unit)? = null,
+    columns: Int = FileBrowserSettings.GRID_COLUMNS_AUTO,
 ) {
+    val widthClass = LocalNiWindowSizeClass.current.width
+    val columnRange = gridColumnRange(widthClass)
+    // 自适应：按可用宽度推导列数（大屏自然显示更多列）；手动：取用户列数并收敛到当前宽度类范围
+    val gridCells = if (columns == FileBrowserSettings.GRID_COLUMNS_AUTO) {
+        GridCells.Adaptive(minSize = GridAutoMinCellSize)
+    } else {
+        GridCells.Fixed(columns.coerceIn(columnRange.first, columnRange.last))
+    }
     LazyVerticalGrid(
         state = gridState,
-        columns = GridCells.Adaptive(minSize = 160.dp),
+        columns = gridCells,
         contentPadding = PaddingValues(
             start = 16.dp,
             end = 16.dp,

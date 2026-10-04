@@ -52,7 +52,10 @@ android {
             releaseKeyAlias != null && releaseKeyPassword != null
         ) {
             create("release") {
-                storeFile = file(releaseStoreFile)
+                // storeFile 可能来自 CI 的绝对路径，也可能是本地 keystore.properties 里的相对路径。
+                // 相对路径必须以**根工程**为基准解析（与上面读取 keystore.properties 的位置一致）；
+                // 模块级 file() 会解析到 app/ 下，导致本机找不到 release.keystore。
+                storeFile = rootProject.file(releaseStoreFile)
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
@@ -62,7 +65,11 @@ android {
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("debug")
+            // 本机开发：debug 与 release 复用同一签名，二者可相互覆盖安装，切换无需先卸载。
+            // 仅当 release 签名配置可用（本地 keystore.properties 或 CI Secrets）时生效；
+            // 未配置时回退 debug.keystore，保证 CI 的 assembleDebug / test / lint 仍可构建。
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
         }
         release {
             // O-19：启用 R8 代码裁剪/混淆 + 资源压缩，配合 proguard-rules.pro 的 keep 规则

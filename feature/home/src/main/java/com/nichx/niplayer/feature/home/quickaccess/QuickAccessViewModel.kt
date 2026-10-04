@@ -116,19 +116,22 @@ class QuickAccessViewModel @Inject constructor(
                 }
                 if (mediaItems.isEmpty()) return@collect
 
-                val cached = mediaItems.mapNotNull { item ->
-                    val name = item.entity.name
-                    val sid = item.entity.libraryId
-                    val path = item.entity.storagePath
-                    val thumbPath = if (MediaFileTypes.isAudioFile(name)) {
-                        thumbnailManager.getCachedAudioCoverPath(sid, path)
-                    } else if (isImageFile(name)) {
-                        thumbnailManager.getCachedImageThumbnailPath(sid, path)
-                    } else {
-                        thumbnailManager.getCachedThumbnailPath(sid, path)
-                    }
-                    if (thumbPath != null) item.qaThumbKey to thumbPath else null
-                }.toMap()
+                // getCached* 为文件系统 exists() 检查（IO），搬到 IO 线程避免在主线程逐条阻塞
+                val cached = withContext(Dispatchers.IO) {
+                    mediaItems.mapNotNull { item ->
+                        val name = item.entity.name
+                        val sid = item.entity.libraryId
+                        val path = item.entity.storagePath
+                        val thumbPath = if (MediaFileTypes.isAudioFile(name)) {
+                            thumbnailManager.getCachedAudioCoverPath(sid, path)
+                        } else if (isImageFile(name)) {
+                            thumbnailManager.getCachedImageThumbnailPath(sid, path)
+                        } else {
+                            thumbnailManager.getCachedThumbnailPath(sid, path)
+                        }
+                        if (thumbPath != null) item.qaThumbKey to thumbPath else null
+                    }.toMap()
+                }
                 if (cached.isNotEmpty()) {
                     _qaThumbnailUrls.update { it + cached }
                 }
@@ -180,6 +183,7 @@ class QuickAccessViewModel @Inject constructor(
                                     fileName = name,
                                     url = item.entity.storagePath,
                                     isAudio = isAudio,
+                                    isImage = isImage,
                                 )
                             }
                             if (requests.isEmpty()) continue

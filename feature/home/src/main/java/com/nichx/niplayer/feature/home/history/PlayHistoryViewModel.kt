@@ -136,23 +136,7 @@ class PlayHistoryViewModel @Inject constructor(
                 }
 
                 // 先扫描本地缓存（视频 + 音频），已存在的缩略图立即可用
-                val uncached = items.filter { it.url !in _thumbnailUrls.value }
-                    .filter { it.storageId != null && !it.storagePath.isNullOrEmpty() }
-                val cached = uncached.mapNotNull { item ->
-                    val path = if (MediaFileTypes.isAudioFile(item.videoName)) {
-                        thumbnailManager.getCachedAudioCoverPath(
-                            item.storageId!!, item.storagePath!!
-                        )
-                    } else {
-                        thumbnailManager.getCachedThumbnailPath(
-                            item.storageId!!, item.storagePath!!
-                        )
-                    }
-                    if (path != null) item.url to path else null
-                }.toMap()
-                if (cached.isNotEmpty()) {
-                    _thumbnailUrls.update { it + cached }
-                }
+                mergeCachedThumbnails(items)
 
                 // 仅对无本地缓存的项走远程生成
                 generateRemoteThumbnails(items, _thumbnailUrls.value)
@@ -171,6 +155,11 @@ class PlayHistoryViewModel @Inject constructor(
                     _thumbnailUrls.update {
                         it + (entry.key to "$cleanPath?t=${System.currentTimeMillis()}")
                     }
+                } else {
+                    // 该缩略图此前无任何映射：首次生成，或 HDR/杜比视频退出播放后需重新取帧、
+                    // 生成完成时列表已扫描过一遍缓存（生成晚于扫描）。此时补挂新缓存，否则缩略图
+                    // 不会自动出现在列表，需手动刷新。
+                    mergeCachedThumbnails(histories.value)
                 }
             }
         }
@@ -238,6 +227,32 @@ class PlayHistoryViewModel @Inject constructor(
                 // 最后 flush 一次，确保所有结果都已提交
                 flushThumbnailBatch(batchAccumulator)
             }
+        }
+    }
+
+    /**
+     * 扫描本地已有缩略图缓存，补充到 [_thumbnailUrls]（仅处理尚无映射的条目）。
+     *
+     * getCached* 为文件系统 exists() 检查（IO），统一在 IO 线程执行避免逐条阻塞主线程。
+     * 既用于历史列表刷新，也用于「退出播放后异步生成缩略图」完成晚于本次扫描时补挂，
+     * 保证 HDR/杜比视频延迟生成的新缩略图也能自动出现在列表。
+     */
+    private suspend fun mergeCachedThumbnails(items: List<PlayHistoryEntity>) {
+        val uncached = items.filter { it.url !in _thumbnailUrls.value }
+            .filter { it.storageId != null && !it.storagePath.isNullOrEmpty() }
+        if (uncached.isEmpty()) return
+        val cached = withContext(Dispatchers.IO) {
+            uncached.mapNotNull { item ->
+                val path = if (MediaFileTypes.isAudioFile(item.videoName)) {
+                    thumbnailManager.getCachedAudioCoverPath(item.storageId!!, item.storagePath!!)
+                } else {
+                    thumbnailManager.getCachedThumbnailPath(item.storageId!!, item.storagePath!!)
+                }
+                if (path != null) item.url to path else null
+            }.toMap()
+        }
+        if (cached.isNotEmpty()) {
+            _thumbnailUrls.update { it + cached }
         }
     }
 

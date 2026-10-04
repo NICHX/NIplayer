@@ -305,6 +305,20 @@ class StorageFileViewModel @Inject constructor(
     val sortConfig: StateFlow<SortConfig> = FileBrowserSettings.sortFlow
 
     /**
+     * 本级目录搜索关键词：仅按名称过滤**当前目录**已加载的文件（不递归子目录）。
+     * 空串表示未搜索。切换目录时自动清空（见 [listDirectory]）。
+     */
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    /** 设置本级目录搜索关键词并立即重排当前列表。 */
+    fun setSearchQuery(query: String) {
+        if (_searchQuery.value == query) return
+        _searchQuery.value = query
+        resortOffMainThread()
+    }
+
+    /**
      * 连接健康状态：远程存储的心跳检测结果。
      *
      * 仅远程存储（SMB/WebDAV）启用心跳。心跳每 [HEARTBEAT_INTERVAL_MS] 执行一次，
@@ -1369,6 +1383,8 @@ class StorageFileViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, error = null) }
             _thumbnailUrls.value = emptyMap()
             _tooShortPaths.value = emptySet()
+            // 记录切换前的目录：用于判断本次加载是否真正切换了目录（决定是否清空本级搜索）
+            val previousPath = _uiState.value.currentPath
             try {
                 // 有界加载：不可达存储（SMB/WebDAV）底层 listFiles 是阻塞调用（含多次重试），
                 // 协程 withTimeout 会一直等待后台阻塞完成、无法按时返回，因此改用
@@ -1403,6 +1419,8 @@ class StorageFileViewModel @Inject constructor(
                 _treeExpanded.value = emptySet()
                 _treeChildren.value = emptyMap()
                 _treeLoading.value = emptySet()
+                // 切换到其他目录时清空本级搜索关键词（搜索仅作用于原目录）；同一目录刷新时保留
+                if (previousPath != directory.path) _searchQuery.value = ""
                 _uiState.update {
                     it.copy(
                         rawFiles = fs,
@@ -1786,7 +1804,7 @@ class StorageFileViewModel @Inject constructor(
                                             val path = thumbnailManager.generateAudioCover(s, libId, item.file)
                                             if (path != null) {
                                                 synchronized(batchLock) { batchAccumulator[item.file.path] = path }
-                                                if (!isLocal && ThumbnailSettings.saveInSameDir) audioSuccess.add(item.file)
+                                                if (!isLocal && ThumbnailSettings.effectiveWriteBack(libId)) audioSuccess.add(item.file)
                                             }
                                         }
                                         ThumbType.VIDEO -> {
@@ -1796,7 +1814,7 @@ class StorageFileViewModel @Inject constructor(
                                             )) {
                                                 is ThumbnailResult.Success -> {
                                                     synchronized(batchLock) { batchAccumulator[item.file.path] = result.path }
-                                                    if (!isLocal && ThumbnailSettings.saveInSameDir) videoSuccess.add(item.file)
+                                                    if (!isLocal && ThumbnailSettings.effectiveWriteBack(libId)) videoSuccess.add(item.file)
                                                 }
                                                 is ThumbnailResult.TooShort ->
                                                     _tooShortPaths.update { it + item.file.path }
@@ -1817,8 +1835,8 @@ class StorageFileViewModel @Inject constructor(
                         }
                     }
                 }
-                // 上传新生成的缩略图/封面到服务端（仅远程 + 写回开关）
-                if (!isLocal && ThumbnailSettings.saveInSameDir) {
+                // 上传新生成的缩略图/封面到服务端（仅远程 + 该存储源生效的回写开关）
+                if (!isLocal && ThumbnailSettings.effectiveWriteBack(libId)) {
                     uploadGeneratedThumbs(s, videoSuccess) { thumbnailManager.uploadThumbnail(s, it) }
                     uploadGeneratedThumbs(s, audioSuccess) { thumbnailManager.uploadAudioCover(s, it) }
                 }
@@ -2482,6 +2500,7 @@ class StorageFileViewModel @Inject constructor(
             files = files,
             config = FileBrowserSettings.sortFlow.value,
             folderMediaVerdicts = folderMediaVerdicts,
+            query = _searchQuery.value,
         )
 
     /** 重排请求的串行化句柄，见 [resortOffMainThread]。 */

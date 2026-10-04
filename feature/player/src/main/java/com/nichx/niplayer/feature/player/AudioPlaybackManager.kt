@@ -896,6 +896,9 @@ class AudioPlaybackManager @Inject constructor(
             return
         }
 
+        // 缩略图总开关 / 音频封面开关关闭时不生成、不上传（仍可使用上面命中的本地缓存）
+        if (!ThumbnailSettings.generateThumbnail || !ThumbnailSettings.generateForAudio) return
+
         // 取消旧的封面生成协程，避免快速切歌时旧协程完成后覆盖新歌封面
         audioCoverJob?.cancel()
         audioCoverJob = scope.launch(Dispatchers.IO) {

@@ -142,6 +142,7 @@ import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
 import com.nichx.niplayer.designsystem.components.NiDialogItem
+import com.nichx.niplayer.player.kernel.AudioRole
 import com.nichx.niplayer.player.kernel.NxVideoScaleMode
 import com.nichx.niplayer.player.kernel.VideoSize
 import com.nichx.niplayer.player.kernel.PlaybackEvent
@@ -2279,18 +2280,114 @@ fun PlayerScreen(
                         modifier = Modifier.padding(vertical = 24.dp),
                     )
                 } else {
-                    MediaInfoRow(stringResource(R.string.player_media_info_video_codec), info.videoCodec ?: stringResource(R.string.player_media_info_unknown))
-                    MediaInfoRow(stringResource(R.string.player_media_info_audio_codec), info.audioCodec ?: stringResource(R.string.player_media_info_unknown))
-                    MediaInfoRow(stringResource(R.string.player_media_info_resolution), info.resolution ?: stringResource(R.string.player_media_info_unknown))
-                    MediaInfoRow(
-                        stringResource(R.string.player_media_info_bitrate),
-                        info.bitrate?.let { "${it / 1000} kbps" } ?: stringResource(R.string.player_media_info_unknown),
-                    )
-                    MediaInfoRow(
-                        stringResource(R.string.player_media_info_frame_rate),
-                        info.frameRate?.let { String.format(Locale.US, "%.2f fps", it) } ?: stringResource(R.string.player_media_info_unknown),
-                    )
-                    MediaInfoRow(stringResource(R.string.player_media_info_hdr), info.hdrType ?: stringResource(R.string.player_media_info_unsupported))
+                    val unknown = stringResource(R.string.player_media_info_unknown)
+
+                    MediaInfoSectionTitle(stringResource(R.string.player_media_info_section_container))
+                    info.container?.let {
+                        MediaInfoRow(stringResource(R.string.player_media_info_container), it)
+                    }
+                    info.bitrate?.let {
+                        MediaInfoRow(stringResource(R.string.player_media_info_bitrate), "${it / 1000} kbps")
+                    }
+
+                    if (info.videoTrackCount > 0) {
+                        MediaInfoSectionTitle(stringResource(R.string.player_media_info_section_video))
+                        MediaInfoRow(stringResource(R.string.player_media_info_video_codec), info.videoCodec ?: unknown)
+                        MediaInfoRow(stringResource(R.string.player_media_info_resolution), info.resolution ?: unknown)
+                        MediaInfoRow(
+                            stringResource(R.string.player_media_info_frame_rate),
+                            info.frameRate?.let { String.format(Locale.US, "%.2f fps", it) } ?: unknown,
+                        )
+                        info.videoBitrate?.let {
+                            MediaInfoRow(stringResource(R.string.player_media_info_video_bitrate), "${it / 1000} kbps")
+                        }
+                        info.videoBitDepth?.let {
+                            MediaInfoRow(stringResource(R.string.player_media_info_bit_depth), "$it-bit")
+                        }
+                        info.colorSpace?.let {
+                            MediaInfoRow(stringResource(R.string.player_media_info_color_space), it)
+                        }
+                        info.colorRange?.let { range ->
+                            val rangeText = when (range) {
+                                "full" -> stringResource(R.string.player_media_info_color_range_full)
+                                else -> stringResource(R.string.player_media_info_color_range_limited)
+                            }
+                            MediaInfoRow(stringResource(R.string.player_media_info_color_range), rangeText)
+                        }
+                        info.rotationDegrees?.let {
+                            MediaInfoRow(stringResource(R.string.player_media_info_rotation), "$it°")
+                        }
+                        info.pixelAspectRatio?.let {
+                            MediaInfoRow(
+                                stringResource(R.string.player_media_info_pixel_aspect_ratio),
+                                String.format(Locale.US, "%.2f", it),
+                            )
+                        }
+                        info.stereoMode?.let { mode ->
+                            val modeText = when (mode) {
+                                "top_bottom" -> stringResource(R.string.player_media_info_stereo_top_bottom)
+                                "left_right" -> stringResource(R.string.player_media_info_stereo_left_right)
+                                "mesh" -> stringResource(R.string.player_media_info_stereo_mesh)
+                                else -> stringResource(R.string.player_media_info_stereo_interleaved)
+                            }
+                            MediaInfoRow(stringResource(R.string.player_media_info_stereo_mode), modeText)
+                        }
+                        MediaInfoRow(
+                            stringResource(R.string.player_media_info_hdr),
+                            info.hdrType ?: stringResource(R.string.player_media_info_unsupported),
+                        )
+                    }
+
+                    if (info.audioTrackCount > 0) {
+                        MediaInfoSectionTitle(stringResource(R.string.player_media_info_section_audio))
+                        MediaInfoRow(stringResource(R.string.player_media_info_audio_codec), info.audioCodec ?: unknown)
+                        info.audioChannels?.let { channels ->
+                            val channelsText = when (channels) {
+                                1 -> stringResource(R.string.player_media_info_channels_mono)
+                                2 -> stringResource(R.string.player_media_info_channels_stereo)
+                                else -> stringResource(R.string.player_media_info_channels_count, channels)
+                            }
+                            MediaInfoRow(stringResource(R.string.player_media_info_audio_channels), channelsText)
+                        }
+                        info.audioSampleRate?.let {
+                            MediaInfoRow(stringResource(R.string.player_media_info_audio_sample_rate), "$it Hz")
+                        }
+                        info.audioBitrate?.let {
+                            MediaInfoRow(stringResource(R.string.player_media_info_audio_bitrate), "${it / 1000} kbps")
+                        }
+                        info.audioAverageBitrate?.let {
+                            MediaInfoRow(stringResource(R.string.player_media_info_average_bitrate), "${it / 1000} kbps")
+                        }
+                        info.audioPeakBitrate?.let {
+                            MediaInfoRow(stringResource(R.string.player_media_info_peak_bitrate), "${it / 1000} kbps")
+                        }
+                        info.audioPcmEncoding?.let {
+                            MediaInfoRow(stringResource(R.string.player_media_info_pcm_encoding), it)
+                        }
+                        info.audioLanguage?.let {
+                            MediaInfoRow(stringResource(R.string.player_media_info_audio_language), it.uppercase())
+                        }
+                        info.audioRole?.let { role ->
+                            val roleText = when (role) {
+                                AudioRole.MAIN -> stringResource(R.string.player_media_info_audio_role_main)
+                                AudioRole.COMMENTARY -> stringResource(R.string.player_media_info_audio_role_commentary)
+                                AudioRole.DUB -> stringResource(R.string.player_media_info_audio_role_dub)
+                                AudioRole.ALTERNATE -> stringResource(R.string.player_media_info_audio_role_alternate)
+                            }
+                            MediaInfoRow(stringResource(R.string.player_media_info_audio_role), roleText)
+                        }
+                        if (info.audioSelectedByDefault == true) {
+                            MediaInfoRow(
+                                stringResource(R.string.player_media_info_audio_default),
+                                stringResource(R.string.player_media_info_yes),
+                            )
+                        }
+                    }
+
+                    MediaInfoSectionTitle(stringResource(R.string.player_media_info_section_tracks))
+                    MediaInfoRow(stringResource(R.string.player_media_info_video_tracks), info.videoTrackCount.toString())
+                    MediaInfoRow(stringResource(R.string.player_media_info_audio_tracks), info.audioTrackCount.toString())
+                    MediaInfoRow(stringResource(R.string.player_media_info_text_tracks), info.textTrackCount.toString())
                 }
             }
         }

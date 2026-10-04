@@ -20,9 +20,12 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -54,8 +57,18 @@ import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.FilterAlt
 import androidx.compose.material.icons.rounded.SortByAlpha
 import androidx.compose.material.icons.rounded.SwapVerticalCircle
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.DropdownMenuItem
 import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
+import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -64,6 +77,7 @@ import androidx.compose.material3.MaterialTheme
 import com.nichx.niplayer.common.error.NiMessage
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -85,6 +99,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
@@ -195,6 +210,106 @@ private fun GlassIconCircle(
     }
 }
 
+/** 搜索框高度：比 Material3 默认 56dp 更紧凑，且文字垂直居中不会被裁剪。 */
+private val SearchFieldHeight = 42.dp
+
+/**
+ * 本级目录搜索栏：位于顶栏之下，输入即过滤当前目录文件（按名称包含、大小写不敏感）。
+ *
+ * 仅保留**一层**玻璃胶囊作为搜索框底色（surfaceContainer 按底栏不透明度半透明 + 无描边 + 圆形），
+ * 不再叠加整行 scrim —— 避免启用自定义背景图时多层半透明底色叠加导致发灰、分层明显。
+ *
+ * 搜索框不用 Material3 的 OutlinedTextField：其内部固定最小高度 56dp，若用 `Modifier.height`
+ * 强行压低会把 placeholder 文字裁掉下半边。这里改用 [BasicTextField] 自绘胶囊、文字垂直居中，
+ * 从而自由控制高度且不裁剪。前导放大镜用主题色，输入非空时尾部显示清空按钮；右侧「取消」收起搜索栏。
+ */
+@Composable
+private fun FileBrowserSearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    // 搜索框填充色与顶栏圆形图标按钮同款玻璃灰
+    val fieldContainer = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = LocalNiGlassOpacity.current)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester),
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            decorationBox = { innerTextField ->
+                // 整条胶囊可点击聚焦（无涟漪）：BasicTextField 仅文字区可点，点图标/空白处也应聚焦
+                val interactionSource = remember { MutableInteractionSource() }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(SearchFieldHeight)
+                        .clip(CircleShape)
+                        .background(fieldContainer)
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = null,
+                            onClick = { focusRequester.requestFocus() },
+                        )
+                        .padding(start = 14.dp, end = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    // 输入区：文字垂直居中；为空时显示 placeholder（innerTextField 为空不遮挡）
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (query.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.storage_file_search_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                        innerTextField()
+                    }
+                    if (query.isNotEmpty()) {
+                        IconButton(
+                            onClick = { onQueryChange("") },
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = stringResource(R.string.clear),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                }
+            },
+        )
+        TextButton(onClick = onClose) {
+            Text(stringResource(R.string.cancel))
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 @SuppressLint("LocalContextGetResourceValueCall")
@@ -226,6 +341,9 @@ fun FileBrowserScreen(
     val selectedPaths by viewModel.selectedPaths.collectAsStateWithLifecycle()
     val preparingPath by viewModel.preparingPlaybackPath.collectAsStateWithLifecycle()
     val selectableFiles by viewModel.selectableFiles.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    // 本级目录搜索栏展开态（点顶栏搜索图标切换；关闭时清空关键词）
+    var showSearch by rememberSaveable { mutableStateOf(false) }
     val messageController = LocalAppMessageController.current
     var fileMenu by remember { mutableStateOf<Pair<StorageFile, Boolean>?>(null) }
     var showSortMenu by remember { mutableStateOf(false) }
@@ -271,6 +389,9 @@ fun FileBrowserScreen(
     val isGridView = viewMode == FileBrowserSettings.ViewMode.GRID
     val isGalleryView = viewMode == FileBrowserSettings.ViewMode.GALLERY
     val isFlatView = viewMode == FileBrowserSettings.ViewMode.FLAT_LIST
+    // 网格列数：默认自适应；手动可调上限按窗口宽度类收窄（手机 4 / 平板 6 / 大屏 8）
+    val gridColumns = sortConfig.gridColumns
+    val gridMaxColumns = gridColumnRange(LocalNiWindowSizeClass.current.width).last
     // 平铺列表模式下的展开树状态（子项缓存 / 展开集合 / 加载中集合）
     val treeChildren by viewModel.treeChildren.collectAsStateWithLifecycle()
     val treeExpanded by viewModel.treeExpanded.collectAsStateWithLifecycle()
@@ -469,6 +590,11 @@ fun FileBrowserScreen(
     BackHandler(enabled = true) {
         when {
             isMultiSelect -> viewModel.exitMultiSelect()
+            // 搜索栏展开时优先收起并清空关键词，而不是返回上级目录
+            showSearch -> {
+                showSearch = false
+                viewModel.setSearchQuery("")
+            }
             uiState.canGoUp -> { captureCurrentScroll(); viewModel.goUp() }
             else -> onBack()
         }
@@ -489,6 +615,7 @@ fun FileBrowserScreen(
     NiScaffold(
         // 容器色交由 NiScaffold 依当前背景决定：启用自定义背景图时透明以透出背景，否则用页面背景色
         topBar = {
+            Column {
             if (isMultiSelect) {
                 NiTopBar(
                     title = stringResource(R.string.storage_file_selected_count, selectedPaths.size),
@@ -555,6 +682,8 @@ fun FileBrowserScreen(
                             expanded = showViewMenu,
                             onDismissRequest = { showViewMenu = false },
                             anchor = IntOffset(viewMenuAnchor.x.toInt(), viewMenuAnchor.y.toInt()),
+                            // 列数就地变化时用 showOrUpdate 刷新菜单内容（保持展开、不闪烁）
+                            contentVersion = gridColumns,
                         ) {
                             ViewModeMenuItem(
                                 label = stringResource(R.string.storage_file_view_list),
@@ -602,8 +731,36 @@ fun FileBrowserScreen(
                                     },
                                 )
                             }
+                            // 仅网格视图暴露列数自定义；自适应为默认，手动列数按宽度类收窄上限
+                            if (viewMode == FileBrowserSettings.ViewMode.GRID) {
+                                HorizontalDivider()
+                                GridColumnsMenuItem(
+                                    label = stringResource(R.string.storage_file_view_columns),
+                                    autoLabel = stringResource(R.string.storage_file_view_columns_auto),
+                                    current = gridColumns,
+                                    maxColumns = gridMaxColumns,
+                                    onSelect = { columns -> FileBrowserSettings.gridColumns = columns },
+                                )
+                            }
                         }
                     }
+                    // 常驻：本级目录搜索（按名称过滤当前目录，不递归子目录）
+                    GlassIconCircle(
+                        icon = Icons.Rounded.Search,
+                        contentDescription = stringResource(
+                            if (showSearch) R.string.storage_file_search_close else R.string.storage_file_search,
+                        ),
+                        onClick = {
+                            if (showSearch) {
+                                showSearch = false
+                                viewModel.setSearchQuery("")
+                            } else {
+                                showSearch = true
+                            }
+                        },
+                        backdrop = multiSelectBarBackdrop,
+                        modifier = Modifier.padding(horizontal = 2.dp),
+                    )
                     // 常驻：排序
                     Box(
                         modifier = Modifier.onGloballyPositioned { coords ->
@@ -840,6 +997,17 @@ fun FileBrowserScreen(
                     }
                 },
             )
+            AnimatedVisibility(visible = showSearch) {
+                FileBrowserSearchBar(
+                    query = searchQuery,
+                    onQueryChange = viewModel::setSearchQuery,
+                    onClose = {
+                        showSearch = false
+                        viewModel.setSearchQuery("")
+                    },
+                )
+            }
+            }
             }
         },
         ) { padding ->
@@ -897,6 +1065,9 @@ fun FileBrowserScreen(
                             onRetry = { viewModel.retryLoadCurrent() },
                         )
                         uiState.rawFiles.isEmpty() -> EmptyDirState()
+                        // 本级目录搜索无匹配：明确提示而非展示空列表
+                        uiState.files.isEmpty() && searchQuery.isNotBlank() ->
+                            SearchEmptyResultState(query = searchQuery)
                         else -> {
                             if (isGalleryView) {
                                 FileGallery(
@@ -934,6 +1105,7 @@ fun FileBrowserScreen(
                                     gridState = gridState,
                                     header = listHeader,
                                     contentTopInset = topInset,
+                                    columns = gridColumns,
                                 )
                             } else if (isFlatView) {
                                 FileFlatList(

@@ -7,6 +7,7 @@ import android.view.Surface
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ColorInfo
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -30,6 +31,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.nichx.niplayer.player.kernel.AudioRole
 import com.nichx.niplayer.player.kernel.AudioTrackInfo
 import com.nichx.niplayer.player.kernel.MediaInfo
 import com.nichx.niplayer.player.kernel.NxMediaSource
@@ -971,13 +973,36 @@ class NxMedia3Player @Inject constructor(
         val totalBitrate = listOfNotNull(videoBitrate, audioBitrate).takeIf { it.isNotEmpty() }?.sum()
 
         val hdrType = videoFormat?.let { detectHdrType(it) }
+        val container = (videoFormat ?: audioFormat)?.containerMimeType?.let { formatContainer(it) }
+        val colorInfo = videoFormat?.colorInfo
         _mediaInfo.value = MediaInfo(
-            videoCodec = videoFormat?.let { it.codecs ?: it.sampleMimeType },
-            audioCodec = audioFormat?.let { it.codecs ?: it.sampleMimeType },
-            resolution = resolution,
+            container = container,
             bitrate = totalBitrate,
+            videoCodec = videoFormat?.let { it.codecs ?: it.sampleMimeType },
+            resolution = resolution,
             frameRate = videoFormat?.frameRate?.takeIf { it > 0f },
+            videoBitrate = videoBitrate,
+            videoBitDepth = colorInfo?.lumaBitdepth?.takeIf { it > 0 }
+                ?: colorInfo?.chromaBitdepth?.takeIf { it > 0 },
+            colorSpace = colorSpaceName(colorInfo),
+            colorRange = colorRangeKey(colorInfo),
+            rotationDegrees = videoFormat?.rotationDegrees?.takeIf { it != 0 },
+            pixelAspectRatio = videoFormat?.pixelWidthHeightRatio?.takeIf { it > 0f && it != 1f },
+            stereoMode = videoFormat?.let { stereoModeKey(it.stereoMode) },
             hdrType = hdrType,
+            audioCodec = audioFormat?.let { it.codecs ?: it.sampleMimeType },
+            audioChannels = audioFormat?.channelCount?.takeIf { it > 0 },
+            audioSampleRate = audioFormat?.sampleRate?.takeIf { it > 0 },
+            audioBitrate = audioBitrate,
+            audioAverageBitrate = audioFormat?.averageBitrate?.takeIf { it > 0 && it != audioBitrate },
+            audioPeakBitrate = audioFormat?.peakBitrate?.takeIf { it > 0 },
+            audioPcmEncoding = audioFormat?.let { pcmEncodingName(it.pcmEncoding) },
+            audioLanguage = audioFormat?.language?.takeIf { it.isNotBlank() && it != "und" },
+            audioRole = audioRoleOf(audioFormat),
+            audioSelectedByDefault = audioFormat?.let { it.selectionFlags and C.SELECTION_FLAG_DEFAULT != 0 },
+            videoTrackCount = tracks.groups.count { it.type == C.TRACK_TYPE_VIDEO },
+            audioTrackCount = tracks.groups.count { it.type == C.TRACK_TYPE_AUDIO },
+            textTrackCount = tracks.groups.count { it.type == C.TRACK_TYPE_TEXT },
         )
         // P3-3 修复：在 tracks 就绪时立即发射 HDR 事件，而不是等首帧渲染才检查。
         // 原实现在 onRenderedFirstFrame 中检查 _mediaInfo.hdrType，但 onTracksChanged
@@ -999,6 +1024,77 @@ class NxMedia3Player @Inject constructor(
         return when (colorInfo.colorTransfer) {
             C.COLOR_TRANSFER_HLG -> "HLG"
             C.COLOR_TRANSFER_ST2084 -> "HDR10"
+            else -> null
+        }
+    }
+
+    /**
+     * 将 [Format.containerMimeType]（如 `video/x-matroska`）转为简短可读的容器名。
+     *
+     * 仅取子类型（`/` 之后）并对常见别名归一化，未知类型回退为大写子类型。
+     */
+    private fun formatContainer(mimeType: String): String? {
+        val subtype = mimeType.substringAfterLast('/', "").ifBlank { return null }
+        return when (subtype.lowercase()) {
+            "mp4" -> "MP4"
+            "webm" -> "WebM"
+            "x-matroska" -> "MKV"
+            "quicktime" -> "MOV"
+            "x-msvideo" -> "AVI"
+            "mpeg" -> "MPEG"
+            "mp2t" -> "MPEG-TS"
+            "x-flac" -> "FLAC"
+            "x-m4a" -> "M4A"
+            "ogg" -> "OGG"
+            "3gpp" -> "3GP"
+            else -> subtype.uppercase()
+        }
+    }
+
+    /** 色彩空间展示名（[androidx.media3.common.ColorInfo.colorSpace]）。 */
+    private fun colorSpaceName(colorInfo: ColorInfo?): String? = when (colorInfo?.colorSpace) {
+        C.COLOR_SPACE_BT601 -> "BT.601"
+        C.COLOR_SPACE_BT709 -> "BT.709"
+        C.COLOR_SPACE_BT2020 -> "BT.2020"
+        else -> null
+    }
+
+    /** 色彩范围标识（`limited` / `full`），由 UI 本地化。 */
+    private fun colorRangeKey(colorInfo: ColorInfo?): String? = when (colorInfo?.colorRange) {
+        C.COLOR_RANGE_LIMITED -> "limited"
+        C.COLOR_RANGE_FULL -> "full"
+        else -> null
+    }
+
+    /** 立体模式标识，仅非单目时返回；由 UI 本地化。 */
+    private fun stereoModeKey(mode: Int): String? = when (mode) {
+        C.STEREO_MODE_TOP_BOTTOM -> "top_bottom"
+        C.STEREO_MODE_LEFT_RIGHT -> "left_right"
+        C.STEREO_MODE_STEREO_MESH -> "mesh"
+        C.STEREO_MODE_INTERLEAVED_LEFT_PRIMARY -> "interleaved_left"
+        C.STEREO_MODE_INTERLEAVED_RIGHT_PRIMARY -> "interleaved_right"
+        else -> null
+    }
+
+    /** PCM 编码位宽展示名（[Format.pcmEncoding]）。 */
+    private fun pcmEncodingName(encoding: Int): String? = when (encoding) {
+        C.ENCODING_PCM_8BIT -> "8-bit"
+        C.ENCODING_PCM_16BIT, C.ENCODING_PCM_16BIT_BIG_ENDIAN -> "16-bit"
+        C.ENCODING_PCM_24BIT, C.ENCODING_PCM_24BIT_BIG_ENDIAN -> "24-bit"
+        C.ENCODING_PCM_32BIT, C.ENCODING_PCM_32BIT_BIG_ENDIAN -> "32-bit"
+        C.ENCODING_PCM_FLOAT -> "Float"
+        C.ENCODING_PCM_DOUBLE -> "Double"
+        else -> null
+    }
+
+    /** 音轨角色；仅当 Format 明确声明角色标志时非 null。 */
+    private fun audioRoleOf(format: Format?): AudioRole? {
+        val flags = format?.roleFlags ?: return null
+        return when {
+            flags and C.ROLE_FLAG_COMMENTARY != 0 -> AudioRole.COMMENTARY
+            flags and C.ROLE_FLAG_DUB != 0 -> AudioRole.DUB
+            flags and C.ROLE_FLAG_ALTERNATE != 0 -> AudioRole.ALTERNATE
+            flags and C.ROLE_FLAG_MAIN != 0 -> AudioRole.MAIN
             else -> null
         }
     }

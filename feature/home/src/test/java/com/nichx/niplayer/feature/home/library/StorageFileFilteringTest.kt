@@ -263,6 +263,49 @@ class StorageFileFilteringTest {
         assertTrue(names(emptyList()).isEmpty())
     }
 
+    // ── 本级目录搜索（关键词按名称包含过滤） ────────────────────────────
+
+    @Test
+    fun `搜索按名称包含过滤且大小写不敏感`() {
+        val files = listOf(file("Movie.mp4"), file("song.mp3"), file("clip_mov.mkv"))
+        assertEquals(
+            listOf("clip_mov.mkv", "Movie.mp4"),
+            filterAndSortStorageFiles(files, config(), emptyMap(), "mov").map { it.name },
+        )
+    }
+
+    @Test
+    fun `空关键词不做过滤`() {
+        val files = listOf(file("a.mp4"), file("b.mp3"))
+        assertEquals(
+            listOf("a.mp4", "b.mp3"),
+            filterAndSortStorageFiles(files, config(), emptyMap(), "  ").map { it.name },
+        )
+    }
+
+    @Test
+    fun `关键词匹配目录名`() {
+        val files = listOf(file("Movies", isDirectory = true), file("song.mp3"))
+        assertEquals(
+            listOf("Movies"),
+            filterAndSortStorageFiles(files, config(), emptyMap(), "movie").map { it.name },
+        )
+    }
+
+    @Test
+    fun `搜索与媒体类型过滤叠加`() {
+        val files = listOf(file("keep.mp4"), file("keep.mp3"), file("other.mp4"))
+        assertEquals(
+            listOf("keep.mp4"),
+            filterAndSortStorageFiles(
+                files,
+                config(mediaFilter = FileBrowserSettings.MediaFilter.VIDEO),
+                emptyMap(),
+                "keep",
+            ).map { it.name },
+        )
+    }
+
     @Test
     fun `isMediaFile 与 sidecar 判定可直接调用`() {
         assertTrue(isMediaFile(file("a.mp4")))

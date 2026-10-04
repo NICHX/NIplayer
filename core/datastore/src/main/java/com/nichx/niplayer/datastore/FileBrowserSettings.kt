@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * - [showOnlyMediaFiles]：仅显示媒体文件（视频/音频/图片）
  * - [showHiddenFiles]：显示隐藏文件（以 . 开头的文件/文件夹）
  * - [mediaFilter]：文件类型过滤（全部/视频/音频/图片），默认全部
+ * - [viewMode]：视图模式（列表/网格/画廊/平铺列表），默认列表
+ * - [gridColumns]：网格视图列数，默认自适应（按宽度推导）
  *
  * 目录始终排在文件之前，不受 [sortAscending] 影响。
  *
@@ -33,8 +35,15 @@ object FileBrowserSettings {
     private const val KEY_HIDE_NO_MEDIA_FOLDERS = "hide_no_media_folders"
     private const val KEY_MEDIA_FILTER = "file_media_filter"
     private const val KEY_VIEW_MODE = "file_browser_view_mode"
+    private const val KEY_GRID_COLUMNS = "file_browser_grid_columns"
     // 旧版布尔视图模式 key（true=网格, false=列表），首次读取新枚举时做一次迁移
     private const val KEY_LEGACY_IS_GRID_VIEW = "file_browser_is_grid_view"
+
+    /** 网格列数「自适应」哨兵值：列数按可用宽度推导，不做手动覆盖。 */
+    const val GRID_COLUMNS_AUTO = 0
+
+    /** 网格列数手动覆盖的全局上限（实际可用上限按窗口宽度类收窄，见 gridColumnRange）。 */
+    const val GRID_COLUMNS_MAX = 8
 
     /** 排序字段枚举。 */
     enum class SortBy(val value: Int) {
@@ -146,6 +155,21 @@ object FileBrowserSettings {
             _sortFlow.value = _sortFlow.value.copy(viewMode = value)
         }
 
+    /**
+     * 网格视图列数，默认 [GRID_COLUMNS_AUTO]（自适应）。
+     *
+     * - [GRID_COLUMNS_AUTO]：列数按可用宽度自动推导（维持既有体验，大屏自然显示更多列）。
+     * - 数值：用户手动指定的列数，读写时统一收敛到 `0..GRID_COLUMNS_MAX`；
+     *   实际展示时再按窗口宽度类收窄上限（手机 4 / 平板 6 / 大屏 8）。
+     */
+    var gridColumns: Int
+        get() = mmkv.decodeInt(KEY_GRID_COLUMNS, GRID_COLUMNS_AUTO).coerceIn(GRID_COLUMNS_AUTO, GRID_COLUMNS_MAX)
+        set(value) {
+            val clamped = value.coerceIn(GRID_COLUMNS_AUTO, GRID_COLUMNS_MAX)
+            mmkv.encode(KEY_GRID_COLUMNS, clamped)
+            _sortFlow.value = _sortFlow.value.copy(gridColumns = clamped)
+        }
+
     /** 设置排序字段，立即持久化并通知 StateFlow。 */
     fun setSortBy(sortBy: SortBy) {
         mmkv.encode(KEY_SORT_BY, sortBy.value)
@@ -174,7 +198,8 @@ object FileBrowserSettings {
         val hideThumbFolder = mmkv.decodeBool(KEY_HIDE_THUMB_FOLDER, true)
         val hideNoMediaFolders = mmkv.decodeBool(KEY_HIDE_NO_MEDIA_FOLDERS, false)
         val mediaFilter = MediaFilter.fromValue(mmkv.decodeInt(KEY_MEDIA_FILTER, MediaFilter.ALL.value))
-        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, hideThumbFolder, hideNoMediaFolders, mediaFilter, viewMode)
+        val gridColumns = mmkv.decodeInt(KEY_GRID_COLUMNS, GRID_COLUMNS_AUTO).coerceIn(GRID_COLUMNS_AUTO, GRID_COLUMNS_MAX)
+        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, hideThumbFolder, hideNoMediaFolders, mediaFilter, viewMode, gridColumns)
     }
 }
 
@@ -194,4 +219,6 @@ data class SortConfig(
     val mediaFilter: FileBrowserSettings.MediaFilter = FileBrowserSettings.MediaFilter.ALL,
     /** 文件浏览视图模式：列表/网格/画廊，默认列表。 */
     val viewMode: FileBrowserSettings.ViewMode = FileBrowserSettings.ViewMode.LIST,
+    /** 网格视图列数，默认自适应（[FileBrowserSettings.GRID_COLUMNS_AUTO]）。 */
+    val gridColumns: Int = FileBrowserSettings.GRID_COLUMNS_AUTO,
 )
