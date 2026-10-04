@@ -65,11 +65,10 @@ android {
 
     buildTypes {
         debug {
-            // 本机开发：debug 与 release 复用同一签名，二者可相互覆盖安装，切换无需先卸载。
-            // 仅当 release 签名配置可用（本地 keystore.properties 或 CI Secrets）时生效；
-            // 未配置时回退 debug.keystore，保证 CI 的 assembleDebug / test / lint 仍可构建。
-            signingConfig = signingConfigs.findByName("release")
-                ?: signingConfigs.getByName("debug")
+            // debug 始终使用独立的 debug.keystore 签名，**不复用** release 签名。
+            // 这样本机构建的 debug 包不会携带正式证书，debug ↔ release 也不再相互覆盖，
+            // 二者签名不同，互装时需先卸载（属预期行为）。
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             // O-19：启用 R8 代码裁剪/混淆 + 资源压缩，配合 proguard-rules.pro 的 keep 规则

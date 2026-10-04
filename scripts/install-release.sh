@@ -2,8 +2,9 @@
 #
 # 构建并安装 release 版到已连接的 adb 设备。
 #
-# 覆盖安装即可，无需先卸载旧版：app/build.gradle.kts 中 debug 构建类型也复用 release 签名，
-# 因此 debug ↔ release 两者签名一致（release 未配置密钥时才回退 debug.keystore）。
+# 同一 release 密钥签名的新旧版本之间可直接覆盖安装（-r，保留应用数据）；
+# 但 debug 包与 release 包签名不同（app/build.gradle.kts 中 debug 使用独立 debug.keystore），
+# 从 debug 切到 release（或反向）需先卸载，否则会报签名不一致。
 #
 # 前置条件：
 #   1. 仓库根目录存在 keystore.properties，且其中 storeFile 指向的 keystore 文件也存在
