@@ -49,7 +49,8 @@ fun NiScaffold(
     // 每页自建模糊状态，顶栏与内容层共享同一实例
     val hazeState = remember { HazeState() }
     // 启用自定义背景图时页面容器透明，让根布局绘制的背景图透出；否则用主题背景色
-    val resolvedContainerColor = containerColor ?: if (niHasCustomBackground) {
+    val customBackgroundActive = niHasCustomBackground
+    val resolvedContainerColor = containerColor ?: if (customBackgroundActive) {
         Color.Transparent
     } else {
         MaterialTheme.colorScheme.background
@@ -76,11 +77,15 @@ fun NiScaffold(
             contentColor = resolvedContentColor,
             contentWindowInsets = contentWindowInsets,
         ) { innerPadding ->
-            // 内容层满铺全屏（含顶栏背后区域），并标记为顶栏模糊来源
+            // 内容层满铺全屏（含顶栏背后区域），并标记为顶栏模糊来源。
+            // 启用自定义背景图时顶栏走渐变遮罩、不消费 haze，故无需把整页内容录进 haze 源
+            // （haze 源每帧都会把内容录进离屏层，无消费方时纯属无效开销）。
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .niHazeSource(hazeState),
+                    .then(
+                        if (customBackgroundActive) Modifier else Modifier.niHazeSource(hazeState),
+                    ),
             ) {
                 content(innerPadding)
             }

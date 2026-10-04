@@ -13,7 +13,6 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -25,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -34,10 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
-import com.nichx.niplayer.designsystem.components.LocalHazeState
 import com.nichx.niplayer.designsystem.components.niHasCustomBackground
-import com.nichx.niplayer.designsystem.components.niHazeSource
-import com.nichx.niplayer.designsystem.components.rememberNiHazeState
 import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
 import com.nichx.niplayer.designsystem.theme.NiWindowWidthSizeClass
 import com.nichx.niplayer.feature.home.home.HomeTabScreen
@@ -167,8 +164,6 @@ fun HomeScreen(
         }
     }
 
-    // 创建共享 Haze 状态：内容层（niHazeSource）与浮层共享，实现真实背景模糊
-    val hazeState = rememberNiHazeState()
     // 玻璃底栏背景画布：先铺一层 surface 作为统一底色，再捕获页面内容（drawContent）供模糊。
     // 启用自定义背景图时底色改透明：否则不透明底会填实模糊结果，背景图无法透过底栏露出来。
     val floatingBarSurface = if (niHasCustomBackground) Color.Transparent else MaterialTheme.colorScheme.surface
@@ -180,42 +175,42 @@ fun HomeScreen(
     val bottomNavInset = with(LocalDensity.current) {
         WindowInsets.navigationBars.getBottom(this).toDp()
     }
-    CompositionLocalProvider(LocalHazeState provides hazeState) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // 内容层：标记为 haze 模糊源 + 玻璃底栏的 backdrop 背景源
-            HomeTabContent(
-                pagerState = pagerState,
-                previousPage = previousPage,
-                fbStorageId = fbStorageId,
-                fbPath = fbPath,
-                fbNavTick = fbNavTick,
-                onCloseFileBrowser = closeFileBrowser,
-                onOpenFileBrowser = openFileBrowser,
-                onNavigateToGlobal = onNavigateToGlobal,
-                onNavigateToSearch = onNavigateToSearch,
-                onNavigateToPlayHistory = onNavigateToPlayHistory,
-                onNavigateToQuickAccess = onNavigateToQuickAccess,
-                onPlayVideo = onPlayVideo,
-                onNavigateToStoragePlus = onNavigateToStoragePlus,
-                onNavigateToImageViewer = onNavigateToImageViewer,
-                onNavigateToDownloadManager = onNavigateToDownloadManager,
-                onFileBrowserMultiSelectChanged = { fileBrowserMultiSelect = it },
-                modifier = Modifier
-                    .niHazeSource(hazeState)
-                    .layerBackdrop(floatingBarBackdrop),
-            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 内容层：玻璃底栏的 backdrop 背景源（底栏用 drawBackdrop 采样做真实模糊）。
+        // 注：此处不再挂 niHazeSource —— 全屏仅有底栏消费本层的 backdrop，没有任何
+        // hazeEffect 采样 HomeScreen 级别的 HazeState，挂 haze 源只会每帧把三页内容
+        // 录进离屏层却无人使用，是滚动掉帧的无效开销。
+        HomeTabContent(
+            pagerState = pagerState,
+            previousPage = previousPage,
+            fbStorageId = fbStorageId,
+            fbPath = fbPath,
+            fbNavTick = fbNavTick,
+            onCloseFileBrowser = closeFileBrowser,
+            onOpenFileBrowser = openFileBrowser,
+            onNavigateToGlobal = onNavigateToGlobal,
+            onNavigateToSearch = onNavigateToSearch,
+            onNavigateToPlayHistory = onNavigateToPlayHistory,
+            onNavigateToQuickAccess = onNavigateToQuickAccess,
+            onPlayVideo = onPlayVideo,
+            onNavigateToStoragePlus = onNavigateToStoragePlus,
+            onNavigateToImageViewer = onNavigateToImageViewer,
+            onNavigateToDownloadManager = onNavigateToDownloadManager,
+            onFileBrowserMultiSelectChanged = { fileBrowserMultiSelect = it },
+            modifier = Modifier
+                .layerBackdrop(floatingBarBackdrop),
+        )
 
-            // 共享玻璃底栏：文件浏览多选态下隐藏（操作栏贴底，避免堆叠）
-            if (!inFileBrowserMultiSelect) {
-                HomeBottomNavBar(
-                    selectedIndex = { pagerState.targetPage },
-                    onSelect = onTabSelected,
-                    backdrop = floatingBarBackdrop,
-                    maxWidth = bottomBarMaxWidth,
-                    bottomInset = 8.dp + bottomNavInset,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
-            }
+        // 共享玻璃底栏：文件浏览多选态下隐藏（操作栏贴底，避免堆叠）
+        if (!inFileBrowserMultiSelect) {
+            HomeBottomNavBar(
+                selectedIndex = { pagerState.targetPage },
+                onSelect = onTabSelected,
+                backdrop = floatingBarBackdrop,
+                maxWidth = bottomBarMaxWidth,
+                bottomInset = 8.dp + bottomNavInset,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 }
@@ -340,7 +335,13 @@ private fun CrossfadePage(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { this.alpha = alpha.value },
+            .graphicsLayer { this.alpha = alpha.value }
+            // alpha 为 0 的页面（pager 常驻的非当前页）跳过内容绘制：
+            // 避免每帧把隐藏页整块录进离屏层再以 0 透明度合成。drawWithContent 在
+            // 绘制阶段读取 alpha，不触发重组。
+            .drawWithContent {
+                if (alpha.value > 0f) drawContent()
+            },
     ) {
         content()
     }

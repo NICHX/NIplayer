@@ -36,9 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
@@ -66,6 +64,7 @@ import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassTopBarOpacity
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
+import com.nichx.niplayer.designsystem.components.NiBackgroundImage
 import com.nichx.niplayer.designsystem.components.NiCustomBackground
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayHost
 import com.nichx.niplayer.designsystem.components.NiSnackbarDefaults
@@ -83,9 +82,7 @@ import com.nichx.niplayer.feature.player.MusicBar
 import com.nichx.niplayer.feature.player.PlayerActivity
 import com.nichx.niplayer.navigation.NiNavHost
 import com.nichx.niplayer.navigation.Routes
-import coil3.compose.AsyncImage
 import dagger.hilt.android.AndroidEntryPoint
-import java.io.File
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -317,13 +314,10 @@ class MainActivity : ComponentActivity() {
                     // 的一部分被玻璃浮层模糊采样。置于 NavHost 之外——不参与 Tab 切换的透明度动画，
                     // 避免切换时背景图随之淡入淡出导致闪白
                     customBackground?.let { bg ->
-                        AsyncImage(
-                            model = File(bg.imagePath),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer { alpha = bg.opacity },
+                        NiBackgroundImage(
+                            imagePath = bg.imagePath,
+                            opacity = bg.opacity,
+                            modifier = Modifier.fillMaxSize(),
                         )
                     }
                     // A2 架构修复：路由由各 feature 自己注册（homeNavGraph / playerNavGraph），
