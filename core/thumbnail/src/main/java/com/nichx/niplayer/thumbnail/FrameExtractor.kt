@@ -17,6 +17,7 @@ import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.storage.impl.SmbMediaDataSource
 import com.nichx.niplayer.storage.impl.WebDavMediaDataSource
+import kotlinx.coroutines.CancellationException
 
 /**
  * 视频取帧结果。
@@ -58,13 +59,13 @@ internal class VideoFrameExtractor(private val context: Context) {
         if (file.name.endsWith(".mkv", ignoreCase = true) &&
             storage.library.mediaType != MediaType.LOCAL_STORAGE
         ) {
-            val bitmap = MkvFirstFrameExtractor.extract(storage, file)
+            val bitmap = extractMkvFirstFrame(storage, file, positionKey)
             if (bitmap != null) {
                 val scaled = scaleToMaxWidth(bitmap, ThumbnailManager.MAX_WIDTH)
                 if (scaled !== bitmap) bitmap.recycle()
                 Log.d(
                     TAG,
-                    "extract ok: ${file.name} src=MkvHead ${SystemClock.elapsedRealtime() - startedAt}ms",
+                    "extract ok: ${file.name} ${SystemClock.elapsedRealtime() - startedAt}ms",
                 )
                 return FrameExtraction.Ok(scaled)
             }
@@ -87,6 +88,49 @@ internal class VideoFrameExtractor(private val context: Context) {
         val result = resolvePermanentFailure(extraction, dataSource)
         logExtraction(file, result, dataSource, startedAt)
         return result
+    }
+
+    private suspend fun extractMkvFirstFrame(
+        storage: Storage,
+        file: StorageFile,
+        positionKey: String,
+    ): Bitmap? {
+        if (MkvFfmpegDecoder.isAvailable) {
+            val source = try {
+                storage.openMediaDataSource(file)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "openMediaDataSource failed: ${e.message}")
+                null
+            }
+            if (source != null) {
+                val (startMs, fraction) = mkvPosition(positionKey)
+                val bitmap = decodeMkvWithFfmpeg(source, startMs, fraction)
+                if (bitmap != null) return bitmap
+            }
+        }
+        return MkvFirstFrameExtractor.extract(storage, file)
+    }
+
+    private fun mkvPosition(positionKey: String): Pair<Long, Double> = when (positionKey) {
+        "10pct" -> -1L to 0.1
+        "50pct" -> -1L to 0.5
+        else -> 5000L to -1.0
+    }
+
+    private fun decodeMkvWithFfmpeg(source: MediaDataSource, startMs: Long, fraction: Double): Bitmap? {
+        return try {
+            MkvFfmpegDecoder.decodeFirstFrame(source, ThumbnailManager.MAX_WIDTH, startMs, fraction)
+        } catch (e: Exception) {
+            Log.w(TAG, "ffmpeg mkv decode failed: ${e.message}")
+            null
+        } finally {
+            try {
+                source.close()
+            } catch (_: Exception) {
+            }
+        }
     }
 
     /** 永久失败识别：仅 WebDAV MediaDataSource 能给出 HTTP 错误码（401/403 不应重试）。 */

@@ -10,6 +10,7 @@ import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFile
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -80,6 +81,8 @@ internal object MkvFirstFrameExtractor {
                     "head=${head.size}B ${SystemClock.elapsedRealtime() - startedAt}ms result=${bitmap != null}",
             )
             bitmap
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "extract failed: ${file.name}: ${e.message}")
             null
