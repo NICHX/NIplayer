@@ -2,6 +2,7 @@ package com.nichx.niplayer.thumbnail
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.SystemClock
 import android.util.Log
 import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.database.enums.MediaType
@@ -24,6 +25,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,8 +40,9 @@ import javax.inject.Singleton
  * - 服务端 `.thumb`/`.cover` 同步 → [RemoteThumbnailSync]
  *
  * 与旧实现的差异（简化）：
- * - 移除全局取帧闸门 `decodeGate`、失败冷却 TTL 表、`mutexMap` 逐键清理；
+ * - 移除失败冷却 TTL 表、`mutexMap` 逐键清理；
  * - 并发去重改为固定大小的**条带锁池**（按 key 哈希取锁，有界、无需清理）；
+ * - 取帧并发按 storageId 统一收口到 [extractionGates]（见该字段说明）。
  * - 缓存文件名 `MD5("$storageId-$filePath").jpg` 与 `.thumb`/`.cover` 命名约定**保持不变**。
  *
  * 双层缓存：
@@ -69,6 +72,21 @@ class ThumbnailManager @Inject constructor(
 
     private fun lockFor(key: String): Mutex = lockStripes[(key.hashCode() and Int.MAX_VALUE) % LOCK_STRIPES]
 
+    /**
+     * 按存储源统一的取帧闸门。
+     *
+     * 文件浏览（[com.nichx.niplayer.feature.home.library.StorageFileViewModel]）与首页/历史/快速访问
+     * （[generateRemoteThumbnails]）是两条独立管线，各自按 [Storage.thumbnailConcurrency] 限流；
+     * 二者同时运行时并发取帧数会翻倍。对 SMB 而言每个取帧任务还会向共享读线程池申请多条通道，
+     * 叠加后会把线程池与链路全部挤满，表现为「一直转圈」。
+     *
+     * 这里按 storageId 收口，保证同一存储源真正同时取帧的任务数不超过其建议并发值，与线程池容量对齐。
+     */
+    private val extractionGates = ConcurrentHashMap<Int, Semaphore>()
+
+    private fun extractionGate(storageId: Int, permits: Int): Semaphore =
+        extractionGates.computeIfAbsent(storageId) { Semaphore(permits.coerceAtLeast(1)) }
+
     // ---------- 视频缩略图 ----------
 
     /**
@@ -88,20 +106,27 @@ class ThumbnailManager @Inject constructor(
         val cacheFile = store.fileFor(store.videoDir, storageId, file.path)
         if (cacheFile.exists()) return@withContext ThumbnailResult.Success(cacheFile.absolutePath)
 
+        val startedAt = SystemClock.elapsedRealtime()
         val result = lockFor(cacheFile.name).withLock {
             if (cacheFile.exists()) return@withLock ThumbnailResult.Success(cacheFile.absolutePath)
             val skipDurationCheck = storage.library.mediaType == MediaType.LOCAL_STORAGE
-            when (val extraction = videoExtractor.extract(storage, file, positionKey, skipDurationCheck)) {
-                is FrameExtraction.Ok -> ThumbnailResult.Success(
-                    store.writeJpeg(cacheFile, extraction.bitmap),
-                )
-                FrameExtraction.Failed -> ThumbnailResult.Failed
-                FrameExtraction.PermanentFailure -> ThumbnailResult.PermanentFailure
+            extractionGate(storageId, storage.thumbnailConcurrency).withPermit {
+                when (val extraction = videoExtractor.extract(storage, file, positionKey, skipDurationCheck)) {
+                    is FrameExtraction.Ok -> ThumbnailResult.Success(
+                        store.writeJpeg(cacheFile, extraction.bitmap),
+                    )
+                    FrameExtraction.Failed -> ThumbnailResult.Failed
+                    FrameExtraction.PermanentFailure -> ThumbnailResult.PermanentFailure
+                }
             }
         }
         store.trimIfNeeded(store.videoDir)
+        val elapsedMs = SystemClock.elapsedRealtime() - startedAt
         if (result is ThumbnailResult.Success) {
-            Log.d(TAG, "generateThumbnail: ${file.name}")
+            Log.d(TAG, "generateThumbnail ok: ${file.name} ${elapsedMs}ms")
+        } else {
+            // 失败/过短此前无日志，无法与「远程读取太慢」区分，此处补齐便于 adb 定位。
+            Log.w(TAG, "generateThumbnail failed: ${file.name} result=$result ${elapsedMs}ms")
         }
         result
     }
@@ -198,7 +223,9 @@ class ThumbnailManager @Inject constructor(
 
         val result = lockFor(cacheFile.name).withLock {
             if (cacheFile.exists()) return@withLock cacheFile.absolutePath
-            if (audioExtractor.extract(storage, storageId, file, cacheFile)) cacheFile.absolutePath else null
+            extractionGate(storageId, storage.thumbnailConcurrency).withPermit {
+                if (audioExtractor.extract(storage, storageId, file, cacheFile)) cacheFile.absolutePath else null
+            }
         }
         store.trimIfNeeded(store.audioDir)
         result
@@ -220,7 +247,9 @@ class ThumbnailManager @Inject constructor(
 
         val ok = lockFor(cacheFile.name).withLock {
             if (cacheFile.exists()) return@withLock true
-            imageExtractor.extract(storage, file, cacheFile)
+            extractionGate(storageId, storage.thumbnailConcurrency).withPermit {
+                imageExtractor.extract(storage, file, cacheFile)
+            }
         }
         store.trimIfNeeded(store.imageDir)
         if (ok) cacheFile.absolutePath else null

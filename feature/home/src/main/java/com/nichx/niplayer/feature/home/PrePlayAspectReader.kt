@@ -6,12 +6,19 @@ import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
+import android.util.Log
 import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import java.io.File
+import java.util.concurrent.Executors
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -32,22 +39,55 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 object PrePlayAspectReader {
 
-    /** 根据存储源与文件读取视频显示宽高比；失败或超时返回 null。 */
+    /**
+     * 阻塞元数据读取专用线程池（有界、守护线程）。
+     *
+     * [MediaMetadataRetriever] 读远程（SMB）元数据是**阻塞 JNI 调用**，协程取消无法中断它：
+     * 直接在调用协程里跑，超时形同虚设，点击播放会一直停在「识别方向中…」。
+     * 因此把该工作投递到本线程池，只对「等待结果」施加超时。
+     */
+    private val executor = Executors.newFixedThreadPool(2) { runnable ->
+        Thread(runnable, "preplay-aspect").apply { isDaemon = true }
+    }
+    private val scope = CoroutineScope(SupervisorJob() + executor.asCoroutineDispatcher())
+
+    /**
+     * 根据存储源与文件读取视频显示宽高比；失败或超时返回 null。
+     *
+     * 超时会**立即返回 null**（不再等待阻塞调用跑完），由播放页回退到 media3 videoSize 判定方向，
+     * 从而保证点击播放后 UI 不会被远程元数据读取长期卡住。
+     */
     suspend fun read(
         context: Context,
         thumbnailManager: ThumbnailManager,
         storage: Storage,
         libraryId: Int,
         file: StorageFile,
-    ): Float? = withTimeoutOrNull(PRE_PLAY_ASPECT_TIMEOUT_MS) {
-        withContext(Dispatchers.IO) {
-            // 1) 优先本地缩略图缓存（纯本地 IO，不触发网络）
+    ): Float? {
+        val startedAt = SystemClock.elapsedRealtime()
+
+        // 1) 优先本地缩略图缓存（纯本地 IO，不触发网络，通常 <1ms）
+        val cached = withContext(Dispatchers.IO) {
             thumbnailManager.getCachedThumbnailPath(libraryId, file.path)?.let { path ->
-                readImageAspectRatio(File(path))?.let { return@withContext it }
+                readImageAspectRatio(File(path))
             }
-            // 2) 回退 MediaMetadataRetriever（本地/远程）
-            readVideoAspectRatio(context, storage, file)
         }
+        if (cached != null) {
+            Log.d(TAG, "aspect cache-hit: ${file.name} = $cached ${SystemClock.elapsedRealtime() - startedAt}ms")
+            return cached
+        }
+
+        // 2) 回退 MediaMetadataRetriever（本地/远程）。工作挂在独立 scope 上，超时只放弃「等待」，
+        //    被放弃的任务自行跑完并在 finally 中释放 retriever / dataSource。
+        val deferred = scope.async { readVideoAspectRatio(context, storage, file) }
+        val aspect = withTimeoutOrNull(PRE_PLAY_ASPECT_TIMEOUT_MS) { deferred.await() }
+        if (aspect == null) deferred.cancel()
+        Log.d(
+            TAG,
+            "aspect retriever: ${file.name} = $aspect ${SystemClock.elapsedRealtime() - startedAt}ms" +
+                if (aspect == null) " (timeout/失败，交由播放器判定)" else "",
+        )
+        return aspect
     }
 
     /** 读取本地图片文件的宽高比（inJustDecodeBounds，不加载像素）。失败返回 null。 */
@@ -102,6 +142,8 @@ object PrePlayAspectReader {
             runCatching { dataSource?.close() }
         }
     }
+
+    private const val TAG = "PrePlayAspectReader"
 
     private const val PRE_PLAY_ASPECT_TIMEOUT_MS = 3000L
 }

@@ -117,6 +117,12 @@ internal class RemoteThumbnailSync(private val store: ThumbnailStore) {
 
                 cleanUpOrphanThumbs(storage, dirFiles, thumbFiles)
 
+                // 诊断：同目录侧车 `-thumb.jpg` 的发现情况（为 0 说明同目录清单没带上侧车）
+                Log.d(
+                    TAG,
+                    "preload dir=$dirPath 同目录侧车=${sameDirThumbMap.size} .thumb目录=${thumbMap.size} 待取帧=${filesInDir.size}",
+                )
+
                 for (file in filesInDir) {
                     val videoBaseName = file.name.substringBeforeLast('.')
                     val source = thumbMap[videoBaseName] ?: sameDirThumbMap[videoBaseName] ?: continue

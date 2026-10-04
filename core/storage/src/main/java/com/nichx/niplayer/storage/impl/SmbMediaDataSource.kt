@@ -45,6 +45,23 @@ class SmbMediaDataSource(
     private var blockPos = -1L
     private var blockLen = 0
 
+    // ---- 读统计（仅在 [lock] 内更新，close 时汇总打印，用于定位「卡住」到底在读什么）----
+    private var readCalls = 0
+    private var fillCount = 0
+    private var netBytesRead = 0L
+    private var minPos = Long.MAX_VALUE
+    private var maxPos = -1L
+
+    /**
+     * 是否已耗尽单次读取预算（见 [READ_BUDGET_BYTES]）。
+     *
+     * 供取帧器判断「失败是因为容器没有可用索引、需要全文件扫描」，从而回退取首帧，
+     * 而不是继续把整个几 GB 的 Remux 读完。
+     */
+    @Volatile
+    var budgetExceeded: Boolean = false
+        private set
+
     /** 在持有 [lock] 的调用线程上取第 [index] 条通道（并发任务不得再调用本方法，避免跨线程等锁）。 */
     private fun ensureLane(index: Int): SmbRandomAccess {
         lanes[index]?.let { return it }
@@ -70,6 +87,18 @@ class SmbMediaDataSource(
         if (toRead == 0) return 0
 
         return synchronized(lock) {
+            // 单次取帧的读取预算：超过即拒绝继续读（返回 EOF），让取帧器尽快结束。
+            // 命中缓冲不算网络读取，故预算只约束真实拉取的数据量。
+            if (netBytesRead >= READ_BUDGET_BYTES) {
+                if (!budgetExceeded) {
+                    budgetExceeded = true
+                    Log.w(TAG, "读预算耗尽（${netBytesRead / 1048576}MB），停止继续读取")
+                }
+                return@synchronized -1
+            }
+            readCalls++
+            if (position < minPos) minPos = position
+            if (position + toRead > maxPos) maxPos = position + toRead
             // 命中缓冲：直接从内存返回，无网络往返
             if (blockPos >= 0 && position >= blockPos && position + toRead <= blockPos + blockLen) {
                 val off = (position - blockPos).toInt()
@@ -100,6 +129,7 @@ class SmbMediaDataSource(
         }
         if (available <= 0) return false
         if (block.size < available) block = ByteArray(available)
+        fillCount++
 
         var lastError: Exception? = null
         repeat(MAX_READ_AT_RETRIES + 1) {
@@ -112,6 +142,7 @@ class SmbMediaDataSource(
                 if (read > 0) {
                     blockPos = position
                     blockLen = read
+                    netBytesRead += read
                     return true
                 }
             } catch (e: Exception) {
@@ -132,6 +163,7 @@ class SmbMediaDataSource(
             if (done > 0) {
                 blockPos = position
                 blockLen = done
+                netBytesRead += done
                 return true
             }
         } catch (e: Exception) {
@@ -212,6 +244,15 @@ class SmbMediaDataSource(
 
     override fun close() {
         synchronized(lock) {
+            // 汇总本次取帧的读行为：readCalls 远大于 fills 说明缓冲命中良好；fills 巨大且
+            // 位置范围接近整个文件则说明取帧器在**线性扫描**（无可用索引），这才是「卡住」的根因。
+            if (readCalls > 0) {
+                Log.d(
+                    TAG,
+                    "closed: readCalls=$readCalls fills=$fillCount 网络读取=${netBytesRead / 1048576}MB " +
+                        "位置范围=[$minPos,$maxPos] 文件=${fileSize / 1048576}MB",
+                )
+            }
             closeLanes()
         }
     }
@@ -238,13 +279,30 @@ class SmbMediaDataSource(
         /** 单块并发读的通道数上限。 */
         const val MAX_LANES = 6
 
+        /**
+         * 同时活跃的读数据源上限：SMB 缩略图并发取帧建议值 4 + 播放前宽高比预读 1。
+         *
+         * [READ_POOL] 容量需与之一致，否则多个数据源同时申请通道时任务在线程池排队，
+         * 单次 readAt 被拉长（实测线程池只有 12 个线程时，4 路取帧就要 24 条通道，一半在等）。
+         */
+        const val MAX_CONCURRENT_READERS = 5
+
         /** 分段读的最小段大小：块太小则不拆分，避免并发调度开销盖过收益。 */
         const val MIN_CHUNK_BYTES = 128 * 1024
 
         /**
+         * 单次取帧允许从网络读取的上限（64MB）。
+         *
+         * 实测：带可用索引的 WEB-DL 取帧只读几 MB~31MB（0.5~1.7s）；而没有可用索引的 BluRay Remux
+         * 会从第 0 字节顺序扫完整个容器（实测 2.5GB 读掉 2034MB、单集 70s）。取 64MB（约为正常
+         * 文件峰值的 2 倍）可干净区分二者：超过即返回 EOF，交由取帧器判定为不可取帧。
+         */
+        const val READ_BUDGET_BYTES = 64L * 1024 * 1024
+
+        /**
          * 并发块读共享线程池（守护线程）。全局复用，避免每个 [SmbMediaDataSource] 各建池导致线程爆炸。
          */
-        val READ_POOL: ExecutorService = Executors.newFixedThreadPool(MAX_LANES * 2) { runnable ->
+        val READ_POOL: ExecutorService = Executors.newFixedThreadPool(MAX_LANES * MAX_CONCURRENT_READERS) { runnable ->
             Thread(runnable, "smb-thumb-read").apply { isDaemon = true }
         }
     }

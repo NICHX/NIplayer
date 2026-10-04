@@ -10,9 +10,12 @@ import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
+import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFile
+import com.nichx.niplayer.storage.impl.SmbMediaDataSource
 import com.nichx.niplayer.storage.impl.WebDavMediaDataSource
 
 /**
@@ -46,20 +49,58 @@ internal class VideoFrameExtractor(private val context: Context) {
         file: StorageFile,
         positionKey: String,
         skipDurationCheck: Boolean,
-    ): FrameExtraction = withRetriever(storage, file) { retriever, dataSource ->
-        val positions = framePositionsFor(retriever, positionKey, skipDurationCheck)
-        readFrame(retriever, positions)
-    }.let { (extraction, dataSource) ->
-        // 永久失败识别：仅 WebDAV MediaDataSource 能给出 HTTP 错误码
-        if (extraction is FrameExtraction.Failed &&
-            dataSource is WebDavMediaDataSource &&
-            dataSource.lastHttpErrorCode in setOf(401, 403)
+    ): FrameExtraction {
+        val startedAt = SystemClock.elapsedRealtime()
+
+        // 远程 MKV 优先走「自解析头部 + MediaCodec」路径：它不依赖容器索引、读取量固定（~16MB），
+        // 而 MediaMetadataRetriever 在无可用索引的容器上会从第 0 字节顺序扫全文件（实测 2034MB/集、70s）。
+        // 提到最前可避免先白烧一次读取预算；此路径失败才回退到 Retriever。
+        if (file.name.endsWith(".mkv", ignoreCase = true) &&
+            storage.library.mediaType != MediaType.LOCAL_STORAGE
         ) {
-            Log.w(TAG, "WebDAV permanent failure (HTTP ${dataSource.lastHttpErrorCode})")
-            FrameExtraction.PermanentFailure
-        } else {
-            extraction
+            val bitmap = MkvFirstFrameExtractor.extract(storage, file)
+            if (bitmap != null) {
+                val scaled = scaleToMaxWidth(bitmap, ThumbnailManager.MAX_WIDTH)
+                if (scaled !== bitmap) bitmap.recycle()
+                Log.d(
+                    TAG,
+                    "extract ok: ${file.name} src=MkvHead ${SystemClock.elapsedRealtime() - startedAt}ms",
+                )
+                return FrameExtraction.Ok(scaled)
+            }
         }
+
+        val (extraction, dataSource) = withRetriever(storage, file) { retriever, _ ->
+            val positions = framePositionsFor(retriever, positionKey, skipDurationCheck)
+            readFrame(retriever, positions)
+        }
+
+        // 读取预算耗尽：说明这个容器没有取帧器可用的索引，按时间点取帧会退化成全文件扫描。
+        // MKV 已在方法开头走过自解析头部路径，这里不再重试，直接判永久失败（上层记「不重试」）。
+        if ((dataSource as? SmbMediaDataSource)?.budgetExceeded == true) {
+            Log.w(TAG, "read budget exceeded, skip without retry: ${file.name}")
+            val result = FrameExtraction.PermanentFailure
+            logExtraction(file, result, dataSource, startedAt)
+            return result
+        }
+
+        val result = resolvePermanentFailure(extraction, dataSource)
+        logExtraction(file, result, dataSource, startedAt)
+        return result
+    }
+
+    /** 永久失败识别：仅 WebDAV MediaDataSource 能给出 HTTP 错误码（401/403 不应重试）。 */
+    private fun resolvePermanentFailure(
+        extraction: FrameExtraction,
+        dataSource: MediaDataSource?,
+    ): FrameExtraction = if (extraction is FrameExtraction.Failed &&
+        dataSource is WebDavMediaDataSource &&
+        dataSource.lastHttpErrorCode in setOf(401, 403)
+    ) {
+        Log.w(TAG, "WebDAV permanent failure (HTTP ${dataSource.lastHttpErrorCode})")
+        FrameExtraction.PermanentFailure
+    } else {
+        extraction
     }
 
     /** 在精确位置 [positionMs] 取帧（退出播放时用于覆盖缩略图）。 */
@@ -68,10 +109,36 @@ internal class VideoFrameExtractor(private val context: Context) {
         file: StorageFile,
         positionMs: Long,
         skipDurationCheck: Boolean,
-    ): FrameExtraction = withRetriever(storage, file) { retriever, _ ->
-        val positions = framePositionsAt(retriever, positionMs, skipDurationCheck)
-        readFrame(retriever, positions)
-    }.first
+    ): FrameExtraction {
+        val startedAt = SystemClock.elapsedRealtime()
+        val (extraction, dataSource) = withRetriever(storage, file) { retriever, _ ->
+            val positions = framePositionsAt(retriever, positionMs, skipDurationCheck)
+            readFrame(retriever, positions)
+        }
+        logExtraction(file, extraction, dataSource, startedAt)
+        return extraction
+    }
+
+    /**
+     * 记录一次取帧的耗时、数据源类型与结果。
+     *
+     * 失败此前完全无日志，无法区分「取帧失败」与「远程读取太慢」；此处补齐，
+     * 成功用 [Log.d]、失败用 [Log.w]，便于用 `adb logcat -s VideoFrameExtractor` 定位。
+     */
+    private fun logExtraction(
+        file: StorageFile,
+        result: FrameExtraction,
+        dataSource: MediaDataSource?,
+        startedAt: Long,
+    ) {
+        val elapsedMs = SystemClock.elapsedRealtime() - startedAt
+        val source = dataSource?.javaClass?.simpleName ?: "url"
+        when (result) {
+            is FrameExtraction.Ok -> Log.d(TAG, "extract ok: ${file.name} src=$source ${elapsedMs}ms")
+            FrameExtraction.Failed -> Log.w(TAG, "extract failed: ${file.name} src=$source ${elapsedMs}ms")
+            FrameExtraction.PermanentFailure -> Log.w(TAG, "extract permanent-failure: ${file.name} src=$source ${elapsedMs}ms")
+        }
+    }
 
     /**
      * 建立合适的数据源并执行 [block]，返回 (取帧结果, 实际使用的 MediaDataSource 或 null)。

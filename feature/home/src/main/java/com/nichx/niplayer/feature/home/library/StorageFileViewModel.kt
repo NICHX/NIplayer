@@ -252,6 +252,14 @@ class StorageFileViewModel @Inject constructor(
     private val _tooShortPaths = MutableStateFlow<Set<String>>(emptySet())
     val tooShortPaths: StateFlow<Set<String>> = _tooShortPaths.asStateFlow()
 
+    /**
+     * 本次目录加载内已判定「不必重试」的路径（如远程凭证错误、无可用索引导致取帧不可行）。
+     *
+     * 与 [_tooShortPaths] 分开维护：后者会驱动 UI 的「<15s」标识，此前把永久失败也塞进去，
+     * 导致取帧失败的文件被误标成「视频过短」。此集合只用于跳过重复尝试，不参与任何 UI 展示。
+     */
+    private val _noRetryPaths = MutableStateFlow<Set<String>>(emptySet())
+
     /** 缩略图生成进度（0-100），-1 表示未在生成。 */
     private val _thumbnailProgress = MutableStateFlow(-1)
     val thumbnailProgress: StateFlow<Int> = _thumbnailProgress.asStateFlow()
@@ -1383,6 +1391,7 @@ class StorageFileViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, error = null) }
             _thumbnailUrls.value = emptyMap()
             _tooShortPaths.value = emptySet()
+            _noRetryPaths.value = emptySet()
             // 记录切换前的目录：用于判断本次加载是否真正切换了目录（决定是否清空本级搜索）
             val previousPath = _uiState.value.currentPath
             try {
@@ -1448,8 +1457,13 @@ class StorageFileViewModel @Inject constructor(
         thumbVisiblePaths = emptySet()
         val gen = thumbnailGeneration.incrementAndGet()
         val displayedFiles = _uiState.value.files
+        // 同目录 `-thumb.jpg` 侧车缩略图会被「仅显示媒体文件」过滤掉（见 isSidecarThumbnailFile）。
+        // 若把过滤后的 displayedFiles 当作同目录清单传给 preload，会抑制其「重新列目录」的兜底，
+        // 导致刮削好的同目录缩略图永远匹配不到，只能回退到远程取帧（SMB 下极慢，表现为一直转圈）。
+        // 故同目录清单用原始列目录结果 rawFiles（仅用于发现侧车），生成目标仍只取 displayedFiles。
+        val rawFiles = _uiState.value.rawFiles
         thumbnailDispatcher = viewModelScope.launch(Dispatchers.IO) {
-            generateThumbnailUrls(s, displayedFiles, gen, preloadDirFiles = displayedFiles)
+            generateThumbnailUrls(s, displayedFiles, gen, preloadDirFiles = rawFiles)
         }
         // 隐藏无媒体文件夹开启时，异步扫描当前目录各文件夹的媒体判定并渐进式过滤
         if (FileBrowserSettings.sortFlow.value.hideNoMediaFolders) {
@@ -1571,6 +1585,7 @@ class StorageFileViewModel @Inject constructor(
             // 清空状态
             _thumbnailUrls.value = emptyMap()
             _tooShortPaths.value = emptySet()
+            _noRetryPaths.value = emptySet()
             // 重新列当前目录（触发 generateThumbnailUrls）
             listDirectory(current) { }
         }
@@ -1747,7 +1762,7 @@ class StorageFileViewModel @Inject constructor(
                     val remainingFromCache = videoFiles.filter { file ->
                         _thumbnailUrls.value[file.path] == null &&
                             batchAccumulator[file.path] == null &&
-                            !_tooShortPaths.value.contains(file.path)
+                            !(_tooShortPaths.value.contains(file.path) || _noRetryPaths.value.contains(file.path))
                     }
                     if (remainingFromCache.isNotEmpty() && !isLocal) {
                         try {
@@ -1771,7 +1786,7 @@ class StorageFileViewModel @Inject constructor(
                         videoFiles.filter { file ->
                             _thumbnailUrls.value[file.path] == null &&
                                 batchAccumulator[file.path] == null &&
-                                !_tooShortPaths.value.contains(file.path)
+                                !(_tooShortPaths.value.contains(file.path) || _noRetryPaths.value.contains(file.path))
                         }.forEach { pendingThumbs.addLast(PendingThumb(it, ThumbType.VIDEO)) }
                     }
                 }
@@ -1819,9 +1834,11 @@ class StorageFileViewModel @Inject constructor(
                                                 is ThumbnailResult.TooShort ->
                                                     _tooShortPaths.update { it + item.file.path }
                                                 is ThumbnailResult.Failed -> {}
-                                                // 401/403 等永久失败：复用"不重试"集合，避免每次刷新无谓重试
+                                                // 永久失败（401/403 凭证错误、无可用索引导致取帧不可行）：
+                                                // 记入「不重试」集合跳过后续尝试即可，**不能**混进
+                                                // _tooShortPaths，否则 UI 会把文件误标成「视频过短」
                                                 is ThumbnailResult.PermanentFailure ->
-                                                    _tooShortPaths.update { it + item.file.path }
+                                                    _noRetryPaths.update { it + item.file.path }
                                             }
                                         }
                                     }
