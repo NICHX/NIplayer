@@ -140,11 +140,34 @@ jobs:
             echo "" >> "$BODY"
           fi
 
-          # 按 Conventional Commits 前缀分类展示提交，并给出对应 commit 短哈希
+          # 按 Conventional Commits 前缀分类展示提交，并给出对应 commit 短哈希。
+          # 发布说明面向用户：只保留 feat / fix / perf / refactor；
+          # docs / ci / test / chore / build 等纯开发信息一律不写入说明。
           git log --no-merges --pretty=format:'%h|%s' "$RANGE" > "$RUNNER_TEMP/commits.txt"
-          if [ ! -s "$RUNNER_TEMP/commits.txt" ]; then
-            echo -e "\n**本版本无新增提交。**" >> "$BODY"
-          fi
+
+          # 内部 scope 忽略清单：即使前缀是 feat/fix/perf/refactor，只要 scope 全部命中
+          # 内部范围（如 feat(ci)、fix(test)、perf(gradle)），也不写入说明 ——
+          # 避免「签名调整 / CI / 构建」这类开发信息泄漏到用户可见的发布说明。
+          # scope 全部为内部才剔除；若为混合 scope（如 feat(home,player)）则保留。
+          INTERNAL_SCOPES="ci|cd|build|test|tests|gradle|deps|dependencies|signing|scripts|release|tooling|workflow|docs"
+
+          is_internal() {
+            local subject="$1" scope s
+            scope="$(printf '%s' "$subject" | sed -nE 's/^[a-z]+\(([^)]*)\).*/\1/p')"
+            if [ -z "$scope" ]; then return 1; fi
+            local IFS=','
+            for s in $scope; do
+              s="${s//[[:space:]]/}"
+              if [ -z "$s" ]; then continue; fi
+              # 注意：case 模式的变量展开里 `|` 是字面竖线而非「或」，
+              # 因此这里用「|清单|」子串匹配来判断 scope 是否命中。
+              if [[ "|${INTERNAL_SCOPES}|" != *"|${s}|"* ]]; then return 1; fi
+            done
+            return 0
+          }
+
+          # 是否已写出任何面向用户的分组，用于「全是内部改动」时的兜底提示
+          SHOWN=0
 
           write_group() {
             local emoji="$1" title="$2" pattern="$3" first=1
@@ -152,9 +175,11 @@ jobs:
             while IFS='|' read -r sha subject; do
               case "$subject" in
                 ${pattern})
+                  if is_internal "$subject"; then continue; fi
                   if [ "$first" -eq 1 ]; then
                     printf '\n### %s %s\n\n' "$emoji" "$title" >> "$BODY"
                     first=0
+                    SHOWN=1
                   fi
                   desc="${subject#*: }"
                   if [ "$desc" = "$subject" ]; then desc="$subject"; fi
@@ -168,23 +193,11 @@ jobs:
           write_group "🐛" "问题修复" "fix*"
           write_group "⚡" "性能优化" "perf*"
           write_group "♻️" "重构" "refactor*"
-          write_group "📝" "文档" "docs*"
-          write_group "🔧" "CI / 构建" "ci*"
-          write_group "🧪" "测试" "test*"
-          write_group "🧹" "杂项" "chore*"
 
-          # 兜底分组：未带约定前缀的提交
-          unmatched=0
-          while IFS='|' read -r sha subject; do
-            case "$subject" in
-              feat*|fix*|perf*|refactor*|docs*|ci*|test*|chore*|style*|build*|revert*) continue ;;
-            esac
-            if [ "$unmatched" -eq 0 ]; then
-              printf '\n### 📦 其他\n\n' >> "$BODY"
-              unmatched=1
-            fi
-            printf -- '- %s (`%s`)\n' "$subject" "${sha:0:7}" >> "$BODY"
-          done < "$RUNNER_TEMP/commits.txt"
+          # 有提交但没有一条面向用户的变化（例如纯 CI/测试/依赖调整）时给出统一提示
+          if [ "$SHOWN" -eq 0 ]; then
+            printf '\n**本版本以内部改进为主，无面向用户的变化。**\n' >> "$BODY"
+          fi
 
           {
             echo ""
