@@ -13,11 +13,11 @@ concurrency:
 jobs:
   build-and-test:
     name: Build & Unit Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 必须用 JDK 21，不能用 17。
       #
@@ -35,7 +35,7 @@ jobs:
       # 即「本地全绿、CI 挂」的成因是**构建环境隐式依赖一个未入库的文件**。
       # 这里显式给 21 消除该差异；lint job 同样需要 21（见其自带注释）。
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -63,7 +63,7 @@ jobs:
           fi
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
@@ -72,7 +72,7 @@ jobs:
         run: ./gradlew assembleDebug
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: debug-apk
@@ -80,7 +80,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload test reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-reports
@@ -91,14 +91,14 @@ jobs:
 
   static-analysis:
     name: Static Analysis (detekt)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
@@ -120,7 +120,7 @@ jobs:
           fi
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # 必须用 detektMain / detektTest（带类型解析），不能用裸 `detekt`：
       # 后者没有绑定上下文，ForbiddenMethodCall、MissingUseCall、UnusedImport 等
@@ -130,7 +130,7 @@ jobs:
         run: ./gradlew detektMain detektTest
 
       - name: Upload detekt reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: detekt-reports
@@ -139,16 +139,16 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # AGP 9.3.0 的 lint 工具内部依赖 JDK 21 的 List.removeLast()（JDK 17 会抛
       # NoSuchMethodError），因此 lint 任务单独用 JDK 21 运行。
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -176,13 +176,13 @@ jobs:
           fi
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Run lint
         run: ./gradlew lintDebug
 
       - name: Upload lint report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: lint-report

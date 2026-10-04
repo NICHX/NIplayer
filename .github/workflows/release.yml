@@ -11,11 +11,11 @@ permissions:
 jobs:
   release:
     name: Build Release Artifacts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # 生成 release notes 需要完整历史与全部 tag，用于计算「上一版本 → 本版本」提交区间
           fetch-depth: 0
@@ -36,7 +36,7 @@ jobs:
       # （该测试为 v2.5.10 新增，此前 release 从未触发过此路径；做法与 ci.yml 的
       #  build-and-test / lint job 保持一致。）
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -64,7 +64,7 @@ jobs:
           fi
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Decode release keystore
         env:
@@ -92,7 +92,7 @@ jobs:
           mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/NIplayer-${GITHUB_REF_NAME}.apk"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-artifacts
           path: |
@@ -204,7 +204,7 @@ jobs:
           echo "body_path=$BODY" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             app/build/outputs/apk/release/*.apk
