@@ -78,6 +78,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -93,6 +94,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.ExperimentalSettings
@@ -315,19 +317,28 @@ fun FileBrowserScreen(
         }
     }
 
-    // 滚动状态上报：滚动期间暂停缩略图取帧，把 CPU 让给滑动。
-    // 原先进目录即对全目录并发生成缩略图（取帧是 CPU 密集型解码），边生成边滑会把 CPU 打满导致掉帧。
-    val scrollInProgress by remember(isGridView, isGalleryView) {
-        derivedStateOf {
+    // 可见范围上报：工作池据此优先处理可见项（滚到哪儿哪儿的缩略图先出，其余后台补齐）。
+    // 平铺列表含展开子项、与显示列表非 1:1，退化为全量优先（0..MAX）。
+    LaunchedEffect(isGridView, isGalleryView, isFlatView) {
+        snapshotFlow {
             when {
-                isGalleryView -> galleryState.isScrollInProgress
-                isGridView -> gridState.isScrollInProgress
-                else -> listState.isScrollInProgress
+                isFlatView -> 0 to Int.MAX_VALUE
+                isGalleryView -> {
+                    val items = galleryState.layoutInfo.visibleItemsInfo
+                    (items.firstOrNull()?.index ?: 0) to (items.lastOrNull()?.index ?: 0)
+                }
+                isGridView -> {
+                    val items = gridState.layoutInfo.visibleItemsInfo
+                    (items.firstOrNull()?.index ?: 0) to (items.lastOrNull()?.index ?: 0)
+                }
+                else -> {
+                    val items = listState.layoutInfo.visibleItemsInfo
+                    (items.firstOrNull()?.index ?: 0) to (items.lastOrNull()?.index ?: 0)
+                }
             }
+        }.distinctUntilChanged().collect { (first, last) ->
+            viewModel.onVisibleItemsChanged(first, last)
         }
-    }
-    LaunchedEffect(scrollInProgress) {
-        viewModel.setScrollInProgress(scrollInProgress)
     }
 
     val context = LocalContext.current
@@ -851,8 +862,16 @@ fun FileBrowserScreen(
             }
         }
         Box(modifier = Modifier.fillMaxSize()) {
-            // 内容层：仅列表/状态，满铺全屏延伸到顶栏下可被模糊；标记为玻璃模糊的背景源
-            Column(modifier = Modifier.fillMaxSize().layerBackdrop(multiSelectBarBackdrop)) {
+            // 内容层：仅列表/状态，满铺全屏延伸到顶栏下可被模糊；多选态下作为玻璃模糊的背景源。
+            // 仅在多选态挂 layerBackdrop：只有多选操作栏/顶栏按钮会用它采样做模糊，
+            // 非多选态挂着它只会每帧把整页列表录进离屏层却无人使用，是滚动掉帧的无效开销。
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (isMultiSelect) Modifier.layerBackdrop(multiSelectBarBackdrop) else Modifier,
+                    ),
+            ) {
                 // 下拉刷新指示器要避开顶栏：整页内容满铺全屏滚到玻璃顶栏之下，默认指示器定位在
                 // 全屏顶部会被透明顶栏盖住；故用自定义 indicator 下移 topInset，显现在顶栏之下。
                 val pullRefreshState = rememberPullToRefreshState()

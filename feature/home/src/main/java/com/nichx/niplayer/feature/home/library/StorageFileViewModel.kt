@@ -65,7 +65,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -257,18 +256,44 @@ class StorageFileViewModel @Inject constructor(
     private val _thumbnailProgress = MutableStateFlow(-1)
     val thumbnailProgress: StateFlow<Int> = _thumbnailProgress.asStateFlow()
 
-    /** 文件列表是否正在滚动：滚动期间挂起缩略图取帧，把 CPU 让给滑动，避免边生成边滑掉帧。 */
-    private val scrollInProgress = MutableStateFlow(false)
+    /** 当前可见文件路径集合（UI 上报），工作池据此优先处理可见项。 */
+    @Volatile
+    private var thumbVisiblePaths: Set<String> = emptySet()
 
-    /** 由 UI 上报列表/网格滚动状态（见 [FileBrowserScreen] 的 `isScrollInProgress` 监听）。 */
-    fun setScrollInProgress(inProgress: Boolean) {
-        scrollInProgress.value = inProgress
+    /** 工作池任务队列的互斥锁（仅保护队列读取/删除，持有时间极短）。 */
+    private val thumbQueueLock = Any()
+
+    /** 当前目录的缩略图生成任务（工作池）。切目录时取消。 */
+    private var thumbnailDispatcher: Job? = null
+
+    /**
+     * UI 上报当前可见项下标范围：只更新「可见路径集合」，不触发新的生成任务。
+     *
+     * 任务队列在进入目录时一次性排好（全部未命中项，按显示顺序），工作池每次取任务时优先选
+     * 可见项 —— 即「滚到哪儿哪儿的缩略图先出，其余后台补齐」。
+     */
+    fun onVisibleItemsChanged(firstVisibleIndex: Int, lastVisibleIndex: Int) {
+        val files = _uiState.value.files
+        if (files.isEmpty()) {
+            thumbVisiblePaths = emptySet()
+            return
+        }
+        val from = firstVisibleIndex.coerceIn(0, files.size - 1)
+        val to = (lastVisibleIndex + THUMBNAIL_PREFETCH).coerceIn(from, files.size - 1)
+        thumbVisiblePaths = files.subList(from, to + 1).mapTo(HashSet()) { it.path }
     }
 
-    /** 滚动中挂起，直到停止滚动；取帧前调用，让出 CPU 给滑动。 */
-    private suspend fun awaitScrollIdle() {
-        if (scrollInProgress.value) scrollInProgress.first { !it }
-    }
+    /** 从 [pending] 取下一个待生成项：优先当前可见项，否则取显示顺序最靠前者。 */
+    private fun nextPendingThumb(pending: ArrayDeque<PendingThumb>): PendingThumb? =
+        synchronized(thumbQueueLock) {
+            if (pending.isEmpty()) return@synchronized null
+            val visible = thumbVisiblePaths
+            if (visible.isNotEmpty()) {
+                val idx = pending.indexOfFirst { it.file.path in visible }
+                if (idx >= 0) return@synchronized pending.removeAt(idx)
+            }
+            pending.removeFirst()
+        }
 
     /** 活跃下载任务数（WAITING + DOWNLOADING），> 0 时顶栏显示下载按钮角标。 */
     val activeDownloadCount: StateFlow<Int> = downloadManager.activeDownloadCount
@@ -1322,15 +1347,6 @@ class StorageFileViewModel @Inject constructor(
     private val thumbnailGeneration = AtomicLong(0)
 
     /**
-     * 当前目录缩略图生成任务。切目录前 cancel，避免旧目录生成占用资源 + 新目录叠加导致卡顿。
-     *
-     * 性能修复：原实现 [generateThumbnailUrls] 在 [dirMutex.withLock] 内部调用，
-     * 必须等当前目录所有缩略图生成完才能释放 dirMutex，用户点子目录时被阻塞 → 界面卡死。
-     * 现拆出独立 Job，listDirectory 只负责加载文件列表，立即释放 dirMutex。
-     */
-    private var thumbnailJob: Job? = null
-
-    /**
      * 列出指定目录文件。
      *
      * 栈变更通过 [stackOp] lambda 表达，在列目录成功后执行，失败时保持原栈不变。
@@ -1408,12 +1424,14 @@ class StorageFileViewModel @Inject constructor(
             }
         } ?: return
 
-        // dirMutex 已释放，启动缩略图生成（独立 Job，不阻塞 listDirectory 调用方）
-        // 先 cancel 旧目录的生成任务，避免叠加导致 CPU/IO 抢占
-        thumbnailJob?.cancel()
+        // dirMutex 已释放，启动缩略图生成（独立 Job，不阻塞 listDirectory 调用方）。
+        // 可见优先 + 后台补齐：一次性对全目录未命中项排队，工作池优先取可见项、其余按显示顺序补齐。
+        thumbnailDispatcher?.cancel()
+        thumbVisiblePaths = emptySet()
         val gen = thumbnailGeneration.incrementAndGet()
-        thumbnailJob = viewModelScope.launch(Dispatchers.IO) {
-            generateThumbnailUrls(s, files, gen)
+        val displayedFiles = _uiState.value.files
+        thumbnailDispatcher = viewModelScope.launch(Dispatchers.IO) {
+            generateThumbnailUrls(s, displayedFiles, gen, preloadDirFiles = displayedFiles)
         }
         // 隐藏无媒体文件夹开启时，异步扫描当前目录各文件夹的媒体判定并渐进式过滤
         if (FileBrowserSettings.sortFlow.value.hideNoMediaFolders) {
@@ -1589,7 +1607,12 @@ class StorageFileViewModel @Inject constructor(
      * - **上传并行化 + fire-and-forget**：原实现串行 uploadThumbnail 阻塞生成协程，
      *   现用 async + Semaphore 并发，且不等待上传完成即返回（上传失败不影响 UI）。
      */
-    private suspend fun generateThumbnailUrls(s: Storage, files: List<StorageFile>, generation: Long = -1) {
+    private suspend fun generateThumbnailUrls(
+        s: Storage,
+        files: List<StorageFile>,
+        generation: Long = -1,
+        preloadDirFiles: List<StorageFile>? = null,
+    ) {
         val videoFiles = files.filter { !it.isDirectory && MediaFileTypes.isVideoFile(it.name) }
         val audioFiles = files.filter { !it.isDirectory && MediaFileTypes.isAudioFile(it.name) }
         val imageFiles = files.filter { !it.isDirectory && MediaFileTypes.isImageFile(it.name) }
@@ -1609,6 +1632,8 @@ class StorageFileViewModel @Inject constructor(
             // 用 synchronized 而非 Mutex：onLoaded 回调是非 suspend lambda，不能调 withLock；
             // 且持有时间极短（仅 map put/get/clear），synchronized 在 IO 线程上无影响。
             val batchLock = Any()
+            // 待生成队列：进入目录时一次性排好（显示顺序），工作池取任务时优先可见项
+            val pendingThumbs = ArrayDeque<PendingThumb>()
             // flusher 协程：每 250ms 把累积结果批量提交，大幅减少 StateFlow emit 次数
             val flusher = launch {
                 while (isActive) {
@@ -1617,13 +1642,13 @@ class StorageFileViewModel @Inject constructor(
                 }
             }
 
-            var completed = 0
+            val completed = java.util.concurrent.atomic.AtomicInteger(0)
             var totalCount = 0
             // 进度按 5% 步进，避免每个文件完成都触发 emit
             var lastProgressStep = -1
             fun reportProgress() {
                 if (totalCount <= 0) return
-                val current = (completed * 100) / totalCount
+                val current = (completed.get() * 100) / totalCount
                 val stepped = (current / PROGRESS_STEP) * PROGRESS_STEP
                 // 步进变化或完成时才 emit
                 if (stepped != lastProgressStep || current >= 100) {
@@ -1633,14 +1658,11 @@ class StorageFileViewModel @Inject constructor(
             }
 
             try {
-                // ---- 图片缩略图 ----
+                // ---- 图片缩略图：命中缓存即刻可用，其余入待生成队列 ----
                 if (imageFiles.isNotEmpty() &&
                     browseGenerationAllowed &&
                     ThumbnailSettings.generateThumbnail && ThumbnailSettings.generateForImage
                 ) {
-                    // BUG-T-m4 修复：先扫描本地缓存，已命中的立即可用（与视频组/音频组对齐）
-                    // 原实现直接 launch 协程调用 generateImageThumbnail，每个文件都要协程调度 +
-                    // 获取 mutex + 检查缓存，100 张图片 = 100 次协程 launch 仅为了命中已存在的缓存
                     val cachedImages = imageFiles.mapNotNull { file ->
                         val path = thumbnailManager.getCachedImageThumbnailPath(libId, file.path)
                         if (path != null) file.path to path else null
@@ -1649,47 +1671,13 @@ class StorageFileViewModel @Inject constructor(
                         synchronized(batchLock) { batchAccumulator.putAll(cachedImages) }
                         flushBatch(batchAccumulator, batchLock)
                     }
-
-                    // 仅对未命中缓存的图片启动生成
-                    val toGenerateImages = imageFiles.filter { file ->
-                        _thumbnailUrls.value[file.path] == null &&
-                            batchAccumulator[file.path] == null
-                    }
-                    totalCount += toGenerateImages.size
-                    if (completed == 0 && totalCount > 0) {
-                        _thumbnailProgress.value = 0
-                        lastProgressStep = 0
-                    }
-                    if (toGenerateImages.isNotEmpty()) {
-                        val imageConcurrency = minOf(s.thumbnailConcurrency, toGenerateImages.size)
-                        val imageSemaphore = Semaphore(imageConcurrency)
-                        coroutineScope {
-                            for (file in toGenerateImages) {
-                                launch {
-                                    // 滚动中挂起取帧，停止滚动后再继续（避免与滑动争抢 CPU）
-                                    awaitScrollIdle()
-                                    imageSemaphore.withPermit {
-                                        try {
-                                            val path = thumbnailManager.generateImageThumbnail(s, libId, file)
-                                            if (path != null) {
-                                                synchronized(batchLock) {
-                                                    batchAccumulator[file.path] = path
-                                                }
-                                            }
-                                        } catch (_: Exception) {
-                                        }
-                                        completed++
-                                        reportProgress()
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    imageFiles.filter { file ->
+                        _thumbnailUrls.value[file.path] == null && batchAccumulator[file.path] == null
+                    }.forEach { pendingThumbs.addLast(PendingThumb(it, ThumbType.IMAGE)) }
                 }
 
-                // ---- 音频封面 ----
+                // ---- 音频封面：命中缓存 / preload 即刻可用，其余入待生成队列 ----
                 if (audioFiles.isNotEmpty()) {
-                    // 扫描本地缓存（不受开关影响）
                     val cached = audioFiles.mapNotNull { file ->
                         val path = thumbnailManager.getCachedAudioCoverPath(libId, file.path)
                         if (path != null) file.path to path else null
@@ -1699,11 +1687,8 @@ class StorageFileViewModel @Inject constructor(
                         flushBatch(batchAccumulator, batchLock)
                     }
 
-                    // BUG-T-M1 修复：第一步 - 预加载服务端 .cover/ 已生成的封面
-                    // 与视频组 preloadThumbnails 对称，跨设备复用服务端缓存
                     val remainingFromCache = audioFiles.filter { file ->
-                        _thumbnailUrls.value[file.path] == null &&
-                            batchAccumulator[file.path] == null
+                        _thumbnailUrls.value[file.path] == null && batchAccumulator[file.path] == null
                     }
                     if (remainingFromCache.isNotEmpty() && !isLocal) {
                         try {
@@ -1719,77 +1704,19 @@ class StorageFileViewModel @Inject constructor(
                         }
                     }
 
-                    // 第二步：本地提取内嵌封面（受生成模式与 generateForAudio 开关控制）
-                    val toGenerate = if (browseGenerationAllowed &&
+                    if (browseGenerationAllowed &&
                         ThumbnailSettings.generateThumbnail && ThumbnailSettings.generateForAudio
                     ) {
                         audioFiles.filter { file ->
                             _thumbnailUrls.value[file.path] == null &&
                                 batchAccumulator[file.path] == null &&
                                 !thumbnailManager.hasNoCover(libId, file.path)
-                        }
-                    } else {
-                        emptyList()
-                    }
-                    totalCount += toGenerate.size
-                    if (toGenerate.isNotEmpty()) {
-                        if (completed == 0 && totalCount > 0) {
-                            _thumbnailProgress.value = 0
-                            lastProgressStep = 0
-                        }
-                        val audioConcurrency = minOf(s.thumbnailConcurrency, toGenerate.size)
-                        val audioSemaphore = Semaphore(audioConcurrency)
-                        val successFiles = Collections.synchronizedList(mutableListOf<StorageFile>())
-                        coroutineScope {
-                            for (file in toGenerate) {
-                                launch {
-                                    // 滚动中挂起取帧，停止滚动后再继续（避免与滑动争抢 CPU）
-                                    awaitScrollIdle()
-                                    audioSemaphore.withPermit {
-                                        try {
-                                            val path = thumbnailManager.generateAudioCover(s, libId, file)
-                                            if (path != null) {
-                                                synchronized(batchLock) {
-                                                    batchAccumulator[file.path] = path
-                                                }
-                                                successFiles.add(file)
-                                            }
-                                        } catch (_: Exception) {
-                                        }
-                                        completed++
-                                        reportProgress()
-                                    }
-                                }
-                            }
-                        }
-
-                        // BUG-T-M1 修复：第三步 - 上传新生成的封面到服务端 .cover/
-                        // 与视频组 uploadThumbnail 对称，跨设备复用
-                        // uploadAudioCover 内部已应用 BUG-T-C1 fileExists 检查，不覆盖服务端已有文件
-                        if (!isLocal && successFiles.isNotEmpty() && ThumbnailSettings.saveInSameDir) {
-                            val uploadConcurrency = minOf(s.thumbnailConcurrency, successFiles.size)
-                            val uploadSemaphore = Semaphore(uploadConcurrency)
-                            launch {
-                                coroutineScope {
-                                    for (file in successFiles) {
-                                        launch {
-                                            uploadSemaphore.withPermit {
-                                                try {
-                                                    thumbnailManager.uploadAudioCover(s, file)
-                                                } catch (_: Exception) {
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        }.forEach { pendingThumbs.addLast(PendingThumb(it, ThumbType.AUDIO)) }
                     }
                 }
 
-                // ---- 视频缩略图 ----
+                // ---- 视频缩略图：命中缓存 / preload 即刻可用，其余入待生成队列 ----
                 if (videoFiles.isNotEmpty()) {
-                    // 第一步：扫描本地缓存，已存在的缩略图立即可用（不受开关影响）
                     val cached = videoFiles.mapNotNull { file ->
                         val path = thumbnailManager.getCachedThumbnailPath(libId, file.path)
                         if (path != null) file.path to path else null
@@ -1802,18 +1729,17 @@ class StorageFileViewModel @Inject constructor(
                     val remainingFromCache = videoFiles.filter { file ->
                         _thumbnailUrls.value[file.path] == null &&
                             batchAccumulator[file.path] == null &&
-                            _tooShortPaths.value.contains(file.path).not()
+                            !_tooShortPaths.value.contains(file.path)
                     }
                     if (remainingFromCache.isNotEmpty() && !isLocal) {
                         try {
-                            // BUG-T-M6 修复：传入同目录全部文件（files 已是 listDirectory 返回值，
-                            // 含 {name}-thumb.jpg 刮削缩略图），避免 preloadThumbnails 重复 listFiles
+                            // 传入同目录全部文件（含 {name}-thumb.jpg 刮削缩略图），避免重复 listFiles
                             thumbnailManager.preloadThumbnails(
                                 s, libId, remainingFromCache,
                                 onLoaded = { videoPath, thumbPath ->
                                     synchronized(batchLock) { batchAccumulator[videoPath] = thumbPath }
                                 },
-                                sameDirFiles = files,
+                                sameDirFiles = preloadDirFiles ?: files,
                             )
                         } catch (e: CancellationException) {
                             throw e
@@ -1821,84 +1747,80 @@ class StorageFileViewModel @Inject constructor(
                         }
                     }
 
-                    // 第二步：本地生成新缩略图（受生成模式与 generateForVideo 开关控制）
-                    val toGenerate = if (browseGenerationAllowed &&
+                    if (browseGenerationAllowed &&
                         ThumbnailSettings.generateThumbnail && ThumbnailSettings.generateForVideo
                     ) {
                         videoFiles.filter { file ->
                             _thumbnailUrls.value[file.path] == null &&
                                 batchAccumulator[file.path] == null &&
-                                _tooShortPaths.value.contains(file.path).not()
-                        }
-                    } else {
-                        emptyList()
+                                !_tooShortPaths.value.contains(file.path)
+                        }.forEach { pendingThumbs.addLast(PendingThumb(it, ThumbType.VIDEO)) }
                     }
-                    totalCount += toGenerate.size
-                    if (toGenerate.isNotEmpty()) {
-                        _thumbnailProgress.value = 0
-                        lastProgressStep = 0
-                        val concurrency = minOf(s.thumbnailConcurrency, toGenerate.size)
-                        val semaphore = Semaphore(concurrency)
-                        val successFiles = Collections.synchronizedList(mutableListOf<StorageFile>())
-                        coroutineScope {
-                            for (file in toGenerate) {
-                                launch {
-                                    // 滚动中挂起取帧，停止滚动后再继续（避免与滑动争抢 CPU）
-                                    awaitScrollIdle()
-                                    semaphore.withPermit {
-                                        try {
-                                            when (val result = thumbnailManager.generateThumbnail(
-                                            s, libId, file,
-                                            positionKey = ThumbnailSettings.framePositionKey,
-                                        )) {
-                                                is ThumbnailResult.Success -> {
-                                                    synchronized(batchLock) {
-                                                        batchAccumulator[file.path] = result.path
-                                                    }
-                                                    successFiles.add(file)
-                                                }
-                                                is ThumbnailResult.TooShort -> {
-                                                    _tooShortPaths.update { it + file.path }
-                                                }
-                                                is ThumbnailResult.Failed -> {
-                                                }
-                                                // W-M9 修复：401/403 凭证错误等永久失败，加入 _tooShortPaths
-                                                // 复用"不重试"集合语义，避免每次刷新都无谓重试（凭据未变必再失败）
-                                                is ThumbnailResult.PermanentFailure -> {
-                                                    _tooShortPaths.update { it + file.path }
-                                                }
-                                            }
-                                        } catch (_: Exception) {
-                                        }
-                                        completed++
-                                        reportProgress()
-                                    }
-                                }
-                            }
-                        }
+                }
 
-                        // 上传并行化 + fire-and-forget：不阻塞 generateThumbnailUrls 返回
-                        // 原实现串行 uploadThumbnail，10 个文件 × 几秒 = 几十秒阻塞
-                        if (!isLocal && successFiles.isNotEmpty() && ThumbnailSettings.saveInSameDir) {
-                            val uploadConcurrency = minOf(s.thumbnailConcurrency, successFiles.size)
-                            val uploadSemaphore = Semaphore(uploadConcurrency)
-                            // launch 独立协程，不 await，生成协程立即返回
-                            launch {
-                                coroutineScope {
-                                    for (file in successFiles) {
-                                        launch {
-                                            uploadSemaphore.withPermit {
-                                                try {
-                                                    thumbnailManager.uploadThumbnail(s, file)
-                                                } catch (_: Exception) {
+                // ---- 工作池：可见优先 + 后台补齐 ----
+                // 单次进入目录即对全部未命中项排队，工作池每次优先取「当前可见」的任务：
+                // 滚到哪儿哪儿的缩略图先出，其余按显示顺序后台补齐。并发取存储源建议值。
+                totalCount = pendingThumbs.size
+                if (totalCount > 0) {
+                    _thumbnailProgress.value = 0
+                    lastProgressStep = 0
+                }
+                val videoSuccess = Collections.synchronizedList(mutableListOf<StorageFile>())
+                val audioSuccess = Collections.synchronizedList(mutableListOf<StorageFile>())
+                val workerCount = minOf(s.thumbnailConcurrency, totalCount).coerceAtLeast(1)
+                coroutineScope {
+                    repeat(workerCount) {
+                        launch {
+                            while (isActive) {
+                                val item = nextPendingThumb(pendingThumbs) ?: break
+                                try {
+                                    when (item.type) {
+                                        ThumbType.IMAGE -> {
+                                            val path = thumbnailManager.generateImageThumbnail(s, libId, item.file)
+                                            if (path != null) {
+                                                synchronized(batchLock) { batchAccumulator[item.file.path] = path }
+                                            }
+                                        }
+                                        ThumbType.AUDIO -> {
+                                            val path = thumbnailManager.generateAudioCover(s, libId, item.file)
+                                            if (path != null) {
+                                                synchronized(batchLock) { batchAccumulator[item.file.path] = path }
+                                                if (!isLocal && ThumbnailSettings.saveInSameDir) audioSuccess.add(item.file)
+                                            }
+                                        }
+                                        ThumbType.VIDEO -> {
+                                            when (val result = thumbnailManager.generateThumbnail(
+                                                s, libId, item.file,
+                                                positionKey = ThumbnailSettings.framePositionKey,
+                                            )) {
+                                                is ThumbnailResult.Success -> {
+                                                    synchronized(batchLock) { batchAccumulator[item.file.path] = result.path }
+                                                    if (!isLocal && ThumbnailSettings.saveInSameDir) videoSuccess.add(item.file)
                                                 }
+                                                is ThumbnailResult.TooShort ->
+                                                    _tooShortPaths.update { it + item.file.path }
+                                                is ThumbnailResult.Failed -> {}
+                                                // 401/403 等永久失败：复用"不重试"集合，避免每次刷新无谓重试
+                                                is ThumbnailResult.PermanentFailure ->
+                                                    _tooShortPaths.update { it + item.file.path }
                                             }
                                         }
                                     }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
                                 }
+                                completed.incrementAndGet()
+                                reportProgress()
                             }
                         }
                     }
+                }
+                // 上传新生成的缩略图/封面到服务端（仅远程 + 写回开关）
+                if (!isLocal && ThumbnailSettings.saveInSameDir) {
+                    uploadGeneratedThumbs(s, videoSuccess) { thumbnailManager.uploadThumbnail(s, it) }
+                    uploadGeneratedThumbs(s, audioSuccess) { thumbnailManager.uploadAudioCover(s, it) }
                 }
             } finally {
                 // 停止 flusher，强制提交剩余累积结果
@@ -1909,6 +1831,32 @@ class StorageFileViewModel @Inject constructor(
                     flushBatch(batchAccumulator, batchLock)
                 }
                 _thumbnailProgress.value = -1
+            }
+        }
+    }
+
+    /**
+     * 并发生成后把成功项上传服务端（并发按存储建议值）。生成与上传分离，上传失败不影响本地显示。
+     */
+    private suspend fun uploadGeneratedThumbs(
+        s: Storage,
+        files: List<StorageFile>,
+        upload: suspend (StorageFile) -> Unit,
+    ) {
+        if (files.isEmpty()) return
+        val semaphore = Semaphore(minOf(s.thumbnailConcurrency, files.size).coerceAtLeast(1))
+        coroutineScope {
+            for (file in files) {
+                launch {
+                    semaphore.withPermit {
+                        try {
+                            upload(file)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
             }
         }
     }
@@ -2589,8 +2537,16 @@ class StorageFileViewModel @Inject constructor(
         const val PROGRESS_STEP = 5
         /** 远程存储心跳检测间隔（ms）。30 秒检测一次，平衡实时性与网络开销。 */
         const val HEARTBEAT_INTERVAL_MS = 30_000L
+        /** 可见范围之外的预取文件数，减少滚动到新项时缩略图“迟到”。 */
+        const val THUMBNAIL_PREFETCH = 8
     }
 }
+
+/** 缩略图工作池中的一个待生成项及其类型。 */
+private data class PendingThumb(val file: StorageFile, val type: ThumbType)
+
+/** 待生成缩略图的类型。 */
+private enum class ThumbType { IMAGE, AUDIO, VIDEO }
 
 /** 文件浏览页 UI 状态。 */
 /** 一个进行中的上传任务（用于进度条展示）。fraction <0 表示未知总长（不确定进度）。 */

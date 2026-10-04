@@ -1,0 +1,43 @@
+package com.nichx.niplayer.thumbnail
+
+/** 缩略图生成结果。 */
+sealed class ThumbnailResult {
+    /** 生成成功，path 为本地 JPEG 文件绝对路径。 */
+    data class Success(val path: String) : ThumbnailResult()
+
+    /**
+     * 历史遗留结果类型，当前业务不再生产：短视频（< [ThumbnailManager.MIN_DURATION_MS]）
+     * 改为取第一个关键帧生成缩略图，仅保留以兼容旧调用方对 when 的穷尽性检查。
+     */
+    data object TooShort : ThumbnailResult()
+
+    /** 生成失败（IO 错误、解码失败等）。 */
+    data object Failed : ThumbnailResult()
+
+    /**
+     * 永久失败：401/403 凭证错误等不可重试场景。
+     *
+     * 调用方据此可避免在凭据未变时反复重试同一文件。
+     */
+    data object PermanentFailure : ThumbnailResult()
+}
+
+/**
+ * 远程缩略图生成请求。
+ *
+ * 抽象输入，使 [ThumbnailManager.generateRemoteThumbnails] 不依赖 PlayHistoryEntity，
+ * HomeTabViewModel / PlayHistoryViewModel 各自负责实体转换。
+ *
+ * @param storageId 媒体库 id
+ * @param filePath 文件在存储中的路径
+ * @param fileName 文件名（含扩展名）
+ * @param url 作为回调 key 返回给调用方，通常为 PlayHistoryEntity.url
+ * @param isAudio 是否为音频文件（true 走音频封面流程，false 走视频取帧流程）
+ */
+data class RemoteThumbnailRequest(
+    val storageId: Int,
+    val filePath: String,
+    val fileName: String,
+    val url: String,
+    val isAudio: Boolean,
+)
