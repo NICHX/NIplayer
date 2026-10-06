@@ -21,6 +21,13 @@
     <string name="player_unknown_song">Unknown song</string>
     <string name="player_unknown_error">Unknown error</string>
 
+    <!-- Audio player appearance -->
+    <string name="player_appearance">Appearance</string>
+    <string name="player_audio_appearance">Audio player appearance</string>
+    <string name="player_audio_appearance_vinyl">Vinyl record</string>
+    <string name="player_audio_appearance_glass">Liquid glass</string>
+    <string name="player_appearance_switched">Appearance: %1$s</string>
+
     <!-- Playback errors -->
     <string name="player_error_title">Playback failed</string>
     <string name="player_error_hint">Playback error</string>

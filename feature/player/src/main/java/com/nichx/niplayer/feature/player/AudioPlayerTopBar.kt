@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -70,6 +71,11 @@ internal fun TopBarActions(
     showExternalActions: Boolean = false,
     onOpenWith: () -> Unit = {},
     onShare: () -> Unit = {},
+    appearanceIcon: ImageVector? = null,
+    appearanceLabel: String = "",
+    onCycleAppearance: () -> Unit = {},
+    glassButtons: Boolean = false,
+    backdrop: com.kyant.backdrop.Backdrop? = null,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
@@ -99,15 +105,9 @@ internal fun TopBarActions(
                     .clickable { onSleepTimer() },
             )
         }
-        // 更多：倍速（二级菜单）/ 均衡器 / 睡眠定时 / 下载 收进溢出菜单，保持顶栏简洁
-        Box(
-            modifier = Modifier.onGloballyPositioned { coords ->
-                // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
-                val topLeft = coords.localToRoot(Offset.Zero)
-                moreMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
-            },
-        ) {
-            IconButton(onClick = { menuPage = MoreMenuPage.Main }) {
+        // 外观切换：黑胶 ↔ 液态玻璃，一键循环（与玻璃布局共用同一入口语义）
+        if (appearanceIcon != null && !glassButtons) {
+            IconButton(onClick = onCycleAppearance) {
                 Box(
                     modifier = Modifier
                         .size(40.dp)
@@ -116,10 +116,51 @@ internal fun TopBarActions(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.MoreVert,
-                        contentDescription = stringResource(R.string.player_more),
+                        imageVector = appearanceIcon,
+                        contentDescription = appearanceLabel,
                         tint = onSurface.copy(alpha = 0.8f),
                     )
+                }
+            }
+        }
+        if (appearanceIcon != null && glassButtons) {
+            GlassCircleButton(
+                onClick = onCycleAppearance,
+                icon = appearanceIcon,
+                contentDescription = appearanceLabel,
+                backdrop = backdrop,
+            )
+        }
+        // 更多：倍速（二级菜单）/ 均衡器 / 睡眠定时 / 下载 收进溢出菜单，保持顶栏简洁
+        Box(
+            modifier = Modifier.onGloballyPositioned { coords ->
+                // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
+                val topLeft = coords.localToRoot(Offset.Zero)
+                moreMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+            },
+        ) {
+            if (glassButtons) {
+                GlassCircleButton(
+                    onClick = { menuPage = MoreMenuPage.Main },
+                    icon = Icons.Rounded.MoreVert,
+                    contentDescription = stringResource(R.string.player_more),
+                    backdrop = backdrop,
+                )
+            } else {
+                IconButton(onClick = { menuPage = MoreMenuPage.Main }) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(onSurface.copy(alpha = 0.08f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MoreVert,
+                            contentDescription = stringResource(R.string.player_more),
+                            tint = onSurface.copy(alpha = 0.8f),
+                        )
+                    }
                 }
             }
             // 更多：单一玻璃菜单，按 menuPage 原地切换页面（主菜单/倍速/元数据），
@@ -365,6 +406,9 @@ internal fun TopBar(
     showExternalActions: Boolean = false,
     onOpenWith: () -> Unit = {},
     onShare: () -> Unit = {},
+    appearanceIcon: ImageVector? = null,
+    appearanceLabel: String = "",
+    onCycleAppearance: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     Row(
@@ -415,6 +459,9 @@ internal fun TopBar(
             showExternalActions = showExternalActions,
             onOpenWith = onOpenWith,
             onShare = onShare,
+            appearanceIcon = appearanceIcon,
+            appearanceLabel = appearanceLabel,
+            onCycleAppearance = onCycleAppearance,
         )
     }
 }

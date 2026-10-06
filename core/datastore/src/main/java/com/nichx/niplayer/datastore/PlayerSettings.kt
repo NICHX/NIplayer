@@ -3,6 +3,14 @@ package com.nichx.niplayer.datastore
 import com.tencent.mmkv.MMKV
 
 /**
+ * 音频播放器外观样式。
+ *
+ * - [VINYL]：黑胶唱片（默认，保持既有观感）。
+ * - [GLASS]：液态玻璃 / 模糊封面（新增，封面高斯模糊铺底 + 磨砂玻璃控制面板）。
+ */
+enum class AudioPlayerStyle { VINYL, GLASS }
+
+/**
  * 播放器偏好设置（MMKV）。
  *
  * - [longPressSpeed]：长按画面时临时切换到的倍速（松手恢复），默认 2.0x。
@@ -23,6 +31,7 @@ object PlayerSettings {
     private const val KEY_DOUBLE_TAP_STEP_SECONDS = "player_double_tap_step_seconds"
     private const val KEY_AUDIO_PLAY_MODE_INDEX = "player_audio_play_mode_index"
     private const val KEY_AUDIO_SPEED_INDEX = "player_audio_speed_index"
+    private const val KEY_AUDIO_PLAYER_STYLE = "player_audio_player_style"
     private const val KEY_ORIENTATION_MODE = "player_orientation_mode"
     private const val KEY_SCALE_MODE_INDEX = "player_scale_mode_index"
 
@@ -126,6 +135,20 @@ object PlayerSettings {
     var audioSpeedIndex: Int
         get() = mmkv.decodeInt(KEY_AUDIO_SPEED_INDEX, 1)
         set(value) { mmkv.encode(KEY_AUDIO_SPEED_INDEX, value) }
+
+    /**
+     * 音频播放器外观样式（[AudioPlayerStyle]）。默认 [AudioPlayerStyle.VINYL]（既有黑胶观感）。
+     *
+     * 由「播放器设置 → 音频播放器外观」写入，[com.nichx.niplayer.feature.player.AudioPlayerScreen]
+     * 读取并按样式渲染竖屏/横屏布局；播放器内也可临时切换并同步写回，作为持久默认。
+     */
+    var audioPlayerStyle: AudioPlayerStyle
+        get() = runCatching {
+            AudioPlayerStyle.valueOf(
+                mmkv.decodeString(KEY_AUDIO_PLAYER_STYLE) ?: AudioPlayerStyle.VINYL.name,
+            )
+        }.getOrDefault(AudioPlayerStyle.VINYL)
+        set(value) { mmkv.encode(KEY_AUDIO_PLAYER_STYLE, value.name) }
 
     /**
      * 进入播放器时的方向模式。默认 0（横屏，保持既有行为）。

@@ -21,6 +21,13 @@
     <string name="player_unknown_song">未知歌曲</string>
     <string name="player_unknown_error">未知错误</string>
 
+    <!-- 音频播放器外观 -->
+    <string name="player_appearance">外观</string>
+    <string name="player_audio_appearance">音频播放器外观</string>
+    <string name="player_audio_appearance_vinyl">黑胶唱片</string>
+    <string name="player_audio_appearance_glass">液态玻璃</string>
+    <string name="player_appearance_switched">外观：%1$s</string>
+
     <!-- 播放错误 -->
     <string name="player_error_title">播放失败</string>
     <string name="player_error_hint">播放出错</string>

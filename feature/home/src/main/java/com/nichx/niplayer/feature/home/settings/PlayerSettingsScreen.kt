@@ -38,6 +38,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.nichx.niplayer.datastore.AudioPlayerStyle
 import com.nichx.niplayer.datastore.PlayerControlOrientation
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
@@ -73,7 +74,9 @@ fun PlayerSettingsScreen(
     var seekSensitivity by remember { mutableStateOf(PlayerSettings.seekSensitivity) }
     var doubleTapStepSeconds by remember { mutableStateOf(PlayerSettings.doubleTapStepSeconds) }
     var orientationMode by remember { mutableStateOf(PlayerSettings.orientationMode) }
+    var audioPlayerStyle by remember { mutableStateOf(PlayerSettings.audioPlayerStyle) }
     var showOrientationDialog by remember { mutableStateOf(false) }
+    var showAppearanceDialog by remember { mutableStateOf(false) }
     var showOrientationHintDialog by remember { mutableStateOf(false) }
     var showTokenDialog by remember { mutableStateOf(false) }
     var showPriorityDialog by remember { mutableStateOf(false) }
@@ -106,6 +109,10 @@ fun PlayerSettingsScreen(
         1 -> stringResource(R.string.player_orientation_portrait)
         2 -> stringResource(R.string.player_orientation_auto)
         else -> stringResource(R.string.player_orientation_landscape)
+    }
+    val audioStyleLabel = when (audioPlayerStyle) {
+        AudioPlayerStyle.GLASS -> stringResource(R.string.player_audio_appearance_glass)
+        AudioPlayerStyle.VINYL -> stringResource(R.string.player_audio_appearance_vinyl)
     }
 
     NiScaffold(
@@ -147,6 +154,12 @@ fun PlayerSettingsScreen(
                     value = orientationModeLabel,
                     infoOnClick = { showOrientationHintDialog = true },
                     onClick = { showOrientationDialog = true },
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SettingClickRow(
+                    label = stringResource(R.string.player_audio_appearance),
+                    value = audioStyleLabel,
+                    onClick = { showAppearanceDialog = true },
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingClickRow(
@@ -220,6 +233,28 @@ fun PlayerSettingsScreen(
             }
             Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
+    }
+
+    if (showAppearanceDialog) {
+        NiListItemDialog(
+            title = stringResource(R.string.player_audio_appearance),
+            onDismiss = { showAppearanceDialog = false },
+            items = listOf(
+                AudioPlayerStyle.VINYL to stringResource(R.string.player_audio_appearance_vinyl),
+                AudioPlayerStyle.GLASS to stringResource(R.string.player_audio_appearance_glass),
+            )
+                .map { (option, label) ->
+                    NiDialogItem(
+                        label = label,
+                        isSelected = audioPlayerStyle == option,
+                        onClick = {
+                            audioPlayerStyle = option
+                            PlayerSettings.audioPlayerStyle = option
+                            showAppearanceDialog = false
+                        },
+                    )
+                },
+        )
     }
 
     if (showOrientationDialog) {

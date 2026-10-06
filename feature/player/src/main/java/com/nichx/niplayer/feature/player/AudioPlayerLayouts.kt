@@ -145,6 +145,9 @@ internal fun PortraitLayout(
     showExternalActions: Boolean = false,
     onOpenWith: () -> Unit = {},
     onShare: () -> Unit = {},
+    appearanceIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    appearanceLabel: String = "",
+    onCycleAppearance: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
 
@@ -167,6 +170,9 @@ internal fun PortraitLayout(
             showExternalActions = showExternalActions,
             onOpenWith = onOpenWith,
             onShare = onShare,
+            appearanceIcon = appearanceIcon,
+            appearanceLabel = appearanceLabel,
+            onCycleAppearance = onCycleAppearance,
         )
 
         Box(
@@ -343,6 +349,9 @@ internal fun LandscapeLayout(
     showExternalActions: Boolean = false,
     onOpenWith: () -> Unit = {},
     onShare: () -> Unit = {},
+    appearanceIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    appearanceLabel: String = "",
+    onCycleAppearance: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     // 大屏（平板/大屏手机横屏）下歌词行数更多，配合 LyricsView 内部字号/行高自适应放大
@@ -472,6 +481,9 @@ internal fun LandscapeLayout(
                             showExternalActions = showExternalActions,
                             onOpenWith = onOpenWith,
                             onShare = onShare,
+                            appearanceIcon = appearanceIcon,
+                            appearanceLabel = appearanceLabel,
+                            onCycleAppearance = onCycleAppearance,
                         )
                     }
 

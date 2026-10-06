@@ -5,11 +5,17 @@ import android.content.res.Configuration
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.common.error.NiMessage
+import com.nichx.niplayer.datastore.AudioPlayerStyle
 import com.nichx.niplayer.datastore.DownloadSettings
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
@@ -104,6 +110,21 @@ fun AudioPlayerScreen(
         if (lrcText != null) LrcParser.parse(lrcText!!) else emptyList()
     }
 
+    // 音频播放器外观：默认读设置，可在播放器内一键切换（即时生效并写回，作为持久默认）
+    var playerStyle by remember { mutableStateOf(PlayerSettings.audioPlayerStyle) }
+    val isGlassStyle = playerStyle == AudioPlayerStyle.GLASS
+    val vinylStyleName = stringResource(R.string.player_audio_appearance_vinyl)
+    val glassStyleName = stringResource(R.string.player_audio_appearance_glass)
+    val appearanceSwitchedTemplate = stringResource(R.string.player_appearance_switched)
+    val appearanceLabel = stringResource(R.string.player_appearance)
+    val onCycleAppearance: () -> Unit = {
+        val next = if (isGlassStyle) AudioPlayerStyle.VINYL else AudioPlayerStyle.GLASS
+        playerStyle = next
+        PlayerSettings.audioPlayerStyle = next
+        val nextName = if (next == AudioPlayerStyle.GLASS) glassStyleName else vinylStyleName
+        messageController.post(NiMessage.info(appearanceSwitchedTemplate.format(nextName)))
+    }
+
     var showLyrics by remember { mutableStateOf(false) }
     var showPlaylist by remember { mutableStateOf(false) }
 
@@ -149,82 +170,189 @@ fun AudioPlayerScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        BackgroundLayer(coverData = coverPath)
+        // 玻璃折射采样源：只捕获背景层（模糊封面 + scrim）。
+        // ⚠️ 不能用全局 LocalNiBackdrop——它捕获的根内容层包含本页面自身，
+        // 按钮渲染进自己的采样源会触发「捕获→绘制→再捕获」无限递归（SIGSEGV 闪退）。
+        // 本地 backdrop 与按钮是兄弟节点，采样源不含按钮，安全且折射目标恰好是背景。
+        val windowBackground = MaterialTheme.colorScheme.background
+        val glassBackdrop = rememberLayerBackdrop {
+            drawRect(windowBackground)
+            drawContent()
+        }
+        Box(modifier = Modifier.fillMaxSize().layerBackdrop(glassBackdrop)) {
+            if (isGlassStyle) {
+                GlassBackground(coverData = coverPath)
+            } else {
+                BackgroundLayer(coverData = coverPath)
+            }
+        }
 
         if (isLandscape) {
-            LandscapeLayout(
-                hasActiveContent = hasActiveContent,
-                playbackError = playbackError,
-                onRetry = { audioPlaybackManager?.retry() },
-                lrcLines = lrcLines,
-                positionMs = positionMs,
-                durationMs = durationMs,
-                onSeek = { pos -> audioPlaybackManager?.seekTo(pos) },
-                title = title,
-                isPlaying = isPlaying,
-                hasPrev = hasPrev,
-                hasNext = hasNext,
-                onTogglePlay = { audioPlaybackManager?.togglePlayPause() },
-                onPrevious = { viewModel.playPrevious() },
-                onNext = { viewModel.playNext() },
-                coverPath = coverPath,
-                playMode = playMode,
-                modeIcon = modeIcon,
-                modeLabel = stringResource(mode.labelRes),
-                onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
-                onShowPlaylist = { showPlaylist = true },
-                onBack = onBack,
-                onDownload = { viewModel.requestDownload() },
-                onEqualizer = onEqualizer,
-                speedOptions = speedValues,
-                currentSpeedIndex = speedIndex,
-                onSpeedSelect = { speedIndex = it },
-                showDownload = !isLocalSource,
-                sleepTimerText = sleepTimerText,
-                onSleepTimer = { showSleepTimerDialog = true },
-                showExternalActions = isLocalSource,
-                onOpenWith = onOpenWith,
-                onShare = onShareExternal,
-            )
+            if (isGlassStyle) {
+                GlassLandscapeLayout(
+                    glassBackdrop = glassBackdrop,
+                    hasActiveContent = hasActiveContent,
+                    playbackError = playbackError,
+                    onRetry = { audioPlaybackManager?.retry() },
+                    lrcLines = lrcLines,
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    onSeek = { pos -> audioPlaybackManager?.seekTo(pos) },
+                    title = title,
+                    isPlaying = isPlaying,
+                    hasPrev = hasPrev,
+                    hasNext = hasNext,
+                    onTogglePlay = { audioPlaybackManager?.togglePlayPause() },
+                    onPrevious = { viewModel.playPrevious() },
+                    onNext = { viewModel.playNext() },
+                    coverPath = coverPath,
+                    playMode = playMode,
+                    modeIcon = modeIcon,
+                    modeLabel = stringResource(mode.labelRes),
+                    onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
+                    onShowPlaylist = { showPlaylist = true },
+                    onBack = onBack,
+                    onDownload = { viewModel.requestDownload() },
+                    onEqualizer = onEqualizer,
+                    speedOptions = speedValues,
+                    currentSpeedIndex = speedIndex,
+                    onSpeedSelect = { speedIndex = it },
+                    showDownload = !isLocalSource,
+                    sleepTimerText = sleepTimerText,
+                    onSleepTimer = { showSleepTimerDialog = true },
+                    showExternalActions = isLocalSource,
+                    onOpenWith = onOpenWith,
+                    onShare = onShareExternal,
+                    appearanceIcon = Icons.Rounded.Palette,
+                    appearanceLabel = appearanceLabel,
+                    onCycleAppearance = onCycleAppearance,
+                )
+            } else {
+                LandscapeLayout(
+                    hasActiveContent = hasActiveContent,
+                    playbackError = playbackError,
+                    onRetry = { audioPlaybackManager?.retry() },
+                    lrcLines = lrcLines,
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    onSeek = { pos -> audioPlaybackManager?.seekTo(pos) },
+                    title = title,
+                    isPlaying = isPlaying,
+                    hasPrev = hasPrev,
+                    hasNext = hasNext,
+                    onTogglePlay = { audioPlaybackManager?.togglePlayPause() },
+                    onPrevious = { viewModel.playPrevious() },
+                    onNext = { viewModel.playNext() },
+                    coverPath = coverPath,
+                    playMode = playMode,
+                    modeIcon = modeIcon,
+                    modeLabel = stringResource(mode.labelRes),
+                    onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
+                    onShowPlaylist = { showPlaylist = true },
+                    onBack = onBack,
+                    onDownload = { viewModel.requestDownload() },
+                    onEqualizer = onEqualizer,
+                    speedOptions = speedValues,
+                    currentSpeedIndex = speedIndex,
+                    onSpeedSelect = { speedIndex = it },
+                    showDownload = !isLocalSource,
+                    sleepTimerText = sleepTimerText,
+                    onSleepTimer = { showSleepTimerDialog = true },
+                    showExternalActions = isLocalSource,
+                    onOpenWith = onOpenWith,
+                    onShare = onShareExternal,
+                    appearanceIcon = Icons.Rounded.Palette,
+                    appearanceLabel = appearanceLabel,
+                    onCycleAppearance = onCycleAppearance,
+                )
+            }
         } else {
-            PortraitLayout(
-                hasActiveContent = hasActiveContent,
-                playbackError = playbackError,
-                onRetry = { audioPlaybackManager?.retry() },
-                showLyrics = showLyrics,
-                lrcLines = lrcLines,
-                positionMs = positionMs,
-                durationMs = durationMs,
-                onSeek = { pos -> audioPlaybackManager?.seekTo(pos) },
-                title = title,
-                isPlaying = isPlaying,
-                hasPrev = hasPrev,
-                hasNext = hasNext,
-                onTogglePlay = { audioPlaybackManager?.togglePlayPause() },
-                onPrevious = { viewModel.playPrevious() },
-                onNext = { viewModel.playNext() },
-                coverPath = coverPath,
-                playlist = playlist,
-                currentIndex = currentIndex,
-                playMode = playMode,
-                modeIcon = modeIcon,
-                modeLabel = stringResource(mode.labelRes),
-                onToggleLyrics = { showLyrics = !showLyrics },
-                onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
-                onShowPlaylist = { showPlaylist = true },
-                onBack = onBack,
-                onDownload = { viewModel.requestDownload() },
-                onEqualizer = onEqualizer,
-                speedOptions = speedValues,
-                currentSpeedIndex = speedIndex,
-                onSpeedSelect = { speedIndex = it },
-                showDownload = !isLocalSource,
-                sleepTimerText = sleepTimerText,
-                onSleepTimer = { showSleepTimerDialog = true },
-                showExternalActions = isLocalSource,
-                onOpenWith = onOpenWith,
-                onShare = onShareExternal,
-            )
+            if (isGlassStyle) {
+                GlassPortraitLayout(
+                    glassBackdrop = glassBackdrop,
+                    hasActiveContent = hasActiveContent,
+                    playbackError = playbackError,
+                    onRetry = { audioPlaybackManager?.retry() },
+                    showLyrics = showLyrics,
+                    lrcLines = lrcLines,
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    onSeek = { pos -> audioPlaybackManager?.seekTo(pos) },
+                    title = title,
+                    isPlaying = isPlaying,
+                    hasPrev = hasPrev,
+                    hasNext = hasNext,
+                    onTogglePlay = { audioPlaybackManager?.togglePlayPause() },
+                    onPrevious = { viewModel.playPrevious() },
+                    onNext = { viewModel.playNext() },
+                    coverPath = coverPath,
+                    playlist = playlist,
+                    currentIndex = currentIndex,
+                    playMode = playMode,
+                    modeIcon = modeIcon,
+                    modeLabel = stringResource(mode.labelRes),
+                    onToggleLyrics = { showLyrics = !showLyrics },
+                    onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
+                    onShowPlaylist = { showPlaylist = true },
+                    onBack = onBack,
+                    onDownload = { viewModel.requestDownload() },
+                    onEqualizer = onEqualizer,
+                    speedOptions = speedValues,
+                    currentSpeedIndex = speedIndex,
+                    onSpeedSelect = { speedIndex = it },
+                    showDownload = !isLocalSource,
+                    sleepTimerText = sleepTimerText,
+                    onSleepTimer = { showSleepTimerDialog = true },
+                    showExternalActions = isLocalSource,
+                    onOpenWith = onOpenWith,
+                    onShare = onShareExternal,
+                    appearanceIcon = Icons.Rounded.Palette,
+                    appearanceLabel = appearanceLabel,
+                    onCycleAppearance = onCycleAppearance,
+                )
+            } else {
+                PortraitLayout(
+                    hasActiveContent = hasActiveContent,
+                    playbackError = playbackError,
+                    onRetry = { audioPlaybackManager?.retry() },
+                    showLyrics = showLyrics,
+                    lrcLines = lrcLines,
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    onSeek = { pos -> audioPlaybackManager?.seekTo(pos) },
+                    title = title,
+                    isPlaying = isPlaying,
+                    hasPrev = hasPrev,
+                    hasNext = hasNext,
+                    onTogglePlay = { audioPlaybackManager?.togglePlayPause() },
+                    onPrevious = { viewModel.playPrevious() },
+                    onNext = { viewModel.playNext() },
+                    coverPath = coverPath,
+                    playlist = playlist,
+                    currentIndex = currentIndex,
+                    playMode = playMode,
+                    modeIcon = modeIcon,
+                    modeLabel = stringResource(mode.labelRes),
+                    onToggleLyrics = { showLyrics = !showLyrics },
+                    onCyclePlayMode = { audioPlaybackManager?.cyclePlayMode() },
+                    onShowPlaylist = { showPlaylist = true },
+                    onBack = onBack,
+                    onDownload = { viewModel.requestDownload() },
+                    onEqualizer = onEqualizer,
+                    speedOptions = speedValues,
+                    currentSpeedIndex = speedIndex,
+                    onSpeedSelect = { speedIndex = it },
+                    showDownload = !isLocalSource,
+                    sleepTimerText = sleepTimerText,
+                    onSleepTimer = { showSleepTimerDialog = true },
+                    showExternalActions = isLocalSource,
+                    onOpenWith = onOpenWith,
+                    onShare = onShareExternal,
+                    appearanceIcon = Icons.Rounded.Palette,
+                    appearanceLabel = appearanceLabel,
+                    onCycleAppearance = onCycleAppearance,
+                )
+            }
         }
 
         PlaylistSheet(
