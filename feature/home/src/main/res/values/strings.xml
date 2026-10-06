@@ -301,6 +301,8 @@
     <string name="settings_entry_experimental_vr_sub">陀螺仪视角环视全景与左右/上下画面</string>
     <string name="settings_entry_experimental_flat_list">平铺列表视图</string>
     <string name="settings_entry_experimental_flat_list_sub">文件浏览时以可折叠列表内联展开子项</string>
+    <string name="settings_entry_experimental_waterfall">瀑布流画廊</string>
+    <string name="settings_entry_experimental_waterfall_sub">画廊视图按图片原始比例错落排布（效果尚不稳定）</string>
     <string name="settings_glass_title">玻璃不透明度</string>
     <string name="settings_glass_overlay_opacity">导航栏</string>
     <string name="settings_glass_top_bar_opacity">顶栏</string>

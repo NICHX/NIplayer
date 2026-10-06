@@ -10,6 +10,8 @@ import com.tencent.mmkv.MMKV
  *   默认 false。
  * - [flatListViewEnabled]：平铺列表视图。文件浏览页以可折叠列表内联展开子项。
  *   默认 false。
+ * - [waterfallGalleryEnabled]：瀑布流画廊。画廊视图额外提供"瀑布流"布局（按缩略图原始比例错落排布）。
+ *   默认 false。
  *
  * 关闭时，对应功能的入口在 UI 中被隐藏或禁用。
  */
@@ -19,6 +21,7 @@ object ExperimentalSettings {
 
     private const val KEY_VR_PLAYBACK = "experimental_vr_playback"
     private const val KEY_FLAT_LIST = "experimental_flat_list"
+    private const val KEY_WATERFALL_GALLERY = "experimental_waterfall_gallery"
 
     /** VR 播放实验性开关。 */
     var vrPlaybackEnabled: Boolean
@@ -29,4 +32,9 @@ object ExperimentalSettings {
     var flatListViewEnabled: Boolean
         get() = mmkv.decodeBool(KEY_FLAT_LIST, false)
         set(value) { mmkv.encode(KEY_FLAT_LIST, value) }
+
+    /** 瀑布流画廊实验性开关。 */
+    var waterfallGalleryEnabled: Boolean
+        get() = mmkv.decodeBool(KEY_WATERFALL_GALLERY, false)
+        set(value) { mmkv.encode(KEY_WATERFALL_GALLERY, value) }
 }

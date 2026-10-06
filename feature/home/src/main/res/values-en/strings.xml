@@ -301,6 +301,8 @@
     <string name="settings_entry_experimental_vr_sub">Gyroscope view for panoramas and side-by-side/over-under videos</string>
     <string name="settings_entry_experimental_flat_list">Flat list view</string>
     <string name="settings_entry_experimental_flat_list_sub">Collapsible flat list for browsing files</string>
+    <string name="settings_entry_experimental_waterfall">Waterfall gallery</string>
+    <string name="settings_entry_experimental_waterfall_sub">Staggered gallery layout using original image ratios (may be unstable)</string>
     <string name="settings_glass_title">Glass opacity</string>
     <string name="settings_glass_overlay_opacity">Nav bar</string>
     <string name="settings_glass_top_bar_opacity">Top bar</string>

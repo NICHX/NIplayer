@@ -224,9 +224,13 @@ object FileBrowserSettings {
             _sortFlow.value = _sortFlow.value.copy(galleryColumns = clamped)
         }
 
-    /** 画廊视图布局（方形/瀑布流），默认方形。 */
+    /**
+     * 画廊视图布局（方形/瀑布流），默认方形。
+     *
+     * 瀑布流为实验性功能（[ExperimentalSettings.waterfallGalleryEnabled]），未开启时回退到方形。
+     */
     var galleryLayout: GalleryLayout
-        get() = GalleryLayout.fromValue(mmkv.decodeInt(KEY_GALLERY_LAYOUT, GalleryLayout.SQUARE.value))
+        get() = resolveGalleryLayout()
         set(value) {
             mmkv.encode(KEY_GALLERY_LAYOUT, value.value)
             _sortFlow.value = _sortFlow.value.copy(galleryLayout = value)
@@ -252,6 +256,19 @@ object FileBrowserSettings {
             _sortFlow.value = _sortFlow.value.copy(mediaFilter = value)
         }
 
+    /**
+     * 解析画廊布局：瀑布流为实验性功能，未开启时回退到方形（持久化值保留，开启后可恢复）。
+     * 与 [viewMode] 对平铺列表的处理保持一致。
+     */
+    private fun resolveGalleryLayout(): GalleryLayout {
+        val layout = GalleryLayout.fromValue(mmkv.decodeInt(KEY_GALLERY_LAYOUT, GalleryLayout.SQUARE.value))
+        return if (layout == GalleryLayout.WATERFALL && !ExperimentalSettings.waterfallGalleryEnabled) {
+            GalleryLayout.SQUARE
+        } else {
+            layout
+        }
+    }
+
     private fun loadSortConfig(): SortConfig {
         val sortBy = SortBy.fromValue(mmkv.decodeInt(KEY_SORT_BY, SortBy.NAME.value))
         val ascending = mmkv.decodeBool(KEY_SORT_ASCENDING, true)
@@ -262,7 +279,7 @@ object FileBrowserSettings {
         val mediaFilter = MediaFilter.fromValue(mmkv.decodeInt(KEY_MEDIA_FILTER, MediaFilter.ALL.value))
         val gridColumns = mmkv.decodeInt(KEY_GRID_COLUMNS, GRID_COLUMNS_AUTO).coerceIn(GRID_COLUMNS_AUTO, GRID_COLUMNS_MAX)
         val galleryColumns = mmkv.decodeInt(KEY_GALLERY_COLUMNS, GRID_COLUMNS_AUTO).coerceIn(GRID_COLUMNS_AUTO, GALLERY_COLUMNS_MAX)
-        val galleryLayout = GalleryLayout.fromValue(mmkv.decodeInt(KEY_GALLERY_LAYOUT, GalleryLayout.SQUARE.value))
+        val galleryLayout = resolveGalleryLayout()
         val showFileTypeBadge = mmkv.decodeBool(KEY_SHOW_TYPE_BADGE, false)
         val showFileSizeBadge = mmkv.decodeBool(KEY_SHOW_SIZE_BADGE, false)
         return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, hideThumbFolder, hideNoMediaFolders, mediaFilter, viewMode, gridColumns, showFileTypeBadge, showFileSizeBadge, galleryColumns, galleryLayout)

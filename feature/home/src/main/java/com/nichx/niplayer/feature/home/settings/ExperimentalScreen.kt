@@ -35,7 +35,7 @@ import com.nichx.niplayer.feature.home.R
 /**
  * “实验性功能”二级设置页：以开关启用/停用各实验性功能（默认关闭）。
  *
- * - VR 播放 / 平铺列表视图
+ * - VR 播放 / 平铺列表视图 / 瀑布流画廊
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +44,7 @@ fun ExperimentalScreen(
 ) {
     var vrEnabled by remember { mutableStateOf(ExperimentalSettings.vrPlaybackEnabled) }
     var flatListEnabled by remember { mutableStateOf(ExperimentalSettings.flatListViewEnabled) }
+    var waterfallEnabled by remember { mutableStateOf(ExperimentalSettings.waterfallGalleryEnabled) }
 
     NiScaffold(
         topBar = {
@@ -92,6 +93,15 @@ fun ExperimentalScreen(
                         onCheckedChange = {
                             flatListEnabled = it
                             ExperimentalSettings.flatListViewEnabled = it
+                        },
+                    )
+                    SettingSwitchRow(
+                        label = stringResource(R.string.settings_entry_experimental_waterfall),
+                        description = stringResource(R.string.settings_entry_experimental_waterfall_sub),
+                        checked = waterfallEnabled,
+                        onCheckedChange = {
+                            waterfallEnabled = it
+                            ExperimentalSettings.waterfallGalleryEnabled = it
                         },
                     )
                 }

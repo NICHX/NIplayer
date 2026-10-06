@@ -395,8 +395,16 @@ fun FileBrowserScreen(
     // 网格列数：默认自适应；手动可调上限按窗口宽度类收窄（手机 4 / 平板 6 / 大屏 8）
     val gridColumns = sortConfig.gridColumns
     val gridMaxColumns = gridColumnRange(LocalNiWindowSizeClass.current.width).last
-    // 画廊布局与列数（方形与瀑布流共用列数）；仅画廊模式且布局为瀑布流时启用瀑布流滚动状态
-    val galleryLayout = sortConfig.galleryLayout
+    // 画廊布局与列数（方形与瀑布流共用列数）；仅画廊模式且布局为瀑布流时启用瀑布流滚动状态。
+    // 瀑布流为实验性功能（默认关闭），未开启时回退为方形画廊。
+    val galleryLayout = if (
+        sortConfig.galleryLayout == FileBrowserSettings.GalleryLayout.WATERFALL &&
+        !ExperimentalSettings.waterfallGalleryEnabled
+    ) {
+        FileBrowserSettings.GalleryLayout.SQUARE
+    } else {
+        sortConfig.galleryLayout
+    }
     val galleryColumns = sortConfig.galleryColumns
     val isWaterfall = isGalleryView && galleryLayout == FileBrowserSettings.GalleryLayout.WATERFALL
     val galleryMaxColumns = galleryColumnRange(LocalNiWindowSizeClass.current.width).last
@@ -788,13 +796,16 @@ fun FileBrowserScreen(
                                 // 画廊视图：布局（方形/瀑布流）+ 画廊列数入口（方形与瀑布流共用列数）
                                 if (viewMode == FileBrowserSettings.ViewMode.GALLERY) {
                                     HorizontalDivider()
-                                    GalleryLayoutMenuItem(
-                                        label = stringResource(R.string.storage_file_gallery_layout),
-                                        squareLabel = stringResource(R.string.storage_file_gallery_layout_square),
-                                        waterfallLabel = stringResource(R.string.storage_file_gallery_layout_waterfall),
-                                        current = galleryLayout,
-                                        onSelect = { layout -> FileBrowserSettings.galleryLayout = layout },
-                                    )
+                                    // 瀑布流为实验性功能（默认关闭），开启后才显示布局切换
+                                    if (ExperimentalSettings.waterfallGalleryEnabled) {
+                                        GalleryLayoutMenuItem(
+                                            label = stringResource(R.string.storage_file_gallery_layout),
+                                            squareLabel = stringResource(R.string.storage_file_gallery_layout_square),
+                                            waterfallLabel = stringResource(R.string.storage_file_gallery_layout_waterfall),
+                                            current = galleryLayout,
+                                            onSelect = { layout -> FileBrowserSettings.galleryLayout = layout },
+                                        )
+                                    }
                                     ColumnsEntryMenuItem(
                                         label = stringResource(R.string.storage_file_view_gallery_columns),
                                         value = if (galleryColumns == FileBrowserSettings.GRID_COLUMNS_AUTO) {
