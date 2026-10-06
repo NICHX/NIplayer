@@ -169,6 +169,12 @@
     <string name="image_viewer_load_error">图片加载失败</string>
     <string name="image_viewer_load_failed">图片加载失败</string>
     <string name="image_viewer_no_images">没有可显示的图片</string>
+    <string name="image_viewer_play">播放</string>
+    <string name="image_viewer_pause">暂停</string>
+    <string name="image_viewer_mute">静音</string>
+    <string name="image_viewer_unmute">取消静音</string>
+    <string name="image_viewer_video_error">该视频无法播放</string>
+    <string name="image_viewer_video_badge">视频</string>
 
     <!-- 媒体库（LibraryScreen / LibraryViewModel） -->
     <string name="library_title">媒体库</string>
@@ -303,6 +309,8 @@
     <string name="settings_entry_experimental_flat_list_sub">文件浏览时以可折叠列表内联展开子项</string>
     <string name="settings_entry_experimental_waterfall">瀑布流画廊</string>
     <string name="settings_entry_experimental_waterfall_sub">画廊视图按图片原始比例错落排布（效果尚不稳定）</string>
+    <string name="settings_entry_experimental_viewer_video">图片浏览联播视频</string>
+    <string name="settings_entry_experimental_viewer_video_sub">图片查看器按名称混排同目录视频，滑到视频即自动静音播放（含播放/暂停、进度、静音控件；左右滑动切换上一个/下一个）</string>
     <string name="settings_glass_title">玻璃不透明度</string>
     <string name="settings_glass_overlay_opacity">导航栏</string>
     <string name="settings_glass_top_bar_opacity">顶栏</string>

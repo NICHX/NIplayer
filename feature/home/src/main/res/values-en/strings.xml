@@ -169,6 +169,12 @@
     <string name="image_viewer_load_error">Failed to load image</string>
     <string name="image_viewer_load_failed">Failed to load image</string>
     <string name="image_viewer_no_images">No images to display</string>
+    <string name="image_viewer_play">Play</string>
+    <string name="image_viewer_pause">Pause</string>
+    <string name="image_viewer_mute">Mute</string>
+    <string name="image_viewer_unmute">Unmute</string>
+    <string name="image_viewer_video_error">This video cannot be played</string>
+    <string name="image_viewer_video_badge">Video</string>
 
     <!-- Library (LibraryScreen / LibraryViewModel) -->
     <string name="library_title">Library</string>
@@ -303,6 +309,8 @@
     <string name="settings_entry_experimental_flat_list_sub">Collapsible flat list for browsing files</string>
     <string name="settings_entry_experimental_waterfall">Waterfall gallery</string>
     <string name="settings_entry_experimental_waterfall_sub">Staggered gallery layout using original image ratios (may be unstable)</string>
+    <string name="settings_entry_experimental_viewer_video">Play videos while browsing images</string>
+    <string name="settings_entry_experimental_viewer_video_sub">Mix videos from the same folder into the image viewer ordered by name; swipe to a video to auto-play it muted with play/pause, progress and mute controls (swipe left/right to switch)</string>
     <string name="settings_glass_title">Glass opacity</string>
     <string name="settings_glass_overlay_opacity">Nav bar</string>
     <string name="settings_glass_top_bar_opacity">Top bar</string>
