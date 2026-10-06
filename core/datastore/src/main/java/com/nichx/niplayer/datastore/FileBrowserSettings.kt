@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * - [mediaFilter]：文件类型过滤（全部/视频/音频/图片），默认全部
  * - [viewMode]：视图模式（列表/网格/画廊/平铺列表），默认列表
  * - [gridColumns]：网格视图列数，默认自适应（按宽度推导）
+ * - [galleryColumns]：画廊视图列数（方形与瀑布流共用），默认自适应（按宽度推导）
+ * - [galleryLayout]：画廊视图布局（方形/瀑布流），默认方形
  * - [showFileTypeBadge]：卡片显示文件类型角标（视频/音频/图片），默认关闭
  * - [showFileSizeBadge]：卡片显示文件大小角标，默认关闭
  *
@@ -40,6 +42,8 @@ object FileBrowserSettings {
     private const val KEY_MEDIA_FILTER = "file_media_filter"
     private const val KEY_VIEW_MODE = "file_browser_view_mode"
     private const val KEY_GRID_COLUMNS = "file_browser_grid_columns"
+    private const val KEY_GALLERY_COLUMNS = "file_browser_gallery_columns"
+    private const val KEY_GALLERY_LAYOUT = "file_browser_gallery_layout"
     // 旧版布尔视图模式 key（true=网格, false=列表），首次读取新枚举时做一次迁移
     private const val KEY_LEGACY_IS_GRID_VIEW = "file_browser_is_grid_view"
 
@@ -48,6 +52,9 @@ object FileBrowserSettings {
 
     /** 网格列数手动覆盖的全局上限（实际可用上限按窗口宽度类收窄，见 gridColumnRange）。 */
     const val GRID_COLUMNS_MAX = 8
+
+    /** 画廊列数手动覆盖的全局上限（实际可用上限按窗口宽度类收窄，见 galleryColumnRange）。 */
+    const val GALLERY_COLUMNS_MAX = 10
 
     /** 排序字段枚举。 */
     enum class SortBy(val value: Int) {
@@ -90,6 +97,19 @@ object FileBrowserSettings {
 
         companion object {
             fun fromValue(v: Int): ViewMode = entries.find { it.value == v } ?: LIST
+        }
+    }
+
+    /**
+     * 画廊视图布局：
+     * [SQUARE] 手机相册式统一方形格子；[WATERFALL] 按缩略图/图片原始宽高比错落排布的瀑布流。
+     */
+    enum class GalleryLayout(val value: Int) {
+        SQUARE(0),
+        WATERFALL(1);
+
+        companion object {
+            fun fromValue(v: Int): GalleryLayout = entries.find { it.value == v } ?: SQUARE
         }
     }
 
@@ -190,6 +210,28 @@ object FileBrowserSettings {
             _sortFlow.value = _sortFlow.value.copy(gridColumns = clamped)
         }
 
+    /**
+     * 画廊视图列数，默认 [GRID_COLUMNS_AUTO]（自适应），方形与瀑布流布局共用。
+     *
+     * - [GRID_COLUMNS_AUTO]：列数按可用宽度自动推导，瀑布流默认即此值（不锁定固定列数）。
+     * - 数值：用户手动指定的列数，实际展示时再按窗口宽度类收窄上限（见 galleryColumnRange）。
+     */
+    var galleryColumns: Int
+        get() = mmkv.decodeInt(KEY_GALLERY_COLUMNS, GRID_COLUMNS_AUTO).coerceIn(GRID_COLUMNS_AUTO, GALLERY_COLUMNS_MAX)
+        set(value) {
+            val clamped = value.coerceIn(GRID_COLUMNS_AUTO, GALLERY_COLUMNS_MAX)
+            mmkv.encode(KEY_GALLERY_COLUMNS, clamped)
+            _sortFlow.value = _sortFlow.value.copy(galleryColumns = clamped)
+        }
+
+    /** 画廊视图布局（方形/瀑布流），默认方形。 */
+    var galleryLayout: GalleryLayout
+        get() = GalleryLayout.fromValue(mmkv.decodeInt(KEY_GALLERY_LAYOUT, GalleryLayout.SQUARE.value))
+        set(value) {
+            mmkv.encode(KEY_GALLERY_LAYOUT, value.value)
+            _sortFlow.value = _sortFlow.value.copy(galleryLayout = value)
+        }
+
     /** 设置排序字段，立即持久化并通知 StateFlow。 */
     fun setSortBy(sortBy: SortBy) {
         mmkv.encode(KEY_SORT_BY, sortBy.value)
@@ -219,9 +261,11 @@ object FileBrowserSettings {
         val hideNoMediaFolders = mmkv.decodeBool(KEY_HIDE_NO_MEDIA_FOLDERS, false)
         val mediaFilter = MediaFilter.fromValue(mmkv.decodeInt(KEY_MEDIA_FILTER, MediaFilter.ALL.value))
         val gridColumns = mmkv.decodeInt(KEY_GRID_COLUMNS, GRID_COLUMNS_AUTO).coerceIn(GRID_COLUMNS_AUTO, GRID_COLUMNS_MAX)
+        val galleryColumns = mmkv.decodeInt(KEY_GALLERY_COLUMNS, GRID_COLUMNS_AUTO).coerceIn(GRID_COLUMNS_AUTO, GALLERY_COLUMNS_MAX)
+        val galleryLayout = GalleryLayout.fromValue(mmkv.decodeInt(KEY_GALLERY_LAYOUT, GalleryLayout.SQUARE.value))
         val showFileTypeBadge = mmkv.decodeBool(KEY_SHOW_TYPE_BADGE, false)
         val showFileSizeBadge = mmkv.decodeBool(KEY_SHOW_SIZE_BADGE, false)
-        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, hideThumbFolder, hideNoMediaFolders, mediaFilter, viewMode, gridColumns, showFileTypeBadge, showFileSizeBadge)
+        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, hideThumbFolder, hideNoMediaFolders, mediaFilter, viewMode, gridColumns, showFileTypeBadge, showFileSizeBadge, galleryColumns, galleryLayout)
     }
 }
 
@@ -247,4 +291,8 @@ data class SortConfig(
     val showFileTypeBadge: Boolean = false,
     /** 文件卡片显示文件大小角标，默认为 false。 */
     val showFileSizeBadge: Boolean = false,
+    /** 画廊视图列数（方形与瀑布流共用），默认自适应（[FileBrowserSettings.GRID_COLUMNS_AUTO]）。 */
+    val galleryColumns: Int = FileBrowserSettings.GRID_COLUMNS_AUTO,
+    /** 画廊视图布局（方形/瀑布流），默认方形。 */
+    val galleryLayout: FileBrowserSettings.GalleryLayout = FileBrowserSettings.GalleryLayout.SQUARE,
 )

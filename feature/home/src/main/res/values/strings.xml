@@ -378,6 +378,11 @@
     <string name="storage_file_search_empty_hint">当前目录没有名称包含「%1$s」的文件</string>
     <string name="storage_file_view_columns">列数</string>
     <string name="storage_file_view_columns_auto">自适应</string>
+    <string name="storage_file_view_gallery_columns">画廊列数</string>
+    <string name="storage_file_gallery_layout">画廊布局</string>
+    <string name="storage_file_gallery_layout_square">方形</string>
+    <string name="storage_file_gallery_layout_waterfall">瀑布流</string>
+    <string name="storage_file_back">返回</string>
     <string name="storage_file_folder_loading">加载中…</string>
     <string name="storage_file_toggle_folder">展开/折叠文件夹</string>
     <string name="storage_file_gallery_empty">此目录暂无媒体</string>

@@ -25,6 +25,11 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.items as staggeredGridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -42,7 +47,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -66,8 +73,79 @@ import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.common.media.MediaFileTypes.isImageFile
+import com.nichx.niplayer.datastore.FileBrowserSettings
+import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
+import com.nichx.niplayer.designsystem.theme.NiWindowWidthSizeClass
 import com.nichx.niplayer.storage.StorageFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.graphics.BitmapFactory
+import java.util.concurrent.ConcurrentHashMap
 
+
+/** 画廊「自适应」模式下单个格子的最小宽度（方形画廊与瀑布流共用）。 */
+private val GalleryAutoMinCellSize = 100.dp
+
+/** 方形画廊格子间距（保持既有无缝相册质感，把尽可能多的空间留给缩略图）。 */
+private val GalleryGap = 1.dp
+
+/** 瀑布流横/纵间距（错落排布需略大间距以区分相邻瓦片）。 */
+private val WaterfallGap = 3.dp
+
+/** 瀑布流缺省宽高比，以及为避免极端长/宽图撑高撑扁而收敛的区间。 */
+private const val WATERFALL_FALLBACK_RATIO = 1f
+private const val WATERFALL_MIN_RATIO = 0.6f
+private const val WATERFALL_MAX_RATIO = 2.2f
+
+/**
+ * 画廊列数可调范围（含手动覆盖上、下限），按窗口宽度类收窄：
+ * 手机 2..5 / 平板 2..8 / 大屏 2..10。
+ *
+ * 手动列数此时收敛到该范围；自适应模式不受约束，列数由 [GalleryAutoMinCellSize] 推导，
+ * 因此瀑布流默认（自适应）不会锁定固定列数。
+ */
+internal fun galleryColumnRange(width: NiWindowWidthSizeClass): IntRange = when (width) {
+    NiWindowWidthSizeClass.Compact -> 2..5
+    NiWindowWidthSizeClass.Medium -> 2..8
+    NiWindowWidthSizeClass.Expanded -> 2..10
+}
+
+/** 缩略图宽高比进程级缓存，键为缩略图本地绝对路径。 */
+private val thumbnailAspectRatioCache = ConcurrentHashMap<String, Float>()
+
+/** 仅解码图片边界读取宽高比（不分配像素内存）；失败返回 null。 */
+private fun readThumbnailAspectRatio(path: String): Float? = try {
+    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(path, options)
+    if (options.outWidth > 0 && options.outHeight > 0) {
+        options.outWidth.toFloat() / options.outHeight.toFloat()
+    } else {
+        null
+    }
+} catch (_: Exception) {
+    null
+}
+
+/**
+ * 读取缩略图的原始宽高比用于瀑布流：图片缩略图按原图等比缩放（不裁剪），
+ * 其宽高比即原图比例；结果带进程级缓存，避免滚动时重复读盘。
+ * 缩略图未就绪时返回 null，待 [thumbnailUrl] 更新为本地缓存路径后自动重算。
+ */
+@Composable
+private fun rememberThumbnailAspectRatio(thumbnailUrl: String?): Float? {
+    if (thumbnailUrl.isNullOrEmpty()) return null
+    var ratio by remember(thumbnailUrl) { mutableStateOf(thumbnailAspectRatioCache[thumbnailUrl]) }
+    LaunchedEffect(thumbnailUrl) {
+        if (ratio == null) {
+            val measured = withContext(Dispatchers.IO) { readThumbnailAspectRatio(thumbnailUrl) }
+            if (measured != null && measured.isFinite() && measured > 0f) {
+                thumbnailAspectRatioCache[thumbnailUrl] = measured
+                ratio = measured
+            }
+        }
+    }
+    return ratio
+}
 
 /**
  * 画廊视图：手机相册式密集方形格子，仅展示图片/视频媒体与文件夹。
@@ -89,8 +167,11 @@ internal fun FileGallery(
     onToggleSelection: (StorageFile) -> Unit,
     onEnterMultiSelect: (StorageFile) -> Unit,
     galleryState: LazyGridState,
+    waterfallState: LazyStaggeredGridState,
     contentTopInset: Dp = 0.dp,
     header: (@Composable () -> Unit)? = null,
+    columns: Int = FileBrowserSettings.GRID_COLUMNS_AUTO,
+    layout: FileBrowserSettings.GalleryLayout = FileBrowserSettings.GalleryLayout.SQUARE,
 ) {
     // 仅保留：文件夹（继续导航）+ 图片 / 视频（相册媒体），隐藏音频与其他文件
     val galleryItems = files.filter {
@@ -118,17 +199,80 @@ internal fun FileGallery(
         }
         return
     }
+    val widthClass = LocalNiWindowSizeClass.current.width
+    val columnRange = galleryColumnRange(widthClass)
+    val fixedColumns = columns.coerceIn(columnRange.first, columnRange.last)
+
+    if (layout == FileBrowserSettings.GalleryLayout.WATERFALL) {
+        // 瀑布流：按缩略图/图片原始宽高比错落排布，文件夹保底为方形瓦片。
+        // 自适应模式下不锁定固定列数，列数由 GalleryAutoMinCellSize 推导。
+        val staggeredCells = if (columns == FileBrowserSettings.GRID_COLUMNS_AUTO) {
+            StaggeredGridCells.Adaptive(minSize = GalleryAutoMinCellSize)
+        } else {
+            StaggeredGridCells.Fixed(fixedColumns)
+        }
+        LazyVerticalStaggeredGrid(
+            state = waterfallState,
+            columns = staggeredCells,
+            contentPadding = PaddingValues(
+                start = 0.dp,
+                end = 0.dp,
+                top = contentTopInset,
+                bottom = FabBottomOffset,
+            ),
+            verticalItemSpacing = WaterfallGap,
+            horizontalArrangement = Arrangement.spacedBy(WaterfallGap),
+        ) {
+            if (header != null) {
+                item(key = "list-header", span = StaggeredGridItemSpan.FullLine) {
+                    header()
+                }
+            }
+            staggeredGridItems(
+                items = galleryItems,
+                key = { it.path },
+            ) { file ->
+                val aspectRatio = if (file.isDirectory) {
+                    WATERFALL_FALLBACK_RATIO
+                } else {
+                    rememberThumbnailAspectRatio(thumbnailUrls[file.path]) ?: WATERFALL_FALLBACK_RATIO
+                }
+                GalleryCell(
+                    file = file,
+                    thumbnailUrl = thumbnailUrls[file.path],
+                    aspectRatio = aspectRatio.coerceIn(WATERFALL_MIN_RATIO, WATERFALL_MAX_RATIO),
+                    isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
+                    isMultiSelect = isMultiSelect,
+                    isSelected = file.path in selectedPaths,
+                    preparing = preparingPath != null && file.path == preparingPath,
+                    onOpenDirectory = { onOpenDirectory(file) },
+                    onPlayFile = { onPlayFile(file) },
+                    onOpenImageFile = { onOpenImageFile(file) },
+                    onToggleSelection = { onToggleSelection(file) },
+                    onEnterMultiSelect = { onEnterMultiSelect(file) },
+                )
+            }
+        }
+        return
+    }
+
+    // 方形画廊：统一正方形瓦片，自适应或用户指定列数。
+    val gridCells = if (columns == FileBrowserSettings.GRID_COLUMNS_AUTO) {
+        GridCells.Adaptive(minSize = GalleryAutoMinCellSize)
+    } else {
+        GridCells.Fixed(fixedColumns)
+    }
     LazyVerticalGrid(
         state = galleryState,
-        columns = GridCells.Fixed(3),
+        columns = gridCells,
         contentPadding = PaddingValues(
             start = 0.dp,
             end = 0.dp,
             top = contentTopInset,
             bottom = FabBottomOffset,
         ),
-        horizontalArrangement = Arrangement.spacedBy(1.dp),
-        verticalArrangement = Arrangement.spacedBy(1.dp),
+        horizontalArrangement = Arrangement.spacedBy(GalleryGap),
+        verticalArrangement = Arrangement.spacedBy(GalleryGap),
     ) {
         if (header != null) {
             item(key = "list-header", span = { GridItemSpan(maxLineSpan) }) {
@@ -170,10 +314,11 @@ internal fun GalleryCell(
     onOpenImageFile: () -> Unit,
     onToggleSelection: () -> Unit,
     onEnterMultiSelect: () -> Unit,
+    aspectRatio: Float = 1f,
 ) {
     val isVideo = MediaFileTypes.isVideoFile(file.name)
     val isImage = MediaFileTypes.isImageFile(file.name)
-    // 相册格统一无缝方形（文件夹与媒体一致）
+    // 方形画廊为正方形（1:1）；瀑布流按缩略图/图片原始宽高比；瓦片一律无缝（无圆角）
     val cellShape = RoundedCornerShape(0.dp)
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -185,7 +330,8 @@ internal fun GalleryCell(
 
     Box(
         modifier = Modifier
-            .aspectRatio(1f)
+            .fillMaxWidth()
+            .aspectRatio(aspectRatio)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(cellShape)
             .then(

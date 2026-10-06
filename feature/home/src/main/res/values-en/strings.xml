@@ -378,6 +378,11 @@
     <string name="storage_file_search_empty_hint">No files in this folder match \"%1$s\"</string>
     <string name="storage_file_view_columns">Columns</string>
     <string name="storage_file_view_columns_auto">Auto</string>
+    <string name="storage_file_view_gallery_columns">Gallery columns</string>
+    <string name="storage_file_gallery_layout">Gallery layout</string>
+    <string name="storage_file_gallery_layout_square">Square</string>
+    <string name="storage_file_gallery_layout_waterfall">Waterfall</string>
+    <string name="storage_file_back">Back</string>
     <string name="storage_file_folder_loading">Loading…</string>
     <string name="storage_file_toggle_folder">Collapse/expand folder</string>
     <string name="storage_file_gallery_empty">No media in this folder</string>

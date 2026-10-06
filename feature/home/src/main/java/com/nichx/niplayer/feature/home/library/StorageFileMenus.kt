@@ -5,12 +5,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Check
@@ -189,23 +195,148 @@ internal fun FilterMenuItem(
 }
 
 /**
- * 菜单内的网格列数选择行：左侧标签，右侧为可选列数胶囊（含「自适应」）。
+ * 视图菜单内的「列数」入口行：显示当前值，点击进入下一级列数选择子页。
  *
- * 点击胶囊即时生效但**不关闭菜单**，便于连续微调；选中项以主色高亮。
- * 列数上限由调用方按窗口宽度类传入（手机 4 / 平板 6 / 大屏 8）。
+ * 列数选项较多，平铺在主菜单里会把浮层撑宽（浮层宽度取最宽项），故下沉到子页。
  */
 @Composable
-internal fun GridColumnsMenuItem(
+internal fun ColumnsEntryMenuItem(
     label: String,
+    value: String,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        modifier = Modifier.height(38.dp),
+        text = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        trailingIcon = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        onClick = onClick,
+    )
+}
+
+/** 列数选择子页限宽：胶囊按行自动换行，避免撑宽浮层。 */
+private val ColumnsPageWidth = 220.dp
+
+/**
+ * 下一级「列数」选择子页：顶部「‹ 返回 + 标题」，下方全部列数选项自动换行胶囊。
+ *
+ * 把列数从视图主菜单下沉，主菜单保持紧凑；此处空间充裕，可直接点选全部列数，
+ * 比步进器逐个切换更高效。点击选项即时生效且停留本页，点返回回到主菜单。
+ */
+@Composable
+internal fun ColumnsPickerPage(
+    title: String,
+    backContentDescription: String,
     autoLabel: String,
     current: Int,
     maxColumns: Int,
+    onBack: () -> Unit,
     onSelect: (Int) -> Unit,
 ) {
-    val options = buildList {
-        add(FileBrowserSettings.GRID_COLUMNS_AUTO)
-        for (count in 2..maxColumns) add(count)
+    val options = remember(maxColumns) {
+        buildList {
+            add(FileBrowserSettings.GRID_COLUMNS_AUTO)
+            for (count in 2..maxColumns) add(count)
+        }
     }
+    Column(modifier = Modifier.width(ColumnsPageWidth)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onBack,
+                )
+                .padding(start = 6.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = backContentDescription,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(horizontal = 8.dp)
+                    .size(18.dp),
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        FlowRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            maxItemsInEachRow = 4,
+        ) {
+            options.forEach { value ->
+                val selected = value == current
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { onSelect(value) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = if (value == FileBrowserSettings.GRID_COLUMNS_AUTO) autoLabel else value.toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 菜单内的画廊布局选择行：左侧标签，右侧为「方形 / 瀑布流」胶囊。
+ *
+ * 点击胶囊即时生效但**不关闭菜单**，便于对比切换；选中项以主色高亮。
+ */
+@Composable
+internal fun GalleryLayoutMenuItem(
+    label: String,
+    squareLabel: String,
+    waterfallLabel: String,
+    current: FileBrowserSettings.GalleryLayout,
+    onSelect: (FileBrowserSettings.GalleryLayout) -> Unit,
+) {
+    val options = listOf(
+        FileBrowserSettings.GalleryLayout.SQUARE to squareLabel,
+        FileBrowserSettings.GalleryLayout.WATERFALL to waterfallLabel,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -219,7 +350,7 @@ internal fun GridColumnsMenuItem(
             modifier = Modifier.padding(end = 12.dp),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            options.forEach { value ->
+            options.forEach { (value, text) ->
                 val selected = value == current
                 Box(
                     modifier = Modifier
@@ -235,7 +366,7 @@ internal fun GridColumnsMenuItem(
                         .padding(horizontal = 9.dp, vertical = 4.dp),
                 ) {
                     Text(
-                        text = if (value == FileBrowserSettings.GRID_COLUMNS_AUTO) autoLabel else value.toString(),
+                        text = text,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (selected) MaterialTheme.colorScheme.onPrimary

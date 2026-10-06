@@ -74,10 +74,46 @@ import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.common.media.MediaFileTypes.isImageFile
 import com.nichx.niplayer.datastore.FileBrowserSettings
 import com.nichx.niplayer.storage.StorageFile
+import kotlin.math.roundToInt
 
 
 /** 自适应模式下单个网格单元的最小宽度。 */
 private val GridAutoMinCellSize = 160.dp
+
+/** 网格内容区左右内边距（与 LazyVerticalGrid 的 contentPadding 保持一致，用于推导单元格宽度）。 */
+private val GridContentHPadding = 16.dp
+
+/** 网格列间距上下限（整数 dp）：宽格取上限，格子变窄时按格宽等比收窄至下限。 */
+private const val GRID_GAP_MAX_DP = 10
+private const val GRID_GAP_MIN_DP = 4
+
+/**
+ * 按单元格宽度推导列间距（约为格宽的 1/16），取整到整 dp 后收敛到
+ * [GRID_GAP_MIN_DP, GRID_GAP_MAX_DP]。列数越多、格子越窄，间距同步收窄，
+ * 在不牺牲观感的前提下把更多宽度让给缩略图。
+ */
+private fun resolveGridGap(cellWidth: Dp): Dp =
+    (cellWidth.value / 16f).roundToInt().coerceIn(GRID_GAP_MIN_DP, GRID_GAP_MAX_DP).dp
+
+/**
+ * 解析当前可用宽度下实际生效的列数：
+ * 手动模式取用户列数并收敛到 [columnRange]；自适应模式沿用 GridCells.Adaptive 语义
+ * （按 [GridAutoMinCellSize] 尽可能多列，此时格宽恒 ≥ 该值，间距维持上限）。
+ * 仅用于推导间距，不改变自适应模式的列策略。
+ */
+private fun resolveGridColumns(
+    availableWidth: Dp,
+    requestedColumns: Int,
+    columnRange: IntRange,
+    referenceGap: Dp,
+): Int {
+    if (requestedColumns != FileBrowserSettings.GRID_COLUMNS_AUTO) {
+        return requestedColumns.coerceIn(columnRange.first, columnRange.last)
+    }
+    if (availableWidth <= 0.dp) return columnRange.first
+    val count = ((availableWidth + referenceGap) / (GridAutoMinCellSize + referenceGap)).toInt()
+    return count.coerceAtLeast(1)
+}
 
 /**
  * 网格列数可调范围（含手动覆盖上、下限），按窗口宽度类收窄：
@@ -115,49 +151,57 @@ internal fun FileGrid(
 ) {
     val widthClass = LocalNiWindowSizeClass.current.width
     val columnRange = gridColumnRange(widthClass)
-    // 自适应：按可用宽度推导列数（大屏自然显示更多列）；手动：取用户列数并收敛到当前宽度类范围
-    val gridCells = if (columns == FileBrowserSettings.GRID_COLUMNS_AUTO) {
-        GridCells.Adaptive(minSize = GridAutoMinCellSize)
-    } else {
-        GridCells.Fixed(columns.coerceIn(columnRange.first, columnRange.last))
-    }
-    LazyVerticalGrid(
-        state = gridState,
-        columns = gridCells,
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            top = contentTopInset,
-            bottom = FabBottomOffset,
-        ),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        if (header != null) {
-            item(key = "list-header", span = { GridItemSpan(maxLineSpan) }) {
-                header()
-            }
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // 先按可用宽度解析实际列数，再据其推导单元格宽度与列间距：
+        // 列数越多、格子越窄，间距同步收窄，避免间距相对卡片过大而挤占卡片宽度。
+        val availableWidth = (maxWidth - GridContentHPadding * 2).coerceAtLeast(0.dp)
+        val resolvedColumns = resolveGridColumns(availableWidth, columns, columnRange, GRID_GAP_MAX_DP.dp)
+        val cellWidth = (availableWidth - GRID_GAP_MAX_DP.dp * (resolvedColumns - 1)) / resolvedColumns
+        val gap = resolveGridGap(cellWidth.coerceAtLeast(0.dp))
+        // 自适应：按可用宽度推导列数（大屏自然显示更多列）；手动：取用户列数并收敛到当前宽度类范围
+        val gridCells = if (columns == FileBrowserSettings.GRID_COLUMNS_AUTO) {
+            GridCells.Adaptive(minSize = GridAutoMinCellSize)
+        } else {
+            GridCells.Fixed(resolvedColumns)
         }
-        items(
-            items = files,
-            key = { it.path },
-        ) { file ->
-            GridFileCard(
-                file = file,
-                thumbnailUrl = thumbnailUrls[file.path],
-                isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
-                isMultiSelect = isMultiSelect,
-                isSelected = file.path in selectedPaths,
-                preparing = preparingPath != null && file.path == preparingPath,
-                onOpenDirectory = onOpenDirectory,
-                onPlayFile = onPlayFile,
-                onOpenImageFile = onOpenImageFile,
-                onShowFileActions = { onShowFileActions(file) },
-                onToggleSelection = { onToggleSelection(file) },
-                onEnterMultiSelect = { onEnterMultiSelect(file) },
-                showTypeBadge = showTypeBadge,
-                showSizeBadge = showSizeBadge,
-            )
+        LazyVerticalGrid(
+            state = gridState,
+            columns = gridCells,
+            contentPadding = PaddingValues(
+                start = GridContentHPadding,
+                end = GridContentHPadding,
+                top = contentTopInset,
+                bottom = FabBottomOffset,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            if (header != null) {
+                item(key = "list-header", span = { GridItemSpan(maxLineSpan) }) {
+                    header()
+                }
+            }
+            items(
+                items = files,
+                key = { it.path },
+            ) { file ->
+                GridFileCard(
+                    file = file,
+                    thumbnailUrl = thumbnailUrls[file.path],
+                    isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
+                    isMultiSelect = isMultiSelect,
+                    isSelected = file.path in selectedPaths,
+                    preparing = preparingPath != null && file.path == preparingPath,
+                    onOpenDirectory = onOpenDirectory,
+                    onPlayFile = onPlayFile,
+                    onOpenImageFile = onOpenImageFile,
+                    onShowFileActions = { onShowFileActions(file) },
+                    onToggleSelection = { onToggleSelection(file) },
+                    onEnterMultiSelect = { onEnterMultiSelect(file) },
+                    showTypeBadge = showTypeBadge,
+                    showSizeBadge = showSizeBadge,
+                )
+            }
         }
     }
 }

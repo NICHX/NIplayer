@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -350,6 +351,8 @@ fun FileBrowserScreen(
     // 视图切换下拉菜单及其锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
     var showViewMenu by remember { mutableStateOf(false) }
     var viewMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    // 视图菜单是否已进入下一级「列数」选择子页
+    var viewMenuColumnsPage by remember { mutableStateOf(false) }
     // 排序/过滤下拉菜单锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
     var sortMenuAnchor by remember { mutableStateOf(Offset.Zero) }
     var filterMenuAnchor by remember { mutableStateOf(Offset.Zero) }
@@ -382,6 +385,7 @@ fun FileBrowserScreen(
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
     val galleryState = rememberLazyGridState()
+    val waterfallState = rememberLazyStaggeredGridState()
     val scope = rememberCoroutineScope()
 
     var viewMode by remember { mutableStateOf(FileBrowserSettings.viewMode) }
@@ -391,6 +395,11 @@ fun FileBrowserScreen(
     // 网格列数：默认自适应；手动可调上限按窗口宽度类收窄（手机 4 / 平板 6 / 大屏 8）
     val gridColumns = sortConfig.gridColumns
     val gridMaxColumns = gridColumnRange(LocalNiWindowSizeClass.current.width).last
+    // 画廊布局与列数（方形与瀑布流共用列数）；仅画廊模式且布局为瀑布流时启用瀑布流滚动状态
+    val galleryLayout = sortConfig.galleryLayout
+    val galleryColumns = sortConfig.galleryColumns
+    val isWaterfall = isGalleryView && galleryLayout == FileBrowserSettings.GalleryLayout.WATERFALL
+    val galleryMaxColumns = galleryColumnRange(LocalNiWindowSizeClass.current.width).last
     // 平铺列表模式下的展开树状态（子项缓存 / 展开集合 / 加载中集合）
     val treeChildren by viewModel.treeChildren.collectAsStateWithLifecycle()
     val treeExpanded by viewModel.treeExpanded.collectAsStateWithLifecycle()
@@ -404,6 +413,7 @@ fun FileBrowserScreen(
     fun captureCurrentScroll() {
         pathScrollCache[uiState.currentPath] = when {
             isGridView -> gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+            isWaterfall -> waterfallState.firstVisibleItemIndex to waterfallState.firstVisibleItemScrollOffset
             isGalleryView -> galleryState.firstVisibleItemIndex to galleryState.firstVisibleItemScrollOffset
             else -> listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
         }
@@ -420,6 +430,7 @@ fun FileBrowserScreen(
             pathScrollCache[uiState.currentPath]?.let { (index, offset) ->
                 when {
                     isGridView -> gridState.scrollToItem(index, offset)
+                    isWaterfall -> waterfallState.scrollToItem(index, offset)
                     isGalleryView -> galleryState.scrollToItem(index, offset)
                     else -> listState.scrollToItem(index, offset)
                 }
@@ -431,6 +442,7 @@ fun FileBrowserScreen(
         derivedStateOf {
             when {
                 isGridView -> gridState.firstVisibleItemIndex > 2
+                isWaterfall -> waterfallState.firstVisibleItemIndex > 2
                 isGalleryView -> galleryState.firstVisibleItemIndex > 2
                 else -> listState.firstVisibleItemIndex > 2
             }
@@ -439,10 +451,14 @@ fun FileBrowserScreen(
 
     // 可见范围上报：工作池据此优先处理可见项（滚到哪儿哪儿的缩略图先出，其余后台补齐）。
     // 平铺列表含展开子项、与显示列表非 1:1，退化为全量优先（0..MAX）。
-    LaunchedEffect(isGridView, isGalleryView, isFlatView) {
+    LaunchedEffect(isGridView, isGalleryView, isWaterfall, isFlatView) {
         snapshotFlow {
             when {
                 isFlatView -> 0 to Int.MAX_VALUE
+                isWaterfall -> {
+                    val items = waterfallState.layoutInfo.visibleItemsInfo
+                    (items.firstOrNull()?.index ?: 0) to (items.lastOrNull()?.index ?: 0)
+                }
                 isGalleryView -> {
                     val items = galleryState.layoutInfo.visibleItemsInfo
                     (items.firstOrNull()?.index ?: 0) to (items.lastOrNull()?.index ?: 0)
@@ -673,73 +689,122 @@ fun FileBrowserScreen(
                                     FileBrowserSettings.ViewMode.FLAT_LIST -> R.string.storage_file_view_flat_list
                                 },
                             ),
-                            onClick = { showViewMenu = true },
+                            onClick = {
+                                viewMenuColumnsPage = false
+                                showViewMenu = true
+                            },
                             backdrop = multiSelectBarBackdrop,
                             modifier = Modifier.padding(horizontal = 2.dp),
                         )
                         NiGlassDropdownMenu(
                             expanded = showViewMenu,
-                            onDismissRequest = { showViewMenu = false },
+                            onDismissRequest = {
+                                showViewMenu = false
+                                viewMenuColumnsPage = false
+                            },
                             anchor = IntOffset(viewMenuAnchor.x.toInt(), viewMenuAnchor.y.toInt()),
-                            // 列数就地变化时用 showOrUpdate 刷新菜单内容（保持展开、不闪烁）
-                            contentVersion = gridColumns,
+                            // 列数/布局/子页就地变化时用 showOrUpdate 刷新菜单内容（保持展开、不闪烁）
+                            contentVersion = gridColumns * 1000 + galleryColumns * 10 +
+                                galleryLayout.ordinal + if (viewMenuColumnsPage) 100_000 else 0,
                         ) {
-                            ViewModeMenuItem(
-                                label = stringResource(R.string.storage_file_view_list),
-                                icon = Icons.AutoMirrored.Rounded.ViewList,
-                                value = FileBrowserSettings.ViewMode.LIST,
-                                current = viewMode,
-                                onSelect = {
-                                    showViewMenu = false
-                                    viewMode = FileBrowserSettings.ViewMode.LIST
-                                    FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.LIST
-                                },
-                            )
-                            ViewModeMenuItem(
-                                label = stringResource(R.string.storage_file_view_grid),
-                                icon = Icons.Rounded.GridView,
-                                value = FileBrowserSettings.ViewMode.GRID,
-                                current = viewMode,
-                                onSelect = {
-                                    showViewMenu = false
-                                    viewMode = FileBrowserSettings.ViewMode.GRID
-                                    FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.GRID
-                                },
-                            )
-                            ViewModeMenuItem(
-                                label = stringResource(R.string.storage_file_view_gallery),
-                                icon = Icons.Rounded.PhotoLibrary,
-                                value = FileBrowserSettings.ViewMode.GALLERY,
-                                current = viewMode,
-                                onSelect = {
-                                    showViewMenu = false
-                                    viewMode = FileBrowserSettings.ViewMode.GALLERY
-                                    FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.GALLERY
-                                },
-                            )
-                            if (ExperimentalSettings.flatListViewEnabled) {
+                            if (viewMenuColumnsPage) {
+                                // 下一级：列数选择子页（网格用 gridColumns，画廊用 galleryColumns 共用）
+                                val columnsOnGallery = viewMode == FileBrowserSettings.ViewMode.GALLERY
+                                ColumnsPickerPage(
+                                    title = stringResource(
+                                        if (columnsOnGallery) R.string.storage_file_view_gallery_columns
+                                        else R.string.storage_file_view_columns,
+                                    ),
+                                    backContentDescription = stringResource(R.string.storage_file_back),
+                                    autoLabel = stringResource(R.string.storage_file_view_columns_auto),
+                                    current = if (columnsOnGallery) galleryColumns else gridColumns,
+                                    maxColumns = if (columnsOnGallery) galleryMaxColumns else gridMaxColumns,
+                                    onBack = { viewMenuColumnsPage = false },
+                                    onSelect = { columns ->
+                                        if (columnsOnGallery) FileBrowserSettings.galleryColumns = columns
+                                        else FileBrowserSettings.gridColumns = columns
+                                    },
+                                )
+                            } else {
                                 ViewModeMenuItem(
-                                    label = stringResource(R.string.storage_file_view_flat_list),
-                                    icon = Icons.Rounded.AccountTree,
-                                    value = FileBrowserSettings.ViewMode.FLAT_LIST,
+                                    label = stringResource(R.string.storage_file_view_list),
+                                    icon = Icons.AutoMirrored.Rounded.ViewList,
+                                    value = FileBrowserSettings.ViewMode.LIST,
                                     current = viewMode,
                                     onSelect = {
                                         showViewMenu = false
-                                        viewMode = FileBrowserSettings.ViewMode.FLAT_LIST
-                                        FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.FLAT_LIST
+                                        viewMode = FileBrowserSettings.ViewMode.LIST
+                                        FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.LIST
                                     },
                                 )
-                            }
-                            // 仅网格视图暴露列数自定义；自适应为默认，手动列数按宽度类收窄上限
-                            if (viewMode == FileBrowserSettings.ViewMode.GRID) {
-                                HorizontalDivider()
-                                GridColumnsMenuItem(
-                                    label = stringResource(R.string.storage_file_view_columns),
-                                    autoLabel = stringResource(R.string.storage_file_view_columns_auto),
-                                    current = gridColumns,
-                                    maxColumns = gridMaxColumns,
-                                    onSelect = { columns -> FileBrowserSettings.gridColumns = columns },
+                                ViewModeMenuItem(
+                                    label = stringResource(R.string.storage_file_view_grid),
+                                    icon = Icons.Rounded.GridView,
+                                    value = FileBrowserSettings.ViewMode.GRID,
+                                    current = viewMode,
+                                    onSelect = {
+                                        showViewMenu = false
+                                        viewMode = FileBrowserSettings.ViewMode.GRID
+                                        FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.GRID
+                                    },
                                 )
+                                ViewModeMenuItem(
+                                    label = stringResource(R.string.storage_file_view_gallery),
+                                    icon = Icons.Rounded.PhotoLibrary,
+                                    value = FileBrowserSettings.ViewMode.GALLERY,
+                                    current = viewMode,
+                                    onSelect = {
+                                        showViewMenu = false
+                                        viewMode = FileBrowserSettings.ViewMode.GALLERY
+                                        FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.GALLERY
+                                    },
+                                )
+                                if (ExperimentalSettings.flatListViewEnabled) {
+                                    ViewModeMenuItem(
+                                        label = stringResource(R.string.storage_file_view_flat_list),
+                                        icon = Icons.Rounded.AccountTree,
+                                        value = FileBrowserSettings.ViewMode.FLAT_LIST,
+                                        current = viewMode,
+                                        onSelect = {
+                                            showViewMenu = false
+                                            viewMode = FileBrowserSettings.ViewMode.FLAT_LIST
+                                            FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.FLAT_LIST
+                                        },
+                                    )
+                                }
+                                // 仅网格视图暴露列数入口；自适应为默认，手动列数按宽度类收窄上限
+                                if (viewMode == FileBrowserSettings.ViewMode.GRID) {
+                                    HorizontalDivider()
+                                    ColumnsEntryMenuItem(
+                                        label = stringResource(R.string.storage_file_view_columns),
+                                        value = if (gridColumns == FileBrowserSettings.GRID_COLUMNS_AUTO) {
+                                            stringResource(R.string.storage_file_view_columns_auto)
+                                        } else {
+                                            gridColumns.toString()
+                                        },
+                                        onClick = { viewMenuColumnsPage = true },
+                                    )
+                                }
+                                // 画廊视图：布局（方形/瀑布流）+ 画廊列数入口（方形与瀑布流共用列数）
+                                if (viewMode == FileBrowserSettings.ViewMode.GALLERY) {
+                                    HorizontalDivider()
+                                    GalleryLayoutMenuItem(
+                                        label = stringResource(R.string.storage_file_gallery_layout),
+                                        squareLabel = stringResource(R.string.storage_file_gallery_layout_square),
+                                        waterfallLabel = stringResource(R.string.storage_file_gallery_layout_waterfall),
+                                        current = galleryLayout,
+                                        onSelect = { layout -> FileBrowserSettings.galleryLayout = layout },
+                                    )
+                                    ColumnsEntryMenuItem(
+                                        label = stringResource(R.string.storage_file_view_gallery_columns),
+                                        value = if (galleryColumns == FileBrowserSettings.GRID_COLUMNS_AUTO) {
+                                            stringResource(R.string.storage_file_view_columns_auto)
+                                        } else {
+                                            galleryColumns.toString()
+                                        },
+                                        onClick = { viewMenuColumnsPage = true },
+                                    )
+                                }
                             }
                         }
                     }
@@ -1092,8 +1157,11 @@ fun FileBrowserScreen(
                                     onToggleSelection = viewModel::toggleSelection,
                                     onEnterMultiSelect = viewModel::enterMultiSelect,
                                     galleryState = galleryState,
+                                    waterfallState = waterfallState,
                                     header = listHeader,
                                     contentTopInset = topInset,
+                                    columns = galleryColumns,
+                                    layout = galleryLayout,
                                 )
                             } else if (isGridView) {
                                 FileGrid(
