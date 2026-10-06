@@ -3,8 +3,9 @@ package com.nichx.niplayer.designsystem.components
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -149,10 +150,12 @@ fun NiHeroResumeCard(
                 fontWeight = FontWeight.SemiBold,
                 color = Color.White,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
                 modifier = Modifier
                     .fillMaxWidth(0.85f)
-                    .basicMarquee(iterations = Int.MAX_VALUE),
+                    // 可手动横向滑动查看完整文件名（不再用 basicMarquee：自动跑马灯会持续
+                    // 触发 layout/draw 失效，使整个窗口满帧重绘，是静置发热耗电的主因）
+                    .horizontalScroll(rememberScrollState()),
             )
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {

@@ -52,6 +52,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -486,6 +487,12 @@ class AudioPlaybackManager @Inject constructor(
             var nextSaveAt = PROGRESS_FIRST_SAVE_DELAY_S
             while (isActive) {
                 val p = exoPlayer ?: break
+                // 空闲（未播放且无待处理 seek）时挂起，等真正开始播放再恢复：
+                // 避免暂停/停止后仍以 1Hz 常驻唤醒，拖住系统进入深度休眠、造成后台耗电。
+                if (!p.isPlaying && _pendingSeekMs == null) {
+                    _isPlaying.first { it }
+                    continue
+                }
                 val current = p.currentPosition.coerceAtLeast(0)
                 val pending = _pendingSeekMs
                 if (pending != null) {

@@ -63,6 +63,7 @@ import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
 
 private val CARD_W = 110.dp
@@ -133,10 +134,14 @@ private fun FloatingMiniPlayerCard(
     val density = LocalDensity.current
     val titleScrollState = rememberScrollState()
 
-    LaunchedEffect(title) {
+    // 标题跑马灯仅在播放中滚动，暂停/停止后立即停回起点。
+    // 该动画位于玻璃 backdrop 捕获层内，常驻滚动会让整层每帧重新录制、底栏每帧重新采样模糊，
+    // 是「静止在首页仍发热耗电」的主要来源。
+    LaunchedEffect(title, isPlaying) {
         titleScrollState.scrollTo(0)
+        if (!isPlaying) return@LaunchedEffect
         delay(1500)
-        while (true) {
+        while (isActive) {
             val maxScroll = titleScrollState.maxValue
             if (maxScroll > 0) {
                 val duration = (maxScroll * 3).toInt().coerceIn(1200, 6000)

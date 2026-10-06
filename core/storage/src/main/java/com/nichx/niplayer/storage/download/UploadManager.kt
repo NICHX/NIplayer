@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -64,7 +65,7 @@ class UploadManager @Inject constructor(
     /** 活跃上传任务数（WAITING + DOWNLOADING），用于文件浏览页角标 / 多选上传提示。 */
     val activeUploadCount: StateFlow<Int> = uploadTaskDao
         .countByStatesFlow(listOf(DownloadState.WAITING, DownloadState.DOWNLOADING))
-        .stateIn(scope, SharingStarted.Eagerly, 0)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), 0)
 
     /** 全部上传任务列表（UI 渲染），按创建时间倒序。 */
     val tasks: StateFlow<List<UploadTaskEntity>> = uploadTaskDao
@@ -91,7 +92,7 @@ class UploadManager @Inject constructor(
         startDispatchLoop()
     }
 
-    /** 调度循环：轮询 WAITING 任务，在并发限额内启动 [processTask]。 */
+    /** 调度循环：在并发限额内启动 [processTask]；无任务时挂起等待，空闲不轮询。 */
     private fun startDispatchLoop() {
         scope.launch {
             while (true) {
@@ -102,7 +103,9 @@ class UploadManager @Inject constructor(
                 val waiting = uploadTaskDao.getByStates(listOf(DownloadState.WAITING))
                     .sortedBy { it.id }
                 if (waiting.isEmpty()) {
-                    delay(500)
+                    // 空闲：挂起等待出现 WAITING 任务（Room Flow 仅在表变化时回调），
+                    // 不再以固定间隔空转查询，避免 App 静置时持续唤醒/耗电。
+                    uploadTaskDao.countByStatesFlow(listOf(DownloadState.WAITING)).first { it > 0 }
                     continue
                 }
                 for (task in waiting.take(MAX_CONCURRENT - activeJobs.size)) {

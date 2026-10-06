@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -72,7 +73,7 @@ class DownloadManager @Inject constructor(
     /** 活跃下载任务数（WAITING + DOWNLOADING），用于文件浏览页角标显示。 */
     val activeDownloadCount: StateFlow<Int> = downloadTaskDao
         .countByStatesFlow(listOf(DownloadState.WAITING, DownloadState.DOWNLOADING))
-        .stateIn(scope, SharingStarted.Eagerly, 0)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), 0)
 
     /** 活跃下载任务协程。 */
     private val activeJobs = ConcurrentHashMap<Long, Job>()
@@ -96,9 +97,10 @@ class DownloadManager @Inject constructor(
     }
 
     /**
-     * 调度循环：轮询 WAITING 任务，在并发限额内启动 [processTask]。
+     * 调度循环：在并发限额内启动 [processTask]。
      *
-     * 无 WAITING 任务时空转等待，避免 CPU 空耗。
+     * 无 WAITING 任务时挂起在 [DownloadTaskDao.countByStatesFlow] 上（Room Flow 仅在表变化时
+     * 回调），空闲不产生任何轮询/唤醒；有任务时才按并发限额派发。
      */
     private fun startDispatchLoop() {
         scope.launch {
@@ -111,7 +113,9 @@ class DownloadManager @Inject constructor(
                 val waitingTasks = downloadTaskDao.getByStates(listOf(DownloadState.WAITING))
                     .sortedBy { it.id }
                 if (waitingTasks.isEmpty()) {
-                    delay(500)
+                    // 空闲：挂起等待出现 WAITING 任务（Room Flow 仅在表变化时回调），
+                    // 不再以固定间隔空转查询，避免 App 静置时持续唤醒/耗电。
+                    downloadTaskDao.countByStatesFlow(listOf(DownloadState.WAITING)).first { it > 0 }
                     continue
                 }
                 for (task in waitingTasks.take(MAX_CONCURRENT - activeCount)) {

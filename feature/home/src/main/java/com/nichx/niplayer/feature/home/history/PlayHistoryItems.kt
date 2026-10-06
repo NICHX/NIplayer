@@ -104,16 +104,21 @@ internal fun SyncIndicator(
     val isSyncing = state is SyncUiState.Syncing
     val isError = state is SyncUiState.Done && !state.success
     val isSuccess = !isSyncing && !isError
-    // 同步中：同步图标绕中心持续旋转，隐喻"进行中"
-    val rotation = rememberInfiniteTransition(label = "sync_rotation").animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "sync_rotate",
-    )
+    // 同步中：同步图标绕中心持续旋转，隐喻"进行中"。
+    // 仅在同步中创建无限动画——就绪/成功态不保留常驻无限动画，避免该页静置时持续刷帧。
+    val rotation = if (isSyncing) {
+        rememberInfiniteTransition(label = "sync_rotation").animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "sync_rotate",
+        )
+    } else {
+        null
+    }
     // 状态配色：就绪/成功=绿色、失败=error、同步中=primary
     val stateColor = when {
         isSuccess -> Color(0xFF4CAF50)
@@ -146,7 +151,7 @@ internal fun SyncIndicator(
                 modifier = Modifier
                     .size(18.dp)
                     .graphicsLayer {
-                        rotationZ = if (isSyncing) rotation.value else 0f
+                        rotationZ = rotation?.value ?: 0f
                     },
             )
         }
