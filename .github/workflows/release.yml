@@ -132,8 +132,10 @@ jobs:
             } >> "$BODY"
           fi
 
-          # 若存在手写亮点说明（.github/release-notes/<tag>.md），插入到版本头之后、
-          # 自动生成的提交清单之前 —— 自动清单保证「不遗漏」，手写部分负责「讲清楚这版做了什么」。
+          # 手写亮点说明（.github/release-notes/<tag>.md）即「正文」：放在版本头之后，
+          # 用「最终实现」的口径讲清楚这版做了什么。
+          # 自动提交明细只作追溯附录，折叠在文末 <details> 中（见下），
+          # 避免把「已被同区间后续提交覆盖的中间改动」当成并列成果呈现。
           HIGHLIGHTS=".github/release-notes/${GITHUB_REF_NAME}.md"
           if [ -f "$HIGHLIGHTS" ]; then
             cat "$HIGHLIGHTS" >> "$BODY"
@@ -189,6 +191,15 @@ jobs:
             done < "$RUNNER_TEMP/commits.txt"
           }
 
+          # 原始提交明细折叠展示：逐条提交与「最终净效果」存在固有偏差（过程提交
+          # 可能已被同区间后续提交覆盖），故收进 <details> 并注明，仅作追溯。
+          {
+            echo ""
+            echo "<details>"
+            echo "<summary>📋 原始提交明细（含可能已被后续提交覆盖的中间改动，仅作追溯）</summary>"
+            echo ""
+          } >> "$BODY"
+
           write_group "✨" "新功能" "feat*"
           write_group "🐛" "问题修复" "fix*"
           write_group "⚡" "性能优化" "perf*"
@@ -198,6 +209,11 @@ jobs:
           if [ "$SHOWN" -eq 0 ]; then
             printf '\n**本版本以内部改进为主，无面向用户的变化。**\n' >> "$BODY"
           fi
+
+          {
+            echo ""
+            echo "</details>"
+          } >> "$BODY"
 
           {
             echo ""
