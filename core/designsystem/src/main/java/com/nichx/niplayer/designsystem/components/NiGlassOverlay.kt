@@ -4,12 +4,14 @@ import android.os.Build
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,9 +36,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -247,6 +250,12 @@ fun NiGlassOverlayHost(
 /** 浮层退场动画缓冲：等待的内部 exit 动画最长约 280ms，留出裕量后再销毁节点。 */
 private const val EXIT_ANIM_BUFFER_MS = 450L
 
+/** 下拉菜单出场/收起的时长与缩放起止点（从锚点那一角长出来）。 */
+private const val DROPDOWN_ENTER_MS = 180
+private const val DROPDOWN_EXIT_MS = 120
+private const val DROPDOWN_ENTER_SCALE = 0.86f
+private const val DROPDOWN_EXIT_SCALE = 0.94f
+
 /**
  * 锚定玻璃下拉菜单（同窗口 overlay）。
  *
@@ -268,6 +277,9 @@ private fun DropdownGlassOverlay(
     var position by remember(request.anchor) {
         mutableStateOf(IntOffset(request.anchor.x, request.anchor.y + anchorGapPx))
     }
+    // 首帧还没测出菜单尺寸，位置可能先落在锚点下方、下一帧才被夹回屏内并翻转为向上展开，
+    // 这一跳就是「展开时闪一下」。测量到位前先不画卡片。
+    var positioned by remember(request.anchor) { mutableStateOf(false) }
     // 全屏透明点击层：点击外部关闭
     Box(
         modifier = Modifier
@@ -278,22 +290,39 @@ private fun DropdownGlassOverlay(
                 onClick = request.onDismiss,
             ),
     ) {
-        // 展开动画：从顶部向下垂直展开 + 淡入，仿 M3 DropdownMenu 的下拉效果
+        // 展开/收起动画。
+        //
+        // 这里必须用 visibleState 而不是 visible：浮层的节点是「请求到达时才被创建」的，
+        // 而 AnimatedVisibility 在首次组合时如果 visible 已经是 true，会把过渡直接置为
+        // 已完成——一帧动画都不走。这正是之前菜单「完全没有动画」的原因。用
+        // MutableTransitionState 从 false 起步，「出现」就成了一次真正的状态迁移。
+        val visibleState = remember { MutableTransitionState(false) }
+        visibleState.targetState = active
         AnimatedVisibility(
-            visible = active,
-            enter = fadeIn(tween(160, easing = FastOutSlowInEasing)) + expandVertically(
-                expandFrom = Alignment.Top,
-                animationSpec = tween(200, easing = FastOutSlowInEasing),
-            ),
-            exit = fadeOut(tween(100, easing = FastOutSlowInEasing)) + shrinkVertically(
-                shrinkTowards = Alignment.Top,
-                animationSpec = tween(160, easing = FastOutSlowInEasing),
-            ),
+            visibleState = visibleState,
+            // 从锚点那一角（右上）长出来 + 淡入 + 轻微下落，像从按钮下掉出来
+            enter = fadeIn(tween(DROPDOWN_ENTER_MS, easing = FastOutSlowInEasing)) +
+                scaleIn(
+                    animationSpec = tween(DROPDOWN_ENTER_MS, easing = FastOutSlowInEasing),
+                    initialScale = DROPDOWN_ENTER_SCALE,
+                    transformOrigin = TransformOrigin(1f, 0f),
+                ) +
+                slideInVertically(
+                    animationSpec = tween(DROPDOWN_ENTER_MS, easing = FastOutSlowInEasing),
+                    initialOffsetY = { -it / 6 },
+                ),
+            exit = fadeOut(tween(DROPDOWN_EXIT_MS, easing = FastOutSlowInEasing)) +
+                scaleOut(
+                    animationSpec = tween(DROPDOWN_EXIT_MS, easing = FastOutSlowInEasing),
+                    targetScale = DROPDOWN_EXIT_SCALE,
+                    transformOrigin = TransformOrigin(1f, 0f),
+                ),
         ) {
             // 玻璃菜单卡片
             Column(
                 modifier = Modifier
                     .offset { position }
+                    .graphicsLayer { alpha = if (positioned) 1f else 0f }
                     .onGloballyPositioned { coords ->
                         val menuW = coords.size.width
                         val menuH = coords.size.height
@@ -310,6 +339,7 @@ private fun DropdownGlassOverlay(
                         }
                         val corrected = IntOffset(x, y.coerceIn(0, maxOf(0, maxY)))
                         if (corrected != position) position = corrected
+                        positioned = true
                     }
                     .width(IntrinsicSize.Max)
                     .then(
