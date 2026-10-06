@@ -19,6 +19,7 @@ import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SortConfig
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
+import com.nichx.niplayer.common.media.ExternalMediaShare
 import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.common.permission.LocalNetworkPermission
 import com.nichx.niplayer.feature.home.PrePlayAspectReader
@@ -2148,6 +2149,49 @@ class StorageFileViewModel @Inject constructor(
                 quickAccessDao.get(library.id, file.path) != null
             }
             _events.tryEmit(StorageFileEvent.OpenFileActions(file, favorited))
+        }
+    }
+
+    /** 用其他应用打开：本地文件经系统选择器交给外部应用（远程 / 无法解析时提示不支持）。 */
+    fun openFileWithExternalApp(file: StorageFile) = launchExternal(file, share = false)
+
+    /** 分享：本地文件经系统分享面板发送到其他应用。 */
+    fun shareFileExternally(file: StorageFile) = launchExternal(file, share = true)
+
+    private fun launchExternal(file: StorageFile, share: Boolean) {
+        if (file.isDirectory) return
+        val s = storage ?: return
+        viewModelScope.launch {
+            val uri = try {
+                withContext(Dispatchers.IO) { s.createPlayUrl(file) }?.let(Uri::parse)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            val mime = ExternalMediaShare.mimeTypeOf(file.name)
+            val ok = uri != null && if (share) {
+                ExternalMediaShare.launchShare(context, uri, mime)
+            } else {
+                ExternalMediaShare.launchOpenWith(context, uri, mime)
+            }
+            if (!ok) {
+                _events.tryEmit(
+                    StorageFileEvent.ShowToast(context.getString(R.string.storage_file_external_unsupported)),
+                )
+            }
+        }
+    }
+
+    /**
+     * 文件是否位于加密文件夹内。
+     *
+     * 加密文件不应经「用其他应用打开 / 分享」暴露明文，调用方据此隐藏这两个入口。
+     */
+    fun isFileWithinEncryptedFolder(file: StorageFile): Boolean {
+        val path = file.path.trimEnd('/')
+        return encryptedPaths.value.any { p ->
+            p.isNotEmpty() && (path == p || path.startsWith("$p/"))
         }
     }
 

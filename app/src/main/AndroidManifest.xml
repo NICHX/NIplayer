@@ -50,11 +50,28 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.NIplayer">
             <!-- Only the enabled alias gets LAUNCHER intent-filter -->
+
+            <!-- 被其他软件调用：在「打开方式」中把单个音视频文件交给 NIplayer 播放 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+
+            <!-- 被其他软件调用：接收从其他应用「分享」来的单个音视频文件并播放 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
         </activity>
 
         <!-- 变体图标：default（衬线 N）—— 已降为可选预设，出厂默认见下方 text -->

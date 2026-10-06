@@ -136,6 +136,9 @@
     <string name="player_rewind_10s">Back 10 seconds</string>
     <string name="player_forward_10s">Forward 10 seconds</string>
     <string name="player_download_icon">Download</string>
+    <string name="player_open_with">Open with</string>
+    <string name="player_share">Share</string>
+    <string name="player_external_open_failed">Unable to open or share this file with other apps</string>
     <string name="player_equalizer">Equalizer</string>
     <string name="player_current_speed">Current speed</string>
     <string name="player_playback_error">Playback error</string>

@@ -20,6 +20,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import com.nichx.niplayer.common.media.ExternalMediaShare
 import com.nichx.niplayer.datastore.AudioSettings
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.ThumbnailSettings
@@ -750,6 +751,29 @@ class AudioPlaybackManager @Inject constructor(
 
     /** 是否有活跃的音频会话（列表非空且当前曲目有效）。 */
     fun hasActiveAudio(): Boolean = _currentTitle.value.isNotEmpty() && _playlist.value.isNotEmpty()
+
+    /**
+     * 「用其他应用打开」：把当前本地音频经系统选择器交给外部应用，返回是否成功。
+     * 远程源（HTTP / SMB 无本地 Uri）不支持时返回 false。
+     */
+    fun requestOpenWithExternalApp(): Boolean {
+        val uri = (_currentSource as? NxMediaSource.Local)?.uri ?: return false
+        return ExternalMediaShare.launchOpenWith(
+            context,
+            uri,
+            ExternalMediaShare.mimeTypeOf(_currentTitle.value),
+        )
+    }
+
+    /** 「分享」：把当前本地音频经系统分享面板发送，返回是否成功。 */
+    fun requestShareExternal(): Boolean {
+        val uri = (_currentSource as? NxMediaSource.Local)?.uri ?: return false
+        return ExternalMediaShare.launchShare(
+            context,
+            uri,
+            ExternalMediaShare.mimeTypeOf(_currentTitle.value),
+        )
+    }
 
     /** 是否还存在下一首（通知栏「下一曲」按钮可用性）。 */
     fun hasNextInPlaylist(): Boolean {

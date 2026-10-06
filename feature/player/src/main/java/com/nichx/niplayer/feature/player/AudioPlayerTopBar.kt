@@ -14,11 +14,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -65,6 +67,9 @@ internal fun TopBarActions(
     showDownload: Boolean = true,
     sleepTimerText: String = "",
     onSleepTimer: () -> Unit = {},
+    showExternalActions: Boolean = false,
+    onOpenWith: () -> Unit = {},
+    onShare: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
@@ -244,6 +249,57 @@ internal fun TopBarActions(
                                 },
                             )
                         }
+                        if (showExternalActions) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                thickness = 0.5.dp,
+                                color = onSurface.copy(alpha = 0.08f),
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.player_open_with),
+                                        fontSize = 14.sp,
+                                        color = onSurface,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                                        contentDescription = null,
+                                        tint = onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                },
+                                contentPadding = menuItemPadding,
+                                onClick = {
+                                    menuPage = MoreMenuPage.Idle
+                                    onOpenWith()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.player_share),
+                                        fontSize = 14.sp,
+                                        color = onSurface,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Share,
+                                        contentDescription = null,
+                                        tint = onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                },
+                                contentPadding = menuItemPadding,
+                                onClick = {
+                                    menuPage = MoreMenuPage.Idle
+                                    onShare()
+                                },
+                            )
+                        }
                     }
                     MoreMenuPage.Speed -> {
                         // 菜单标题（本版本无 DropdownMenuHeader，用普通文本行代替）
@@ -306,6 +362,9 @@ internal fun TopBar(
     showDownload: Boolean = true,
     sleepTimerText: String = "",
     onSleepTimer: () -> Unit = {},
+    showExternalActions: Boolean = false,
+    onOpenWith: () -> Unit = {},
+    onShare: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     Row(
@@ -353,6 +412,9 @@ internal fun TopBar(
             showDownload = showDownload,
             sleepTimerText = sleepTimerText,
             onSleepTimer = onSleepTimer,
+            showExternalActions = showExternalActions,
+            onOpenWith = onOpenWith,
+            onShare = onShare,
         )
     }
 }

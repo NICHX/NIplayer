@@ -451,6 +451,9 @@
     <string name="storage_file_action_move">Move</string>
     <string name="storage_file_action_delete">Delete</string>
     <string name="storage_file_action_properties">Properties</string>
+    <string name="storage_file_action_open_with">Open with</string>
+    <string name="storage_file_action_share">Share</string>
+    <string name="storage_file_external_unsupported">This file can\'t be opened or shared with other apps</string>
     <string name="storage_file_action_encrypt_folder">Encrypt folder</string>
     <string name="storage_file_action_decrypt">Decrypt</string>
     <string name="storage_file_action_reset_password">Reset password</string>

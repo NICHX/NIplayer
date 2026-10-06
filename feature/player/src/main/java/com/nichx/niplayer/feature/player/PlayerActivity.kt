@@ -143,6 +143,19 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /**
+     * 实例复用（singleTask）时接收新的播放请求。
+     *
+     * 其他软件「打开 / 分享」视频、或应用内再次拉起本播放器时，
+     * [com.nichx.niplayer.player.kernel.PlaybackRequestHolder] 已写入新请求；
+     * 此处消费并接手播放（无新请求则保持当前播放不变）。
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        viewModel.playPendingRequestIfAny()
+    }
+
+    /**
      * PiP 退出处理：区分「展开回大窗」与「点 X / 上滑关闭小窗」。
      *
      * 判定依据（不依赖回调先后顺序，也不依赖 [onStart]）：

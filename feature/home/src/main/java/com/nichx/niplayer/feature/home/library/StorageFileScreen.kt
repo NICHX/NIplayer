@@ -1332,10 +1332,22 @@ fun FileBrowserScreen(
             showDelete = viewModel.supportsDelete,
             isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
             isRemoteStorage = uiState.isRemoteStorage,
+            // 仅本地、非加密文件支持「用其他应用打开 / 分享」
+            showExternalActions = !file.isDirectory &&
+                !uiState.isRemoteStorage &&
+                !viewModel.isFileWithinEncryptedFolder(file),
             onDismiss = { fileMenu = null },
             onPlay = {
                 fileMenu = null
                 viewModel.playFile(file)
+            },
+            onOpenWith = {
+                fileMenu = null
+                viewModel.openFileWithExternalApp(file)
+            },
+            onShare = {
+                fileMenu = null
+                viewModel.shareFileExternally(file)
             },
             onDownload = {
                 fileMenu = null

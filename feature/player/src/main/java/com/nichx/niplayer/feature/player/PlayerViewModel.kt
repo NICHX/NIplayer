@@ -40,6 +40,7 @@ import com.nichx.niplayer.player.kernel.PlaylistItem
 import com.nichx.niplayer.player.kernel.SubtitleTrackInfo
 import com.nichx.niplayer.player.kernel.VideoSize
 import com.nichx.niplayer.common.coroutine.AppCoroutineScope
+import com.nichx.niplayer.common.media.ExternalMediaShare
 import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageAccess
@@ -110,7 +111,7 @@ import javax.inject.Inject
 class PlayerViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val player: NxPlayer,
-    playbackRequestHolder: PlaybackRequestHolder,
+    private val playbackRequestHolder: PlaybackRequestHolder,
     private val playHistoryDao: PlayHistoryDao,
     private val mediaLibraryDao: MediaLibraryDao,
     private val storageFactory: StorageFactory,
@@ -878,81 +879,7 @@ class PlayerViewModel @Inject constructor(
         }
 
         playbackRequestHolder.consume()?.let { request ->
-            _title.value = request.title
-            _preReadAspectRatio.value = request.initialAspectRatio
-            // 保存请求副本，错误后重试使用
-            lastPlaybackRequest = request
-            isAudioPlayback = request.isAudio
-            _isLocalSource.value = request.source is NxMediaSource.Local
-
-            // 按请求类型过滤播放列表，避免上一会话残留的异构列表混入本次播放
-            if (_playlist.value.isNotEmpty()) {
-                val typeFilter: (PlaylistItem) -> Boolean =
-                    if (request.isAudio) { item -> isAudioFile(item.fileName) }
-                    else { item -> !isAudioFile(item.fileName) }
-                val filtered = _playlist.value.filter(typeFilter)
-                if (filtered.isNotEmpty()) {
-                    val oldPath = _playlist.value.getOrNull(_currentIndex.value)?.filePath
-                    _currentIndex.value = filtered.indexOfFirst { it.filePath == oldPath }.takeIf { it >= 0 } ?: 0
-                } else {
-                    _currentIndex.value = -1
-                }
-                _playlist.value = filtered
-            }
-
-            // 提前设置 currentHistory，让 loadAudioCover() 能正常获取 history
-            request.history?.let { history ->
-                currentHistory = history
-            }
-
-            if (request.isAudio) {
-                // 音频：直接委托给 AudioPlaybackManager，单 ExoPlayer 架构
-                // 不占用 NxPlayer，无需 bridgeToBackgroundPlayback；
-                // history 一并传入，Manager 自维护当前历史（供切歌/进度保存使用）
-                audioPlaybackManager.play(
-                    source = request.source,
-                    title = request.title,
-                    coverPath = null,
-                    artist = request.title,
-                    startPositionMs = request.startPositionMs,
-                    playlist = _playlist.value,
-                    startIndex = _currentIndex.value,
-                    history = request.history,
-                )
-                // 封面/歌词提取与加载已下沉 AudioPlaybackManager（play 内部异步触发）
-                registerAudioCallbacks()
-            } else {
-                // 视频：使用 NxPlayer
-                swapStorage(request.source)
-                // 将 startPositionMs 直接传给 setSource，由 media3 在 prepare 时
-                // 自动 seek 到此位置开始下载，避免先从 0 buffer 再被 seekTo 中断。
-                player.setSource(request.source, request.startPositionMs)
-                val hasResume = request.startPositionMs > 30_000
-                player.prepare()
-                player.play()
-
-                // 续播提示：超过 30 秒时弹出"接着上次看"对话框
-                if (hasResume) {
-                    _resumeEvent.tryEmit(request.startPositionMs)
-                }
-            }
-
-            // 记录播放历史（开始播放）
-            request.history?.let { history ->
-                viewModelScope.launch {
-                    recordPlayStart(history, request.title, request.startPositionMs)
-                    // 恢复播放时装载外挂字幕（仅视频）：
-                    // 历史持久化字幕优先，否则按设置尝试同目录自动识别
-                    if (!request.isAudio) {
-                        startSubtitleLoad(
-                            videoFileName = request.title,
-                            videoPath = history.storagePath ?: history.url,
-                            storageId = history.storageId,
-                            historyKey = history.uniqueKey,
-                        )
-                    }
-                }
-            }
+            applyPlaybackRequest(request)
         } ?: run {
             // 从 MusicBar 切回全屏：无新播放请求，但音频仍在后台播放。
             // ViewModel 重建后回调已在 onCleared 中置空，恢复会话并重注册，
@@ -1033,6 +960,128 @@ class PlayerViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * 应用一次播放请求：更新标题 / 宽高比 / 本地源标记，按音视频分流到
+     * [AudioPlaybackManager] 或 NxPlayer，并记录播放历史、装载外挂字幕。
+     *
+     * 由 init（首次请求）与 [playPendingRequestIfAny]（实例复用时的续发请求）共用。
+     */
+    private fun applyPlaybackRequest(request: PlaybackRequest) {
+        _title.value = request.title
+        _preReadAspectRatio.value = request.initialAspectRatio
+        // 保存请求副本，错误后重试使用
+        lastPlaybackRequest = request
+        isAudioPlayback = request.isAudio
+        _isLocalSource.value = request.source is NxMediaSource.Local
+
+        // 按请求类型过滤播放列表，避免上一会话残留的异构列表混入本次播放
+        if (_playlist.value.isNotEmpty()) {
+            val typeFilter: (PlaylistItem) -> Boolean =
+                if (request.isAudio) { item -> isAudioFile(item.fileName) }
+                else { item -> !isAudioFile(item.fileName) }
+            val filtered = _playlist.value.filter(typeFilter)
+            if (filtered.isNotEmpty()) {
+                val oldPath = _playlist.value.getOrNull(_currentIndex.value)?.filePath
+                _currentIndex.value = filtered.indexOfFirst { it.filePath == oldPath }.takeIf { it >= 0 } ?: 0
+            } else {
+                _currentIndex.value = -1
+            }
+            _playlist.value = filtered
+        }
+
+        // 提前设置 currentHistory，让 loadAudioCover() 能正常获取 history
+        request.history?.let { history ->
+            currentHistory = history
+        }
+
+        if (request.isAudio) {
+            // 音频：直接委托给 AudioPlaybackManager，单 ExoPlayer 架构
+            // 不占用 NxPlayer，无需 bridgeToBackgroundPlayback；
+            // history 一并传入，Manager 自维护当前历史（供切歌/进度保存使用）
+            audioPlaybackManager.play(
+                source = request.source,
+                title = request.title,
+                coverPath = null,
+                artist = request.title,
+                startPositionMs = request.startPositionMs,
+                playlist = _playlist.value,
+                startIndex = _currentIndex.value,
+                history = request.history,
+            )
+            // 封面/歌词提取与加载已下沉 AudioPlaybackManager（play 内部异步触发）
+            registerAudioCallbacks()
+        } else {
+            // 视频：使用 NxPlayer
+            swapStorage(request.source)
+            // 将 startPositionMs 直接传给 setSource，由 media3 在 prepare 时
+            // 自动 seek 到此位置开始下载，避免先从 0 buffer 再被 seekTo 中断。
+            player.setSource(request.source, request.startPositionMs)
+            val hasResume = request.startPositionMs > 30_000
+            player.prepare()
+            player.play()
+
+            // 续播提示：超过 30 秒时弹出"接着上次看"对话框
+            if (hasResume) {
+                _resumeEvent.tryEmit(request.startPositionMs)
+            }
+        }
+
+        // 记录播放历史（开始播放）
+        request.history?.let { history ->
+            viewModelScope.launch {
+                recordPlayStart(history, request.title, request.startPositionMs)
+                // 恢复播放时装载外挂字幕（仅视频）：
+                // 历史持久化字幕优先，否则按设置尝试同目录自动识别
+                if (!request.isAudio) {
+                    startSubtitleLoad(
+                        videoFileName = request.title,
+                        videoPath = history.storagePath ?: history.url,
+                        storageId = history.storageId,
+                        historyKey = history.uniqueKey,
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * 复用实例时消费新的播放请求（[PlayerActivity] 已在栈中、被 Intent 再次拉起时）。
+     *
+     * 有新请求则接手播放并返回 true；无请求返回 false，调用方保持现状。
+     */
+    fun playPendingRequestIfAny(): Boolean {
+        val request = playbackRequestHolder.consume() ?: return false
+        applyPlaybackRequest(request)
+        return true
+    }
+
+    /**
+     * 「用其他应用打开」：把当前本地媒体经系统选择器交给外部应用，返回是否成功。
+     * 远程源（HTTP / SMB 无本地 Uri）或不支持时返回 false。
+     */
+    fun requestOpenWithExternalApp(): Boolean {
+        val uri = localMediaUri() ?: return false
+        return ExternalMediaShare.launchOpenWith(
+            appContext,
+            uri,
+            ExternalMediaShare.mimeTypeOf(_title.value),
+        )
+    }
+
+    /** 「分享」：把当前本地媒体经系统分享面板发送，返回是否成功。 */
+    fun requestShareExternal(): Boolean {
+        val uri = localMediaUri() ?: return false
+        return ExternalMediaShare.launchShare(
+            appContext,
+            uri,
+            ExternalMediaShare.mimeTypeOf(_title.value),
+        )
+    }
+
+    /** 当前播放源的本地 Uri（仅 [NxMediaSource.Local]），供外部打开 / 分享使用。 */
+    private fun localMediaUri(): Uri? =
+        (lastPlaybackRequest?.source as? NxMediaSource.Local)?.uri
 
     /**
      * 注册 AudioPlaybackManager 回调，使播放器单例的事件由本 ViewModel 接管。

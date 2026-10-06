@@ -56,6 +56,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
@@ -73,6 +74,7 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.ScreenRotation
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material3.CircularProgressIndicator
@@ -1801,19 +1803,52 @@ fun PlayerScreen(
             .sortedBy { it.order }
             .map { it.id }
         // 更多菜单项：配置为「更多」面且可见的功能（pip 需有效尺寸才可点）
-        val moreActions = ctrlEntries
-            .filter { it.visible && it.surface == PlayerControlSurface.MORE }
-            .sortedBy { it.order }
-            .mapNotNull { e ->
-                val b = ctrlButtonUnit(e.id) ?: return@mapNotNull null
-                MoreAction(
-                    id = e.id,
-                    icon = b.icon,
-                    label = b.contentDescription,
-                    onClick = b.onClick,
-                    enabled = e.id != "pip" || videoSize.isValid,
+        val moreActions = buildList {
+            addAll(
+                ctrlEntries
+                    .filter { it.visible && it.surface == PlayerControlSurface.MORE }
+                    .sortedBy { it.order }
+                    .mapNotNull { e ->
+                        val b = ctrlButtonUnit(e.id) ?: return@mapNotNull null
+                        MoreAction(
+                            id = e.id,
+                            icon = b.icon,
+                            label = b.contentDescription,
+                            onClick = b.onClick,
+                            enabled = e.id != "pip" || videoSize.isValid,
+                        )
+                    },
+            )
+            // 本地视频：追加「用其他应用打开 / 分享」（随源出现，不参与控制栏自定义）
+            if (isLocalSource) {
+                add(
+                    MoreAction(
+                        id = "open_with_external",
+                        icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                        label = stringResource(R.string.player_open_with),
+                        onClick = {
+                            showMoreMenu = false
+                            if (!viewModel.requestOpenWithExternalApp()) {
+                                infoOsd = context.getString(R.string.player_external_open_failed)
+                            }
+                        },
+                    ),
+                )
+                add(
+                    MoreAction(
+                        id = "share_external",
+                        icon = Icons.Rounded.Share,
+                        label = stringResource(R.string.player_share),
+                        onClick = {
+                            showMoreMenu = false
+                            if (!viewModel.requestShareExternal()) {
+                                infoOsd = context.getString(R.string.player_external_open_failed)
+                            }
+                        },
+                    ),
                 )
             }
+        }
 
         AnimatedVisibility(
             // PiP 小窗内隐藏控制栏，由系统 PiP 控件接管（画中画控件适配）

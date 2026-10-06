@@ -10,6 +10,7 @@ import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -83,6 +84,10 @@ import com.nichx.niplayer.feature.player.MusicBar
 import com.nichx.niplayer.feature.player.PlayerActivity
 import com.nichx.niplayer.navigation.NiNavHost
 import com.nichx.niplayer.navigation.Routes
+import com.nichx.niplayer.player.kernel.NxMediaSource
+import com.nichx.niplayer.player.kernel.PlaybackRequest
+import com.nichx.niplayer.player.kernel.PlaybackRequestHolder
+import com.nichx.niplayer.player.kernel.isAudioFile
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -92,6 +97,17 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var audioPlaybackManager: AudioPlaybackManager
 
     @Inject lateinit var appMessageController: AppMessageController
+
+    @Inject lateinit var playbackRequestHolder: PlaybackRequestHolder
+
+    /**
+     * 被其他软件调用时暂存的待播放媒体。
+     *
+     * onCreate（冷启动）/ onNewIntent（已在前台）解析外部 Intent 后写入此状态，
+     * 由 Compose 内的 LaunchedEffect 消费——此刻导航控制器已就绪，可安全路由到
+     * 视频播放器（PlayerActivity）或音频播放页（AUDIO_PLAYER）。
+     */
+    private var pendingExternalMedia by mutableStateOf<ExternalMediaRequest?>(null)
 
     /**
      * 启动权限请求器（Activity Result API）。
@@ -116,6 +132,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         StartupTrace.mark("activity.onCreate")
+        // 被其他软件调用（冷启动）：解析外部 Intent，待 UI 就绪后路由到播放器。
+        // 仅在首次创建时处理，避免配置变更重建时重复触发播放。
+        if (savedInstanceState == null) handleExternalIntent(intent)
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -272,6 +291,24 @@ class MainActivity : ComponentActivity() {
                         startActivity(Intent(this, PlayerActivity::class.java))
                     }
                 }
+
+                // 被其他软件调用：外部 Intent 解析结果（pendingExternalMedia）在此——导航
+                // 控制器已就绪时——投递播放请求并路由到视频/音频播放器。
+                LaunchedEffect(pendingExternalMedia) {
+                    val media = pendingExternalMedia ?: return@LaunchedEffect
+                    pendingExternalMedia = null
+                    playbackRequestHolder.set(
+                        PlaybackRequest(
+                            source = NxMediaSource.Local(
+                                uri = media.uri,
+                                mediaId = media.uri.toString(),
+                            ),
+                            title = media.title,
+                            isAudio = media.isAudio,
+                        )
+                    )
+                    navigateToPlayer(media.isAudio)
+                }
                 // A2 修复：外部页（搜索/快速访问）请求在媒体库 tab 打开文件浏览的待办状态，
                 // 已下沉到 :feature:home 的 HomeNavGraphState（跨路由存活）
                 val homeNavState = rememberHomeNavGraphState()
@@ -378,6 +415,63 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * 被其他软件调用（已在前台/后台）：接收新的外部 Intent 并路由到播放器。
+     *
+     * 仅当此 Activity 为 singleTask 且已存在实例时才会回调（见 AndroidManifest）。
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleExternalIntent(intent)
+    }
+
+    /**
+     * 解析外部 Intent（[Intent.ACTION_VIEW] / [Intent.ACTION_SEND]），暂存待播放媒体。
+     *
+     * 读取 `EXTRA_STREAM`（分享）或 `data`（打开）中的单个媒体 Uri，结合 MIME / 扩展名
+     * 预判音视频类型，交由 Compose 内的 LaunchedEffect 完成实际播放路由。
+     */
+    private fun handleExternalIntent(intent: Intent?) {
+        val uri = extractExternalMediaUri(intent) ?: return
+        val title = queryDisplayName(uri) ?: uri.lastPathSegment ?: "media"
+        val mime = intent?.type?.takeIf { it.isNotBlank() } ?: contentResolver.getType(uri)
+        val isAudio = when {
+            mime?.startsWith("audio/") == true -> true
+            mime?.startsWith("video/") == true -> false
+            else -> isAudioFile(title)
+        }
+        pendingExternalMedia = ExternalMediaRequest(uri = uri, title = title, isAudio = isAudio)
+    }
+
+    /** 从外部 Intent 中取出单个媒体 Uri；ACTION_VIEW 取 data，ACTION_SEND 取 EXTRA_STREAM。 */
+    private fun extractExternalMediaUri(intent: Intent?): Uri? = when (intent?.action) {
+        Intent.ACTION_VIEW -> intent.data
+        Intent.ACTION_SEND ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+            }
+        else -> null
+    }
+
+    /** 查询 content:// Uri 的显示名（DISPLAY_NAME 列），用于播放标题。 */
+    private fun queryDisplayName(uri: Uri): String? = runCatching {
+        if (uri.scheme != "content") return@runCatching null
+        contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+        }
+    }.getOrNull()
+
+    /**
      * 启动时一次性申请媒体读取 + 本地网络访问权限。
      *
      * 关键：两者必须在**同一次**请求中提交（[startupPermissionLauncher] 的
@@ -407,5 +501,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+/**
+ * 由其他软件调用（打开 / 分享）传入、待播放的单个媒体。
+ *
+ * `nonce` 保证多次相同内容的请求也能触发新的播放（Compose 状态按结构相等去重）。
+ */
+private data class ExternalMediaRequest(
+    val uri: Uri,
+    val title: String,
+    val isAudio: Boolean,
+    val nonce: Long = System.nanoTime(),
+)
 
 

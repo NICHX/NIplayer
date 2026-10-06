@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.DropdownMenuItem
@@ -111,11 +113,14 @@ internal fun FileActionsSheet(
     showDelete: Boolean = false,
     isEncrypted: Boolean = false,
     isRemoteStorage: Boolean = true,
+    showExternalActions: Boolean = false,
     onDismiss: () -> Unit,
     onPlay: () -> Unit,
     onDownload: () -> Unit,
     onToggleQuickAccess: () -> Unit,
     onShowInfo: () -> Unit,
+    onOpenWith: () -> Unit = {},
+    onShare: () -> Unit = {},
     onRename: () -> Unit = {},
     onMove: () -> Unit = {},
     onDelete: () -> Unit = {},
@@ -127,7 +132,7 @@ internal fun FileActionsSheet(
     val isPlayable = !file.isDirectory && (MediaFileTypes.isVideoFile(file.name) || MediaFileTypes.isAudioFile(file.name))
 
     // 投递到全局玻璃浮层槽位（NiGlassBottomSheet，backdrop 真模糊，透明度随面板设置）
-    LaunchedEffect(file, isFavorited, canDownload, showFileManagement, isEncrypted, isRemoteStorage) {
+    LaunchedEffect(file, isFavorited, canDownload, showFileManagement, isEncrypted, isRemoteStorage, showExternalActions) {
         NiGlassOverlay.show(
             NiGlassOverlayRequest(
                 id = overlayId,
@@ -156,6 +161,18 @@ internal fun FileActionsSheet(
                     icon = Icons.Rounded.Download,
                     text = stringResource(R.string.storage_file_action_download),
                     onClick = onDownload,
+                )
+            }
+            if (showExternalActions) {
+                ActionRow(
+                    icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                    text = stringResource(R.string.storage_file_action_open_with),
+                    onClick = onOpenWith,
+                )
+                ActionRow(
+                    icon = Icons.Rounded.Share,
+                    text = stringResource(R.string.storage_file_action_share),
+                    onClick = onShare,
                 )
             }
             ActionRow(

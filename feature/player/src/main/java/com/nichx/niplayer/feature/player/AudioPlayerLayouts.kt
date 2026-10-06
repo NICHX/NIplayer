@@ -142,6 +142,9 @@ internal fun PortraitLayout(
     showDownload: Boolean = true,
     sleepTimerText: String = "",
     onSleepTimer: () -> Unit = {},
+    showExternalActions: Boolean = false,
+    onOpenWith: () -> Unit = {},
+    onShare: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
 
@@ -161,6 +164,9 @@ internal fun PortraitLayout(
             showDownload = showDownload,
             sleepTimerText = sleepTimerText,
             onSleepTimer = onSleepTimer,
+            showExternalActions = showExternalActions,
+            onOpenWith = onOpenWith,
+            onShare = onShare,
         )
 
         Box(
@@ -334,6 +340,9 @@ internal fun LandscapeLayout(
     showDownload: Boolean = true,
     sleepTimerText: String = "",
     onSleepTimer: () -> Unit = {},
+    showExternalActions: Boolean = false,
+    onOpenWith: () -> Unit = {},
+    onShare: () -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     // 大屏（平板/大屏手机横屏）下歌词行数更多，配合 LyricsView 内部字号/行高自适应放大
@@ -460,6 +469,9 @@ internal fun LandscapeLayout(
                             showDownload = showDownload,
                             sleepTimerText = sleepTimerText,
                             onSleepTimer = onSleepTimer,
+                            showExternalActions = showExternalActions,
+                            onOpenWith = onOpenWith,
+                            onShare = onShare,
                         )
                     }
 

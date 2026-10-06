@@ -75,6 +75,19 @@ fun AudioPlayerScreen(
     val sleepTimerText = sleepTimerRemaining?.let { formatSleepTimer(it) } ?: ""
     var showSleepTimerDialog by rememberSaveable { mutableStateOf(false) }
 
+    // 外部打开 / 分享失败提示（仅本地源显示入口，失败时提示）
+    val externalOpenFailedMsg = stringResource(R.string.player_external_open_failed)
+    val onOpenWith: () -> Unit = {
+        if (audioPlaybackManager?.requestOpenWithExternalApp() == false) {
+            messageController.post(NiMessage.info(externalOpenFailedMsg))
+        }
+    }
+    val onShareExternal: () -> Unit = {
+        if (audioPlaybackManager?.requestShareExternal() == false) {
+            messageController.post(NiMessage.info(externalOpenFailedMsg))
+        }
+    }
+
     val hasActiveContent = title.isNotEmpty()
 
     // 播放模式由 AudioPlaybackManager 统一管理（含持久化），UI 只读订阅
@@ -169,6 +182,9 @@ fun AudioPlayerScreen(
                 showDownload = !isLocalSource,
                 sleepTimerText = sleepTimerText,
                 onSleepTimer = { showSleepTimerDialog = true },
+                showExternalActions = isLocalSource,
+                onOpenWith = onOpenWith,
+                onShare = onShareExternal,
             )
         } else {
             PortraitLayout(
@@ -205,6 +221,9 @@ fun AudioPlayerScreen(
                 showDownload = !isLocalSource,
                 sleepTimerText = sleepTimerText,
                 onSleepTimer = { showSleepTimerDialog = true },
+                showExternalActions = isLocalSource,
+                onOpenWith = onOpenWith,
+                onShare = onShareExternal,
             )
         }
 
