@@ -12,7 +12,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import android.util.Size
 import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.datastore.ThumbnailFramePosition
 import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.storage.impl.SmbMediaDataSource
@@ -44,40 +46,52 @@ internal sealed interface FrameExtraction {
  */
 internal class VideoFrameExtractor(private val context: Context) {
 
-    /** 按用户配置的取帧位置策略 [positionKey] 取帧。 */
+    /** 按用户配置的取帧位置策略 [position] 取帧。 */
     suspend fun extract(
         storage: Storage,
         file: StorageFile,
-        positionKey: String,
+        position: ThumbnailFramePosition,
         skipDurationCheck: Boolean,
     ): FrameExtraction {
         val startedAt = SystemClock.elapsedRealtime()
+        val isRemote = storage.library.mediaType != MediaType.LOCAL_STORAGE
 
-        // 远程 MKV 优先走「自解析头部 + MediaCodec」路径：它不依赖容器索引、读取量固定（~16MB），
-        // 而 MediaMetadataRetriever 在无可用索引的容器上会从第 0 字节顺序扫全文件（实测 2034MB/集、70s）。
-        // 提到最前可避免先白烧一次读取预算；此路径失败才回退到 Retriever。
-        if (file.name.endsWith(".mkv", ignoreCase = true) &&
-            storage.library.mediaType != MediaType.LOCAL_STORAGE
-        ) {
-            val bitmap = extractMkvFirstFrame(storage, file, positionKey)
-            if (bitmap != null) {
+        // 本地 MediaStore 视频优先用「系统缩略图」（MediaProvider 生成/缓存）：
+        // 它不占用本进程的 MediaMetadataRetriever 配额。该配额在 MIUI 等机型上是**全局**的
+        // （系统日志 `MAX_METADATA_RESOURCE:4`），常被系统/其他应用占满，导致本进程
+        // `getFrameAtTime` 直接超时返回 null —— 表现为本地媒体库所有视频都没有缩略图。
+        // 系统缩略图不可得（fileId=0 的扩展目录文件、API<29、无缩略图）时再回退 retriever。
+        if (storage.library.mediaType == MediaType.LOCAL_STORAGE) {
+            loadSystemThumbnail(storage, file)?.let { bitmap ->
                 val scaled = scaleToMaxWidth(bitmap, ThumbnailManager.MAX_WIDTH)
                 if (scaled !== bitmap) bitmap.recycle()
                 Log.d(
                     TAG,
-                    "extract ok: ${file.name} ${SystemClock.elapsedRealtime() - startedAt}ms",
+                    "extract ok: ${file.name} src=system/${SystemClock.elapsedRealtime() - startedAt}ms",
                 )
                 return FrameExtraction.Ok(scaled)
             }
         }
 
+        // 远程视频走 ffmpeg 本地软解（不占用系统取帧资源池），避免多路并发时撞上
+        // 「Acquire metadata retriever resource timeout!!」（实测 MP4 曾因此单集耗 24s 且失败）；
+        // 实测覆盖 mp4/mkv/ts/rmvb 等常见容器，失败才回退 MediaMetadataRetriever。
+        if (isRemote) {
+            extractRemoteViaFfmpeg(storage, file, position)?.let { bitmap ->
+                val scaled = scaleToMaxWidth(bitmap, ThumbnailManager.MAX_WIDTH)
+                if (scaled !== bitmap) bitmap.recycle()
+                Log.d(TAG, "extract ok: ${file.name} ${SystemClock.elapsedRealtime() - startedAt}ms")
+                return FrameExtraction.Ok(scaled)
+            }
+        }
+
         val (extraction, dataSource) = withRetriever(storage, file) { retriever, _ ->
-            val positions = framePositionsFor(retriever, positionKey, skipDurationCheck)
+            val positions = framePositionsFor(retriever, position, skipDurationCheck)
             readFrame(retriever, positions)
         }
 
-        // 读取预算耗尽：说明这个容器没有取帧器可用的索引，按时间点取帧会退化成全文件扫描。
-        // MKV 已在方法开头走过自解析头部路径，这里不再重试，直接判永久失败（上层记「不重试」）。
+        // 读取预算耗尽：说明这个容器没有取帧器可用的索引，按时间点取帧会退化成全文件扫描，
+        // 直接判永久失败（上层记「不重试」）。
         if ((dataSource as? SmbMediaDataSource)?.budgetExceeded == true) {
             Log.w(TAG, "read budget exceeded, skip without retry: ${file.name}")
             val result = FrameExtraction.PermanentFailure
@@ -90,40 +104,80 @@ internal class VideoFrameExtractor(private val context: Context) {
         return result
     }
 
-    private suspend fun extractMkvFirstFrame(
+    /**
+     * 读取系统（MediaProvider）为本地 MediaStore 视频生成的缩略图。
+     *
+     * 走 [android.content.ContentResolver.loadThumbnail]（API 29+），由系统媒体库进程负责生成/缓存，
+     * **不占用本进程的 [MediaMetadataRetriever] 配额**，因此在 MIUI 等把该配额全局化、易被他方占满的
+     * 机型上，是本地视频缩略图最可靠的取图方式。
+     *
+     * 仅对 `content://` 播放地址生效；扩展目录（fileId=0，`file://`）或系统取图失败时返回 null，
+     * 由调用方回退到 [MediaMetadataRetriever]。
+     */
+    private suspend fun loadSystemThumbnail(storage: Storage, file: StorageFile): Bitmap? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val url = try {
+            storage.createPlayUrl(file)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "loadSystemThumbnail createPlayUrl failed: ${e.message}")
+            null
+        } ?: return null
+        if (!url.startsWith("content", ignoreCase = true)) return null
+        return try {
+            context.contentResolver.loadThumbnail(
+                Uri.parse(url),
+                Size(ThumbnailManager.MAX_WIDTH, ThumbnailManager.MAX_WIDTH),
+                null,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.d(TAG, "loadSystemThumbnail failed: ${file.name} ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun openMediaDataSource(storage: Storage, file: StorageFile): MediaDataSource? = try {
+        storage.openMediaDataSource(file)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "openMediaDataSource failed: ${e.message}")
+        null
+    }
+
+    /**
+     * 远程视频取帧：统一走 **ffmpeg 本地软解**（不占用系统取帧资源池）。
+     *
+     * libavformat 走索引 seek + 软解少量帧，读取量小（实测 4K MKV/MP4 约 6~8MB），远小于
+     * MediaExtractor 在同一文件上的 46~65MB；覆盖 matroska、mov(mp4)、mpegts、avi、flv、asf、rmvb 等。
+     * 不可用（`.so` 未打包）或解码失败时返回 null，由调用方回退 [MediaMetadataRetriever]。
+     */
+    private suspend fun extractRemoteViaFfmpeg(
         storage: Storage,
         file: StorageFile,
-        positionKey: String,
+        position: ThumbnailFramePosition,
     ): Bitmap? {
-        if (MkvFfmpegDecoder.isAvailable) {
-            val source = try {
-                storage.openMediaDataSource(file)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "openMediaDataSource failed: ${e.message}")
-                null
-            }
-            if (source != null) {
-                val (startMs, fraction) = mkvPosition(positionKey)
-                val bitmap = decodeMkvWithFfmpeg(source, startMs, fraction)
-                if (bitmap != null) return bitmap
-            }
-        }
-        return MkvFirstFrameExtractor.extract(storage, file)
+        if (!FfmpegFrameDecoder.isAvailable) return null
+        val source = openMediaDataSource(storage, file) ?: return null
+        val (startMs, fraction) = decodePosition(position)
+        return decodeWithFfmpeg(source, startMs, fraction)
     }
 
-    private fun mkvPosition(positionKey: String): Pair<Long, Double> = when (positionKey) {
-        "10pct" -> -1L to 0.1
-        "50pct" -> -1L to 0.5
-        else -> 5000L to -1.0
+    /** 取帧位置 → ffmpeg 入参（startMs 或 fraction，二选一）。 */
+    private fun decodePosition(position: ThumbnailFramePosition): Pair<Long, Double> = when (position) {
+        ThumbnailFramePosition.POS_10_PCT -> -1L to 0.1
+        ThumbnailFramePosition.POS_50_PCT -> -1L to 0.5
+        ThumbnailFramePosition.POS_5S -> DEFAULT_FRAME_MS to -1.0
     }
 
-    private fun decodeMkvWithFfmpeg(source: MediaDataSource, startMs: Long, fraction: Double): Bitmap? {
+    private fun decodeWithFfmpeg(source: MediaDataSource, startMs: Long, fraction: Double): Bitmap? {
         return try {
-            MkvFfmpegDecoder.decodeFirstFrame(source, ThumbnailManager.MAX_WIDTH, startMs, fraction)
+            FfmpegFrameDecoder.decodeFirstFrame(source, ThumbnailManager.MAX_WIDTH, startMs, fraction)
         } catch (e: Exception) {
-            Log.w(TAG, "ffmpeg mkv decode failed: ${e.message}")
+            Log.w(TAG, "ffmpeg decode failed: ${e.message}")
             null
         } finally {
             try {
@@ -197,9 +251,9 @@ internal class VideoFrameExtractor(private val context: Context) {
         storage: Storage,
         file: StorageFile,
         block: (MediaMetadataRetriever, MediaDataSource?) -> FrameExtraction,
-    ): Pair<FrameExtraction, MediaDataSource?> {
+    ): Pair<FrameExtraction, MediaDataSource?> = RetrieverGate.withPermit {
         val url = storage.createPlayUrl(file)
-        return when {
+        when {
             url != null && (url.startsWith("file") || url.startsWith("content")) ->
                 useUrlUri(url, block)
 
@@ -323,7 +377,7 @@ internal class VideoFrameExtractor(private val context: Context) {
 // ---------- 位置选择与解码（顶层纯函数，便于复用与测试） ----------
 
 /**
- * 计算按 [positionKey] 的候选取帧位置（毫秒）。
+ * 计算按 [position] 的候选取帧位置（毫秒）。
  *
  * - 短视频（durationMs < [ThumbnailManager.MIN_DURATION_MS]）且未跳过检查 → 取第一个关键帧
  * - 否则用户配置位置优先，再回退 10% / 50%
@@ -331,7 +385,7 @@ internal class VideoFrameExtractor(private val context: Context) {
  */
 internal fun framePositionsFor(
     retriever: MediaMetadataRetriever,
-    positionKey: String,
+    position: ThumbnailFramePosition,
     skipDurationCheck: Boolean,
 ): List<Long> {
     val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
@@ -342,7 +396,7 @@ internal fun framePositionsFor(
         return positions
     }
     positions.add(
-        if (durationMs != null) calculateFramePositionMs(durationMs, positionKey) else DEFAULT_FRAME_MS
+        if (durationMs != null) calculateFramePositionMs(durationMs, position) else DEFAULT_FRAME_MS
     )
     if (durationMs != null) {
         val tenPct = (durationMs * 0.1).toLong()

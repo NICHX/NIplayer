@@ -6,6 +6,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.datastore.ThumbnailFramePosition
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.storage.AbstractStorageFile
@@ -42,7 +43,8 @@ import javax.inject.Singleton
  * 与旧实现的差异（简化）：
  * - 移除失败冷却 TTL 表、`mutexMap` 逐键清理；
  * - 并发去重改为固定大小的**条带锁池**（按 key 哈希取锁，有界、无需清理）；
- * - 取帧并发按 storageId 统一收口到 [extractionGates]（见该字段说明）。
+ * - 取帧并发按 storageId 统一收口到 [extractionGates]（网络读写），真正的解码再由进程级
+ *   [decodeGate] 收口（见该字段说明）；[MediaMetadataRetriever] 兜底另有更严的 [RetrieverGate]。
  * - 缓存文件名 `MD5("$storageId-$filePath").jpg` 与 `.thumb`/`.cover` 命名约定**保持不变**。
  *
  * 双层缓存：
@@ -87,18 +89,36 @@ class ThumbnailManager @Inject constructor(
     private fun extractionGate(storageId: Int, permits: Int): Semaphore =
         extractionGates.computeIfAbsent(storageId) { Semaphore(permits.coerceAtLeast(1)) }
 
+    /**
+     * 取帧**解码**的进程级并发闸门（与 retriever 额度正交）。
+     *
+     * 需要它的原因：
+     * - [extractionGates] 只按 storageId 限流，跨存储源（同时开 SMB + WebDAV）会叠加；本地存储默认 6，
+     *   会同时发起过多 4K 解码。
+     * - ffmpeg 路径是**软件解码**（4K HEVC 很吃 CPU）；MediaExtractor 路径会创建**硬件 MediaCodec**
+     *   （系统对同时存在的解码器实例也有限制）。
+     *
+     * 故把「真正解码」统一收口到这里，取 4：足够并行，又不至于把 CPU / 硬件解码器挤爆。
+     *
+     * 与 [RetrieverGate] 的分工：后者只约束 [MediaMetadataRetriever] 实例（系统全局上限 4），由
+     * [FrameExtractor.withRetriever] 在真正用到 retriever 时才申请。**不要**用它来限制
+     * ffmpeg / MediaExtractor 路径 —— 那些路径不需要该额度，套上去只会白白串行化
+     * （曾因此让 83 集只跑 2 路、每集多等约 1.3s）。
+     */
+    private val decodeGate = Semaphore(DECODE_CONCURRENCY)
+
     // ---------- 视频缩略图 ----------
 
     /**
      * 生成视频缩略图（纯本地生成 + 缓存，不含上传）。
      *
-     * @param positionKey 取帧位置策略 key（见 [ThumbnailSettings.framePositionKey]）
+     * @param position 取帧位置策略（见 [ThumbnailSettings.framePosition]）
      */
     suspend fun generateThumbnail(
         storage: Storage,
         storageId: Int,
         file: StorageFile,
-        positionKey: String = DEFAULT_POSITION_KEY,
+        position: ThumbnailFramePosition = ThumbnailFramePosition.POS_5S,
     ): ThumbnailResult = withContext(Dispatchers.IO) {
         require(MediaFileTypes.isVideoFile(file.name)) {
             "generateThumbnail 要求视频文件，收到 ${file.name}"
@@ -111,12 +131,14 @@ class ThumbnailManager @Inject constructor(
             if (cacheFile.exists()) return@withLock ThumbnailResult.Success(cacheFile.absolutePath)
             val skipDurationCheck = storage.library.mediaType == MediaType.LOCAL_STORAGE
             extractionGate(storageId, storage.thumbnailConcurrency).withPermit {
-                when (val extraction = videoExtractor.extract(storage, file, positionKey, skipDurationCheck)) {
-                    is FrameExtraction.Ok -> ThumbnailResult.Success(
-                        store.writeJpeg(cacheFile, extraction.bitmap),
-                    )
-                    FrameExtraction.Failed -> ThumbnailResult.Failed
-                    FrameExtraction.PermanentFailure -> ThumbnailResult.PermanentFailure
+                decodeGate.withPermit {
+                    when (val extraction = videoExtractor.extract(storage, file, position, skipDurationCheck)) {
+                        is FrameExtraction.Ok -> ThumbnailResult.Success(
+                            store.writeJpeg(cacheFile, extraction.bitmap),
+                        )
+                        FrameExtraction.Failed -> ThumbnailResult.Failed
+                        FrameExtraction.PermanentFailure -> ThumbnailResult.PermanentFailure
+                    }
                 }
             }
         }
@@ -151,23 +173,27 @@ class ThumbnailManager @Inject constructor(
         // 落临时文件 + 原子覆盖均在锁内完成，避免同一文件并发时 tmp 被彼此覆盖/改名
         val result = lockFor(cacheFile.name).withLock {
             val skipDurationCheck = storage.library.mediaType == MediaType.LOCAL_STORAGE
-            when (val extraction = videoExtractor.extractAt(storage, file, positionMs, skipDurationCheck)) {
-                is FrameExtraction.Ok -> {
-                    store.writeJpeg(tmpFile, extraction.bitmap)
-                    if (tmpFile.renameTo(cacheFile)) {
-                        ThumbnailResult.Success(cacheFile.absolutePath)
-                    } else {
-                        tmpFile.delete()
-                        ThumbnailResult.Failed
+            extractionGate(storageId, storage.thumbnailConcurrency).withPermit {
+                decodeGate.withPermit {
+                    when (val extraction = videoExtractor.extractAt(storage, file, positionMs, skipDurationCheck)) {
+                        is FrameExtraction.Ok -> {
+                            store.writeJpeg(tmpFile, extraction.bitmap)
+                            if (tmpFile.renameTo(cacheFile)) {
+                                ThumbnailResult.Success(cacheFile.absolutePath)
+                            } else {
+                                tmpFile.delete()
+                                ThumbnailResult.Failed
+                            }
+                        }
+                        FrameExtraction.Failed -> {
+                            tmpFile.delete()
+                            ThumbnailResult.Failed
+                        }
+                        FrameExtraction.PermanentFailure -> {
+                            tmpFile.delete()
+                            ThumbnailResult.PermanentFailure
+                        }
                     }
-                }
-                FrameExtraction.Failed -> {
-                    tmpFile.delete()
-                    ThumbnailResult.Failed
-                }
-                FrameExtraction.PermanentFailure -> {
-                    tmpFile.delete()
-                    ThumbnailResult.PermanentFailure
                 }
             }
         }
@@ -224,7 +250,9 @@ class ThumbnailManager @Inject constructor(
         val result = lockFor(cacheFile.name).withLock {
             if (cacheFile.exists()) return@withLock cacheFile.absolutePath
             extractionGate(storageId, storage.thumbnailConcurrency).withPermit {
-                if (audioExtractor.extract(storage, storageId, file, cacheFile)) cacheFile.absolutePath else null
+                decodeGate.withPermit {
+                    if (audioExtractor.extract(storage, storageId, file, cacheFile)) cacheFile.absolutePath else null
+                }
             }
         }
         store.trimIfNeeded(store.audioDir)
@@ -247,6 +275,8 @@ class ThumbnailManager @Inject constructor(
 
         val ok = lockFor(cacheFile.name).withLock {
             if (cacheFile.exists()) return@withLock true
+            // 图片经 BitmapFactory 流式降采样解码，成本远低于视频软解/硬解，故只受
+            // [extractionGate]（网络读取）限制，不占用为视频解码而设的 [decodeGate]。
             extractionGate(storageId, storage.thumbnailConcurrency).withPermit {
                 imageExtractor.extract(storage, file, cacheFile)
             }
@@ -316,7 +346,7 @@ class ThumbnailManager @Inject constructor(
                     semaphore.withPermit {
                         try {
                             val file = req.toStorageFile()
-                            val result = generateThumbnail(storage, storageId, file, ThumbnailSettings.framePositionKey)
+                            val result = generateThumbnail(storage, storageId, file, ThumbnailSettings.framePosition)
                             if (result is ThumbnailResult.Success) {
                                 onLoaded(req.url, result.path)
                                 successFiles.add(file)
@@ -526,18 +556,25 @@ class ThumbnailManager @Inject constructor(
 
         /** 条带锁池大小。 */
         private const val LOCK_STRIPES = 64
+
+        /**
+         * 同时解码（ffmpeg 软解 / MediaExtractor 硬解）的路数上限，见 [decodeGate]。
+         *
+         * 4 是"够并行又不挤爆"的折中：ffmpeg 软解 4K HEVC 很吃 CPU，硬解实例数也有限；
+         * retriever 兜底另有更严的 [RetrieverGate]（2）单独约束。
+         */
+        private const val DECODE_CONCURRENCY = 4
     }
 }
 
 /**
- * 根据 [ThumbnailSettings] 的配置计算取帧位置（毫秒），始终落在 `[0, durationMs]`。
+ * 根据 [ThumbnailFramePosition] 计算取帧位置（毫秒），始终落在 `[0, durationMs]`。
  */
-fun calculateFramePositionMs(durationMs: Long, positionKey: String): Long {
-    val frameMs = when (positionKey) {
-        "5s" -> 5000L
-        "10pct" -> (durationMs * 0.1).toLong()
-        "50pct" -> (durationMs * 0.5).toLong()
-        else -> 5000L
+fun calculateFramePositionMs(durationMs: Long, position: ThumbnailFramePosition): Long {
+    val frameMs = when (position) {
+        ThumbnailFramePosition.POS_5S -> 5000L
+        ThumbnailFramePosition.POS_10_PCT -> (durationMs * 0.1).toLong()
+        ThumbnailFramePosition.POS_50_PCT -> (durationMs * 0.5).toLong()
     }
     val upper = durationMs.coerceAtLeast(0L)
     return frameMs.coerceIn(0L, upper)
@@ -545,6 +582,3 @@ fun calculateFramePositionMs(durationMs: Long, positionKey: String): Long {
 
 /** 默认取帧位置（第 5 秒）。 */
 const val DEFAULT_FRAME_MS = 5000L
-
-/** 默认取帧位置策略 key。 */
-const val DEFAULT_POSITION_KEY = "5s"

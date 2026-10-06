@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFile
+import com.nichx.niplayer.thumbnail.RetrieverGate
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import java.io.File
 import java.util.concurrent.Executors
@@ -79,7 +80,10 @@ object PrePlayAspectReader {
 
         // 2) 回退 MediaMetadataRetriever（本地/远程）。工作挂在独立 scope 上，超时只放弃「等待」，
         //    被放弃的任务自行跑完并在 finally 中释放 retriever / dataSource。
-        val deferred = scope.async { readVideoAspectRatio(context, storage, file) }
+        //    经 [RetrieverGate] 与缩略图取帧等调用方统一收口，避免把系统全局取帧名额占满。
+        val deferred = scope.async {
+            RetrieverGate.withPermit { readVideoAspectRatio(context, storage, file) }
+        }
         val aspect = withTimeoutOrNull(PRE_PLAY_ASPECT_TIMEOUT_MS) { deferred.await() }
         if (aspect == null) deferred.cancel()
         Log.d(

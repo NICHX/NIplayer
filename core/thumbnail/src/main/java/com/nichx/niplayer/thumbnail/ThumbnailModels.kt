@@ -5,12 +5,6 @@ sealed class ThumbnailResult {
     /** 生成成功，path 为本地 JPEG 文件绝对路径。 */
     data class Success(val path: String) : ThumbnailResult()
 
-    /**
-     * 历史遗留结果类型，当前业务不再生产：短视频（< [ThumbnailManager.MIN_DURATION_MS]）
-     * 改为取第一个关键帧生成缩略图，仅保留以兼容旧调用方对 when 的穷尽性检查。
-     */
-    data object TooShort : ThumbnailResult()
-
     /** 生成失败（IO 错误、解码失败等）。 */
     data object Failed : ThumbnailResult()
 

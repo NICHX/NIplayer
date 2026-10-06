@@ -56,10 +56,13 @@ object ThumbnailSettings {
         get() = mmkv.decodeBool(KEY_SAVE_IN_SAME_DIR, true)
         set(value) { mmkv.encode(KEY_SAVE_IN_SAME_DIR, value) }
 
-    /** 取帧位置策略 key。默认 "5s"。 */
-    var framePositionKey: String
-        get() = mmkv.decodeString(KEY_FRAME_POSITION, "5s") ?: "5s"
-        set(value) { mmkv.encode(KEY_FRAME_POSITION, value) }
+    /** 取帧位置策略。默认 [ThumbnailFramePosition.POS_5S]。 */
+    var framePosition: ThumbnailFramePosition
+        get() = ThumbnailFramePosition.fromKey(
+            mmkv.decodeString(KEY_FRAME_POSITION, ThumbnailFramePosition.POS_5S.key)
+                ?: ThumbnailFramePosition.POS_5S.key,
+        )
+        set(value) { mmkv.encode(KEY_FRAME_POSITION, value.key) }
 
     /**
      * 退出播放后是否用最后一帧更新列表缩略图。默认 false（保持默认缩略图）。

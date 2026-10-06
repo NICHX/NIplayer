@@ -46,7 +46,7 @@ find_library(z_lib z)
 add_library(ffmpegJNI
             SHARED
             ffmpeg_jni.cc
-            mkv_thumbnail_jni.cc)
+            ffmpeg_frame_jni.cc)
 
 target_link_libraries(ffmpegJNI
                       PRIVATE android
