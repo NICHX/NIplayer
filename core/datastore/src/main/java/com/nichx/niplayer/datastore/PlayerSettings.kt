@@ -6,9 +6,10 @@ import com.tencent.mmkv.MMKV
  * 音频播放器外观样式。
  *
  * - [VINYL]：黑胶唱片（默认，保持既有观感）。
- * - [GLASS]：液态玻璃 / 模糊封面（新增，封面高斯模糊铺底 + 磨砂玻璃控制面板）。
+ * - [GLASS]：简约封面（保留模糊封面背景与方形封面卡，控件与黑胶一致，无玻璃质感）。
+ * - [APPLE_MUSIC]：Apple Music 风格（封面主色渐变背景 + 极简扁平控件 + 左对齐大字歌词）。
  */
-enum class AudioPlayerStyle { VINYL, GLASS }
+enum class AudioPlayerStyle { VINYL, GLASS, APPLE_MUSIC }
 
 /**
  * 播放器偏好设置（MMKV）。

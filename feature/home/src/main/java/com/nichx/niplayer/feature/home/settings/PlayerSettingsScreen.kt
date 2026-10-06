@@ -111,6 +111,7 @@ fun PlayerSettingsScreen(
         else -> stringResource(R.string.player_orientation_landscape)
     }
     val audioStyleLabel = when (audioPlayerStyle) {
+        AudioPlayerStyle.APPLE_MUSIC -> stringResource(R.string.player_audio_appearance_apple_music)
         AudioPlayerStyle.GLASS -> stringResource(R.string.player_audio_appearance_glass)
         AudioPlayerStyle.VINYL -> stringResource(R.string.player_audio_appearance_vinyl)
     }
@@ -242,6 +243,7 @@ fun PlayerSettingsScreen(
             items = listOf(
                 AudioPlayerStyle.VINYL to stringResource(R.string.player_audio_appearance_vinyl),
                 AudioPlayerStyle.GLASS to stringResource(R.string.player_audio_appearance_glass),
+                AudioPlayerStyle.APPLE_MUSIC to stringResource(R.string.player_audio_appearance_apple_music),
             )
                 .map { (option, label) ->
                     NiDialogItem(

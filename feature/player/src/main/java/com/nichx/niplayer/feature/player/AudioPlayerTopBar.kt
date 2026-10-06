@@ -19,7 +19,9 @@ import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.DropdownMenuItem
@@ -27,6 +29,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import com.nichx.niplayer.datastore.AudioPlayerStyle
 import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,7 +43,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -51,7 +53,7 @@ import androidx.compose.ui.unit.sp
 
 
 /** 播放器顶栏"更多"下拉菜单的页面态（单一玻璃菜单原地切换，避免子菜单开合时闪烁）。 */
-internal enum class MoreMenuPage { Idle, Main, Speed }
+internal enum class MoreMenuPage { Idle, Main, Speed, Appearance }
 
 /**
  * 顶栏操作按钮组：更多（内含倍速二级菜单 / 均衡器 / 睡眠定时 / 下载）。
@@ -71,15 +73,30 @@ internal fun TopBarActions(
     showExternalActions: Boolean = false,
     onOpenWith: () -> Unit = {},
     onShare: () -> Unit = {},
-    appearanceIcon: ImageVector? = null,
-    appearanceLabel: String = "",
-    onCycleAppearance: () -> Unit = {},
-    glassButtons: Boolean = false,
-    backdrop: com.kyant.backdrop.Backdrop? = null,
+    appleStyle: Boolean = false,
+    /** Apple 主题把「更多」移到标题行，顶栏只保留返回。 */
+    showMore: Boolean = true,
+    /** 非空时在菜单里提供「外观」二级菜单用于切换主题。 */
+    audioStyle: AudioPlayerStyle? = null,
+    onStyleSelect: (AudioPlayerStyle) -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
     val primary = MaterialTheme.colorScheme.primary
+    // Apple Music 风格：更多按钮为浅色圆底 + 横向三点
+    val moreContainerColor = if (appleStyle) Color.White.copy(alpha = 0.16f) else onSurface.copy(alpha = 0.08f)
+    val moreIconColor = if (appleStyle) Color.White else onSurface.copy(alpha = 0.8f)
+    val moreIcon = if (appleStyle) Icons.Rounded.MoreHoriz else Icons.Rounded.MoreVert
+    val moreButtonSize = if (appleStyle) 44.dp else 40.dp
+    // 外观三个选项的名称（子菜单用）
+    val vinylStyleName = stringResource(R.string.player_audio_appearance_vinyl)
+    val glassStyleName = stringResource(R.string.player_audio_appearance_glass)
+    val appleMusicStyleName = stringResource(R.string.player_audio_appearance_apple_music)
+    fun styleNameOf(option: AudioPlayerStyle): String = when (option) {
+        AudioPlayerStyle.VINYL -> vinylStyleName
+        AudioPlayerStyle.GLASS -> glassStyleName
+        AudioPlayerStyle.APPLE_MUSIC -> appleMusicStyleName
+    }
     var menuPage by remember { mutableStateOf(MoreMenuPage.Idle) }
     // 更多/子菜单锚点（More 按钮屏幕坐标，供玻璃菜单定位）
     var moreMenuAnchor by remember { mutableStateOf(Offset.Zero) }
@@ -105,62 +122,27 @@ internal fun TopBarActions(
                     .clickable { onSleepTimer() },
             )
         }
-        // 外观切换：黑胶 ↔ 液态玻璃，一键循环（与玻璃布局共用同一入口语义）
-        if (appearanceIcon != null && !glassButtons) {
-            IconButton(onClick = onCycleAppearance) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(onSurface.copy(alpha = 0.08f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = appearanceIcon,
-                        contentDescription = appearanceLabel,
-                        tint = onSurface.copy(alpha = 0.8f),
-                    )
-                }
-            }
-        }
-        if (appearanceIcon != null && glassButtons) {
-            GlassCircleButton(
-                onClick = onCycleAppearance,
-                icon = appearanceIcon,
-                contentDescription = appearanceLabel,
-                backdrop = backdrop,
-            )
-        }
-        // 更多：倍速（二级菜单）/ 均衡器 / 睡眠定时 / 下载 收进溢出菜单，保持顶栏简洁
-        Box(
+        // 更多：外观（二级菜单）/ 倍速（二级菜单）/ 均衡器 / 睡眠定时 / 下载 收进溢出菜单
+        if (showMore) Box(
             modifier = Modifier.onGloballyPositioned { coords ->
                 // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
                 val topLeft = coords.localToRoot(Offset.Zero)
                 moreMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
             },
         ) {
-            if (glassButtons) {
-                GlassCircleButton(
-                    onClick = { menuPage = MoreMenuPage.Main },
-                    icon = Icons.Rounded.MoreVert,
-                    contentDescription = stringResource(R.string.player_more),
-                    backdrop = backdrop,
-                )
-            } else {
-                IconButton(onClick = { menuPage = MoreMenuPage.Main }) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(onSurface.copy(alpha = 0.08f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreVert,
-                            contentDescription = stringResource(R.string.player_more),
-                            tint = onSurface.copy(alpha = 0.8f),
-                        )
-                    }
+            IconButton(onClick = { menuPage = MoreMenuPage.Main }) {
+                Box(
+                    modifier = Modifier
+                        .size(moreButtonSize)
+                        .clip(CircleShape)
+                        .background(moreContainerColor),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = moreIcon,
+                        contentDescription = stringResource(R.string.player_more),
+                        tint = moreIconColor,
+                    )
                 }
             }
             // 更多：单一玻璃菜单，按 menuPage 原地切换页面（主菜单/倍速/元数据），
@@ -173,6 +155,52 @@ internal fun TopBarActions(
             ) {
                 when (menuPage) {
                     MoreMenuPage.Main -> {
+                        // 外观：子菜单入口，尾部显示当前主题名 + 展开箭头
+                        if (audioStyle != null) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.player_appearance),
+                                        fontSize = 14.sp,
+                                        color = onSurface,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Palette,
+                                        contentDescription = null,
+                                        tint = onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                },
+                                trailingIcon = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    ) {
+                                        Text(
+                                            text = styleNameOf(audioStyle),
+                                            color = onSurfaceVariant,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                            contentDescription = null,
+                                            tint = onSurfaceVariant.copy(alpha = 0.7f),
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                },
+                                contentPadding = menuItemPadding,
+                                onClick = { menuPage = MoreMenuPage.Appearance },
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                thickness = 0.5.dp,
+                                color = onSurface.copy(alpha = 0.08f),
+                            )
+                        }
                         // 倍速：子菜单入口，尾部显示当前档位 + 展开箭头
                         DropdownMenuItem(
                             text = {
@@ -384,6 +412,53 @@ internal fun TopBarActions(
                             )
                         }
                     }
+                    MoreMenuPage.Appearance -> {
+                        // 菜单标题（本版本无 DropdownMenuHeader，用普通文本行代替）
+                        Text(
+                            text = stringResource(R.string.player_audio_appearance),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                            thickness = 0.5.dp,
+                            color = onSurface.copy(alpha = 0.08f),
+                        )
+                        listOf(
+                            AudioPlayerStyle.VINYL,
+                            AudioPlayerStyle.GLASS,
+                            AudioPlayerStyle.APPLE_MUSIC,
+                        ).forEach { option ->
+                            val selected = option == audioStyle
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = styleNameOf(option),
+                                        fontSize = 14.sp,
+                                        color = if (selected) primary else onSurface,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    )
+                                },
+                                contentPadding = menuItemPadding,
+                                onClick = {
+                                    menuPage = MoreMenuPage.Idle
+                                    onStyleSelect(option)
+                                },
+                                trailingIcon = if (selected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = primary,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                } else null,
+                            )
+                        }
+                    }
                     MoreMenuPage.Idle -> {}
                 }
             }
@@ -406,11 +481,14 @@ internal fun TopBar(
     showExternalActions: Boolean = false,
     onOpenWith: () -> Unit = {},
     onShare: () -> Unit = {},
-    appearanceIcon: ImageVector? = null,
-    appearanceLabel: String = "",
-    onCycleAppearance: () -> Unit = {},
+    appleStyle: Boolean = false,
+    showMore: Boolean = true,
+    audioStyle: AudioPlayerStyle? = null,
+    onStyleSelect: (AudioPlayerStyle) -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
+    val backContainerColor = if (appleStyle) Color.Transparent else onSurface.copy(alpha = 0.08f)
+    val iconTint = if (appleStyle) Color.White.copy(alpha = 0.9f) else onSurface.copy(alpha = 0.8f)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -422,13 +500,13 @@ internal fun TopBar(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(onSurface.copy(alpha = 0.08f)),
+                    .background(backContainerColor),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                     contentDescription = stringResource(R.string.player_back),
-                    tint = onSurface.copy(alpha = 0.8f),
+                    tint = iconTint,
                 )
             }
         }
@@ -438,7 +516,7 @@ internal fun TopBar(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = onSurface.copy(alpha = 0.9f),
+                color = if (appleStyle) Color.White.copy(alpha = 0.9f) else onSurface.copy(alpha = 0.9f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -459,9 +537,10 @@ internal fun TopBar(
             showExternalActions = showExternalActions,
             onOpenWith = onOpenWith,
             onShare = onShare,
-            appearanceIcon = appearanceIcon,
-            appearanceLabel = appearanceLabel,
-            onCycleAppearance = onCycleAppearance,
+            appleStyle = appleStyle,
+            showMore = showMore,
+            audioStyle = audioStyle,
+            onStyleSelect = onStyleSelect,
         )
     }
 }

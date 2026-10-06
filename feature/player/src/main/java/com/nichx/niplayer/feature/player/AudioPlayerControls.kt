@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -48,24 +49,24 @@ internal fun ThinProgressBar(
     positionMs: Long,
     durationMs: Long,
     modifier: Modifier = Modifier,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    trackColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
 ) {
     val progress = if (durationMs > 0) {
         (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val primary = MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
             .height(3.dp)
-            .background(onSurface.copy(alpha = 0.12f)),
+            .background(trackColor),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(progress)
                 .fillMaxHeight()
-                .background(primary),
+                .background(accentColor),
         )
     }
 }
@@ -93,16 +94,25 @@ internal fun ControlColumn(
     onCyclePlayMode: () -> Unit,
     onShowPlaylist: () -> Unit,
     compact: Boolean = false,
+    appleStyle: Boolean = false,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ProgressSection(
-            positionMs = positionMs,
-            durationMs = durationMs,
-            onSeek = onSeek,
-        )
+        if (appleStyle) {
+            AppleProgressSection(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                onSeek = onSeek,
+            )
+        } else {
+            ProgressSection(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                onSeek = onSeek,
+            )
+        }
 
         Spacer(modifier = Modifier.height(if (compact) 6.dp else 8.dp))
 
@@ -120,6 +130,7 @@ internal fun ControlColumn(
             onCyclePlayMode = onCyclePlayMode,
             onShowPlaylist = onShowPlaylist,
             compact = compact,
+            appleStyle = appleStyle,
         )
     }
 }
@@ -198,14 +209,20 @@ internal fun PlaybackControls(
     onCyclePlayMode: () -> Unit,
     onShowPlaylist: () -> Unit,
     compact: Boolean = false,
+    appleStyle: Boolean = false,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val primary = MaterialTheme.colorScheme.primary
-    val sideSize = if (compact) 38.dp else 42.dp
-    val sideIconSize = if (compact) 24.dp else 28.dp
-    val mainSize = if (compact) 56.dp else 64.dp
-    val mainIconSize = if (compact) 32.dp else 36.dp
-    val gap = if (compact) 12.dp else 16.dp
+    // Apple Music 风格：控件更大、无圆形底色、纯白图标
+    val sideSize = when { appleStyle -> 46.dp; compact -> 38.dp; else -> 42.dp }
+    val sideIconSize = when { appleStyle -> 30.dp; compact -> 24.dp; else -> 28.dp }
+    val mainSize = when { appleStyle -> 72.dp; compact -> 56.dp; else -> 64.dp }
+    val mainIconSize = when { appleStyle -> 52.dp; compact -> 32.dp; else -> 36.dp }
+    val gap = when { appleStyle -> 18.dp; compact -> 12.dp; else -> 16.dp }
+    val containerColor = if (appleStyle) Color.Transparent else onSurface.copy(alpha = 0.08f)
+    val iconColor = if (appleStyle) Color.White else onSurface
+    val mainContainerColor = if (appleStyle) Color.Transparent else primary.copy(alpha = 0.2f)
+    val mainIconColor = if (appleStyle) Color.White else primary
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -218,13 +235,13 @@ internal fun PlaybackControls(
                     modifier = Modifier
                         .size(sideSize)
                         .clip(CircleShape)
-                        .background(onSurface.copy(alpha = 0.08f)),
+                        .background(containerColor),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = modeIcon,
                         contentDescription = modeLabel,
-                        tint = onSurface.copy(alpha = 0.7f),
+                        tint = iconColor.copy(alpha = 0.7f),
                         modifier = Modifier.size(sideIconSize),
                     )
                 }
@@ -243,14 +260,13 @@ internal fun PlaybackControls(
                     modifier = Modifier
                         .size(sideSize)
                         .clip(CircleShape)
-                        .background(onSurface.copy(alpha = 0.08f)),
+                        .background(containerColor),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.SkipPrevious,
                         contentDescription = stringResource(R.string.player_previous),
-                        tint = if (hasPrev) onSurface.copy(alpha = 0.8f)
-                        else onSurface.copy(alpha = 0.2f),
+                        tint = iconColor.copy(alpha = if (hasPrev) 0.8f else 0.2f),
                         modifier = Modifier.size(sideIconSize),
                     )
                 }
@@ -262,14 +278,14 @@ internal fun PlaybackControls(
                 modifier = Modifier
                     .size(mainSize)
                     .clip(CircleShape)
-                    .background(primary.copy(alpha = 0.2f))
+                    .background(mainContainerColor)
                     .clickable(enabled = !buffering) { onTogglePlay() },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
-                    tint = primary,
+                    tint = mainIconColor,
                     modifier = Modifier.size(mainIconSize),
                 )
             }
@@ -284,14 +300,13 @@ internal fun PlaybackControls(
                     modifier = Modifier
                         .size(sideSize)
                         .clip(CircleShape)
-                        .background(onSurface.copy(alpha = 0.08f)),
+                        .background(containerColor),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.SkipNext,
                         contentDescription = stringResource(R.string.player_next),
-                        tint = if (hasNext) onSurface.copy(alpha = 0.8f)
-                        else onSurface.copy(alpha = 0.2f),
+                        tint = iconColor.copy(alpha = if (hasNext) 0.8f else 0.2f),
                         modifier = Modifier.size(sideIconSize),
                     )
                 }
@@ -308,13 +323,13 @@ internal fun PlaybackControls(
                     modifier = Modifier
                         .size(sideSize)
                         .clip(CircleShape)
-                        .background(onSurface.copy(alpha = 0.08f)),
+                        .background(containerColor),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
                         contentDescription = stringResource(R.string.player_playlist),
-                        tint = onSurface.copy(alpha = 0.5f),
+                        tint = iconColor.copy(alpha = 0.5f),
                         modifier = Modifier.size(sideIconSize),
                     )
                 }

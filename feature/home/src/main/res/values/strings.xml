@@ -741,7 +741,8 @@
     <string name="player_orientation_mode">进入播放器方向</string>
     <string name="player_audio_appearance">音频播放器外观</string>
     <string name="player_audio_appearance_vinyl">黑胶唱片</string>
-    <string name="player_audio_appearance_glass">液态玻璃</string>
+    <string name="player_audio_appearance_glass">简约封面</string>
+    <string name="player_audio_appearance_apple_music">Apple Music 风格</string>
     <string name="player_orientation_title">默认播放方向</string>
     <string name="player_orientation_landscape">横屏</string>
     <string name="player_orientation_portrait">竖屏</string>

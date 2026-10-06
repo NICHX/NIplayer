@@ -741,7 +741,8 @@
     <string name="player_orientation_mode">Player orientation</string>
     <string name="player_audio_appearance">Audio player appearance</string>
     <string name="player_audio_appearance_vinyl">Vinyl record</string>
-    <string name="player_audio_appearance_glass">Liquid glass</string>
+    <string name="player_audio_appearance_glass">Minimal cover</string>
+    <string name="player_audio_appearance_apple_music">Apple Music style</string>
     <string name="player_orientation_title">Default orientation</string>
     <string name="player_orientation_landscape">Landscape</string>
     <string name="player_orientation_portrait">Portrait</string>

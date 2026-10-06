@@ -25,8 +25,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -44,6 +47,29 @@ import kotlin.math.absoluteValue
 
 /** 歌词物理行固定高度。 */
 private val ROW_HEIGHT = 44.dp
+
+/**
+ * Apple Music 风格歌词行高（34sp ExtraBold）。
+ *
+ * 行高明显大于字号：Apple 的歌词是一句一行、句间留白的排版，行距太小会挤成
+ * 一整块，读起来分不出句子的边界。
+ */
+private val APPLE_ROW_HEIGHT = 64.dp
+
+/** Apple 风格歌词字号倍率：titleLarge 22sp × 1.55 ≈ 34sp。 */
+private const val APPLE_FONT_BOOST = 1.55f
+
+/**
+ * Apple 非当前行的模糊：最多 [APPLE_BLUR_STEPS] 步、每步 [APPLE_BLUR_STEP_DP]。
+ *
+ * 模糊值只跟「离当前行多远」有关，是静态值——不做逐帧动画，每行的模糊图层只在
+ * 行号交接时才重建一次，滚动的每一帧只是在合成已有图层。
+ */
+private const val APPLE_BLUR_STEPS = 5
+private const val APPLE_BLUR_STEP_DP = 1.2f
+
+/** Apple 风格：当前行落在视口高度的该比例处（偏上方，而非居中）。 */
+private const val APPLE_FOCUS_FRACTION = 0.34f
 
 /**
  * 单句歌词最多拆分的物理行数。
@@ -76,6 +102,7 @@ private data class LyricRow(
  * - 点击歌词行进入预览态（右上角显示该句时间），再次点击同一句才跳转播放进度。
  *
  * @param maxVisibleLines 最多同时显示的行数（受容器高度约束，取较小值）。
+ * @param appleStyle Apple Music 风格：左对齐、白色大字，当前行明亮、其它行暗淡。
  */
 @Composable
 fun LyricsView(
@@ -84,6 +111,7 @@ fun LyricsView(
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
     maxVisibleLines: Int = Int.MAX_VALUE,
+    appleStyle: Boolean = false,
 ) {
     val listState = rememberLazyListState()
     val density = LocalDensity.current
@@ -119,12 +147,15 @@ fun LyricsView(
             maxWidth < 560.dp -> 1.15f
             else -> 1.3f
         }
-        val rowHeight = ROW_HEIGHT * scale
+        val rowHeight = (if (appleStyle) APPLE_ROW_HEIGHT else ROW_HEIGHT) * scale
         val rowHeightPx = with(density) { rowHeight.toPx() }
+        // Apple Music 风格：更大的字号与更松的行高
+        val fontBoost = if (appleStyle) APPLE_FONT_BOOST else 1f
         // 测量样式同步放大：保证拆行测量与渲染字号一致
         val scaledMeasureStyle = baseTitleLarge.copy(
-            fontSize = baseTitleLarge.fontSize * scale,
-            fontWeight = FontWeight.Bold,
+            fontSize = baseTitleLarge.fontSize * scale * fontBoost,
+            lineHeight = baseTitleLarge.lineHeight * scale * fontBoost,
+            fontWeight = if (appleStyle) FontWeight.ExtraBold else FontWeight.Bold,
         )
 
         // 物理行拆分：先按可用宽度把每句完整拆成多行（不限行数），
@@ -196,9 +227,14 @@ fun LyricsView(
 
         val viewportHeightPx = with(density) { (rowHeight * viewportLines).toPx() }
 
-        // 精确居中：contentPadding 上下对称 = (视口高 − 行高) / 2，
-        // 无偏移 animateScrollToItem 滚动后当前行中心即视口中心
-        val centerPaddingPx = ((viewportHeightPx - rowHeightPx) / 2f)
+        // 当前行的落点：普通风格居中（0.5），Apple 风格偏上（0.34）。
+        // contentPadding 按该比例分配，无偏移的 animateScrollToItem 滚动后
+        // 当前行中心即落在视口高度的 focusFraction 处。
+        val focusFraction = if (appleStyle) APPLE_FOCUS_FRACTION else 0.5f
+        val topPaddingPx = (viewportHeightPx * focusFraction - rowHeightPx / 2f)
+            .toInt()
+            .coerceAtLeast(0)
+        val bottomPaddingPx = (viewportHeightPx - rowHeightPx - topPaddingPx)
             .toInt()
             .coerceAtLeast(0)
 
@@ -213,14 +249,16 @@ fun LyricsView(
                 Text(
                     text = stringResource(R.string.lyrics_empty),
                     style = MaterialTheme.typography.bodyLarge,
+                    color = if (appleStyle) Color.White.copy(alpha = 0.6f)
+                    else MaterialTheme.colorScheme.onSurface,
                 )
             } else {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.height(with(density) { viewportHeightPx.toDp() }),
                     contentPadding = PaddingValues(
-                        top = with(density) { centerPaddingPx.toDp() },
-                        bottom = with(density) { centerPaddingPx.toDp() },
+                        top = with(density) { topPaddingPx.toDp() },
+                        bottom = with(density) { bottomPaddingPx.toDp() },
                     ),
                 ) {
                     itemsIndexed(
@@ -236,7 +274,11 @@ fun LyricsView(
                             } else null,
                             onClick = {
                                 val sentenceIndex = row.sentenceIndex
-                                if (pendingSentenceIndex == sentenceIndex) {
+                                // Apple：点一下文字就跳转，不做「先预览再确认」那一步——
+                                // 这里的点击区域本来就只有文字，再要两次点击会很别扭。
+                                if (appleStyle) {
+                                    onSeek(lrcLines[sentenceIndex].timeMs)
+                                } else if (pendingSentenceIndex == sentenceIndex) {
                                     onSeek(lrcLines[sentenceIndex].timeMs)
                                     pendingSentenceIndex = null
                                 } else {
@@ -247,6 +289,8 @@ fun LyricsView(
                             viewportLines = viewportLines,
                             rowHeight = rowHeight,
                             scale = scale,
+                            fontBoost = fontBoost,
+                            appleStyle = appleStyle,
                             wordTimes = if (row.lineIndexInSentence == 0) {
                                 lrcLines[row.sentenceIndex].wordTimes
                             } else emptyList(),
@@ -270,6 +314,8 @@ private fun LyricRowItem(
     viewportLines: Int,
     rowHeight: Dp,
     scale: Float,
+    fontBoost: Float,
+    appleStyle: Boolean,
     wordTimes: List<Pair<String, Long>>,
     currentPositionMs: Long,
 ) {
@@ -287,19 +333,30 @@ private fun LyricRowItem(
         animationSpec = tween(300),
         label = "lyricAlpha",
     )
-    // 当前行不缩放：避免视觉放大后超出按 titleLarge+Bold 测量的行宽造成截断；
-    // 当前行靠大字号 + 加粗 + 主题色区分，普通行保持 1.0 比例。
-    val animScale by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = tween(300),
-        label = "lyricScale",
+    // Apple 风格：全部行统一的纯白大字，当前行明亮 + 辉光、其它行按距离更暗；
+    // 其它风格沿用主题色与「当前行更大」的层级。
+    val highlightColor = if (appleStyle) Color.White else primary
+    val normalColor = if (appleStyle) Color.White else onSurface
+    val normalAlpha = if (appleStyle) animAlpha * 0.85f else animAlpha
+    // Apple 的当前行辉光：随行淡入淡出，交接时不闪断
+    val glowAlpha by animateFloatAsState(
+        targetValue = if (appleStyle && isCurrent) 0.62f else 0f,
+        animationSpec = tween(durationMillis = 420),
+        label = "lyricGlow",
     )
+    // Apple 风格：离当前行越远越模糊——这是 Apple 歌词质感的关键，只靠透明度
+    // 会显得很平。当前行不模糊。
+    val blurAmount = if (appleStyle) {
+        (distanceFromCurrent.absoluteValue.coerceAtMost(APPLE_BLUR_STEPS) * APPLE_BLUR_STEP_DP).dp
+    } else {
+        0.dp
+    }
 
-    // 逐字高亮：当前句且有逐字时间戳时，已唱到的词用主题色，未唱到的用浅色
+    // 逐字高亮：当前句且有逐字时间戳时，已唱到的词用高亮色，未唱到的用浅色
     val displayText = if (isCurrent && wordTimes.isNotEmpty()) {
         buildAnnotatedString {
-            val baseColor = primary.copy(alpha = animAlpha)
-            val doneColor = primary.copy(alpha = 1f)
+            val baseColor = highlightColor.copy(alpha = if (appleStyle) 0.45f else animAlpha)
+            val doneColor = highlightColor.copy(alpha = 1f)
             var cursor = 0
             for ((word, startMs) in wordTimes) {
                 val found = text.indexOf(word, cursor)
@@ -325,37 +382,60 @@ private fun LyricRowItem(
         null
     }
 
+    // Apple：点击区域收在**文字**上，一行里的空白留给外层去切换控件显隐，
+    // 所以整行不挂 clickable，只在 Text 上挂，且不给它撑满宽度。
+    // 其它风格整行可点：居中排版下整行点更跟手。
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(rowHeight)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+            .then(if (appleStyle) Modifier else Modifier.clickable(onClick = onClick)),
+        contentAlignment = if (appleStyle) Alignment.CenterStart else Alignment.Center,
     ) {
         Text(
             text = displayText ?: AnnotatedString(text),
-            style = if (isCurrent) {
-                MaterialTheme.typography.titleLarge.copy(
-                    fontSize = MaterialTheme.typography.titleLarge.fontSize * scale,
+            style = when {
+                appleStyle -> MaterialTheme.typography.titleLarge.copy(
+                    fontSize = MaterialTheme.typography.titleLarge.fontSize * scale * fontBoost,
+                    lineHeight = MaterialTheme.typography.titleLarge.lineHeight * scale * fontBoost,
+                    fontWeight = FontWeight.ExtraBold,
+                    shadow = if (glowAlpha > 0f) {
+                        Shadow(color = Color.White.copy(alpha = glowAlpha), blurRadius = 14f)
+                    } else {
+                        null
+                    },
                 )
-            } else {
-                MaterialTheme.typography.titleMedium.copy(
+                isCurrent -> MaterialTheme.typography.titleLarge.copy(
+                    fontSize = MaterialTheme.typography.titleLarge.fontSize * scale,
+                    fontWeight = FontWeight.Bold,
+                )
+                else -> MaterialTheme.typography.titleMedium.copy(
                     fontSize = MaterialTheme.typography.titleMedium.fontSize * scale,
                 )
             },
-            color = if (isCurrent) primary.copy(alpha = animAlpha)
-            else onSurface.copy(alpha = animAlpha),
-            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-            textAlign = TextAlign.Center,
+            color = if (isCurrent) highlightColor.copy(alpha = animAlpha)
+            else normalColor.copy(alpha = normalAlpha),
+            textAlign = if (appleStyle) TextAlign.Start else TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .graphicsLayer {
-                    scaleX = animScale
-                    scaleY = animScale
-                },
+            modifier = if (appleStyle) {
+                Modifier
+                    // padding 在外、clickable 在内：点击范围就是文字本身（左右各让出
+                    // 28dp 的边距留给「点空白切换控件」）
+                    .padding(horizontal = 28.dp)
+                    .clickable(onClick = onClick)
+                    .then(
+                        if (blurAmount > 0.dp) {
+                            Modifier.blur(blurAmount, BlurredEdgeTreatment.Unbounded)
+                        } else {
+                            Modifier
+                        },
+                    )
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+            },
         )
 
         // 预览态：该句首行右上角显示时间，提示再次点击可跳转

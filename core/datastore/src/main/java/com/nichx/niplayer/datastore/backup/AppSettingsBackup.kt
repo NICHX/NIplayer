@@ -253,7 +253,7 @@ data class AppSettingsData(
     val playerOrientationMode: Int? = null,
     val playerAudioPlayModeIndex: Int? = null,
     val playerAudioSpeedIndex: Int? = null,
-    // 音频播放器外观样式（AudioPlayerStyle 名称：VINYL / GLASS）
+    // 音频播放器外观样式（AudioPlayerStyle 名称：VINYL / GLASS / APPLE_MUSIC）
     val playerAudioPlayerStyle: String? = null,
     // 播放器控制功能自定义布局（"ORIENTATION_id" -> "surface|visible|order"）
     val playerControlLayouts: Map<String, String>? = null,
