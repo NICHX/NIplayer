@@ -11,6 +11,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
@@ -95,7 +96,6 @@ internal fun gridColumnRange(width: NiWindowWidthSizeClass): IntRange = when (wi
 internal fun FileGrid(
     files: List<StorageFile>,
     thumbnailUrls: Map<String, String>,
-    tooShortPaths: Set<String>,
     encryptedPaths: Set<String>,
     isMultiSelect: Boolean,
     selectedPaths: Set<String>,
@@ -110,6 +110,8 @@ internal fun FileGrid(
     contentTopInset: Dp = 0.dp,
     header: (@Composable () -> Unit)? = null,
     columns: Int = FileBrowserSettings.GRID_COLUMNS_AUTO,
+    showTypeBadge: Boolean = false,
+    showSizeBadge: Boolean = false,
 ) {
     val widthClass = LocalNiWindowSizeClass.current.width
     val columnRange = gridColumnRange(widthClass)
@@ -143,7 +145,6 @@ internal fun FileGrid(
             GridFileCard(
                 file = file,
                 thumbnailUrl = thumbnailUrls[file.path],
-                isTooShort = tooShortPaths.contains(file.path),
                 isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
                 isMultiSelect = isMultiSelect,
                 isSelected = file.path in selectedPaths,
@@ -154,17 +155,31 @@ internal fun FileGrid(
                 onShowFileActions = { onShowFileActions(file) },
                 onToggleSelection = { onToggleSelection(file) },
                 onEnterMultiSelect = { onEnterMultiSelect(file) },
+                showTypeBadge = showTypeBadge,
+                showSizeBadge = showSizeBadge,
             )
         }
     }
 }
+
+/**
+ * 文件角标配色：默认沿用主题 tertiary 半透明胶囊；启用自定义背景后卡片与占位表面变半透明，
+ * 角标会落在多变的底图上，改用高对比纯色底衬 + 白字保证可读性。
+ */
+@Composable
+private fun fileBadgeColors(): Pair<Color, Color> =
+    if (niHasCustomBackground) {
+        Color.Black.copy(alpha = 0.72f) to Color.White
+    } else {
+        MaterialTheme.colorScheme.tertiary.copy(alpha = LocalNiGlassPanelOpacity.current) to
+            MaterialTheme.colorScheme.onTertiary
+    }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun GridFileCard(
     file: StorageFile,
     thumbnailUrl: String?,
-    isTooShort: Boolean,
     isEncrypted: Boolean,
     isMultiSelect: Boolean,
     isSelected: Boolean,
@@ -175,6 +190,8 @@ internal fun GridFileCard(
     onShowFileActions: () -> Unit,
     onToggleSelection: () -> Unit,
     onEnterMultiSelect: () -> Unit,
+    showTypeBadge: Boolean = false,
+    showSizeBadge: Boolean = false,
 ) {
     val isVideo = MediaFileTypes.isVideoFile(file.name)
     val isAudio = MediaFileTypes.isAudioFile(file.name)
@@ -198,7 +215,9 @@ internal fun GridFileCard(
             .graphicsLayer { scaleX = scale; scaleY = scale },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
+        // 单元格尺寸自适应：以 160dp 格宽为基准等比缩放角标/按钮/图标，
+        // 手机多列网格下格子变窄时装饰不再显得过大（下限 0.62 保证仍可辨认）。
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
@@ -243,6 +262,24 @@ internal fun GridFileCard(
                     },
                 ),
         ) {
+            val decorScale = (maxWidth.value / 160f).coerceIn(0.62f, 1f)
+            val cornerPad = (6f * decorScale).dp
+            val badgePadH = (6f * decorScale).dp
+            val badgeSizePadH = (5f * decorScale).dp
+            val badgePadV = (2f * decorScale).dp
+            val badgeFontSize = (11f * decorScale).sp
+            val playButtonSize = (36f * decorScale).dp
+            val playIconSize = (20f * decorScale).dp
+            val moreButtonSize = (30f * decorScale).dp
+            val moreButtonPad = (4f * decorScale).dp
+            val selectBadgeSize = (26f * decorScale).dp
+            val selectIconSize = (16f * decorScale).dp
+            val folderIconSize = (48f * decorScale).dp
+            val lockBadgeSize = (22f * decorScale).dp
+            val lockIconSize = (13f * decorScale).dp
+            val fallbackIconSize = (52f * decorScale).dp
+            val audioIconSize = (56f * decorScale).dp
+
             if (file.isDirectory) {
                 Box(
                     modifier = Modifier
@@ -266,15 +303,15 @@ internal fun GridFileCard(
                         imageVector = Icons.Rounded.Folder,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(folderIconSize),
                     )
                     // 加密文件夹锁定角标（左上角）
                     if (isEncrypted) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
-                                .padding(6.dp)
-                                .size(22.dp)
+                                .padding(cornerPad)
+                                .size(lockBadgeSize)
                                 .clip(CircleShape)
                                 .background(Color.Black.copy(alpha = 0.45f)),
                             contentAlignment = Alignment.Center,
@@ -283,7 +320,7 @@ internal fun GridFileCard(
                                 imageVector = Icons.Rounded.Lock,
                                 contentDescription = stringResource(R.string.storage_file_encrypted),
                                 tint = Color.White,
-                                modifier = Modifier.size(13.dp),
+                                modifier = Modifier.size(lockIconSize),
                             )
                         }
                     }
@@ -318,19 +355,21 @@ internal fun GridFileCard(
                         isImage -> stringResource(R.string.storage_file_type_image)
                         else -> null
                     }
-                    if (typeLabel != null && !isMultiSelect) {
+                    if (typeLabel != null && !isMultiSelect && showTypeBadge) {
+                        val (badgeBg, badgeContent) = fileBadgeColors()
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
-                                .padding(start = 6.dp, top = 6.dp)
+                                .padding(start = cornerPad, top = cornerPad)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(MaterialTheme.colorScheme.tertiary.copy(alpha = LocalNiGlassPanelOpacity.current))
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                .background(badgeBg)
+                                .padding(horizontal = badgePadH, vertical = badgePadV),
                         ) {
                             Text(
                                 text = typeLabel,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onTertiary,
+                                fontSize = badgeFontSize,
+                                color = badgeContent,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
@@ -341,7 +380,7 @@ internal fun GridFileCard(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.Center)
-                                .size(36.dp)
+                                .size(playButtonSize)
                                 .clip(CircleShape)
                                 .background(Color.Black.copy(alpha = 0.45f)),
                             contentAlignment = Alignment.Center,
@@ -350,25 +389,27 @@ internal fun GridFileCard(
                                 imageVector = Icons.Rounded.PlayArrow,
                                 contentDescription = stringResource(R.string.storage_file_action_play),
                                 tint = Color.White,
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(playIconSize),
                             )
                         }
                     }
 
                     // 大小角标：右下角
-                    if ((isVideo || isAudio || isImage) && file.length > 0) {
+                    if ((isVideo || isAudio || isImage) && file.length > 0 && showSizeBadge) {
+                        val (badgeBg, badgeContent) = fileBadgeColors()
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(end = 6.dp, bottom = 6.dp)
+                                .padding(end = cornerPad, bottom = cornerPad)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(MaterialTheme.colorScheme.tertiary.copy(alpha = LocalNiGlassPanelOpacity.current))
-                                .padding(horizontal = 5.dp, vertical = 2.dp),
+                                .background(badgeBg)
+                                .padding(horizontal = badgeSizePadH, vertical = badgePadV),
                         ) {
                             Text(
                                 text = formatFileSize(file.length),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onTertiary,
+                                fontSize = badgeFontSize,
+                                color = badgeContent,
                                 fontWeight = FontWeight.Medium,
                             )
                         }
@@ -390,35 +431,29 @@ internal fun GridFileCard(
                             contentAlignment = Alignment.Center,
                         ) {
                             when {
-                                isVideo && isTooShort -> Text(
-                                    text = "<15s",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    fontWeight = FontWeight.Medium,
-                                )
                                 isVideo -> Icon(
                                     imageVector = Icons.Rounded.Movie,
                                     contentDescription = null,
                                     tint = Color.White.copy(alpha = 0.65f),
-                                    modifier = Modifier.size(52.dp),
+                                    modifier = Modifier.size(fallbackIconSize),
                                 )
                                 isAudio -> Icon(
                                     imageVector = Icons.Rounded.MusicNote,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(56.dp),
+                                    modifier = Modifier.size(audioIconSize),
                                 )
                                 isImage -> Icon(
                                     imageVector = Icons.Rounded.Image,
                                     contentDescription = null,
                                     tint = Color.White.copy(alpha = 0.65f),
-                                    modifier = Modifier.size(52.dp),
+                                    modifier = Modifier.size(fallbackIconSize),
                                 )
                                 else -> Icon(
                                     imageVector = Icons.AutoMirrored.Rounded.InsertDriveFile,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.size(52.dp),
+                                    modifier = Modifier.size(fallbackIconSize),
                                 )
                             }
                             if (preparing) PreparingBadge()
@@ -433,8 +468,8 @@ internal fun GridFileCard(
                             onClick = onShowFileActions,
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(top = 4.dp, end = 4.dp),
-                            size = 30.dp,
+                                .padding(top = moreButtonPad, end = moreButtonPad),
+                            size = moreButtonSize,
                         )
                     }
 
@@ -443,8 +478,8 @@ internal fun GridFileCard(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
-                                .padding(6.dp)
-                                .size(26.dp)
+                                .padding(cornerPad)
+                                .size(selectBadgeSize)
                                 .clip(CircleShape)
                                 .background(
                                     if (isSelected) MaterialTheme.colorScheme.primary
@@ -458,7 +493,7 @@ internal fun GridFileCard(
                                     if (isSelected) R.string.storage_file_selected else R.string.storage_file_select,
                                 ),
                                 tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.White,
-                                modifier = Modifier.size(16.dp),
+                                modifier = Modifier.size(selectIconSize),
                             )
                         }
                     }

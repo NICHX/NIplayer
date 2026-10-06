@@ -249,16 +249,7 @@ class StorageFileViewModel @Inject constructor(
     private val _thumbnailUrls = MutableStateFlow<Map<String, String>>(emptyMap())
     val thumbnailUrls: StateFlow<Map<String, String>> = _thumbnailUrls.asStateFlow()
 
-    /** 视频时长过短（< 15s）的文件路径集合，UI 显示 "<15s" 标识。目录切换时清空。 */
-    private val _tooShortPaths = MutableStateFlow<Set<String>>(emptySet())
-    val tooShortPaths: StateFlow<Set<String>> = _tooShortPaths.asStateFlow()
-
-    /**
-     * 本次目录加载内已判定「不必重试」的路径（如远程凭证错误、无可用索引导致取帧不可行）。
-     *
-     * 与 [_tooShortPaths] 分开维护：后者会驱动 UI 的「<15s」标识，此前把永久失败也塞进去，
-     * 导致取帧失败的文件被误标成「视频过短」。此集合只用于跳过重复尝试，不参与任何 UI 展示。
-     */
+    /** 本次目录加载内已判定「不必重试」的路径（如远程凭证错误、无可用索引导致取帧不可行），仅用于跳过重复尝试。 */
     private val _noRetryPaths = MutableStateFlow<Set<String>>(emptySet())
 
     /** 缩略图生成进度（0-100），-1 表示未在生成。 */
@@ -589,8 +580,10 @@ class StorageFileViewModel @Inject constructor(
                     val sorted = applyFilterAndSort(children)
                     _treeChildren.update { it + (folderPath to sorted) }
                     // 展开的子项媒体文件同步生成缩略图，合并进 _thumbnailUrls（与当前目录一致）
+                    // 同目录清单传原始 children（含被「仅显示媒体文件」过滤掉的 `-thumb.jpg` 侧车），
+                    // 否则侧车发现恒为 0、只能回退远程取帧（与 listDirectory 的 rawFiles 修复同理）。
                     if (sorted.isNotEmpty()) {
-                        generateThumbnailUrls(s, sorted)
+                        generateThumbnailUrls(s, sorted, preloadDirFiles = children)
                     }
                 } catch (e: Exception) {
                     // 加载失败视为空目录，避免无限重试；折叠后重新展开仍会再次尝试
@@ -1391,7 +1384,6 @@ class StorageFileViewModel @Inject constructor(
         val files = dirMutex.withLock {
             _uiState.update { it.copy(isLoading = true, error = null) }
             _thumbnailUrls.value = emptyMap()
-            _tooShortPaths.value = emptySet()
             _noRetryPaths.value = emptySet()
             // 记录切换前的目录：用于判断本次加载是否真正切换了目录（决定是否清空本级搜索）
             val previousPath = _uiState.value.currentPath
@@ -1565,7 +1557,7 @@ class StorageFileViewModel @Inject constructor(
      *
      * 适用于用户手动点「刷新缩略图」按钮：
      * - 清空当前目录相关缩略图本地缓存（BUG-T-M4 修复：仅清当前目录，不清全应用）
-     * - 重置 _thumbnailUrls / _tooShortPaths 状态
+     * - 重置 _thumbnailUrls 状态
      * - 重新触发 [generateThumbnailUrls] 并发生成
      *
      * BUG-T-M4 修复：原实现调用 `thumbnailManager.clearCache()`（无参）会清空
@@ -1585,7 +1577,6 @@ class StorageFileViewModel @Inject constructor(
             withContext(Dispatchers.IO) { thumbnailManager.clearCache(libId, filesToClear) }
             // 清空状态
             _thumbnailUrls.value = emptyMap()
-            _tooShortPaths.value = emptySet()
             _noRetryPaths.value = emptySet()
             // 重新列当前目录（触发 generateThumbnailUrls）
             listDirectory(current) { }
@@ -1763,7 +1754,7 @@ class StorageFileViewModel @Inject constructor(
                     val remainingFromCache = videoFiles.filter { file ->
                         _thumbnailUrls.value[file.path] == null &&
                             batchAccumulator[file.path] == null &&
-                            !(_tooShortPaths.value.contains(file.path) || _noRetryPaths.value.contains(file.path))
+                            !_noRetryPaths.value.contains(file.path)
                     }
                     if (remainingFromCache.isNotEmpty() && !isLocal) {
                         try {
@@ -1787,7 +1778,7 @@ class StorageFileViewModel @Inject constructor(
                         videoFiles.filter { file ->
                             _thumbnailUrls.value[file.path] == null &&
                                 batchAccumulator[file.path] == null &&
-                                !(_tooShortPaths.value.contains(file.path) || _noRetryPaths.value.contains(file.path))
+                                !_noRetryPaths.value.contains(file.path)
                         }.forEach { pendingThumbs.addLast(PendingThumb(it, ThumbType.VIDEO)) }
                     }
                 }
@@ -1826,18 +1817,15 @@ class StorageFileViewModel @Inject constructor(
                                         ThumbType.VIDEO -> {
                                             when (val result = thumbnailManager.generateThumbnail(
                                                 s, libId, item.file,
-                                                positionKey = ThumbnailSettings.framePositionKey,
+                                                position = ThumbnailSettings.framePosition,
                                             )) {
                                                 is ThumbnailResult.Success -> {
                                                     synchronized(batchLock) { batchAccumulator[item.file.path] = result.path }
                                                     if (!isLocal && ThumbnailSettings.effectiveWriteBack(libId)) videoSuccess.add(item.file)
                                                 }
-                                                is ThumbnailResult.TooShort ->
-                                                    _tooShortPaths.update { it + item.file.path }
                                                 is ThumbnailResult.Failed -> {}
                                                 // 永久失败（401/403 凭证错误、无可用索引导致取帧不可行）：
-                                                // 记入「不重试」集合跳过后续尝试即可，**不能**混进
-                                                // _tooShortPaths，否则 UI 会把文件误标成「视频过短」
+                                                // 记入「不重试」集合，跳过后续尝试。
                                                 is ThumbnailResult.PermanentFailure ->
                                                     _noRetryPaths.update { it + item.file.path }
                                             }
@@ -2547,6 +2535,16 @@ class StorageFileViewModel @Inject constructor(
             verdictScanJob?.cancel()
         }
         resortOffMainThread()
+    }
+
+    /** 切换"显示文件类型角标"开关，持久化并立即刷新当前视图。角标仅影响显示，不触发重新排序。 */
+    fun toggleShowFileTypeBadge() {
+        FileBrowserSettings.showFileTypeBadge = !FileBrowserSettings.showFileTypeBadge
+    }
+
+    /** 切换"显示文件大小角标"开关，持久化并立即刷新当前视图。角标仅影响显示，不触发重新排序。 */
+    fun toggleShowFileSizeBadge() {
+        FileBrowserSettings.showFileSizeBadge = !FileBrowserSettings.showFileSizeBadge
     }
 
     /** 设置文件类型过滤，持久化并立即刷新当前目录列表。 */

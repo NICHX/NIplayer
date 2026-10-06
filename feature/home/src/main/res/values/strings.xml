@@ -360,6 +360,8 @@
     <string name="storage_file_menu_media_only">仅显示媒体</string>
     <string name="storage_file_menu_show_hidden">显示隐藏文件</string>
     <string name="storage_file_menu_hide_no_media_folders">隐藏无媒体文件夹</string>
+    <string name="storage_file_menu_show_type_badge">显示类型角标</string>
+    <string name="storage_file_menu_show_size_badge">显示大小角标</string>
     <string name="storage_file_filter_title">类型过滤</string>
     <string name="storage_file_filter_all">全部</string>
     <string name="storage_file_filter_video">视频</string>
@@ -765,6 +767,10 @@
     <string name="player_hide_thumb_folder_desc">默认隐藏文件浏览中的 .thumb 缩略图文件夹，即便开启显示隐藏文件也不展示</string>
     <string name="player_hide_no_media_folders">隐藏无媒体文件夹</string>
     <string name="player_hide_no_media_folders_desc">文件夹内（含子目录）没有任何视频、音频或图片时，在文件浏览中隐藏该文件夹</string>
+    <string name="player_show_type_badge">显示文件类型角标</string>
+    <string name="player_show_type_badge_desc">在文件卡片左上角显示文件类型角标（视频/音频/图片）</string>
+    <string name="player_show_size_badge">显示文件大小角标</string>
+    <string name="player_show_size_badge_desc">在文件卡片右下角显示文件大小角标</string>
     <string name="player_frame_position_title">取帧位置</string>
     <string name="player_assrt_token_title">设置 ASSRT Token</string>
     <string name="player_assrt_token_hint">在 assrt.net 注册获取 API Token，用于字幕搜索。</string>

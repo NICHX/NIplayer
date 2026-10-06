@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * - [mediaFilter]：文件类型过滤（全部/视频/音频/图片），默认全部
  * - [viewMode]：视图模式（列表/网格/画廊/平铺列表），默认列表
  * - [gridColumns]：网格视图列数，默认自适应（按宽度推导）
+ * - [showFileTypeBadge]：卡片显示文件类型角标（视频/音频/图片），默认关闭
+ * - [showFileSizeBadge]：卡片显示文件大小角标，默认关闭
  *
  * 目录始终排在文件之前，不受 [sortAscending] 影响。
  *
@@ -31,6 +33,8 @@ object FileBrowserSettings {
     private const val KEY_SORT_ASCENDING = "file_sort_ascending"
     private const val KEY_SHOW_ONLY_MEDIA = "show_only_media_files"
     private const val KEY_SHOW_HIDDEN_FILES = "show_hidden_files"
+    private const val KEY_SHOW_TYPE_BADGE = "file_browser_show_type_badge"
+    private const val KEY_SHOW_SIZE_BADGE = "file_browser_show_size_badge"
     private const val KEY_HIDE_THUMB_FOLDER = "hide_thumb_folder"
     private const val KEY_HIDE_NO_MEDIA_FOLDERS = "hide_no_media_folders"
     private const val KEY_MEDIA_FILTER = "file_media_filter"
@@ -117,6 +121,22 @@ object FileBrowserSettings {
             _sortFlow.value = _sortFlow.value.copy(showHiddenFiles = value)
         }
 
+    /** 是否在文件卡片上显示文件类型角标（视频/音频/图片），默认关闭。 */
+    var showFileTypeBadge: Boolean
+        get() = mmkv.decodeBool(KEY_SHOW_TYPE_BADGE, false)
+        set(value) {
+            mmkv.encode(KEY_SHOW_TYPE_BADGE, value)
+            _sortFlow.value = _sortFlow.value.copy(showFileTypeBadge = value)
+        }
+
+    /** 是否在文件卡片上显示文件大小角标，默认关闭。 */
+    var showFileSizeBadge: Boolean
+        get() = mmkv.decodeBool(KEY_SHOW_SIZE_BADGE, false)
+        set(value) {
+            mmkv.encode(KEY_SHOW_SIZE_BADGE, value)
+            _sortFlow.value = _sortFlow.value.copy(showFileSizeBadge = value)
+        }
+
     /** 是否隐藏应用生成的 .thumb 缩略图文件夹，默认隐藏（即便开启了显示隐藏文件也不展示）。 */
     var hideThumbFolder: Boolean
         get() = mmkv.decodeBool(KEY_HIDE_THUMB_FOLDER, true)
@@ -199,7 +219,9 @@ object FileBrowserSettings {
         val hideNoMediaFolders = mmkv.decodeBool(KEY_HIDE_NO_MEDIA_FOLDERS, false)
         val mediaFilter = MediaFilter.fromValue(mmkv.decodeInt(KEY_MEDIA_FILTER, MediaFilter.ALL.value))
         val gridColumns = mmkv.decodeInt(KEY_GRID_COLUMNS, GRID_COLUMNS_AUTO).coerceIn(GRID_COLUMNS_AUTO, GRID_COLUMNS_MAX)
-        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, hideThumbFolder, hideNoMediaFolders, mediaFilter, viewMode, gridColumns)
+        val showFileTypeBadge = mmkv.decodeBool(KEY_SHOW_TYPE_BADGE, false)
+        val showFileSizeBadge = mmkv.decodeBool(KEY_SHOW_SIZE_BADGE, false)
+        return SortConfig(sortBy, ascending, showOnlyMediaFiles, showHiddenFiles, hideThumbFolder, hideNoMediaFolders, mediaFilter, viewMode, gridColumns, showFileTypeBadge, showFileSizeBadge)
     }
 }
 
@@ -221,4 +243,8 @@ data class SortConfig(
     val viewMode: FileBrowserSettings.ViewMode = FileBrowserSettings.ViewMode.LIST,
     /** 网格视图列数，默认自适应（[FileBrowserSettings.GRID_COLUMNS_AUTO]）。 */
     val gridColumns: Int = FileBrowserSettings.GRID_COLUMNS_AUTO,
+    /** 文件卡片显示文件类型角标，默认为 false。 */
+    val showFileTypeBadge: Boolean = false,
+    /** 文件卡片显示文件大小角标，默认为 false。 */
+    val showFileSizeBadge: Boolean = false,
 )

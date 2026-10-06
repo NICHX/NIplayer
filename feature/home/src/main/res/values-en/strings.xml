@@ -360,6 +360,8 @@
     <string name="storage_file_menu_media_only">Media only</string>
     <string name="storage_file_menu_show_hidden">Show hidden</string>
     <string name="storage_file_menu_hide_no_media_folders">Hide folders without media</string>
+    <string name="storage_file_menu_show_type_badge">Type badge</string>
+    <string name="storage_file_menu_show_size_badge">Size badge</string>
     <string name="storage_file_filter_title">Type filter</string>
     <string name="storage_file_filter_all">All</string>
     <string name="storage_file_filter_video">Video</string>
@@ -765,6 +767,10 @@
     <string name="player_hide_thumb_folder_desc">Hide the .thumb thumbnail folder in the file browser by default, even when showing hidden files</string>
     <string name="player_hide_no_media_folders">Hide folders without media</string>
     <string name="player_hide_no_media_folders_desc">Hide folders that contain no video, audio or images (including subfolders) in the file browser</string>
+    <string name="player_show_type_badge">Show file type badge</string>
+    <string name="player_show_type_badge_desc">Show the file type badge (video/audio/image) at the top-left of file cards</string>
+    <string name="player_show_size_badge">Show file size badge</string>
+    <string name="player_show_size_badge_desc">Show the file size badge at the bottom-right of file cards</string>
     <string name="player_frame_position_title">Frame position</string>
     <string name="player_assrt_token_title">Set ASSRT token</string>
     <string name="player_assrt_token_hint">Register on assrt.net to get an API token for subtitle search.</string>

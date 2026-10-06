@@ -12,6 +12,7 @@ import com.nichx.niplayer.datastore.PlayerControlLayout
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.datastore.ThemeSettings
+import com.nichx.niplayer.datastore.ThumbnailFramePosition
 import com.nichx.niplayer.datastore.ThumbnailGenerationMode
 import com.nichx.niplayer.datastore.ThumbnailSettings
 import com.nichx.niplayer.datastore.VideoExtensionSettings
@@ -89,7 +90,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             thumbnailGenerateAudio = ThumbnailSettings.generateForAudio,
             thumbnailSaveInSameDir = ThumbnailSettings.saveInSameDir,
             thumbnailUpdateOnExit = ThumbnailSettings.updateOnExit,
-            thumbnailFramePositionKey = ThumbnailSettings.framePositionKey,
+            thumbnailFramePositionKey = ThumbnailSettings.framePosition.key,
             thumbnailGenerationModeKey = ThumbnailSettings.generationMode.key,
             thumbnailLibraryModes = ThumbnailSettings.snapshotAllLibraryModes().ifEmpty { null },
             thumbnailLibraryWriteBacks = ThumbnailSettings.snapshotAllLibraryWriteBacks().ifEmpty { null },
@@ -98,6 +99,8 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             fileSortAscending = FileBrowserSettings.sortAscending,
             fileShowOnlyMedia = FileBrowserSettings.showOnlyMediaFiles,
             fileShowHiddenFiles = FileBrowserSettings.showHiddenFiles,
+            fileShowFileTypeBadge = FileBrowserSettings.showFileTypeBadge,
+            fileShowFileSizeBadge = FileBrowserSettings.showFileSizeBadge,
             fileHideThumbFolder = FileBrowserSettings.hideThumbFolder,
             fileViewMode = FileBrowserSettings.viewMode.value,
             fileMediaFilter = FileBrowserSettings.mediaFilter.value,
@@ -168,7 +171,7 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.thumbnailGenerateAudio?.let { ThumbnailSettings.generateForAudio = it }
         s.thumbnailSaveInSameDir?.let { ThumbnailSettings.saveInSameDir = it }
         s.thumbnailUpdateOnExit?.let { ThumbnailSettings.updateOnExit = it }
-        s.thumbnailFramePositionKey?.let { ThumbnailSettings.framePositionKey = it }
+        s.thumbnailFramePositionKey?.let { ThumbnailSettings.framePosition = ThumbnailFramePosition.fromKey(it) }
         s.thumbnailGenerationModeKey?.let { key ->
             ThumbnailSettings.generationMode = ThumbnailGenerationMode.fromKey(key)
         }
@@ -183,6 +186,8 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.fileSortAscending?.let { FileBrowserSettings.setSortAscending(it) }
         s.fileShowOnlyMedia?.let { FileBrowserSettings.showOnlyMediaFiles = it }
         s.fileShowHiddenFiles?.let { FileBrowserSettings.showHiddenFiles = it }
+        s.fileShowFileTypeBadge?.let { FileBrowserSettings.showFileTypeBadge = it }
+        s.fileShowFileSizeBadge?.let { FileBrowserSettings.showFileSizeBadge = it }
         s.fileHideThumbFolder?.let { FileBrowserSettings.hideThumbFolder = it }
         s.fileViewMode?.let { FileBrowserSettings.viewMode = FileBrowserSettings.ViewMode.fromValue(it) }
         s.fileMediaFilter?.let { FileBrowserSettings.mediaFilter = FileBrowserSettings.MediaFilter.fromValue(it) }
@@ -276,6 +281,8 @@ data class AppSettingsData(
     val fileSortAscending: Boolean? = null,
     val fileShowOnlyMedia: Boolean? = null,
     val fileShowHiddenFiles: Boolean? = null,
+    val fileShowFileTypeBadge: Boolean? = null,
+    val fileShowFileSizeBadge: Boolean? = null,
     val fileHideThumbFolder: Boolean? = null,
     val fileViewMode: Int? = null,
     val fileMediaFilter: Int? = null,

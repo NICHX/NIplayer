@@ -331,7 +331,6 @@ fun FileBrowserScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val sortConfig by viewModel.sortConfig.collectAsStateWithLifecycle()
     val thumbnailUrls by viewModel.thumbnailUrls.collectAsStateWithLifecycle()
-    val tooShortPaths by viewModel.tooShortPaths.collectAsStateWithLifecycle()
     val thumbnailProgress by viewModel.thumbnailProgress.collectAsStateWithLifecycle()
     val activeDownloadCount by viewModel.activeDownloadCount.collectAsStateWithLifecycle()
     val activeUploadCount by viewModel.activeUploadCount.collectAsStateWithLifecycle()
@@ -849,6 +848,16 @@ fun FileBrowserScreen(
                                 checked = sortConfig.hideNoMediaFolders,
                                 onCheckedChange = viewModel::toggleHideNoMediaFolders,
                             )
+                            SortToggleRow(
+                                label = stringResource(R.string.storage_file_menu_show_type_badge),
+                                checked = sortConfig.showFileTypeBadge,
+                                onCheckedChange = viewModel::toggleShowFileTypeBadge,
+                            )
+                            SortToggleRow(
+                                label = stringResource(R.string.storage_file_menu_show_size_badge),
+                                checked = sortConfig.showFileSizeBadge,
+                                onCheckedChange = viewModel::toggleShowFileSizeBadge,
+                            )
                         }
                     }
                     // 可展开收起 ⋮：默认折叠成单个 ⋮，点击展开更多按钮；再点 ✕ 收起
@@ -1073,7 +1082,6 @@ fun FileBrowserScreen(
                                 FileGallery(
                                     files = uiState.files,
                                     thumbnailUrls = thumbnailUrls,
-                                    tooShortPaths = tooShortPaths,
                                     encryptedPaths = encryptedPaths,
                                     isMultiSelect = isMultiSelect,
                                     selectedPaths = selectedPaths,
@@ -1091,7 +1099,6 @@ fun FileBrowserScreen(
                                 FileGrid(
                                     files = uiState.files,
                                     thumbnailUrls = thumbnailUrls,
-                                    tooShortPaths = tooShortPaths,
                                     encryptedPaths = encryptedPaths,
                                     isMultiSelect = isMultiSelect,
                                     selectedPaths = selectedPaths,
@@ -1106,12 +1113,13 @@ fun FileBrowserScreen(
                                     header = listHeader,
                                     contentTopInset = topInset,
                                     columns = gridColumns,
+                                    showTypeBadge = sortConfig.showFileTypeBadge,
+                                    showSizeBadge = sortConfig.showFileSizeBadge,
                                 )
                             } else if (isFlatView) {
                                 FileFlatList(
                                     files = uiState.files,
                                     thumbnailUrls = thumbnailUrls,
-                                    tooShortPaths = tooShortPaths,
                                     encryptedPaths = encryptedPaths,
                                     isMultiSelect = isMultiSelect,
                                     selectedPaths = selectedPaths,
@@ -1131,12 +1139,12 @@ fun FileBrowserScreen(
                                     listState = listState,
                                     header = listHeader,
                                     contentTopInset = topInset,
+                                    showSizeBadge = sortConfig.showFileSizeBadge,
                                 )
                             } else {
                                 FileList(
                                     files = uiState.files,
                                     thumbnailUrls = thumbnailUrls,
-                                    tooShortPaths = tooShortPaths,
                                     encryptedPaths = encryptedPaths,
                                     isMultiSelect = isMultiSelect,
                                     selectedPaths = selectedPaths,
@@ -1152,6 +1160,7 @@ fun FileBrowserScreen(
                                     listState = listState,
                                     header = listHeader,
                                     contentTopInset = topInset,
+                                    showSizeBadge = sortConfig.showFileSizeBadge,
                                 )
                             }
                         }

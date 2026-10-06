@@ -79,7 +79,6 @@ import com.nichx.niplayer.storage.StorageFile
 internal fun FileGallery(
     files: List<StorageFile>,
     thumbnailUrls: Map<String, String>,
-    tooShortPaths: Set<String>,
     encryptedPaths: Set<String>,
     isMultiSelect: Boolean,
     selectedPaths: Set<String>,
@@ -143,7 +142,6 @@ internal fun FileGallery(
             GalleryCell(
                 file = file,
                 thumbnailUrl = thumbnailUrls[file.path],
-                isTooShort = tooShortPaths.contains(file.path),
                 isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
                 isMultiSelect = isMultiSelect,
                 isSelected = file.path in selectedPaths,
@@ -163,7 +161,6 @@ internal fun FileGallery(
 internal fun GalleryCell(
     file: StorageFile,
     thumbnailUrl: String?,
-    isTooShort: Boolean,
     isEncrypted: Boolean,
     isMultiSelect: Boolean,
     isSelected: Boolean,
@@ -313,12 +310,6 @@ internal fun GalleryCell(
                     contentAlignment = Alignment.Center,
                 ) {
                     when {
-                        isVideo && isTooShort -> Text(
-                            text = "<15s",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontWeight = FontWeight.Medium,
-                        )
                         isVideo -> Icon(
                             imageVector = Icons.Rounded.Movie,
                             contentDescription = null,

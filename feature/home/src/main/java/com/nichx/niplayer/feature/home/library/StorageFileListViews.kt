@@ -85,7 +85,6 @@ import com.nichx.niplayer.storage.StorageFile
 internal fun FileList(
     files: List<StorageFile>,
     thumbnailUrls: Map<String, String>,
-    tooShortPaths: Set<String>,
     encryptedPaths: Set<String>,
     isMultiSelect: Boolean,
     selectedPaths: Set<String>,
@@ -101,6 +100,7 @@ internal fun FileList(
     listState: LazyListState = rememberLazyListState(),
     contentTopInset: Dp = 0.dp,
     header: (@Composable () -> Unit)? = null,
+    showSizeBadge: Boolean = false,
 ) {
     LazyColumn(
         state = listState,
@@ -129,7 +129,6 @@ internal fun FileList(
             FileRow(
                 file = file,
                 thumbnailUrl = thumbnailUrls[file.path],
-                isTooShort = tooShortPaths.contains(file.path),
                 isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
                 isMultiSelect = isMultiSelect,
                 isSelected = file.path in selectedPaths,
@@ -140,6 +139,7 @@ internal fun FileList(
                 onShowFileActions = { onShowFileActions(file) },
                 onToggleSelection = { onToggleSelection(file) },
                 onEnterMultiSelect = { onEnterMultiSelect(file) },
+                showSizeBadge = showSizeBadge,
             )
         }
     }
@@ -225,7 +225,6 @@ internal fun UploadPendingStrip(uploads: List<ActiveUpload>, onCancel: (Long) ->
 internal fun FileRow(
     file: StorageFile,
     thumbnailUrl: String?,
-    isTooShort: Boolean,
     isEncrypted: Boolean,
     isMultiSelect: Boolean,
     isSelected: Boolean,
@@ -236,6 +235,7 @@ internal fun FileRow(
     onShowFileActions: () -> Unit,
     onToggleSelection: () -> Unit,
     onEnterMultiSelect: () -> Unit,
+    showSizeBadge: Boolean = false,
 ) {
     val isVideo = MediaFileTypes.isVideoFile(file.name)
     val isAudio = MediaFileTypes.isAudioFile(file.name)
@@ -363,7 +363,7 @@ internal fun FileRow(
                         }
                     }
                     // 文件大小角标：右下角
-                    if (file.length > 0) {
+                    if (file.length > 0 && showSizeBadge) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
@@ -380,12 +380,6 @@ internal fun FileRow(
                             )
                         }
                     }
-                } else if (isVideo && isTooShort) {
-                    Text(
-                        text = "<15s",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.7f),
-                    )
                 } else {
                     Icon(
                         imageVector = when {
@@ -551,7 +545,6 @@ internal fun buildFlatTreeItems(
 internal fun FileFlatList(
     files: List<StorageFile>,
     thumbnailUrls: Map<String, String>,
-    tooShortPaths: Set<String>,
     encryptedPaths: Set<String>,
     isMultiSelect: Boolean,
     selectedPaths: Set<String>,
@@ -571,6 +564,7 @@ internal fun FileFlatList(
     listState: LazyListState = rememberLazyListState(),
     contentTopInset: Dp = 0.dp,
     header: (@Composable () -> Unit)? = null,
+    showSizeBadge: Boolean = false,
 ) {
     // 拍平当前目录 + 已展开子目录为纵向顺序的节点列表（key 用 path，树内唯一）
     val nodes = remember(files, treeChildren, treeExpanded) {
@@ -648,7 +642,6 @@ internal fun FileFlatList(
                             FileRow(
                                 file = file,
                                 thumbnailUrl = thumbnailUrls[file.path],
-                                isTooShort = tooShortPaths.contains(file.path),
                                 isEncrypted = false,
                                 isMultiSelect = isMultiSelect,
                                 isSelected = file.path in selectedPaths,
@@ -659,6 +652,7 @@ internal fun FileFlatList(
                                 onShowFileActions = { onShowFileActions(file) },
                                 onToggleSelection = { onToggleSelection(file) },
                                 onEnterMultiSelect = { onEnterMultiSelect(file) },
+                                showSizeBadge = showSizeBadge,
                             )
                         }
                     }

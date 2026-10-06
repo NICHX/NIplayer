@@ -67,12 +67,14 @@ fun MediaLibrarySettingsScreen(
     var generateForAudio by remember { mutableStateOf(ThumbnailSettings.generateForAudio) }
     var saveInSameDir by remember { mutableStateOf(ThumbnailSettings.saveInSameDir) }
     var updateOnExit by remember { mutableStateOf(ThumbnailSettings.updateOnExit) }
-    var framePositionKey by remember { mutableStateOf(ThumbnailSettings.framePositionKey) }
+    var framePosition by remember { mutableStateOf(ThumbnailSettings.framePosition) }
     var generationMode by remember { mutableStateOf(ThumbnailSettings.generationMode) }
     var showOnlyMediaFiles by remember { mutableStateOf(FileBrowserSettings.showOnlyMediaFiles) }
     var showHiddenFiles by remember { mutableStateOf(FileBrowserSettings.showHiddenFiles) }
     var hideThumbFolder by remember { mutableStateOf(FileBrowserSettings.hideThumbFolder) }
     var hideNoMediaFolders by remember { mutableStateOf(FileBrowserSettings.hideNoMediaFolders) }
+    var showFileTypeBadge by remember { mutableStateOf(FileBrowserSettings.showFileTypeBadge) }
+    var showFileSizeBadge by remember { mutableStateOf(FileBrowserSettings.showFileSizeBadge) }
     var showFramePositionDialog by remember { mutableStateOf(false) }
     var showStorageHelpDialog by remember { mutableStateOf(false) }
     var showGenerationModeDialog by remember { mutableStateOf(false) }
@@ -170,7 +172,7 @@ fun MediaLibrarySettingsScreen(
                     HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     SettingClickRow(
                         label = stringResource(R.string.player_thumbnail_frame),
-                        value = stringResource(ThumbnailFramePosition.fromKey(framePositionKey).labelRes),
+                        value = stringResource(framePosition.labelRes),
                         onClick = { showFramePositionDialog = true },
                     )
                 }
@@ -284,6 +286,26 @@ fun MediaLibrarySettingsScreen(
                         FileBrowserSettings.hideNoMediaFolders = it
                     },
                 )
+                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SettingSwitchRow(
+                    label = stringResource(R.string.player_show_type_badge),
+                    description = stringResource(R.string.player_show_type_badge_desc),
+                    checked = showFileTypeBadge,
+                    onCheckedChange = {
+                        showFileTypeBadge = it
+                        FileBrowserSettings.showFileTypeBadge = it
+                    },
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SettingSwitchRow(
+                    label = stringResource(R.string.player_show_size_badge),
+                    description = stringResource(R.string.player_show_size_badge_desc),
+                    checked = showFileSizeBadge,
+                    onCheckedChange = {
+                        showFileSizeBadge = it
+                        FileBrowserSettings.showFileSizeBadge = it
+                    },
+                )
             }
             Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
@@ -296,10 +318,10 @@ fun MediaLibrarySettingsScreen(
             items = ThumbnailFramePosition.entries.map { option ->
                 NiDialogItem(
                     label = stringResource(option.labelRes),
-                    isSelected = framePositionKey == option.key,
+                    isSelected = framePosition == option,
                     onClick = {
-                        framePositionKey = option.key
-                        ThumbnailSettings.framePositionKey = option.key
+                        framePosition = option
+                        ThumbnailSettings.framePosition = option
                         showFramePositionDialog = false
                     },
                 )
