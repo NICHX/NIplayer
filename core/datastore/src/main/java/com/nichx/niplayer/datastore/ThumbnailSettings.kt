@@ -56,11 +56,11 @@ object ThumbnailSettings {
         get() = mmkv.decodeBool(KEY_SAVE_IN_SAME_DIR, true)
         set(value) { mmkv.encode(KEY_SAVE_IN_SAME_DIR, value) }
 
-    /** 取帧位置策略。默认 [ThumbnailFramePosition.POS_5S]。 */
+    /** 取帧位置策略。默认 [ThumbnailFramePosition.POS_10_PCT]。 */
     var framePosition: ThumbnailFramePosition
         get() = ThumbnailFramePosition.fromKey(
-            mmkv.decodeString(KEY_FRAME_POSITION, ThumbnailFramePosition.POS_5S.key)
-                ?: ThumbnailFramePosition.POS_5S.key,
+            mmkv.decodeString(KEY_FRAME_POSITION, ThumbnailFramePosition.POS_10_PCT.key)
+                ?: ThumbnailFramePosition.POS_10_PCT.key,
         )
         set(value) { mmkv.encode(KEY_FRAME_POSITION, value.key) }
 
@@ -237,6 +237,6 @@ enum class ThumbnailFramePosition(val key: String, @StringRes val labelRes: Int)
 
     companion object {
         fun fromKey(key: String): ThumbnailFramePosition =
-            entries.find { it.key == key } ?: POS_5S
+            entries.find { it.key == key } ?: POS_10_PCT
     }
 }

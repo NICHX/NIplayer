@@ -227,11 +227,7 @@ Java_com_nichx_niplayer_thumbnail_FfmpegFrameDecoder_nativeDecode(
     } else {
       posUs = durationUs > 0 ? durationUs / 10 : 5000000;
     }
-    if (durationUs > 0) {
-      int64_t minUs = durationUs / 10;
-      if (posUs < minUs) posUs = minUs;
-      if (posUs > durationUs - 500000) posUs = durationUs - 500000;
-    }
+    if (durationUs > 0 && posUs > durationUs - 500000) posUs = durationUs - 500000;
     if (posUs < 0) posUs = 0;
 
     int seekRet = av_seek_frame(format, -1, posUs, AVSEEK_FLAG_BACKWARD);
@@ -241,9 +237,17 @@ Java_com_nichx_niplayer_thumbnail_FfmpegFrameDecoder_nativeDecode(
     frame = av_frame_alloc();
     if (!packet || !frame) break;
 
+    AVRational timeBase = format->streams[videoStream]->time_base;
+    int64_t targetPts = (seeked && timeBase.num > 0 && timeBase.den > 0)
+                            ? av_rescale_q(posUs, AV_TIME_BASE_Q, timeBase)
+                            : AV_NOPTS_VALUE;
+
     int bestLuma = -1;
-    int framesSeen = 0;
-    int cap = seeked ? 12 : 240;
+    int evaluated = 0;
+    int decoded = 0;
+    const int cap = seeked ? 12 : 240;
+    const int maxDecode = seeked ? 600 : 240;
+    bool reached = false;
     bool done = false;
     int readRet = 0;
 
@@ -261,6 +265,16 @@ Java_com_nichx_niplayer_thumbnail_FfmpegFrameDecoder_nativeDecode(
         int r = avcodec_receive_frame(decoder, frame);
         if (r == AVERROR(EAGAIN) || r == AVERROR_EOF) break;
         if (r < 0) break;
+        decoded++;
+        if (!reached) {
+          bool preRoll = false;
+          if (targetPts != AV_NOPTS_VALUE) {
+            int64_t pts = frame->best_effort_timestamp;
+            if (pts != AV_NOPTS_VALUE && pts < targetPts) preRoll = true;
+          }
+          if (preRoll && decoded < maxDecode) continue;
+          reached = true;
+        }
         int luma = meanLuma(frame);
         if (luma > bestLuma) {
           bestLuma = luma;
@@ -270,8 +284,8 @@ Java_com_nichx_niplayer_thumbnail_FfmpegFrameDecoder_nativeDecode(
             if (av_frame_ref(best, frame) < 0) av_frame_unref(best);
           }
         }
-        framesSeen++;
-        if (framesSeen >= cap) {
+        evaluated++;
+        if (evaluated >= cap || decoded >= maxDecode) {
           done = true;
           break;
         }
@@ -280,7 +294,7 @@ Java_com_nichx_niplayer_thumbnail_FfmpegFrameDecoder_nativeDecode(
     }
 
     if (!best) {
-      LOGW("no frame decoded (readRet=%d frames=%d reads=%d seeks=%d bytes=%lld)", readRet, framesSeen,
+      LOGW("no frame decoded (readRet=%d frames=%d reads=%d seeks=%d bytes=%lld)", readRet, decoded,
            io.reads, io.seeks, static_cast<long long>(io.bytesRead));
       break;
     }
@@ -322,7 +336,7 @@ Java_com_nichx_niplayer_thumbnail_FfmpegFrameDecoder_nativeDecode(
     result = out;
     LOGD("decoded %dx%d -> %dx%d dur=%.1fs seekPos=%.1fs seekRet=%d frames=%d luma=%d reads=%d seeks=%d bytes=%lld",
          srcWidth, srcHeight, dstWidth, dstHeight, durationUs / 1000000.0, posUs / 1000000.0, seekRet,
-         framesSeen, bestLuma, io.reads, io.seeks, static_cast<long long>(io.bytesRead));
+         evaluated, bestLuma, io.reads, io.seeks, static_cast<long long>(io.bytesRead));
   } while (false);
 
   if (best) av_frame_free(&best);

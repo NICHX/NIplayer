@@ -118,7 +118,7 @@ class ThumbnailManager @Inject constructor(
         storage: Storage,
         storageId: Int,
         file: StorageFile,
-        position: ThumbnailFramePosition = ThumbnailFramePosition.POS_5S,
+        position: ThumbnailFramePosition = ThumbnailFramePosition.POS_10_PCT,
     ): ThumbnailResult = withContext(Dispatchers.IO) {
         require(MediaFileTypes.isVideoFile(file.name)) {
             "generateThumbnail 要求视频文件，收到 ${file.name}"
@@ -580,5 +580,5 @@ fun calculateFramePositionMs(durationMs: Long, position: ThumbnailFramePosition)
     return frameMs.coerceIn(0L, upper)
 }
 
-/** 默认取帧位置（第 5 秒）。 */
+/** `POS_5S` 预设与时长不可用时的回退取帧位置（第 5 秒）。 */
 const val DEFAULT_FRAME_MS = 5000L
