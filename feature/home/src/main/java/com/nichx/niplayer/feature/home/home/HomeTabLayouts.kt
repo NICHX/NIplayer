@@ -278,8 +278,8 @@ internal fun CinematicHeroBanner(
                 .background(
                     Brush.horizontalGradient(
                         listOf(
-                            Color.Black.copy(alpha = 0.32f),
-                            Color.Black.copy(alpha = 0.06f),
+                            Color.Black.copy(alpha = 0.15f),
+                            Color.Black.copy(alpha = 0.03f),
                         ),
                     ),
                 ),
