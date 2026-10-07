@@ -57,6 +57,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -460,17 +461,25 @@ internal fun PortraitLayout(
     val canSwipePrevious = neighborPrevIndex >= 0
     val canSwipeNext = neighborNextIndex >= 0
 
+    // 「下标 → 封面」的本地记录：给换页动画里**滑出中的旧唱片**取它自己的封面。
+    // 必须本地记：coverPath 与 currentIndex 分属两条流，换片的头一两帧里
+    // 旧下标若退回到实时 coverPath，拿到的就是新封面——旧唱片会闪一下。
+    val pageCoverCache = remember { mutableMapOf<Int, Any?>() }
+    SideEffect {
+        if (coverPath != null) pageCoverCache[currentIndex] = coverPath
+    }
+
     /**
      * 某一页（AnimatedContent 冻结在那一页的下标）该显示的封面。
      *
-     * 必须按**页下标**取，而不是一律用实时 `coverPath`——滑出中的旧唱片要保持自己的封面，
-     * 否则换片途中它会提前变成新封面（一张唱片中途「换脸」）。
+     * 取用顺序：当前页用实时封面 → 邻居页用播放器预取的封面 →
+     * 其余（主要是滑出中的旧页）用 [pageCoverCache] 里该下标最近一次见到的封面。
      */
     fun coverForPage(pageIndex: Int): Any? = when {
         pageIndex == currentIndex -> coverPath
-        pageIndex >= 0 && pageIndex == neighborPrevIndex -> neighborPrevCover
-        pageIndex >= 0 && pageIndex == neighborNextIndex -> neighborNextCover
-        else -> coverPath
+        pageIndex >= 0 && pageIndex == neighborPrevIndex && neighborPrevCover != null -> neighborPrevCover
+        pageIndex >= 0 && pageIndex == neighborNextIndex && neighborNextCover != null -> neighborNextCover
+        else -> pageCoverCache[pageIndex] ?: coverPath
     }
 
     // 换片跟手：唱片随手指横向平移的实时位移（px）；[discSettleJob] 持松手后的归位动画。
@@ -1042,7 +1051,7 @@ internal fun PortraitLayout(
                             // 显示条件见 showNeighbors——拖动中，或松手后尚未交接给换片动画时。
                             if (showNeighbors && canSwipePrevious) {
                                 VinylRecordPlayer(
-                                    coverData = neighborPrevCover,
+                                    coverData = coverForPage(neighborPrevIndex),
                                     isPlaying = false,
                                     modifier = Modifier
                                         .size(side)
@@ -1052,7 +1061,7 @@ internal fun PortraitLayout(
                             }
                             if (showNeighbors && canSwipeNext) {
                                 VinylRecordPlayer(
-                                    coverData = neighborNextCover,
+                                    coverData = coverForPage(neighborNextIndex),
                                     isPlaying = false,
                                     modifier = Modifier
                                         .size(side)
