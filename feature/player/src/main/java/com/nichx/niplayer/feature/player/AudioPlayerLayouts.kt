@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -81,7 +82,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -538,6 +538,10 @@ internal fun PortraitLayout(
     // Apple：有可显示的封面/歌词内容（无内容或播放失败时另走提示分支）
     val appleActive = isAppleStyle && hasActiveContent && playbackError == null
 
+    // 布局可用宽度：@LayoutScopeMarker 会挡住深层 DSL（Column/Row 等）里的 BoxWithConstraintsScope，
+    // 所以在作用域内先存成普通 val，供下方歌名行「给序号留位」的宽度上限复用。
+    val layoutWidth = maxWidth
+
     // 封面页 ↔ 歌词页 切换动效优化：
     // - 封面整组上移 −300dp 并淡出；
     // - 歌词自下方 +400dp 上移并淡入；
@@ -901,6 +905,8 @@ internal fun PortraitLayout(
                         // 带图标与文案的明确入口（Apple 主题另有小封面入口，故不重复）。
                         if (!isAppleStyle) {
                             BackToRecordBar(onClick = onToggleLyrics)
+                            // 与下方歌名行拉开 8dp：原来两行紧贴，加上序号就糊成一块
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
                 }
@@ -1148,37 +1154,34 @@ internal fun PortraitLayout(
                     // 底部这一块都不再重复，直接留白给进度与传输键。
                     isAppleStyle -> Unit
                     else -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Spacer(modifier = Modifier.weight(1f))
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = titleColor,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(2f),
-                        )
-                        Spacer(modifier = Modifier.weight(1f))
+                        // 歌名居中 + 序号**贴行尾**（叠层，互不参与对方布局）：
+                        // - 序号位置固定，不再随歌名长短左右漂（原来并进居中行就会漂）；
+                        // - 序号迟到/就绪都不挪动歌名，也就不会再有跳动。
+                        // 行尾正好与下方进度条右端、时长文字对齐。
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = titleColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                // 上限 60%：再长也只自己省略号，绝不与右侧序号重叠
+                                modifier = Modifier.widthIn(max = layoutWidth * 0.6f),
+                            )
+                            if (playlist.isNotEmpty() && currentIndex >= 0) {
+                                Text(
+                                    text = "${currentIndex + 1} / ${playlist.size}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = secondaryColor,
+                                    maxLines = 1,
+                                    modifier = Modifier.align(Alignment.CenterEnd),
+                                )
+                            }
+                        }
                     }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                if (!isAppleStyle && playlist.isNotEmpty() && currentIndex >= 0) {
-                    val subtitleText = "${currentIndex + 1} / ${playlist.size}"
-                    Text(
-                        text = subtitleText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = secondaryColor,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
