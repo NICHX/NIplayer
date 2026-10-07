@@ -44,6 +44,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.nichx.niplayer.feature.player.theme.ChromeTint
+import com.nichx.niplayer.feature.player.theme.ControlSpec
+import com.nichx.niplayer.feature.player.theme.ProgressVariant
 
 /** 底部细进度条：3dp 高，按播放进度填充主色，不参与交互，用于沉浸模式下指示进度。 */
 @Composable
@@ -96,25 +99,18 @@ internal fun ControlColumn(
     onCyclePlayMode: () -> Unit,
     onShowPlaylist: () -> Unit,
     compact: Boolean = false,
-    appleStyle: Boolean = false,
+    spec: ControlSpec,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (appleStyle) {
-            AppleProgressSection(
-                positionMs = positionMs,
-                durationMs = durationMs,
-                onSeek = onSeek,
-            )
-        } else {
-            ProgressSection(
-                positionMs = positionMs,
-                durationMs = durationMs,
-                onSeek = onSeek,
-            )
-        }
+        ProgressArea(
+            variant = spec.progress,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            onSeek = onSeek,
+        )
 
         Spacer(modifier = Modifier.height(if (compact) 6.dp else 8.dp))
 
@@ -132,7 +128,34 @@ internal fun ControlColumn(
             onCyclePlayMode = onCyclePlayMode,
             onShowPlaylist = onShowPlaylist,
             compact = compact,
-            appleStyle = appleStyle,
+            spec = spec,
+        )
+    }
+}
+
+/**
+ * 进度条区：按主题选实现。
+ *
+ * Apple 的细滑块与其它主题的 Material `Slider` 是两套实现，属于「选结构」而非「取值」，
+ * 所以用穷尽 `when` 表达 —— 新增变体时编译器会点名，而不是静默套用某一种。
+ */
+@Composable
+internal fun ProgressArea(
+    variant: ProgressVariant,
+    positionMs: State<Long>,
+    durationMs: Long,
+    onSeek: (Long) -> Unit,
+) {
+    when (variant) {
+        ProgressVariant.STANDARD -> ProgressSection(
+            positionMs = positionMs,
+            durationMs = durationMs,
+            onSeek = onSeek,
+        )
+        ProgressVariant.APPLE -> AppleProgressSection(
+            positionMs = positionMs,
+            durationMs = durationMs,
+            onSeek = onSeek,
         )
     }
 }
@@ -213,22 +236,34 @@ internal fun PlaybackControls(
     onCyclePlayMode: () -> Unit,
     onShowPlaylist: () -> Unit,
     compact: Boolean = false,
-    appleStyle: Boolean = false,
+    spec: ControlSpec,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val primary = MaterialTheme.colorScheme.primary
-    // Apple Music 风格：控件更大、无圆形底色、纯白图标
-    val sideSize = when { appleStyle -> 46.dp; compact -> 38.dp; else -> 42.dp }
-    val sideIconSize = when { appleStyle -> 30.dp; compact -> 24.dp; else -> 28.dp }
-    val mainSize = when { appleStyle -> 72.dp; compact -> 56.dp; else -> 64.dp }
-    val mainIconSize = when { appleStyle -> 52.dp; compact -> 32.dp; else -> 36.dp }
-    val gap = when { appleStyle -> 18.dp; compact -> 12.dp; else -> 16.dp }
-    val containerColor = if (appleStyle) Color.Transparent else onSurface.copy(alpha = 0.08f)
-    val iconColor = if (appleStyle) Color.White else onSurface
-    // 主播放键：实心主色 + 投影，建立明确的「主操作」层次（Apple 仍走扁平纯白）
-    val mainContainerColor = if (appleStyle) Color.Transparent else primary
-    val mainIconColor = if (appleStyle) Color.White else MaterialTheme.colorScheme.onPrimary
-    val mainElevation = if (appleStyle) 0.dp else if (compact) 6.dp else 8.dp
+    // 尺寸：主题给「常规 / 紧凑」两档，紧凑度选其中一档（两个维度互不干扰）
+    val sideSize = spec.sideButton.pick(compact)
+    val sideIconSize = spec.sideIcon.pick(compact)
+    val mainSize = spec.mainButton.pick(compact)
+    val mainIconSize = spec.mainIcon.pick(compact)
+    val gap = spec.gap.pick(compact)
+    val mainElevation = spec.mainElevation.pick(compact)
+    // 配色族：Apple 走扁平纯白（无圆底、无投影），其余用主题色实心主键
+    val containerColor = when (spec.tint) {
+        ChromeTint.MATERIAL -> onSurface.copy(alpha = 0.08f)
+        ChromeTint.LIGHT_ON_DARK -> Color.Transparent
+    }
+    val iconColor = when (spec.tint) {
+        ChromeTint.MATERIAL -> onSurface
+        ChromeTint.LIGHT_ON_DARK -> Color.White
+    }
+    val mainContainerColor = when (spec.tint) {
+        ChromeTint.MATERIAL -> primary
+        ChromeTint.LIGHT_ON_DARK -> Color.Transparent
+    }
+    val mainIconColor = when (spec.tint) {
+        ChromeTint.MATERIAL -> MaterialTheme.colorScheme.onPrimary
+        ChromeTint.LIGHT_ON_DARK -> Color.White
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),

@@ -31,7 +31,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -42,13 +41,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -63,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nichx.niplayer.datastore.AudioPlayerStyle
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import com.nichx.niplayer.feature.player.theme.GlassChrome
 
 /**
  * 「简约封面」主题（[AudioPlayerStyle.GLASS]）的竖屏视觉件。
@@ -84,7 +82,7 @@ private val GlassCreditsHeadHeight = 30.dp + 6.dp + 19.dp
 /** 信息栈里「当前歌词」一行占的高度（含它上方的留白）。与 [GlassLyricFontSize] 的行高同步。 */
 private val GlassCreditsLyricHeight = 47.dp + 27.dp
 
-/** 已唱字符的荧光：与歌词页同一口径（见 LyricsView 的 GLASS_GLOW_ALPHA_* 的说明）。 */
+/** 已唱字符的荧光：与歌词页同一口径（见 theme/LyricsTheme.kt 里 LyricsGlow 的说明）。 */
 private const val GlassGlowAlphaDark = 0.85f
 private const val GlassGlowAlphaLight = 0.50f
 
@@ -195,7 +193,8 @@ internal fun GlassTopBar(
             onShare = onShare,
             audioStyle = audioStyle,
             onStyleSelect = onStyleSelect,
-            menuIcon = true,
+            // 本组件就是简约封面的顶栏，直接用它自己的 chrome 规格（三横线图标）
+            chrome = GlassChrome,
         )
     }
 }

@@ -85,11 +85,7 @@ fun AudioPlayerSettingsScreen(
         }
     }
 
-    val audioStyleLabel = when (audioPlayerStyle) {
-        AudioPlayerStyle.APPLE_MUSIC -> stringResource(R.string.player_audio_appearance_apple_music)
-        AudioPlayerStyle.GLASS -> stringResource(R.string.player_audio_appearance_glass)
-        AudioPlayerStyle.VINYL -> stringResource(R.string.player_audio_appearance_vinyl)
-    }
+    val audioStyleLabel = appearanceLabelOf(audioPlayerStyle)
     val minMinutesLabel = stringResource(R.string.player_audio_progress_threshold_value, minMinutes)
 
     NiScaffold(
@@ -203,22 +199,18 @@ fun AudioPlayerSettingsScreen(
         NiListItemDialog(
             title = stringResource(R.string.player_audio_appearance),
             onDismiss = { showAppearanceDialog = false },
-            items = listOf(
-                AudioPlayerStyle.VINYL to stringResource(R.string.player_audio_appearance_vinyl),
-                AudioPlayerStyle.GLASS to stringResource(R.string.player_audio_appearance_glass),
-                AudioPlayerStyle.APPLE_MUSIC to stringResource(R.string.player_audio_appearance_apple_music),
-            )
-                .map { (option, label) ->
-                    NiDialogItem(
-                        label = label,
-                        isSelected = audioPlayerStyle == option,
-                        onClick = {
-                            audioPlayerStyle = option
-                            PlayerSettings.audioPlayerStyle = option
-                            showAppearanceDialog = false
-                        },
-                    )
-                },
+            // 从枚举派生：新增外观时自动出现在列表里，不必手工同步
+            items = AudioPlayerStyle.entries.map { option ->
+                NiDialogItem(
+                    label = appearanceLabelOf(option),
+                    isSelected = audioPlayerStyle == option,
+                    onClick = {
+                        audioPlayerStyle = option
+                        PlayerSettings.audioPlayerStyle = option
+                        showAppearanceDialog = false
+                    },
+                )
+            },
         )
     }
 
@@ -240,4 +232,12 @@ fun AudioPlayerSettingsScreen(
                 },
         )
     }
+}
+
+/** 外观名称。**唯一**的一处 `AudioPlayerStyle` → 名称映射（穷尽 `when`，新增外观时编译器会报缺分支）。 */
+@Composable
+private fun appearanceLabelOf(style: AudioPlayerStyle): String = when (style) {
+    AudioPlayerStyle.VINYL -> stringResource(R.string.player_audio_appearance_vinyl)
+    AudioPlayerStyle.GLASS -> stringResource(R.string.player_audio_appearance_glass)
+    AudioPlayerStyle.APPLE_MUSIC -> stringResource(R.string.player_audio_appearance_apple_music)
 }

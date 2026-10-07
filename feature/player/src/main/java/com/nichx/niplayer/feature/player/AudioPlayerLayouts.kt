@@ -2,7 +2,6 @@ package com.nichx.niplayer.feature.player
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
@@ -22,7 +21,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -51,7 +49,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -62,51 +59,41 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
-import coil3.request.CachePolicy
-import coil3.request.ImageRequest
 import com.nichx.niplayer.datastore.AudioPlayerStyle
 import com.nichx.niplayer.datastore.PlayerSettings
-import com.nichx.niplayer.designsystem.components.NiGeneratedCoverArt
 import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
 import com.nichx.niplayer.designsystem.theme.MotionTokens
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import com.nichx.niplayer.feature.player.theme.ChromeTint
+import com.nichx.niplayer.feature.player.theme.PlayerSkeleton
+import com.nichx.niplayer.feature.player.theme.themeOf
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 
 /** 横屏沉浸模式：无操作自动隐藏控件的延时（ms）。 */
@@ -114,9 +101,6 @@ internal const val AUTO_HIDE_DELAY_MS = 3000L
 
 /** Apple 歌词页：无操作自动收起底部控件的延时（ms）。 */
 private const val APPLE_LYRICS_CONTROLS_IDLE_MS = 4000L
-
-/** Apple 播放器内容的左右边距（参照 BitChord 的 PLAYER_GUTTER = 30dp）。 */
-private val APPLE_PLAYER_GUTTER = 30.dp
 
 /** Apple 封面页：歌名行与封面底部之间的间距。 */
 private val APPLE_CREDITS_TOP_GAP = 16.dp
@@ -166,88 +150,6 @@ private const val FLICK_VELOCITY_PX_PER_S = 900f
 
 /** 拖动超出半个屏宽后的跟随比例：越小越「重」，避免在边界硬邦邦地卡住。 */
 private const val DRAG_OVERSHOOT_DAMPING = 0.3f
-
-/**
- * 黑胶主题的全屏背景：主题底色 + 封面主色氛围光 + 主题色 scrim + 四角暗角。
- *
- * 氛围光用 `CoverBackdropSampleSize` 极小分辨率采样封面再拉伸铺满，天然形成柔和
- * 环境光，**不使用** `Modifier.blur`（整屏 RenderEffect 是硬约束禁止项）；
- * scrim 保证前景控件对比度，暗角把视线收拢到唱盘、增强纵深。
- */
-@Composable
-internal fun BackgroundLayer(coverData: Any?) {
-    val background = MaterialTheme.colorScheme.background
-    val isDark = NiExtraColors.current.isDark
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize().background(background))
-        // 封面变化（切歌）时让环境光淡入淡出，避免背景「啪」地硬切
-        Crossfade(
-            targetState = coverData,
-            animationSpec = tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter),
-            modifier = Modifier.fillMaxSize(),
-            label = "vinylBackdrop",
-        ) { cover ->
-            if (cover != null) {
-                val context = LocalContext.current
-                val request = remember(cover) {
-                    when (cover) {
-                        is String -> ImageRequest.Builder(context)
-                            .data(cover)
-                            .size(CoverBackdropSampleSize, CoverBackdropSampleSize)
-                            .diskCachePolicy(CachePolicy.DISABLED)
-                            .build()
-                        is ImageRequest -> cover.newBuilder()
-                            .size(CoverBackdropSampleSize, CoverBackdropSampleSize)
-                            .diskCachePolicy(CachePolicy.DISABLED)
-                            .build()
-                        else -> cover
-                    }
-                }
-                AsyncImage(
-                    model = request,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .alpha(if (isDark) 0.30f else 0.36f),
-                )
-            }
-        }
-        // 主题色 scrim：整体压一层、顶/底更重。中部不再「透到底」（原为 0.18）——
-        // 歌词与唱盘恰好落在屏幕中部，那正是最需要对比度的地方。
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            background.copy(alpha = 0.46f),
-                            background.copy(alpha = 0.42f),
-                            background.copy(alpha = 0.54f),
-                            background.copy(alpha = 0.84f),
-                        ),
-                    ),
-                ),
-        )
-        // 四角暗角：把视线收拢到唱盘，增强纵深。
-        // 用显式 center/radius 的径向渐变，避免依赖 Brush 默认中心/半径的解析行为。
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color.Transparent,
-                        background.copy(alpha = if (isDark) 0.72f else 0.52f),
-                    ),
-                    center = Offset(size.width / 2f, size.height / 2f),
-                    radius = size.maxDimension * 0.62f,
-                ),
-            )
-        }
-    }
-}
-
-/** 简约封面主题：封面卡圆角。 */
-private val CoverCorner = 24.dp
 
 /**
  * 简约封面主题：封面边长占可用宽度的比例。
@@ -328,232 +230,44 @@ private const val GLASS_TRACK_ENTER_DELAY_MS = 50
 private const val GLASS_TRACK_ENTER_MS = 230
 private const val GLASS_TRACK_SWAP_SCALE = 0.96f
 
-/**
- * 背景光采样边长（px）：以极小分辨率采样封面，再拉伸铺满，天然形成柔和背景光。
- *
- * 这样**不需要** `Modifier.blur`（整屏 RenderEffect）：整屏逐帧重建离屏层是硬约束禁止项。
- *
- * 取 16 而不是更大的值：64px 采样放大后，封面的构图仍然可辨（一张糊掉的人像），
- * 背景会和前景内容抢注意力、整体显得脏；16px 只剩几块大色域，读起来才是
- * 「以封面主色为基调的环境光」——这正是这个主题想要的。
- */
-private const val CoverBackdropSampleSize = 16
-
-/**
- * 背景光的降饱和系数。
- *
- * 封面越复杂（多色相、高对比），越需要把颜色收一收：原色铺满整屏时，背景本身
- * 就是一幅画，和前景内容抢注意力，整页读起来就是「花」。收到 0.6 后只剩一层
- * 淡淡的主色倾向，前景的强调色（播放键 / 进度 / 当前歌词）才立得住。
- */
-private const val CoverBackdropSaturation = 0.6f
-
-/**
- * 背景光统一压向主题底色的比例（深浅色各一档）。
- *
- * 竖向 scrim 只管「上轻下重」，压不住封面自身的明暗差（比如深色头发贴着浅色脸）；
- * 再补一层**均匀**的，把整体对比度也收下来 —— 这是「复杂封面看着花」的最后一道闸。
- * 浅色档略大：浅底上的深色块比深底上的亮色块更扎眼。
- */
-private const val CoverBackdropWashDark = 0.22f
-private const val CoverBackdropWashLight = 0.28f
-
-/**
- * 简约封面主题的全屏背景：主题底色 + 封面模糊铺底（降饱和 + 压平）+ 主题色 scrim。
- *
- * 与黑胶主题 [BackgroundLayer]（弱化封面 + 底部渐变）不同，这里把封面放大模糊，
- * 形成以封面主色为基调的环境光背景。
- */
-@Composable
-internal fun CoverBlurBackground(coverData: Any?) {
-    val context = LocalContext.current
-    val background = MaterialTheme.colorScheme.background
-    val isDark = NiExtraColors.current.isDark
-    // 浅色模式的 scrim 略减：保住一点背景色彩，但**不能减太多** —— 减到 0.55 时
-    // 封面的构图会透出来，浅底深字压在花背景上会显得脏。0.72 是「有色但不花」的档位。
-    val scrimStrength = if (isDark) 1f else 0.72f
-    val washStrength = if (isDark) CoverBackdropWashDark else CoverBackdropWashLight
-    // 降饱和的色矩阵：只需构造一次
-    val desaturate = remember {
-        ColorFilter.colorMatrix(
-            ColorMatrix().apply { setToSaturation(CoverBackdropSaturation) },
-        )
-    }
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize().background(background))
-        if (coverData != null) {
-            // ⚠️ memoryCachePolicy(DISABLED) 不是保守起见，是**必须**的：
-            // Coil 3 的缓存键只在请求带 transformations 时才把尺寸并进去
-            // （`MemoryCacheService.newCacheKey`：`coil#size` 只在 `transformations.isNotEmpty()` 时加入），
-            // 所以「同一个文件路径 + 不同 size」会命中同一条缓存。
-            // 后果：这里先按 16px 解出的背景光，会被封面卡按全尺寸再写一次（后者更慢、写得更晚），
-            // 于是**下次再进同一首歌时，背景读到的是那张全尺寸图** —— 背景变成一张清晰封面。
-            // 这也解释了「第一次对、切歌再切回来就不对」。
-            val request = remember(coverData) {
-                when (coverData) {
-                    is String -> ImageRequest.Builder(context)
-                        .data(coverData)
-                        .size(CoverBackdropSampleSize, CoverBackdropSampleSize)
-                        .memoryCachePolicy(CachePolicy.DISABLED)
-                        .diskCachePolicy(CachePolicy.DISABLED)
-                        .build()
-                    is ImageRequest -> coverData.newBuilder()
-                        .size(CoverBackdropSampleSize, CoverBackdropSampleSize)
-                        .memoryCachePolicy(CachePolicy.DISABLED)
-                        .diskCachePolicy(CachePolicy.DISABLED)
-                        .build()
-                    else -> coverData
-                }
-            }
-            AsyncImage(
-                model = request,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                // 低分辨率图被拉伸铺满即得背景光：不再挂整屏 blur / 缩放 / alpha 图层。
-                // 放大用双三次（而不是默认的双线性）：双线性在每个源像素的边界上是折线，
-                // 放大几十倍后会在屏幕上留下肉眼可见的「方块状云斑」，也就是背景发脏的主因。
-                filterQuality = FilterQuality.High,
-                colorFilter = desaturate,
-                modifier = Modifier.fillMaxSize(),
-            )
-            // 均匀压一层主题底色：把封面自身的明暗差也收下来（见 CoverBackdropWash* 说明）
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(background.copy(alpha = washStrength)),
-            )
-        }
-        // 主题色 scrim：顶部几乎不压、往下单调加深到接近纯色底。
-        //
-        // 参考图就是这个走向：最上面一段基本是封面本身的高光（背景光最亮），
-        // 到歌名那一带已经压到能托住白字，到底部控件区几乎只剩底色。
-        // 曲线必须**单调**：原先「上 0.34 → 中 0.20」中间反而变亮，会在封面上沿
-        // 留出一条突兀的亮带。
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            background.copy(alpha = 0.10f * scrimStrength),
-                            background.copy(alpha = 0.36f * scrimStrength),
-                            background.copy(alpha = 0.70f * scrimStrength),
-                            background.copy(alpha = 0.88f * scrimStrength),
-                            background.copy(alpha = 0.96f * scrimStrength),
-                        ),
-                    ),
-                ),
-        )
-    }
-}
-
-/**
- * 简约封面主题的封面卡：方形圆角封面 + 轻投影，**不含任何玻璃质感**。
- *
- * 无封面（或封面路径已失效）时由 [GeneratedCoverArt] 现场生成一张：淡主题色纸面 + 文件名。
- * 该底衬**始终**绘制在封面图之下，所以「没有封面」不再是缺陷，而是现场造一张封面。
- */
-@Composable
-internal fun CoverCard(
-    coverData: Any?,
-    modifier: Modifier = Modifier,
-    labelTitle: String = "",
-) {
-    val context = LocalContext.current
-    val shape = RoundedCornerShape(CoverCorner)
-    Box(modifier = modifier.shadow(18.dp, shape).clip(shape)) {
-        NiGeneratedCoverArt(
-            fileName = labelTitle,
-            shape = shape,
-            modifier = Modifier.fillMaxSize(),
-        )
-        if (coverData != null) {
-            // 同样关掉内存缓存：这条请求不带 transformations，Coil 的缓存键里就没有尺寸，
-            // 会与「背景光的 16px」「小窗 / 歌单里的缩略图」互相覆盖（详见 CoverBlurBackground 的说明）。
-            val request = remember(coverData) {
-                when (coverData) {
-                    is String -> ImageRequest.Builder(context)
-                        .data(coverData)
-                        .memoryCachePolicy(CachePolicy.DISABLED)
-                        .diskCachePolicy(CachePolicy.DISABLED)
-                        .build()
-                    is ImageRequest -> coverData.newBuilder()
-                        .memoryCachePolicy(CachePolicy.DISABLED)
-                        .diskCachePolicy(CachePolicy.DISABLED)
-                        .build()
-                    else -> coverData
-                }
-            }
-            AsyncImage(
-                model = request,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
-}
-
 @Composable
 internal fun PortraitLayout(
-    hasActiveContent: Boolean,
-    playbackError: String?,
-    onRetry: () -> Unit,
-    showLyrics: Boolean,
-    lrcLines: List<LrcLine>,
-    positionMs: State<Long>,
-    durationMs: Long,
-    onSeek: (Long) -> Unit,
-    title: String,
-    artist: String,
-    isPlaying: Boolean,
-    hasPrev: Boolean,
-    hasNext: Boolean,
-    onTogglePlay: () -> Unit,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    coverPath: Any?,
+    state: AudioPlayerUiState,
+    actions: AudioPlayerActions,
     style: AudioPlayerStyle = AudioPlayerStyle.APPLE_MUSIC,
-    playlist: List<*>,
-    currentIndex: Int,
-    neighborPrevCover: Any? = null,
-    neighborNextCover: Any? = null,
-    /** 预定的上/下一首下标；-1 表示没有（列表首尾、单曲循环）。 */
-    neighborPrevIndex: Int = -1,
-    neighborNextIndex: Int = -1,
-    playMode: Int,
-    modeIcon: androidx.compose.ui.graphics.vector.ImageVector,
-    modeLabel: String,
-    onToggleLyrics: () -> Unit,
-    onCyclePlayMode: () -> Unit,
-    onShowPlaylist: () -> Unit,
-    onBack: () -> Unit,
-    onDownload: () -> Unit,
-    onEqualizer: () -> Unit = {},
-    speedOptions: List<Float> = listOf(1f),
-    currentSpeedIndex: Int = 0,
-    onSpeedSelect: (Int) -> Unit = {},
-    showDownload: Boolean = true,
-    sleepTimerText: String = "",
-    onSleepTimer: () -> Unit = {},
-    showExternalActions: Boolean = false,
-    onOpenWith: () -> Unit = {},
-    onShare: () -> Unit = {},
-    onStyleSelect: (AudioPlayerStyle) -> Unit = {},
 ) {
+    // 把两个 holder 摊平回局部名字：函数体是既有实现，逐处改名会产出几百行难以复核的 diff，
+    // 而这段代码没有单测、只能靠真机验证。摊平后函数体**一字未动**，回归风险为零。
+    // 将来若要改名，是一次独立的机械改动。
+    val (
+        hasActiveContent, playbackError, showLyrics, lrcLines, positionMs, durationMs,
+        title, artist, isPlaying, hasPrev, hasNext, coverPath, playlist, currentIndex,
+        neighborPrevCover, neighborNextCover, neighborPrevIndex, neighborNextIndex,
+        playMode, modeIcon, modeLabel, speedOptions, currentSpeedIndex, sleepTimerText,
+        showDownload, showExternalActions,
+    ) = state
+    val (
+        onRetry, onSeek, onTogglePlay, onPrevious, onNext, onToggleLyrics, onCyclePlayMode,
+        onShowPlaylist, onBack, onDownload, onEqualizer, onSpeedSelect, onSleepTimer,
+        onOpenWith, onShare, onStyleSelect,
+    ) = actions
+
     val onSurface = MaterialTheme.colorScheme.onSurface
-    val isAppleStyle = style == AudioPlayerStyle.APPLE_MUSIC
-    val isGlassStyle = style == AudioPlayerStyle.GLASS
-    val titleColor = if (isAppleStyle) Color.White else onSurface
+    val theme = themeOf(style)
+    // 「这块 UI 属于哪个主题」一律问骨架，不问 style —— 骨架是 3 值枚举、在 themeOf 处穷尽映射，
+    // 新增主题时编译器会在那里点名；原先的 `style == APPLE_MUSIC` 会让新主题静默走错分支。
+    val isAppleSkeleton = theme.skeleton == PlayerSkeleton.APPLE_BANNER
+    val isCardSkeleton = theme.skeleton == PlayerSkeleton.CARD
+    val titleColor = if (isAppleSkeleton) Color.White else onSurface
     val secondaryColor =
-        if (isAppleStyle) Color.White.copy(alpha = 0.6f) else onSurface.copy(alpha = 0.6f)
+        if (isAppleSkeleton) Color.White.copy(alpha = 0.6f) else onSurface.copy(alpha = 0.6f)
 
     // Apple 歌词页：底部控件（进度 + 传输键）一段时间无操作后自动收起，整页交给歌词。
     // controlsActivityGeneration 让「滚动等交互」也能把计时器重新计时（否则控件已可见时不会再续期）。
     var lyricsControlsVisible by remember(showLyrics) { mutableStateOf(true) }
     var controlsActivityGeneration by remember(showLyrics) { mutableIntStateOf(0) }
-    LaunchedEffect(isAppleStyle, showLyrics, lyricsControlsVisible, controlsActivityGeneration) {
-        if (isAppleStyle && showLyrics && lyricsControlsVisible) {
+    LaunchedEffect(isAppleSkeleton, showLyrics, lyricsControlsVisible, controlsActivityGeneration) {
+        if (isAppleSkeleton && showLyrics && lyricsControlsVisible) {
             delay(APPLE_LYRICS_CONTROLS_IDLE_MS)
             lyricsControlsVisible = false
         }
@@ -576,9 +290,9 @@ internal fun PortraitLayout(
     val coverFile = coverPath as? String
     // Apple 封面页：封面自身的颜色网格 + 全宽贴顶的封面（参照 BitChord）。
     // 网格由封面从小图解码后算一次并缓存，不涉及整屏 RenderEffect。
-    val appleMesh = if (isAppleStyle) rememberAppleArtworkMesh(coverFile) else null
+    val appleMesh = if (isAppleSkeleton) rememberAppleArtworkMesh(coverFile) else null
     // 动态流光背景用的 9 色取色（无封面时是兜底配色）
-    val applePalette = if (isAppleStyle) {
+    val applePalette = if (isAppleSkeleton) {
         rememberAppleArtworkPalette(coverFile)
     } else {
         AppleArtworkPalette.Fallback
@@ -586,7 +300,7 @@ internal fun PortraitLayout(
 
     // 简约封面：强调色取自当前封面（每首歌一套配色）。取色只算一次并缓存，切歌换封面才重算；
     // 未就绪 / 无封面 / 灰阶封面时回落到主题色，因此进度条与播放键不会出现「没有颜色」的空档。
-    val coverAccent = if (isGlassStyle) {
+    val coverAccent = if (isCardSkeleton) {
         rememberCoverAccent(coverFile, NiExtraColors.current.isDark)
     } else {
         null
@@ -602,7 +316,7 @@ internal fun PortraitLayout(
     // **暂停即停**：相位循环退出、不再请求帧；同时幅度系数平滑落到 0，
     // 于是封面从当前弧位缓缓回到正中，而不是「啪」一下跳回去或僵在半空。
     // 「减少动态效果」开启时不挂动画；其它两套主题也不挂。
-    val glassFloatEnabled = isGlassStyle && !LocalNiReduceMotion.current
+    val glassFloatEnabled = isCardSkeleton && !LocalNiReduceMotion.current
     val glassFloatBob = rememberLoopPhase(
         enabled = glassFloatEnabled && isPlaying,
         periodMs = GLASS_FLOAT_PERIOD_MS,
@@ -735,7 +449,7 @@ internal fun PortraitLayout(
         (maxHeight - APPLE_COVER_RESERVED).coerceAtLeast(0.dp),
     )
     // Apple：有可显示的封面/歌词内容（无内容或播放失败时另走提示分支）
-    val appleActive = isAppleStyle && hasActiveContent && playbackError == null
+    val appleActive = isAppleSkeleton && hasActiveContent && playbackError == null
 
     // 布局可用宽度：@LayoutScopeMarker 会挡住深层 DSL（Column/Row 等）里的 BoxWithConstraintsScope，
     // 所以在作用域内先存成普通 val，供下方歌名行「给序号留位」的宽度上限复用。
@@ -769,7 +483,7 @@ internal fun PortraitLayout(
         derivedStateOf { artworkAlpha > 0.01f }
     }
 
-    if (isAppleStyle) {
+    if (isAppleSkeleton) {
         if (coverFile != null) {
             AppleArtworkMeshBackdrop(
                 mesh = appleMesh,
@@ -854,7 +568,7 @@ internal fun PortraitLayout(
                             showExternalActions = showExternalActions,
                             onOpenWith = onOpenWith,
                             onShare = onShare,
-                            appleStyle = true,
+                            chrome = theme.chrome,
                             audioStyle = style,
                             onStyleSelect = onStyleSelect,
                         )
@@ -871,7 +585,7 @@ internal fun PortraitLayout(
                             onSeek = onSeek,
                             maxVisibleLines = Int.MAX_VALUE,
                             modifier = Modifier.fillMaxSize(),
-                            style = LyricsStyle.APPLE,
+                            theme = theme.lyrics,
                             isPlaying = isPlaying,
                             perChar = perCharLyrics,
                             // 任何滚动交互都把控件呼出并把自动收起计时器重新计时
@@ -891,8 +605,8 @@ internal fun PortraitLayout(
             .fillMaxSize()
             .statusBarsPadding(),
     ) {
-        if (!isAppleStyle) {
-        if (isGlassStyle) {
+        if (!isAppleSkeleton) {
+        if (isCardSkeleton) {
             // 简约封面：顶栏居中显示「正在播放 + 当前歌名」，「更多」用三横线
             GlassTopBar(
                 title = title,
@@ -913,9 +627,8 @@ internal fun PortraitLayout(
             )
         } else {
         TopBar(
-            // Apple Music 风格顶栏不重复显示歌名（歌名在封面下方单独展示），
-            // 「更多」也移到歌名右侧的圆形按钮上
-            title = if (isAppleStyle) "" else title,
+            // 这个共享顶栏只服务黑胶 —— Apple 与简约封面各有自己的顶栏（见上面的分支）
+            title = title,
             onBack = onBack,
             onDownload = onDownload,
             onEqualizer = onEqualizer,
@@ -928,15 +641,14 @@ internal fun PortraitLayout(
             showExternalActions = showExternalActions,
             onOpenWith = onOpenWith,
             onShare = onShare,
-            appleStyle = isAppleStyle,
-            showMore = !isAppleStyle,
+            chrome = theme.chrome,
             audioStyle = style,
             onStyleSelect = onStyleSelect,
         )
         }
         }
 
-        if (isAppleStyle && appleActive) {
+        if (isAppleSkeleton && appleActive) {
             // ---- Apple 封面页：封面点击区 + 歌名行（整组随切换上移 + 淡出）----
             // 封面本身画在背景层上（全宽贴顶），这里只放一个与封面等高的透明点击区，
             // 点它进歌词页；歌名行紧贴在封面下方。
@@ -970,7 +682,7 @@ internal fun PortraitLayout(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = APPLE_PLAYER_GUTTER),
+                        .padding(horizontal = theme.infoArea.horizontalPadding),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -993,7 +705,7 @@ internal fun PortraitLayout(
                             showExternalActions = showExternalActions,
                             onOpenWith = onOpenWith,
                             onShare = onShare,
-                            appleStyle = true,
+                            chrome = theme.chrome,
                             audioStyle = style,
                             onStyleSelect = onStyleSelect,
                         )
@@ -1006,7 +718,7 @@ internal fun PortraitLayout(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            contentAlignment = if (isAppleStyle) Alignment.TopCenter else Alignment.Center,
+            contentAlignment = if (isAppleSkeleton) Alignment.TopCenter else Alignment.Center,
         ) {
             if (!hasActiveContent) {
                 Text(
@@ -1025,7 +737,7 @@ internal fun PortraitLayout(
                 AnimatedContent(
                     targetState = showLyrics,
                     transitionSpec = {
-                        if (isGlassStyle) {
+                        if (isCardSkeleton) {
                             // 简约封面：**交叉溶解**，而不是黑胶那种「整幅竖向推挤」。
                             //
                             // 黑胶的语言是「翻页」：封面整块滑走、歌词整块滑上来，首尾相接
@@ -1101,7 +813,7 @@ internal fun PortraitLayout(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                         ) {
-                            if (isAppleStyle) {
+                            if (isAppleSkeleton) {
                                 lyricsControlsVisible = !lyricsControlsVisible
                             } else {
                                 onToggleLyrics()
@@ -1111,7 +823,7 @@ internal fun PortraitLayout(
                 ) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         // Apple Music：歌词页顶部一条信息条（缩略图 + 歌名/艺术家 + 「···」）
-                        if (isAppleStyle) {
+                        if (isAppleSkeleton) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1144,7 +856,7 @@ internal fun PortraitLayout(
                                     showExternalActions = showExternalActions,
                                     onOpenWith = onOpenWith,
                                     onShare = onShare,
-                                    appleStyle = true,
+                                    chrome = theme.chrome,
                                     audioStyle = style,
                                     onStyleSelect = onStyleSelect,
                                 )
@@ -1164,7 +876,7 @@ internal fun PortraitLayout(
                                 maxVisibleLines = Int.MAX_VALUE,
                                 modifier = Modifier.fillMaxSize(),
                                 // 简约封面用自己的歌词口径：居中、字号几乎齐平、层次只由颜色给出
-                                style = if (isGlassStyle) LyricsStyle.GLASS else LyricsStyle.VINYL,
+                                theme = theme.lyrics,
                                 // 简约封面：歌词高亮跟着封面强调色走，与封面页同一套配色
                                 accentColor = accent,
                                 isPlaying = isPlaying,
@@ -1174,10 +886,10 @@ internal fun PortraitLayout(
                         // 非 Apple 主题：底部常驻「回到唱片」触发条。
                         // 行数放开后歌词几乎铺满、可点空白被挤没，这里给一个全宽 48dp、
                         // 带图标与文案的明确入口（Apple 主题另有小封面入口，故不重复）。
-                        if (!isAppleStyle) {
+                        if (!isAppleSkeleton) {
                             BackToRecordBar(
                                 label = stringResource(
-                                    if (isGlassStyle) {
+                                    if (isCardSkeleton) {
                                         R.string.lyrics_collapse
                                     } else {
                                         R.string.lyrics_back_to_record
@@ -1201,7 +913,7 @@ internal fun PortraitLayout(
                         // **简约封面不做这个手势**：那里只有一张静态封面，没有「把唱片推走」
                         // 的语义；横向拖动还会和「点封面进歌词页」抢手势。切歌交给传输键。
                         .then(
-                            if (isGlassStyle) {
+                            if (isCardSkeleton) {
                                 Modifier
                             } else {
                                 Modifier.pointerInput(currentIndex, canSwipeNext, canSwipePrevious) {
@@ -1304,7 +1016,7 @@ internal fun PortraitLayout(
                     ) {
                         // 简约封面：封面边长要先扣掉下方三行信息栈的高度 —— 三行是固定高度、
                         // 不参与权重分配，不先扣的话短屏上歌词会被挤出屏幕。
-                        val side = if (isGlassStyle) {
+                        val side = if (isCardSkeleton) {
                             val reserved = GlassCoverTopGap + GlassCreditsGap + glassCreditsHeight
                             minOf(maxWidth * discBoxFraction, maxHeight - reserved)
                                 .coerceAtLeast(GlassCoverMinSide)
@@ -1314,7 +1026,7 @@ internal fun PortraitLayout(
                         // 简约封面：封面组在剩余高度里居中偏上（见 GLASS_COVER_TOP_SLACK_BIAS）。
                         // 恒按「有歌词」算组高：歌词是异步到的，按当前有没有算会让封面在
                         // 歌词到达那一帧突然挪位。
-                        val coverTopGap = if (isGlassStyle) {
+                        val coverTopGap = if (isCardSkeleton) {
                             val groupHeight =
                                 GlassCoverTopGap + side + GlassCreditsGap + glassCreditsHeight
                             ((maxHeight - groupHeight) * GLASS_COVER_TOP_SLACK_BIAS)
@@ -1344,7 +1056,7 @@ internal fun PortraitLayout(
                                 // （内容只拿到 side − gap），封面会被压成 side × (side − gap) 的长方形 ——
                                 // 之前 gap 只有 6dp 看不出来，改成几十 dp 后就非常明显。
                                 .then(
-                                    if (isGlassStyle) {
+                                    if (isCardSkeleton) {
                                         Modifier
                                             .align(Alignment.TopCenter)
                                             .offset(y = coverTopGap)
@@ -1411,7 +1123,7 @@ internal fun PortraitLayout(
                                     val base = if (initialState < 0 || targetState < 0) {
                                         // 载入跳变（下标尚未有效，如 -1 → 首曲）不做动效
                                         EnterTransition.None togetherWith ExitTransition.None
-                                    } else if (isGlassStyle) {
+                                    } else if (isCardSkeleton) {
                                         val swapIn = tween<Float>(
                                             durationMillis = GLASS_TRACK_ENTER_MS,
                                             delayMillis = GLASS_TRACK_ENTER_DELAY_MS,
@@ -1499,7 +1211,7 @@ internal fun PortraitLayout(
                         // 简约封面：封面下方的三行信息栈（歌名 / 艺术家 / 当前歌词）。
                         // 用 align + padding 叠在封面上方那一块之下，而不是塞进 Column ——
                         // 唱针必须与唱片重叠，一旦把封面挪进 Column，唱针就会变成排在下面。
-                        if (isGlassStyle) {
+                        if (isCardSkeleton) {
                             GlassTrackCredits(
                                 title = title,
                                 artist = artist,
@@ -1532,8 +1244,8 @@ internal fun PortraitLayout(
                 onNext()
             }
             // Apple 歌词页：底部控件自动收起，整页交给歌词
-            AnimatedVisibility(visible = !(isAppleStyle && showLyrics) || lyricsControlsVisible) {
-            if (isGlassStyle) {
+            AnimatedVisibility(visible = !(isAppleSkeleton && showLyrics) || lyricsControlsVisible) {
+            if (isCardSkeleton) {
                 // 简约封面：歌名/艺术家/歌词已经搬到封面下方，这里只剩细进度条 + 居中的传输键行
                 Column(
                     modifier = Modifier
@@ -1568,60 +1280,49 @@ internal fun PortraitLayout(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = if (isAppleStyle) APPLE_PLAYER_GUTTER else 24.dp),
-                horizontalAlignment =
-                if (isAppleStyle) Alignment.Start else Alignment.CenterHorizontally,
+                    .padding(horizontal = theme.infoArea.horizontalPadding),
+                horizontalAlignment = theme.infoArea.horizontalAlignment,
             ) {
-                when {
-                    // Apple：歌名行在封面下方（封面页）或顶部信息条里（歌词页），
-                    // 底部这一块都不再重复，直接留白给进度与传输键。
-                    isAppleStyle -> Unit
-                    else -> {
-                        // 歌名居中 + 序号**贴行尾**（叠层，互不参与对方布局）：
-                        // - 序号位置固定，不再随歌名长短左右漂（原来并进居中行就会漂）；
-                        // - 序号迟到/就绪都不挪动歌名，也就不会再有跳动。
-                        // 行尾正好与下方进度条右端、时长文字对齐。
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center,
-                        ) {
+                // Apple：歌名行在封面下方（封面页）或顶部信息条里（歌词页），
+                // 底部这一块不再重复，直接留白给进度与传输键。
+                if (theme.infoArea.showsTitleRow) {
+                    // 歌名居中 + 序号**贴行尾**（叠层，互不参与对方布局）：
+                    // - 序号位置固定，不再随歌名长短左右漂（原来并进居中行就会漂）；
+                    // - 序号迟到/就绪都不挪动歌名，也就不会再有跳动。
+                    // 行尾正好与下方进度条右端、时长文字对齐。
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = titleColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            // 上限 60%：再长也只自己省略号，绝不与右侧序号重叠
+                            modifier = Modifier.widthIn(max = layoutWidth * 0.6f),
+                        )
+                        if (playlist.isNotEmpty() && currentIndex >= 0) {
                             Text(
-                                text = title,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = titleColor,
+                                text = "${currentIndex + 1} / ${playlist.size}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = secondaryColor,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                // 上限 60%：再长也只自己省略号，绝不与右侧序号重叠
-                                modifier = Modifier.widthIn(max = layoutWidth * 0.6f),
+                                modifier = Modifier.align(Alignment.CenterEnd),
                             )
-                            if (playlist.isNotEmpty() && currentIndex >= 0) {
-                                Text(
-                                    text = "${currentIndex + 1} / ${playlist.size}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = secondaryColor,
-                                    maxLines = 1,
-                                    modifier = Modifier.align(Alignment.CenterEnd),
-                                )
-                            }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                if (isAppleStyle) {
-                    AppleProgressSection(
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        onSeek = onSeek,
-                    )
-                } else {
-                    ProgressSection(
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        onSeek = onSeek,
-                    )
-                }
+                ProgressArea(
+                    variant = theme.control.progress,
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    onSeek = onSeek,
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -1638,7 +1339,7 @@ internal fun PortraitLayout(
                     modeLabel = modeLabel,
                     onCyclePlayMode = onCyclePlayMode,
                     onShowPlaylist = onShowPlaylist,
-                    appleStyle = isAppleStyle,
+                    spec = theme.control,
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -1650,12 +1351,12 @@ internal fun PortraitLayout(
         // Apple：底部再留一段空白，与控件上方那段一起把空余分掉
         // （见 APPLE_BOTTOM_SLACK_WEIGHT）。条件只取决于「有无可播放内容」，与是否歌词页无关，
         // 这样封面/歌词切换时控件位置稳定、不会跳。
-        if (isAppleStyle && appleActive) {
+        if (isAppleSkeleton && appleActive) {
             Spacer(Modifier.weight(APPLE_BOTTOM_SLACK_WEIGHT))
         }
     }
     // Apple 封面页：悬浮返回；歌词页不显示返回按钮（点小封面回到封面页 / 系统返回手势）
-    if (isAppleStyle && !showLyrics) {
+    if (isAppleSkeleton && !showLyrics) {
         AppleMusicBackButton(
             onBack = onBack,
             modifier = Modifier.align(Alignment.TopStart),
@@ -1710,45 +1411,30 @@ private fun BackToRecordBar(label: String, onClick: () -> Unit) {
  */
 @Composable
 internal fun LandscapeLayout(
-    hasActiveContent: Boolean,
-    playbackError: String?,
-    onRetry: () -> Unit,
-    lrcLines: List<LrcLine>,
-    positionMs: State<Long>,
-    durationMs: Long,
-    onSeek: (Long) -> Unit,
-    title: String,
-    artist: String,
-    isPlaying: Boolean,
-    hasPrev: Boolean,
-    hasNext: Boolean,
-    onTogglePlay: () -> Unit,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    coverPath: Any?,
+    state: AudioPlayerUiState,
+    actions: AudioPlayerActions,
     style: AudioPlayerStyle = AudioPlayerStyle.APPLE_MUSIC,
-    playMode: Int,
-    modeIcon: androidx.compose.ui.graphics.vector.ImageVector,
-    modeLabel: String,
-    onCyclePlayMode: () -> Unit,
-    onShowPlaylist: () -> Unit,
-    onBack: () -> Unit,
-    onDownload: () -> Unit,
-    onEqualizer: () -> Unit = {},
-    speedOptions: List<Float> = listOf(1f),
-    currentSpeedIndex: Int = 0,
-    onSpeedSelect: (Int) -> Unit = {},
-    showDownload: Boolean = true,
-    sleepTimerText: String = "",
-    onSleepTimer: () -> Unit = {},
-    showExternalActions: Boolean = false,
-    onOpenWith: () -> Unit = {},
-    onShare: () -> Unit = {},
-    onStyleSelect: (AudioPlayerStyle) -> Unit = {},
 ) {
+    // 把两个 holder 摊平回局部名字：函数体是既有实现，逐处改名会产出几百行难以复核的 diff，
+    // 而这段代码没有单测、只能靠真机验证。摊平后函数体**一字未动**，回归风险为零。
+    // 将来若要改名，是一次独立的机械改动。
+    val (
+        hasActiveContent, playbackError, _, lrcLines, positionMs, durationMs,
+        title, artist, isPlaying, hasPrev, hasNext, coverPath, _, _,
+        _, _, _, _, playMode, modeIcon, modeLabel, speedOptions, currentSpeedIndex,
+        sleepTimerText, showDownload, showExternalActions,
+    ) = state
+    val (
+        onRetry, onSeek, onTogglePlay, onPrevious, onNext, _, onCyclePlayMode,
+        onShowPlaylist, onBack, onDownload, onEqualizer, onSpeedSelect, onSleepTimer,
+        onOpenWith, onShare, onStyleSelect,
+    ) = actions
+
     val onSurface = MaterialTheme.colorScheme.onSurface
-    val isAppleStyle = style == AudioPlayerStyle.APPLE_MUSIC
-    val isGlassStyle = style == AudioPlayerStyle.GLASS
+    val theme = themeOf(style)
+    // 同竖屏：一律问骨架，不问 style（见 PortraitLayout 的说明）
+    val isAppleSkeleton = theme.skeleton == PlayerSkeleton.APPLE_BANNER
+    val isCardSkeleton = theme.skeleton == PlayerSkeleton.CARD
     // 简约封面：横屏的歌词高亮与控件同样跟着封面强调色走（与竖屏同一套口径）
     val landscapeCoverAccent = if (style == AudioPlayerStyle.GLASS) {
         rememberCoverAccent(coverPath as? String, NiExtraColors.current.isDark)
@@ -1791,7 +1477,7 @@ internal fun LandscapeLayout(
     // 左侧唱片占满全部高度；右侧顶部一行 = 返回 + 歌名 + 操作按钮（更多），
     // 下方为歌词（占满剩余空间）与一行式播放控件。最底部常驻细进度条。
     Box(modifier = Modifier.fillMaxSize()) {
-    if (isAppleStyle) {
+    if (isAppleSkeleton) {
         // 横屏没有贴顶封面，整屏都是封面自身的颜色网格
         AppleArtworkMeshBackdrop(
             mesh = rememberAppleArtworkMesh(coverPath as? String),
@@ -1823,7 +1509,7 @@ internal fun LandscapeLayout(
                 !hasActiveContent -> Text(
                     text = stringResource(R.string.player_no_source),
                     style = MaterialTheme.typography.bodyLarge,
-                    color = if (isAppleStyle) Color.White.copy(alpha = 0.6f)
+                    color = if (isAppleSkeleton) Color.White.copy(alpha = 0.6f)
                     else onSurface.copy(alpha = 0.6f),
                 )
                 playbackError != null -> PlaybackErrorState(
@@ -1878,20 +1564,24 @@ internal fun LandscapeLayout(
                                     .size(40.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (isAppleStyle) Color.Transparent
-                                        else onSurface.copy(alpha = 0.08f),
+                                        when (theme.chrome.tint) {
+                                            ChromeTint.MATERIAL -> onSurface.copy(alpha = 0.08f)
+                                            ChromeTint.LIGHT_ON_DARK -> Color.Transparent
+                                        },
                                     ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                                     contentDescription = stringResource(R.string.player_back),
-                                    tint = if (isAppleStyle) Color.White.copy(alpha = 0.9f)
-                                    else onSurface.copy(alpha = 0.8f),
+                                    tint = when (theme.chrome.tint) {
+                                        ChromeTint.MATERIAL -> onSurface.copy(alpha = 0.8f)
+                                        ChromeTint.LIGHT_ON_DARK -> Color.White.copy(alpha = 0.9f)
+                                    },
                                 )
                             }
                         }
-                        if (isAppleStyle) {
+                        if (isAppleSkeleton) {
                             AppleTrackTitle(
                                 title = title.ifEmpty { stringResource(R.string.player_unknown_song) },
                                 artist = artist,
@@ -1922,7 +1612,7 @@ internal fun LandscapeLayout(
                             showExternalActions = showExternalActions,
                             onOpenWith = onOpenWith,
                             onShare = onShare,
-                            appleStyle = isAppleStyle,
+                            chrome = theme.chrome,
                             audioStyle = style,
                             onStyleSelect = onStyleSelect,
                         )
@@ -1952,11 +1642,7 @@ internal fun LandscapeLayout(
                             if (isLargeScreen) 8 else 5
                         },
                         modifier = Modifier.fillMaxSize(),
-                        style = when (style) {
-                            AudioPlayerStyle.APPLE_MUSIC -> LyricsStyle.APPLE
-                            AudioPlayerStyle.GLASS -> LyricsStyle.GLASS
-                            AudioPlayerStyle.VINYL -> LyricsStyle.VINYL
-                        },
+                        theme = theme.lyrics,
                         accentColor = landscapeAccent,
                         isPlaying = isPlaying,
                         perChar = landscapePerCharLyrics,
@@ -1967,7 +1653,7 @@ internal fun LandscapeLayout(
                 AnimatedVisibility(visible = controlsVisible) {
                     Column {
                         Spacer(modifier = Modifier.height(6.dp))
-                        if (isGlassStyle) {
+                        if (isCardSkeleton) {
                             GlassControlColumn(
                                 positionMs = positionMs,
                                 durationMs = durationMs,
@@ -2003,7 +1689,7 @@ internal fun LandscapeLayout(
                                 onCyclePlayMode = onCyclePlayMode,
                                 onShowPlaylist = onShowPlaylist,
                                 compact = true,
-                                appleStyle = isAppleStyle,
+                                spec = theme.control,
                             )
                         }
                     }
@@ -2016,7 +1702,7 @@ internal fun LandscapeLayout(
                         .weight(1f),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (isGlassStyle) {
+                    if (isCardSkeleton) {
                         GlassControlColumn(
                             positionMs = positionMs,
                             durationMs = durationMs,
@@ -2052,7 +1738,7 @@ internal fun LandscapeLayout(
                             onCyclePlayMode = onCyclePlayMode,
                             onShowPlaylist = onShowPlaylist,
                             compact = true,
-                            appleStyle = isAppleStyle,
+                            spec = theme.control,
                         )
                     }
                 }
@@ -2067,13 +1753,15 @@ internal fun LandscapeLayout(
                 positionMs = positionMs,
                 durationMs = durationMs,
                 modifier = Modifier.fillMaxWidth(),
-                accentColor = when {
-                    isAppleStyle -> Color.White
-                    isGlassStyle -> landscapeAccent
-                    else -> MaterialTheme.colorScheme.primary
+                // MATERIAL 下 landscapeAccent 已含「简约封面取封面强调色 / 黑胶回落主色」的口径
+                accentColor = when (theme.chrome.tint) {
+                    ChromeTint.MATERIAL -> landscapeAccent
+                    ChromeTint.LIGHT_ON_DARK -> Color.White
                 },
-                trackColor = if (isAppleStyle) Color.White.copy(alpha = 0.18f)
-                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                trackColor = when (theme.chrome.tint) {
+                    ChromeTint.MATERIAL -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                    ChromeTint.LIGHT_ON_DARK -> Color.White.copy(alpha = 0.18f)
+                },
             )
         }
     }

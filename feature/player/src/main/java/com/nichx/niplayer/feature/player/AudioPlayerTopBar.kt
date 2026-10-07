@@ -19,9 +19,6 @@ import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
-import androidx.compose.material.icons.rounded.Menu
-import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Speed
@@ -52,6 +49,8 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nichx.niplayer.feature.player.theme.ChromeSpec
+import com.nichx.niplayer.feature.player.theme.ChromeTint
 
 
 /** 播放器顶栏"更多"下拉菜单的页面态（单一玻璃菜单原地切换，避免子菜单开合时闪烁）。 */
@@ -75,11 +74,14 @@ internal fun TopBarActions(
     showExternalActions: Boolean = false,
     onOpenWith: () -> Unit = {},
     onShare: () -> Unit = {},
-    appleStyle: Boolean = false,
-    /** Apple 主题把「更多」移到标题行，顶栏只保留返回。 */
+    chrome: ChromeSpec,
+    /**
+     * 是否渲染「更多」按钮。
+     *
+     * 由**调用点**决定而非主题属性：Apple 把「更多」放在封面下方的歌名行里，
+     * 但它的歌词页顶栏与横屏顶栏仍然需要这个按钮，所以不能按主题一刀切。
+     */
     showMore: Boolean = true,
-    /** 简约封面主题的顶栏用三横线（☰）而不是竖三点（⋮）。 */
-    menuIcon: Boolean = false,
     /** 非空时在菜单里提供「外观」二级菜单用于切换主题。 */
     audioStyle: AudioPlayerStyle? = null,
     onStyleSelect: (AudioPlayerStyle) -> Unit = {},
@@ -87,16 +89,18 @@ internal fun TopBarActions(
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
     val primary = MaterialTheme.colorScheme.primary
-    // Apple Music 风格：更多按钮为浅色圆底 + 横向三点
-    val moreContainerColor = if (appleStyle) Color.White.copy(alpha = 0.16f) else onSurface.copy(alpha = 0.08f)
-    val moreIconColor = if (appleStyle) Color.White else onSurface.copy(alpha = 0.8f)
-    val moreIcon = when {
-        appleStyle -> Icons.Rounded.MoreHoriz
-        menuIcon -> Icons.Rounded.Menu
-        else -> Icons.Rounded.MoreVert
+    // 顶栏配色族：Apple 压在封面图上用浅色圆底，其余跟随 Material 主题
+    val moreContainerColor = when (chrome.tint) {
+        ChromeTint.MATERIAL -> onSurface.copy(alpha = 0.08f)
+        ChromeTint.LIGHT_ON_DARK -> Color.White.copy(alpha = 0.16f)
     }
-    val moreIconSize = if (menuIcon) 22.dp else 24.dp
-    val moreButtonSize = if (appleStyle) 44.dp else 40.dp
+    val moreIconColor = when (chrome.tint) {
+        ChromeTint.MATERIAL -> onSurface.copy(alpha = 0.8f)
+        ChromeTint.LIGHT_ON_DARK -> Color.White
+    }
+    val moreIcon = chrome.moreIcon
+    val moreIconSize = chrome.moreIconSize
+    val moreButtonSize = chrome.moreButtonSize
     // 外观三个选项的名称（子菜单用）
     val vinylStyleName = stringResource(R.string.player_audio_appearance_vinyl)
     val glassStyleName = stringResource(R.string.player_audio_appearance_glass)
@@ -436,11 +440,8 @@ internal fun TopBarActions(
                             thickness = 0.5.dp,
                             color = onSurface.copy(alpha = 0.08f),
                         )
-                        listOf(
-                            AudioPlayerStyle.VINYL,
-                            AudioPlayerStyle.GLASS,
-                            AudioPlayerStyle.APPLE_MUSIC,
-                        ).forEach { option ->
+                        // 从枚举派生：新增外观时自动出现在菜单里，不必手工同步这份清单
+                        AudioPlayerStyle.entries.forEach { option ->
                             val selected = option == audioStyle
                             DropdownMenuItem(
                                 text = {
@@ -491,14 +492,19 @@ internal fun TopBar(
     showExternalActions: Boolean = false,
     onOpenWith: () -> Unit = {},
     onShare: () -> Unit = {},
-    appleStyle: Boolean = false,
-    showMore: Boolean = true,
+    chrome: ChromeSpec,
     audioStyle: AudioPlayerStyle? = null,
     onStyleSelect: (AudioPlayerStyle) -> Unit = {},
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
-    val backContainerColor = if (appleStyle) Color.Transparent else onSurface.copy(alpha = 0.08f)
-    val iconTint = if (appleStyle) Color.White.copy(alpha = 0.9f) else onSurface.copy(alpha = 0.8f)
+    val backContainerColor = when (chrome.tint) {
+        ChromeTint.MATERIAL -> onSurface.copy(alpha = 0.08f)
+        ChromeTint.LIGHT_ON_DARK -> Color.Transparent
+    }
+    val iconTint = when (chrome.tint) {
+        ChromeTint.MATERIAL -> onSurface.copy(alpha = 0.8f)
+        ChromeTint.LIGHT_ON_DARK -> Color.White.copy(alpha = 0.9f)
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -526,7 +532,10 @@ internal fun TopBar(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (appleStyle) Color.White.copy(alpha = 0.9f) else onSurface.copy(alpha = 0.9f),
+                color = when (chrome.tint) {
+                    ChromeTint.MATERIAL -> onSurface.copy(alpha = 0.9f)
+                    ChromeTint.LIGHT_ON_DARK -> Color.White.copy(alpha = 0.9f)
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -547,8 +556,7 @@ internal fun TopBar(
             showExternalActions = showExternalActions,
             onOpenWith = onOpenWith,
             onShare = onShare,
-            appleStyle = appleStyle,
-            showMore = showMore,
+            chrome = chrome,
             audioStyle = audioStyle,
             onStyleSelect = onStyleSelect,
         )
