@@ -16,6 +16,7 @@ import org.codelibs.jcifs.smb.config.PropertyConfiguration
 import org.codelibs.jcifs.smb.context.BaseContext
 import org.codelibs.jcifs.smb.impl.NtlmPasswordAuthenticator
 import org.codelibs.jcifs.smb.impl.SmbFile
+import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.util.Properties
@@ -325,6 +326,12 @@ class SmbStorage(
     private suspend fun openInputStreamInternal(file: StorageFile): InputStream {
         ensureShare()
         val fileSize = file.length
+        // 兜底：jcifs 的 openRandomAccess("r") 会带上 O_CREAT，对**不存在**的路径做只读打开
+        // 会在服务器上创建 0 字节幽灵文件（调用方「盲开」封面/歌词候选时曾批量产生）。
+        // 这里先 stat 一次，不存在直接报错，杜绝任何调用方再在网络存储上留下垃圾。
+        if (!resolveSmbFile(file.path).exists()) {
+            throw FileNotFoundException("SMB 文件不存在：${file.path}")
+        }
         // 下载使用 SmbParallelInputStream 多线程并行预读（与播放流一致），
         // 提升千兆网吞吐 3-4 倍。fileSize<=0 时按无限流处理。
         // 预读通道各自需要独立的 SmbFile 句柄，故传入工厂而非单个实例（#12：寻址交给 SmbAddressing）。

@@ -1,12 +1,7 @@
 package com.nichx.niplayer.feature.home.home
 
 import com.nichx.niplayer.feature.home.R
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +26,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -43,14 +37,12 @@ import com.nichx.niplayer.designsystem.components.niHasCustomBackground
 import com.nichx.niplayer.designsystem.components.niNestedSurface
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.motion.niPressable
-import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.common.media.MediaFileTypes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Movie
-import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme

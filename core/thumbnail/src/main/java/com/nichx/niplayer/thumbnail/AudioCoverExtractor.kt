@@ -98,11 +98,22 @@ internal class AudioCoverExtractor(
         if (dirCoverPath != null && copyCoverToCache(storage, dirCoverPath, cacheFile)) return true
 
         // 文件级候选：{文件名去扩展名}.jpg/.jpeg/.png（逐文件探测）
+        //
+        // 必须先 fileExists 再打开：SMB 下 jcifs 以「只读」模式打开不存在的路径时会带上
+        // O_CREAT（SmbRandomAccessFile 的 "r" 模式），直接在服务器上生成 0 字节幽灵文件。
+        // 目录级候选走 resolveDirLevelCover 已自带存在性判断，此处是此前遗漏的一处。
         val nameWithoutExt = file.name.substringBeforeLast(".")
         for (ext in COVER_EXTS) {
             val candidate = "$nameWithoutExt$ext"
             val coverPath = if (dirPath.isEmpty()) candidate else "$dirPath/$candidate"
-            if (copyCoverToCache(storage, coverPath, cacheFile)) return true
+            val exists = try {
+                storage.fileExists(coverPath)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+            if (exists && copyCoverToCache(storage, coverPath, cacheFile)) return true
         }
         return false
     }

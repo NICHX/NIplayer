@@ -209,11 +209,15 @@ class AudioPlaybackManager @Inject constructor(
                         val storage = storageFactory.createOrNull(library) ?: return@launch
                         try {
                             val lrcFile = MediaSourceBuilder.createVirtualFile(lrcFilePath, "$nameWithoutExt.lrc")
-                            storage.openInputStream(lrcFile)?.use { input ->
-                                val text = input.bufferedReader().readText()
-                                if (text.isNotBlank()) {
-                                    _lrcText.value = text
-                                    return@launch
+                            // 先判断存在再打开：SMB 下 jcifs 只读打开不存在的路径会带 O_CREAT，
+                            // 在服务器上生成 0 字节幽灵 .lrc（SmbRandomAccessFile 的 "r" 模式）。
+                            if (storage.fileExists(lrcFilePath)) {
+                                storage.openInputStream(lrcFile)?.use { input ->
+                                    val text = input.bufferedReader().readText()
+                                    if (text.isNotBlank()) {
+                                        _lrcText.value = text
+                                        return@launch
+                                    }
                                 }
                             }
                         } finally {
