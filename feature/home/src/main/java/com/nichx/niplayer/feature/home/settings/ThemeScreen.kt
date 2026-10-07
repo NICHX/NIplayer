@@ -8,6 +8,13 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -80,6 +87,8 @@ import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
+import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
+import com.nichx.niplayer.designsystem.theme.MotionTokens
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiScheme
 import com.nichx.niplayer.designsystem.theme.NiSchemes
@@ -110,6 +119,7 @@ fun ThemeScreen(
     val glassOpacity by GlassSettings.opacityFlow.collectAsStateWithLifecycle()
     val glassTopBarOpacity by GlassSettings.topBarOpacityFlow.collectAsStateWithLifecycle()
     val glassPanelOpacity by GlassSettings.panelOpacityFlow.collectAsStateWithLifecycle()
+    val reduceMotion by GlassSettings.reduceMotionFlow.collectAsStateWithLifecycle()
 
     // 自定义背景：图片路径 + 不透明度，实时驱动全局页面背景与下方预览
     val context = LocalContext.current
@@ -298,6 +308,12 @@ fun ThemeScreen(
                 min = GlassSettings.MIN_PANEL_OPACITY,
                 max = GlassSettings.MAX_PANEL_OPACITY,
                 onValueChange = { GlassSettings.panelOpacity = it },
+            )
+            SettingSwitchRow(
+                label = stringResource(R.string.settings_reduce_motion),
+                description = stringResource(R.string.settings_reduce_motion_desc),
+                checked = reduceMotion,
+                onCheckedChange = { GlassSettings.reduceMotion = it },
             )
 
             Spacer(Modifier.height(4.dp))
@@ -685,23 +701,30 @@ private fun ThemeModeCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val container = if (isSelected) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        NiExtraColors.current.surfaceLevel2
-    }
-    val content = if (isSelected) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
+    // 选中态过渡：容器/文字/描边颜色平滑过渡（原为硬切，与"实时预览"的诉求相悖）
+    val scheme = MaterialTheme.colorScheme
+    val container by animateColorAsState(
+        targetValue = if (isSelected) scheme.primaryContainer else NiExtraColors.current.surfaceLevel2,
+        animationSpec = tween(MotionTokens.QUICK, easing = MotionTokens.easeStandard),
+        label = "themeModeContainer",
+    )
+    val content by animateColorAsState(
+        targetValue = if (isSelected) scheme.onPrimaryContainer else scheme.onSurface,
+        animationSpec = tween(MotionTokens.QUICK, easing = MotionTokens.easeStandard),
+        label = "themeModeContent",
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) scheme.primary else Color.Transparent,
+        animationSpec = tween(MotionTokens.QUICK, easing = MotionTokens.easeStandard),
+        label = "themeModeBorder",
+    )
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(container)
             .border(
                 width = 1.5.dp,
-                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                color = borderColor,
                 shape = RoundedCornerShape(16.dp),
             )
             .clickable(onClick = onClick)
@@ -788,14 +811,26 @@ private fun SchemeCard(
         val cs = NiSchemes.buildLight(scheme)
         listOf(cs.primary, cs.secondary, cs.tertiary, cs.primaryContainer)
     }
+    // 选中态过渡：描边宽度/颜色平滑过渡（原为硬切）
+    val borderWidth by animateDpAsState(
+        targetValue = if (isSelected) 1.5.dp else 1.dp,
+        animationSpec = tween(MotionTokens.QUICK, easing = MotionTokens.easeStandard),
+        label = "schemeBorderWidth",
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primary
+        else NiExtraColors.current.outlineSoft.copy(alpha = 0.5f),
+        animationSpec = tween(MotionTokens.QUICK, easing = MotionTokens.easeStandard),
+        label = "schemeBorderColor",
+    )
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .background(NiExtraColors.current.surfaceLevel1)
             .border(
-                width = if (isSelected) 1.5.dp else 1.dp,
-                color = if (isSelected) MaterialTheme.colorScheme.primary else NiExtraColors.current.outlineSoft.copy(alpha = 0.5f),
+                width = borderWidth,
+                color = borderColor,
                 shape = RoundedCornerShape(16.dp),
             )
             .padding(7.dp),
@@ -837,7 +872,20 @@ private fun SchemeCard(
                 maxLines = 1,
                 modifier = Modifier.weight(1f),
             )
-            if (isSelected) {
+            NiAnimatedVisibility(
+                visible = isSelected,
+                enter = fadeIn(tween(MotionTokens.QUICK, easing = MotionTokens.easeEnter)) +
+                    scaleIn(
+                        tween(MotionTokens.QUICK, easing = MotionTokens.easeEnter),
+                        initialScale = 0.6f,
+                    ),
+                exit = fadeOut(
+                    tween(MotionTokens.exitOf(MotionTokens.QUICK), easing = MotionTokens.easeExit),
+                ) + scaleOut(
+                    tween(MotionTokens.exitOf(MotionTokens.QUICK), easing = MotionTokens.easeExit),
+                    targetScale = 0.6f,
+                ),
+            ) {
                 Box(
                     modifier = Modifier
                         .size(18.dp)

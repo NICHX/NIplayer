@@ -34,32 +34,34 @@ fun NiListSkeleton(
     itemHeight: Dp = 64.dp,
     leadingSize: Dp = 40.dp,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        repeat(itemCount) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(itemHeight)
-                    .padding(vertical = 4.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            ) {
-                NiSkeletonBox(
-                    width = leadingSize,
-                    height = leadingSize,
-                    shape = RoundedCornerShape(8.dp),
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+    NiSkeletonPulse {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            repeat(itemCount) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(itemHeight)
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 ) {
-                    NiSkeletonLine(widthFraction = 0.7f)
-                    NiSkeletonLine(widthFraction = 0.4f)
+                    NiSkeletonBox(
+                        width = leadingSize,
+                        height = leadingSize,
+                        shape = RoundedCornerShape(8.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        NiSkeletonLine(widthFraction = 0.7f)
+                        NiSkeletonLine(widthFraction = 0.4f)
+                    }
                 }
             }
         }

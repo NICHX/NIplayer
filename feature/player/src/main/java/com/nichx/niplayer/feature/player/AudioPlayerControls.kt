@@ -30,6 +30,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,14 +47,14 @@ import androidx.compose.ui.unit.dp
 /** 底部细进度条：3dp 高，按播放进度填充主色，不参与交互，用于沉浸模式下指示进度。 */
 @Composable
 internal fun ThinProgressBar(
-    positionMs: Long,
+    positionMs: State<Long>,
     durationMs: Long,
     modifier: Modifier = Modifier,
     accentColor: Color = MaterialTheme.colorScheme.primary,
     trackColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
 ) {
     val progress = if (durationMs > 0) {
-        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+        (positionMs.value.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
@@ -79,7 +80,7 @@ internal fun ThinProgressBar(
  */
 @Composable
 internal fun ControlColumn(
-    positionMs: Long,
+    positionMs: State<Long>,
     durationMs: Long,
     onSeek: (Long) -> Unit,
     isPlaying: Boolean,
@@ -137,20 +138,22 @@ internal fun ControlColumn(
 
 @Composable
 internal fun ProgressSection(
-    positionMs: Long,
+    positionMs: State<Long>,
     durationMs: Long,
     onSeek: (Long) -> Unit,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val primary = MaterialTheme.colorScheme.primary
     val duration = durationMs.coerceAtLeast(1L)
+    // 只在这里读一次：读取 State 才能让"时间文字 + 滑块"这一小块单独重组
+    val currentPositionMs = positionMs.value
 
     // 拖动进度条时以本地值驱动滑块（跟手），松手才提交 seek
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
-    val sliderPos = if (dragging) dragValue else positionMs.toFloat().coerceIn(0f, duration.toFloat())
+    val sliderPos = if (dragging) dragValue else currentPositionMs.toFloat().coerceIn(0f, duration.toFloat())
     // 拖动中左侧时间显示目标位置（预览），松手后回到实际播放位置
-    val displayMs = if (dragging) dragValue.toLong() else positionMs
+    val displayMs = if (dragging) dragValue.toLong() else currentPositionMs
 
     Slider(
         value = sliderPos,

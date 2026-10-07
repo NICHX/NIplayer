@@ -53,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
@@ -74,6 +76,7 @@ import com.nichx.niplayer.designsystem.components.niHasCustomBackground
 import com.nichx.niplayer.designsystem.components.niNestedSurface
 import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
 import com.nichx.niplayer.designsystem.iconstyle.NiStyleIcon
+import com.nichx.niplayer.designsystem.theme.MotionTokens
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.common.media.MediaFileTypes
@@ -243,25 +246,28 @@ internal fun FileRow(
 
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    val bgAlpha by animateFloatAsState(
-        targetValue = if (isPressed) 0.92f else 1f,
-        animationSpec = tween(durationMillis = NiMotion.DURATION_MICRO),
-        label = "rowBgAlpha",
-    )
 
     val thumbShape = RoundedCornerShape(8.dp)
 
-    val rowBgColor = if (isSelected) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+    // 按压反馈改为**背景色动画**（而非整行 alpha 图层）：
+    // 原实现给每一行挂一个恒等 graphicsLayer 做整行 alpha，滚动时逐行多一个离屏层，
+    // 且会把缩略图/文字一起变淡（观感不一致）。
+    val scheme = MaterialTheme.colorScheme
+    val baseRowBg = if (isSelected) {
+        scheme.primaryContainer.copy(alpha = 0.6f)
     } else {
         NiExtraColors.current.surfaceLevel2
     }
+    val rowBgColor by animateColorAsState(
+        targetValue = if (isPressed) lerp(baseRowBg, scheme.onSurface, 0.08f) else baseRowBg,
+        animationSpec = tween(MotionTokens.QUICK, easing = MotionTokens.easeStandard),
+        label = "fileRowBg",
+    )
 
     val rowShape = RoundedCornerShape(16.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer { this.alpha = bgAlpha }
             // 多选模式下取消阴影：列表保持平整，选中态用边框+背景区分，避免阴影干扰视觉
             // 启用自定义背景图时同样取消阴影：投影会透过半透明卡片形成一层暗色分层
             .then(

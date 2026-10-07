@@ -26,6 +26,7 @@ import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -144,6 +145,7 @@ import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
 import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
 import com.nichx.niplayer.designsystem.components.NiDialogItem
+import com.nichx.niplayer.designsystem.theme.MotionTokens
 import com.nichx.niplayer.player.kernel.AudioRole
 import com.nichx.niplayer.player.kernel.NxVideoScaleMode
 import com.nichx.niplayer.player.kernel.VideoSize
@@ -1853,8 +1855,9 @@ fun PlayerScreen(
         AnimatedVisibility(
             // PiP 小窗内隐藏控制栏，由系统 PiP 控件接管（画中画控件适配）
             visible = controllerVisible && !isInPip,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            // 显式时长（原先用默认 spring，隐藏过快且与其他动效不同源）
+            enter = fadeIn(tween(MotionTokens.ENTER, easing = MotionTokens.easeEnter)),
+            exit = fadeOut(tween(MotionTokens.EXIT, easing = MotionTokens.easeExit)),
             modifier = Modifier.fillMaxSize(),
         ) {
             if (locked) {

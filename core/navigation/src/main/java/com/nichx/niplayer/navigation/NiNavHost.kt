@@ -10,12 +10,15 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.rememberNavController
+import com.nichx.niplayer.designsystem.theme.MotionTokens
 
+/** 页面转场出场时长；退场统一 ≈ 出场 × 0.65（经 [MotionTokens.exitOf] 落实）。 */
 private const val PAGE_TRANSITION_MS = 300
+private val PAGE_EXIT_MS = MotionTokens.exitOf(PAGE_TRANSITION_MS)
 
 // 视频播放器已迁移为独立 Activity（PlayerActivity），其退出转场（黑色亮度蒙层）已交由
 // 该 Activity 的窗口过渡处理。导航内仅剩音频播放器（AUDIO_PLAYER），仍走纯 fade 过渡。
-private const val FromPlayerTransitionMs = 750
+private const val FromPlayerTransitionMs = MotionTokens.SCENE
 // 返回页(首页)淡入起点：从很暗透明度起步，配合播放器黑底淡出形成连续的亮度渐变；
 // 若取 0 会在播放器淡出末期先暴露白色 window 底
 private const val ReturnFadeInInitialAlpha = 0.25f
@@ -41,14 +44,14 @@ fun NiNavHost(
         navController = navController,
         startDestination = startDestination,
         enterTransition = {
-            fadeIn(animationSpec = tween(PAGE_TRANSITION_MS)) +
+            fadeIn(animationSpec = tween(PAGE_TRANSITION_MS, easing = MotionTokens.easeStandard)) +
                 slideInHorizontally(
-                    animationSpec = tween(PAGE_TRANSITION_MS),
+                    animationSpec = tween(PAGE_TRANSITION_MS, easing = MotionTokens.easeStandard),
                     initialOffsetX = { it / 4 },
                 )
         },
         exitTransition = {
-            fadeOut(animationSpec = tween(PAGE_TRANSITION_MS))
+            fadeOut(animationSpec = tween(PAGE_EXIT_MS, easing = MotionTokens.easeExit))
         },
         popEnterTransition = {
             if (fromPlayer(initialState)) {
@@ -59,9 +62,9 @@ fun NiNavHost(
                     initialAlpha = ReturnFadeInInitialAlpha,
                 )
             } else {
-                fadeIn(tween(PAGE_TRANSITION_MS)) +
+                fadeIn(tween(PAGE_TRANSITION_MS, easing = MotionTokens.easeStandard)) +
                     slideInHorizontally(
-                        animationSpec = tween(PAGE_TRANSITION_MS),
+                        animationSpec = tween(PAGE_TRANSITION_MS, easing = MotionTokens.easeStandard),
                         initialOffsetX = { -it / 4 },
                     )
             }
@@ -71,9 +74,9 @@ fun NiNavHost(
                 // 播放器退出：纯 fade 且与 popEnter 同长同步，黑蒙层贯穿渐隐揭首页
                 fadeOut(tween(FromPlayerTransitionMs))
             } else {
-                fadeOut(tween(PAGE_TRANSITION_MS)) +
+                fadeOut(tween(PAGE_EXIT_MS, easing = MotionTokens.easeExit)) +
                     slideOutHorizontally(
-                        animationSpec = tween(PAGE_TRANSITION_MS),
+                        animationSpec = tween(PAGE_EXIT_MS, easing = MotionTokens.easeExit),
                         targetOffsetX = { it / 4 },
                     )
             }
@@ -86,9 +89,9 @@ fun NiNavHost(
                     initialAlpha = ReturnFadeInInitialAlpha,
                 )
             } else {
-                fadeIn(tween(PAGE_TRANSITION_MS)) +
+                fadeIn(tween(PAGE_TRANSITION_MS, easing = MotionTokens.easeStandard)) +
                     slideInHorizontally(
-                        animationSpec = tween(PAGE_TRANSITION_MS),
+                        animationSpec = tween(PAGE_TRANSITION_MS, easing = MotionTokens.easeStandard),
                         initialOffsetX = { -it / 4 },
                     )
             }
@@ -97,9 +100,9 @@ fun NiNavHost(
             if (fromPlayer(initialState)) {
                 fadeOut(tween(FromPlayerTransitionMs))
             } else {
-                fadeOut(tween(PAGE_TRANSITION_MS)) +
+                fadeOut(tween(PAGE_EXIT_MS, easing = MotionTokens.easeExit)) +
                     slideOutHorizontally(
-                        animationSpec = tween(PAGE_TRANSITION_MS),
+                        animationSpec = tween(PAGE_EXIT_MS, easing = MotionTokens.easeExit),
                         targetOffsetX = { it / 4 },
                     )
             }

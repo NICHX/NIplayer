@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.designsystem.components.NiSkeletonBox
 import com.nichx.niplayer.designsystem.components.NiSkeletonLine
+import com.nichx.niplayer.designsystem.components.NiSkeletonPulse
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiSpacings
 
@@ -38,10 +39,13 @@ internal fun LibrarySkeleton(
 ) {
     // 骨架与真实列表同构（key 命名一致），数据就绪切换时结构与滚动位置保持，
     // 仅替换 item 内容，避免整树重建。
-    if (isGridView) {
-        LibraryGridSkeleton(modifier = modifier)
-    } else {
-        LibraryListSkeleton(modifier = modifier)
+    // 共享脉冲时钟：整屏骨架共用一个无限动画，避免每个骨架块各自持有一个时钟
+    NiSkeletonPulse {
+        if (isGridView) {
+            LibraryGridSkeleton(modifier = modifier)
+        } else {
+            LibraryListSkeleton(modifier = modifier)
+        }
     }
 }
 

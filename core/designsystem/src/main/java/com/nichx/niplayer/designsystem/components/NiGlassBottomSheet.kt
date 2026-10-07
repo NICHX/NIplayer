@@ -1,8 +1,6 @@
 package com.nichx.niplayer.designsystem.components
 
 import android.os.Build
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -38,6 +36,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
+import com.nichx.niplayer.designsystem.theme.MotionTokens
 
 /** 玻璃底部面板顶部圆角（对齐 legado / MD3 BottomSheet 风格）。 */
 val NiGlassSheetCornerRadius: Dp = 28.dp
@@ -93,29 +93,20 @@ fun NiGlassBottomSheet(
     )
 
     Box(modifier = modifier.fillMaxSize()) {
-        // 压暗层：整体淡入淡出（位置固定，不随面板上移），点击关闭
-        AnimatedVisibility(
+        // 玻璃面板：仅面板本身自下而上滑入/滑出。
+        // 压暗层由根宿主（NiGlassOverlayHost）统一提供：每个浮层各带一层压暗会在
+        // 浮层交接时叠加出亮度闪动，故此处不再自绘压暗层。
+        NiAnimatedVisibility(
             visible = show,
-            enter = fadeIn(tween(260)),
-            exit = fadeOut(tween(200)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = NiGlassSheetScrimAlpha))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onDismissRequest,
-                    ),
-            )
-        }
-
-        // 玻璃面板：仅面板本身自下而上滑入/滑出
-        AnimatedVisibility(
-            visible = show,
-            enter = slideInVertically(tween(360, easing = FastOutSlowInEasing)) { it },
-            exit = slideOutVertically(tween(280, easing = FastOutSlowInEasing)) { it },
+            enter = slideInVertically(
+                animationSpec = tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter),
+            ) { it },
+            exit = slideOutVertically(
+                animationSpec = tween(
+                    MotionTokens.exitOf(MotionTokens.SURFACE),
+                    easing = MotionTokens.easeExit,
+                ),
+            ) { it },
         ) {
             // 内层再包一个与父同尺寸的 Box：col{align} 必须落在 BoxScope 上，面板才能正确贴底，
             // 否则 align 会错误解析到外层 Box 导致面板被顶到顶部。
@@ -128,7 +119,7 @@ fun NiGlassBottomSheet(
                         .then(
                             if (glassEnabled) {
                                 Modifier.drawBackdrop(
-                                    backdrop = backdrop!!,
+                                    backdrop = backdrop,
                                     shape = { sheetShape },
                                     effects = {
                                         blur(blurRadius.toPx())

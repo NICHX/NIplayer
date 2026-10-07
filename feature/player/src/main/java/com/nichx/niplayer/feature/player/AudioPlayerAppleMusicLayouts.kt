@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -595,20 +596,21 @@ internal fun AppleMusicBackButton(
  */
 @Composable
 internal fun AppleProgressSection(
-    positionMs: Long,
+    positionMs: State<Long>,
     durationMs: Long,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val duration = durationMs.coerceAtLeast(1L)
+    val currentPositionMs = positionMs.value
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
     val fraction = if (dragging) {
         dragValue
     } else {
-        (positionMs.toFloat() / duration).coerceIn(0f, 1f)
+        (currentPositionMs.toFloat() / duration).coerceIn(0f, 1f)
     }
-    val displayMs = if (dragging) (dragValue * duration).toLong() else positionMs
+    val displayMs = if (dragging) (dragValue * duration).toLong() else currentPositionMs
     val remainingMs = (durationMs - displayMs).coerceAtLeast(0L)
 
     Column(modifier = modifier.fillMaxWidth()) {

@@ -31,6 +31,9 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
 
+    // 动效令牌 MotionTokens：页面转场的时长/曲线唯一来源
+    implementation(project(":core:designsystem"))
+
     // Compose
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

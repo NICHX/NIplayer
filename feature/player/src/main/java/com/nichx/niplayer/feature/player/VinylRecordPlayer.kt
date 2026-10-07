@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -335,17 +336,15 @@ private class LayoutValues(
 @Composable
 private fun rememberDiscRotation(isPlaying: Boolean): Float {
     val rotation = remember { mutableFloatStateOf(0f) }
-    val lastFrameNanos = remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
-            lastFrameNanos.value = System.nanoTime()
+            // 与 vsync 对齐：原先 delay(16) 与刷新率不同步，会产生周期性丢帧/微跳
+            var lastFrameNanos = withFrameNanos { it }
             while (true) {
-                delay(16)
-                val now = System.nanoTime()
-                val deltaNanos = now - lastFrameNanos.value
-                lastFrameNanos.value = now
-                val deltaMs = deltaNanos / 1_000_000
+                val now = withFrameNanos { it }
+                val deltaMs = (now - lastFrameNanos) / 1_000_000
+                lastFrameNanos = now
                 if (deltaMs in 1L..200L) {
                     rotation.floatValue =
                         (rotation.floatValue + deltaMs.toFloat() * (360f / DISC_ROTATION_DURATION_MS)) % 360f

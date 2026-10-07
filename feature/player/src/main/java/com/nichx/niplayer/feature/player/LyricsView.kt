@@ -18,7 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +70,22 @@ private const val APPLE_FONT_BOOST = 1.55f
 private const val APPLE_BLUR_STEPS = 5
 private const val APPLE_BLUR_STEP_DP = 1.2f
 
+/** 点击预览（选中该句显示时间、待二次点击跳转）的自动超时，避免预览态长期滞留。 */
+private const val LyricPreviewTimeoutMs = 2500L
+
+/**
+ * 逐字时间戳的**不可变包装**。
+ *
+ * `List` 在 Compose 里被判为不稳定，会连累整个歌词行在每次位置上报（1Hz）时都重组一遍。
+ * 包成 `@Immutable` 后，行参数全部稳定——只有"当前行"因 [doneWordCount] 变化而重组，
+ * 其余行直接跳过重组（观感不变，纯性能优化）。
+ */
+@Immutable
+internal data class LyricWordTimes(val words: List<Pair<String, Long>>)
+
+/** 非首行（无逐字时间戳）共用的空实例，避免每次重建。 */
+private val EmptyLyricWordTimes = LyricWordTimes(emptyList())
+
 /** Apple 风格：当前行落在视口高度的该比例处（偏上方，而非居中）。 */
 private const val APPLE_FOCUS_FRACTION = 0.34f
 
@@ -107,7 +125,7 @@ private data class LyricRow(
 @Composable
 fun LyricsView(
     lrcLines: List<LrcLine>,
-    currentPositionMs: Long,
+    currentPositionMs: State<Long>,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
     maxVisibleLines: Int = Int.MAX_VALUE,
@@ -122,19 +140,22 @@ fun LyricsView(
     // 大屏自适应：最终字号按 scale 等比放大（见下方 BoxWithConstraints）。
     val baseTitleLarge = MaterialTheme.typography.titleLarge
 
-    val currentSentenceIndex = remember(currentPositionMs, lrcLines) {
+    val currentSentenceIndex = remember(currentPositionMs.value, lrcLines) {
         if (lrcLines.isEmpty()) 0 else {
-            val index = lrcLines.indexOfLast { it.timeMs <= currentPositionMs }
+            val index = lrcLines.indexOfLast { it.timeMs <= currentPositionMs.value }
             if (index < 0) 0 else index
         }
     }
 
-    // 点击预览：第一次点击仅选中该句并显示时间，再次点击同一句才跳转
+    // 点击预览：第一次点击选中该句并显示时间，再次点击同一句才跳转。
+    // 预览态用**超时**清除（而非"播放推进到新句就清除"）：后者会在用户第二次点击前
+    // 就把预览清掉，导致"永远停留在预览、完不成跳转"。
     var pendingSentenceIndex by remember(lrcLines) { mutableStateOf<Int?>(null) }
-
-    // 播放推进到新句时清除预览状态
-    LaunchedEffect(currentSentenceIndex) {
-        pendingSentenceIndex = null
+    LaunchedEffect(pendingSentenceIndex) {
+        if (pendingSentenceIndex != null) {
+            kotlinx.coroutines.delay(LyricPreviewTimeoutMs)
+            pendingSentenceIndex = null
+        }
     }
 
     BoxWithConstraints(modifier = modifier) {
@@ -265,21 +286,24 @@ fun LyricsView(
                         items = rows,
                         key = { index, row -> "${row.sentenceIndex}_${row.lineIndexInSentence}_$index" },
                     ) { index, row ->
+                        val sentenceIndex = row.sentenceIndex
+                        val sentence = lrcLines[sentenceIndex]
+                        val sentenceTimeMs = sentence.timeMs
+                        val isFirstLine = row.lineIndexInSentence == 0
                         LyricRowItem(
                             text = row.text,
-                            isCurrent = row.sentenceIndex == currentSentenceIndex,
-                            isPending = pendingSentenceIndex == row.sentenceIndex,
-                            timeLabel = if (row.lineIndexInSentence == 0) {
-                                formatDurationShort(lrcLines[row.sentenceIndex].timeMs)
+                            isCurrent = sentenceIndex == currentSentenceIndex,
+                            isPending = pendingSentenceIndex == sentenceIndex,
+                            timeLabel = if (isFirstLine) {
+                                formatDurationShort(sentenceTimeMs)
                             } else null,
                             onClick = {
-                                val sentenceIndex = row.sentenceIndex
                                 // Apple：点一下文字就跳转，不做「先预览再确认」那一步——
                                 // 这里的点击区域本来就只有文字，再要两次点击会很别扭。
                                 if (appleStyle) {
-                                    onSeek(lrcLines[sentenceIndex].timeMs)
+                                    onSeek(sentenceTimeMs)
                                 } else if (pendingSentenceIndex == sentenceIndex) {
-                                    onSeek(lrcLines[sentenceIndex].timeMs)
+                                    onSeek(sentenceTimeMs)
                                     pendingSentenceIndex = null
                                 } else {
                                     pendingSentenceIndex = sentenceIndex
@@ -291,10 +315,20 @@ fun LyricsView(
                             scale = scale,
                             fontBoost = fontBoost,
                             appleStyle = appleStyle,
-                            wordTimes = if (row.lineIndexInSentence == 0) {
-                                lrcLines[row.sentenceIndex].wordTimes
-                            } else emptyList(),
-                            currentPositionMs = currentPositionMs,
+                            wordTimes = if (isFirstLine) {
+                                remember(sentence.wordTimes) {
+                                    LyricWordTimes(sentence.wordTimes)
+                                }
+                            } else {
+                                EmptyLyricWordTimes
+                            },
+                            // 非当前行的已唱词数恒为 -1：位置每秒上报时该参数不变，
+                            // 行因此可被跳过重组（观感不变）。
+                            doneWordCount = if (isFirstLine && sentenceIndex == currentSentenceIndex) {
+                                sentence.wordTimes.count { it.second <= currentPositionMs.value }
+                            } else {
+                                -1
+                            },
                         )
                     }
                 }
@@ -316,8 +350,8 @@ private fun LyricRowItem(
     scale: Float,
     fontBoost: Float,
     appleStyle: Boolean,
-    wordTimes: List<Pair<String, Long>>,
-    currentPositionMs: Long,
+    wordTimes: LyricWordTimes,
+    doneWordCount: Int,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val primary = MaterialTheme.colorScheme.primary
@@ -344,32 +378,35 @@ private fun LyricRowItem(
         animationSpec = tween(durationMillis = 420),
         label = "lyricGlow",
     )
-    // Apple 风格：离当前行越远越模糊——这是 Apple 歌词质感的关键，只靠透明度
-    // 会显得很平。当前行不模糊。
+    // Apple 风格：离当前行越远越模糊——这是 Apple 歌词质感的关键，只靠透明度会显得很平。
+    // 当前行不模糊；模糊量只随"行号差"变化（仅在行号交接时改变），故 RenderEffect 参数是静态的。
     val blurAmount = if (appleStyle) {
         (distanceFromCurrent.absoluteValue.coerceAtMost(APPLE_BLUR_STEPS) * APPLE_BLUR_STEP_DP).dp
     } else {
         0.dp
     }
 
-    // 逐字高亮：当前句且有逐字时间戳时，已唱到的词用高亮色，未唱到的用浅色
-    val displayText = if (isCurrent && wordTimes.isNotEmpty()) {
+    // 逐字高亮：当前句且有逐字时间戳时，已唱到的词用高亮色，未唱到的用浅色。
+    // 已唱词数由父层按"是否当前行"预计算：[doneWordCount] 对非当前行恒为 -1，
+    // 使非当前行的参数在位置上报时保持不变 → 可被跳过重组。
+    val displayText = if (isCurrent && wordTimes.words.isNotEmpty()) {
         buildAnnotatedString {
             val baseColor = highlightColor.copy(alpha = if (appleStyle) 0.45f else animAlpha)
             val doneColor = highlightColor.copy(alpha = 1f)
             var cursor = 0
-            for ((word, startMs) in wordTimes) {
+            wordTimes.words.forEachIndexed { index, entry ->
+                val word = entry.first
                 val found = text.indexOf(word, cursor)
-                if (found < 0) continue
-                val isDone = startMs <= currentPositionMs
-                withStyle(
-                    SpanStyle(
-                        color = if (isDone) doneColor else baseColor,
-                    ),
-                ) {
-                    append(word)
+                if (found >= 0) {
+                    withStyle(
+                        SpanStyle(
+                            color = if (index < doneWordCount) doneColor else baseColor,
+                        ),
+                    ) {
+                        append(word)
+                    }
+                    cursor = found + word.length
                 }
-                cursor = found + word.length
             }
             // 尾部多余文本（逐字时间戳覆盖不到的）用基础色
             if (cursor < text.length) {

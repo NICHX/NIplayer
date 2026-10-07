@@ -17,13 +17,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
+import com.nichx.niplayer.designsystem.theme.MotionTokens
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -161,8 +168,28 @@ internal fun GestureOsd(
     text: String,
     modifier: Modifier = Modifier,
 ) {
+    // 挂载时淡入 + 轻微放大：OSD 生命周期短，只做进入动画；消失由调用方置空即时收起。
+    // 收敛到终态后不再挂图层（避免恒等 graphicsLayer 常驻）。
+    val reduced = LocalNiReduceMotion.current
+    val progress = remember { Animatable(if (reduced) 1f else 0f) }
+    LaunchedEffect(Unit) {
+        if (!reduced) {
+            progress.animateTo(1f, tween(MotionTokens.QUICK, easing = MotionTokens.easeEnter))
+        }
+    }
+    val enterLayer = if (progress.value < 1f) {
+        Modifier.graphicsLayer {
+            alpha = progress.value
+            val s = 0.96f + 0.04f * progress.value
+            scaleX = s
+            scaleY = s
+        }
+    } else {
+        Modifier
+    }
     Box(
         modifier = modifier
+            .then(enterLayer)
             .clip(RoundedCornerShape(12.dp))
             .background(Color.Black.copy(alpha = 0.55f))
             .padding(16.dp),

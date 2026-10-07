@@ -27,6 +27,7 @@ object GlassSettings {
     private const val KEY_OPACITY = "glass_opacity"
     private const val KEY_TOP_BAR_OPACITY = "glass_top_bar_opacity"
     private const val KEY_PANEL_OPACITY = "glass_panel_opacity"
+    private const val KEY_REDUCE_MOTION = "glass_reduce_motion"
 
     /** 导航栏（底部薄浮层）默认不透明度（50%）。 */
     const val DEFAULT_OPACITY = 0.50f
@@ -99,4 +100,24 @@ object GlassSettings {
     private fun loadPanelOpacity(): Float =
         mmkv.decodeFloat(KEY_PANEL_OPACITY, DEFAULT_PANEL_OPACITY)
             .coerceIn(MIN_PANEL_OPACITY, MAX_PANEL_OPACITY)
+
+    /** 「减少动态效果」默认关闭。 */
+    const val DEFAULT_REDUCE_MOTION = false
+
+    private val _reduceMotionFlow = MutableStateFlow(loadReduceMotion())
+
+    /** 「减少动态效果」StateFlow，写入时自动更新，供根布局 collect 下发。 */
+    val reduceMotionFlow: StateFlow<Boolean> = _reduceMotionFlow.asStateFlow()
+
+    /**
+     * 是否开启「减少动态效果」：开启后所有非必需动效直接跳到终态（与系统无障碍设置取并集）。
+     */
+    var reduceMotion: Boolean
+        get() = _reduceMotionFlow.value
+        set(value) {
+            mmkv.encode(KEY_REDUCE_MOTION, value)
+            _reduceMotionFlow.value = value
+        }
+
+    private fun loadReduceMotion(): Boolean = mmkv.decodeBool(KEY_REDUCE_MOTION, DEFAULT_REDUCE_MOTION)
 }

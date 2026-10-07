@@ -66,6 +66,7 @@ import com.nichx.niplayer.designsystem.components.niCardOpacity
 import com.nichx.niplayer.designsystem.components.niHasCustomBackground
 import com.nichx.niplayer.designsystem.components.niNestedSurface
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
+import com.nichx.niplayer.designsystem.motion.niPressable
 import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiMotion
@@ -241,22 +242,12 @@ internal fun GridFileCard(
     val isAudio = MediaFileTypes.isAudioFile(file.name)
     val isImage = MediaFileTypes.isImageFile(file.name)
 
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.97f else 1f,
-        animationSpec = tween(durationMillis = NiMotion.DURATION_MICRO),
-        label = "gridCardScale",
-    )
-
     val cardShape = RoundedCornerShape(16.dp)
 
     // 卡片仅含缩略图/文件夹图标（16:9 圆角），
     // 文件名在卡片外底部居中显示，长文字两行自动缩字。
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer { scaleX = scale; scaleY = scale },
+        modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // 单元格尺寸自适应：以 160dp 格宽为基准等比缩放角标/按钮/图标，
@@ -286,8 +277,9 @@ internal fun GridFileCard(
                     }
                 )
                 .background(NiExtraColors.current.surfaceLevel3)
-                .combinedClickable(
-                    interactionSource = interactionSource,
+                // 按压反馈收敛到缩略图本体：原先缩放整列会把文件名一起缩放，且恒等图层常驻
+                .niPressable(
+                    pressedScale = 0.97f,
                     onClick = {
                         if (isMultiSelect) {
                             onToggleSelection()

@@ -315,6 +315,8 @@
     <string name="settings_glass_overlay_opacity">导航栏</string>
     <string name="settings_glass_top_bar_opacity">顶栏</string>
     <string name="settings_glass_panel_opacity">弹窗与菜单</string>
+    <string name="settings_reduce_motion">减少动态效果</string>
+    <string name="settings_reduce_motion_desc">动效直接跳到终态，不做过渡</string>
     <string name="settings_entry_update">检查更新</string>
     <string name="settings_entry_update_sub">检查并下载新版本</string>
     <string name="settings_entry_about">关于</string>

@@ -7,11 +7,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -41,7 +40,6 @@ import com.kyant.backdrop.shadow.Shadow
 import com.kyant.capsule.ContinuousCapsule
 import com.nichx.niplayer.designsystem.glass.DampedDragAnimation
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
-import kotlinx.coroutines.flow.collectLatest
 
 /**
  * 液态玻璃开关（Toggle）。
@@ -83,14 +81,16 @@ fun NiGlassSwitch(
     // 滑块位移行程：轨道 64 - 滑块 40 - 两侧内边距 4
     val dragWidth = with(density) { 20f.dp.toPx() }
     val animationScope = rememberCoroutineScope()
-    var fraction by remember { mutableFloatStateOf(if (checked) 1f else 0f) }
+    val currentChecked by rememberUpdatedState(checked)
+    val currentOnCheckedChange by rememberUpdatedState(onCheckedChange)
 
-    // 弹簧阻尼动画：fraction 由 checked 状态驱动，press/release 提供按压缩放反馈；
+    // 弹簧阻尼动画：checked 变化时由 animateToValue 驱动滑块位移/底色弹簧过渡，
+    // 并顺带提供 press/release 的按压缩放反馈。
     // 不再挂载拖拽手势（inspectDragGestures），交互仅识别点击（见下方 detectTapGestures）。
     val dampedDragAnimation = remember(animationScope) {
         DampedDragAnimation(
             animationScope = animationScope,
-            initialValue = fraction,
+            initialValue = if (checked) 1f else 0f,
             valueRange = 0f..1f,
             visibilityThreshold = 0.001f,
             initialScale = 1f,
@@ -101,19 +101,12 @@ fun NiGlassSwitch(
             onDrag = { _, _ -> },
         )
     }
-    LaunchedEffect(dampedDragAnimation) {
-        snapshotFlow { fraction }
-            .collectLatest { dampedDragAnimation.updateValue(it) }
-    }
+    // 单一驱动：只在 checked 变化时启动一次弹簧动画，避免与 snapshotFlow 双路抢同一 Animatable。
     LaunchedEffect(checked) {
-        snapshotFlow { checked }
-            .collectLatest { isChecked ->
-                val target = if (isChecked) 1f else 0f
-                if (target != fraction) {
-                    fraction = target
-                    dampedDragAnimation.animateToValue(target)
-                }
-            }
+        val target = if (checked) 1f else 0f
+        if (target != dampedDragAnimation.targetValue) {
+            dampedDragAnimation.animateToValue(target)
+        }
     }
 
     // 局部 backdrop：仅捕获轨道自身的绘制（含透出的页面背景）
@@ -129,9 +122,9 @@ fun NiGlassSwitch(
             }
             // 仅识别点击：滑块上不挂载任何拖拽手势节点，点击滑块本体/轨道均命中此处，
             // 点击即触发切换（按压/回弹动画由 checked 变化后的 animateToValue 驱动）。
-            .pointerInput(enabled, checked) {
+            .pointerInput(enabled) {
                 detectTapGestures {
-                    if (enabled) onCheckedChange(!checked)
+                    if (enabled) currentOnCheckedChange(!currentChecked)
                 }
             },
         contentAlignment = Alignment.CenterStart,

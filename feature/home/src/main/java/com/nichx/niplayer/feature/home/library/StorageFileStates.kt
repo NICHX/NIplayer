@@ -1,6 +1,7 @@
 package com.nichx.niplayer.feature.home.library
 
 import com.nichx.niplayer.feature.home.R
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -40,12 +41,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.designsystem.components.NiEmptyState
-import com.nichx.niplayer.designsystem.theme.NiMotion
 
 
 @Composable
@@ -83,23 +85,34 @@ internal fun ThumbnailProgressBar(progress: Int) {
  * "识别方向中…"状态标签：居中叠在文件占位图标上，提示正在为进入播放前读取视频宽高比。
  * 仅当点击后又未立即进入播放（维持一小段时间）时让用户感知到等待，背景用主题色缓慢脉冲。
  */
+/** 识别方向中徽标的脉冲周期（单向）。偏慢，避免"快速闪烁"观感。 */
+private const val PreparingPulseDurationMs = 900
+
 @Composable
 internal fun BoxScope.PreparingBadge() {
     val transition = rememberInfiniteTransition(label = "preparing")
-    val alpha by transition.animateFloat(
+    val alpha = transition.animateFloat(
         initialValue = 0.55f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(NiMotion.DURATION_PAGE),
+            animation = tween(PreparingPulseDurationMs, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "preparingAlpha",
     )
+    val badgeColor = MaterialTheme.colorScheme.primary
     Box(
         modifier = Modifier
             .align(Alignment.Center)
             .clip(RoundedCornerShape(6.dp))
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f * alpha))
+            .drawBehind {
+                // 绘制期读取 alpha：脉冲只触发重绘，不逐帧重组
+                drawRoundRect(
+                    color = badgeColor,
+                    alpha = 0.85f * alpha.value,
+                    cornerRadius = CornerRadius(6.dp.toPx()),
+                )
+            }
             .padding(horizontal = 10.dp, vertical = 4.dp),
     ) {
         Text(

@@ -58,6 +58,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -877,6 +881,9 @@ private fun NetworkSpeedLabel(
     }
 }
 
+/** 视频播放位置的上报周期（ms）：进度展示按等长线性补间抹平台阶。 */
+private const val VideoPositionTickMs = 500
+
 /**
  * 单手布局用的进度行：时间显示在进度条两侧（当前时间在左、剩余时间在右），
  * 省去独立的时间行，从而降低底部控制栏高度。
@@ -895,7 +902,20 @@ private fun PlayerProgressInline(
     val bufferedMs by bufferedMsFlow.collectAsStateWithLifecycle()
     // 拖动进度条时记录预览位置（fraction），两侧时间跟随显示目标时间
     var dragFractionPreview by remember { mutableStateOf<Float?>(null) }
-    val previewPos = dragFractionPreview?.let { (it * durationMs).toLong() } ?: positionMs
+    // 位置每 ~500ms 才更新一次，直接绑 UI 会一格格跳。用**等长线性补间**抹平台阶
+    // （只在叶子层做，不牵动整页重组）；开启"减少动态效果"时补间时长归零即瞬跳。
+    val reducedMotion = LocalNiReduceMotion.current
+    val smoothPositionMs by animateFloatAsState(
+        targetValue = positionMs.toFloat(),
+        animationSpec = tween(
+            if (reducedMotion) 0 else VideoPositionTickMs,
+            easing = LinearEasing,
+        ),
+        label = "smoothPositionMs",
+    )
+    val displayPositionMs = dragFractionPreview?.let { (it * durationMs).toLong() }
+        ?: smoothPositionMs.toLong()
+    val previewPos = displayPositionMs
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -907,7 +927,7 @@ private fun PlayerProgressInline(
             fontFamily = FontFamily.Monospace,
         )
         PlayerProgressBar(
-            positionFraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
+            positionFraction = if (durationMs > 0) displayPositionMs.toFloat() / durationMs else 0f,
             bufferedFraction = if (durationMs > 0) bufferedMs.toFloat() / durationMs else 0f,
             durationMs = durationMs,
             abLoopA = abLoopA,

@@ -1,8 +1,6 @@
 package com.nichx.niplayer.designsystem.components
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -48,16 +46,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
+import com.nichx.niplayer.designsystem.theme.MotionTokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private val DrawerExitMs = MotionTokens.exitOf(MotionTokens.SURFACE)
+private val DrawerRemoveDelayMs = DrawerExitMs + 80L
 
 /**
  * 播放器右侧抽屉面板。
  *
  * 参考 mpv-android-anime4k 的 Drawer 统一样式：
  * - 320dp 宽度，全高
- * - slideInHorizontally + fadeIn 入场（300ms, FastOutSlowInEasing）
- * - slideOutHorizontally + fadeOut 退场（250ms）
+ * - slideInHorizontally + fadeIn 入场（MotionTokens.SURFACE, easeEnter）
+ * - slideOutHorizontally + fadeOut 退场（≈ 入场 × 0.65, easeExit）
  * - 半透明渐变背景（0xCC121212 → 0xE6121212）
  * - 22sp Bold 标题 + "✕" 关闭按钮
  * - 1dp 分隔线 0x33FFFFFF
@@ -83,7 +86,7 @@ fun NiDrawerPanel(
         } else {
             isVisible = false
             coroutineScope.launch {
-                delay(300) // 等待退场动画完成后移除，避免空 Box 拦截触摸事件
+                delay(DrawerRemoveDelayMs) // 等待退场动画完成后移除，避免空 Box 拦截触摸事件
                 shouldRender = false
             }
         }
@@ -94,7 +97,7 @@ fun NiDrawerPanel(
     BackHandler(enabled = isVisible) {
         isVisible = false
         coroutineScope.launch {
-            delay(300)
+            delay(DrawerRemoveDelayMs)
             onDismiss()
         }
     }
@@ -108,21 +111,21 @@ fun NiDrawerPanel(
             ) {
                 isVisible = false
                 coroutineScope.launch {
-                    delay(300)
+                    delay(DrawerRemoveDelayMs)
                     onDismiss()
                 }
             },
     ) {
-        AnimatedVisibility(
+        NiAnimatedVisibility(
             visible = isVisible,
             enter = slideInHorizontally(
                 initialOffsetX = { it },
-                animationSpec = tween(300, easing = FastOutSlowInEasing),
-            ) + fadeIn(animationSpec = tween(300)),
+                animationSpec = tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter),
+            ) + fadeIn(animationSpec = tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter)),
             exit = slideOutHorizontally(
                 targetOffsetX = { it },
-                animationSpec = tween(250, easing = FastOutSlowInEasing),
-            ) + fadeOut(animationSpec = tween(250)),
+                animationSpec = tween(DrawerExitMs, easing = MotionTokens.easeExit),
+            ) + fadeOut(animationSpec = tween(DrawerExitMs, easing = MotionTokens.easeExit)),
             modifier = Modifier.align(Alignment.CenterEnd),
         ) {
             Box(
@@ -174,7 +177,7 @@ fun NiDrawerPanel(
                                 onClick = {
                                     isVisible = false
                                     coroutineScope.launch {
-                                        delay(300)
+                                        delay(DrawerRemoveDelayMs)
                                         onDismiss()
                                     }
                                 },
@@ -266,20 +269,20 @@ fun NiExpandableSection(
             )
         }
 
-        AnimatedVisibility(
+        NiAnimatedVisibility(
             visible = isExpanded,
             enter = expandVertically(
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = Spring.StiffnessMediumLow,
                 ),
-            ) + fadeIn(animationSpec = tween(200)),
+            ) + fadeIn(animationSpec = tween(MotionTokens.ENTER)),
             exit = shrinkVertically(
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = Spring.StiffnessMediumLow,
                 ),
-            ) + fadeOut(animationSpec = tween(150)),
+            ) + fadeOut(animationSpec = tween(MotionTokens.EXIT)),
         ) {
             Column(
                 modifier = Modifier

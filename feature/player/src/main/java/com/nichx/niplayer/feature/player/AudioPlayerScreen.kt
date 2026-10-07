@@ -18,6 +18,9 @@ import com.nichx.niplayer.designsystem.components.DownloadTargetChooserDialog
 import com.nichx.niplayer.designsystem.components.NiDialogItem
 import com.nichx.niplayer.designsystem.components.NiListItemDialog
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
+import com.nichx.niplayer.designsystem.theme.MotionTokens
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -63,7 +66,10 @@ fun AudioPlayerScreen(
     val title by audioPlaybackManager?.currentTitle?.collectAsStateWithLifecycle() ?: remember { mutableStateOf("") }
     val artist by audioPlaybackManager?.currentArtist?.collectAsStateWithLifecycle() ?: remember { mutableStateOf("") }
     val coverPath by audioPlaybackManager?.audioCoverPath?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
-    val positionMs by audioPlaybackManager?.positionMs?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(0L) }
+    // 位置每秒上报一次：这里只**创建** State、不读取值，把"读取"下沉到真正显示的叶子
+    // （进度条 / 时间文字 / 歌词），避免整页（含黑胶 Canvas）每秒重组。
+    val positionMsState = audioPlaybackManager?.positionMs?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf(0L) }
     val durationMs by audioPlaybackManager?.durationMs?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(0L) }
     val playlist by audioPlaybackManager?.playlist?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(emptyList()) }
     val currentIndex by audioPlaybackManager?.currentIndex?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(-1) }
@@ -173,12 +179,21 @@ fun AudioPlayerScreen(
         // 背景：黑胶用弱化封面 + 底部渐变；简约封面用封面高斯模糊铺底；
         // Apple Music 的封面网格 + 贴顶封面由各自的布局自己画（见 AppleArtworkMeshBackdrop），
         // 这里只铺一层底色兜底——整屏 RenderEffect 模糊会拖慢首帧，也容易在 GPU 上翻车。
-        when (playerStyle) {
-            AudioPlayerStyle.APPLE_MUSIC -> Box(
-                modifier = Modifier.fillMaxSize().background(Color(0xFF121212)),
-            )
-            AudioPlayerStyle.GLASS -> CoverBlurBackground(coverData = coverPath)
-            AudioPlayerStyle.VINYL -> BackgroundLayer(coverData = coverPath)
+        // 外观切换：整块背景交叉淡入（原为硬切，切到 GLASS/APPLE 时会闪）。
+        // 时长走 SURFACE，与弹窗/面板同源。
+        Crossfade(
+            targetState = playerStyle,
+            animationSpec = tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter),
+            modifier = Modifier.fillMaxSize(),
+            label = "audioPlayerStyle",
+        ) { style ->
+            when (style) {
+                AudioPlayerStyle.APPLE_MUSIC -> Box(
+                    modifier = Modifier.fillMaxSize().background(Color(0xFF121212)),
+                )
+                AudioPlayerStyle.GLASS -> CoverBlurBackground(coverData = coverPath)
+                AudioPlayerStyle.VINYL -> BackgroundLayer(coverData = coverPath)
+            }
         }
 
         if (isLandscape) {
@@ -187,7 +202,7 @@ fun AudioPlayerScreen(
                 playbackError = playbackError,
                 onRetry = { audioPlaybackManager?.retry() },
                 lrcLines = lrcLines,
-                positionMs = positionMs,
+                positionMs = positionMsState,
                 durationMs = durationMs,
                 onSeek = { pos -> audioPlaybackManager?.seekTo(pos) },
                 title = title,
@@ -226,7 +241,7 @@ fun AudioPlayerScreen(
                 onRetry = { audioPlaybackManager?.retry() },
                 showLyrics = showLyrics,
                 lrcLines = lrcLines,
-                positionMs = positionMs,
+                positionMs = positionMsState,
                 durationMs = durationMs,
                 onSeek = { pos -> audioPlaybackManager?.seekTo(pos) },
                 title = title,

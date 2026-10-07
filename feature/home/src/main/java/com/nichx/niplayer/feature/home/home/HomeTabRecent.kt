@@ -106,7 +106,9 @@ internal fun RecentThumbItem(
     val progress = if (history.videoDuration > 0)
         history.videoPosition.toFloat() / history.videoDuration.toFloat() else 0f
     val reachable = isHistoryReachable(history, storageReachability)
-    Box(modifier = modifier.graphicsLayer { if (!reachable) alpha = 0.5f }) {
+    // 仅在不可达时挂 alpha 图层：可达（常态）不建恒等图层，避免每张卡多一层离屏合成
+    val cardModifier = if (reachable) modifier else modifier.graphicsLayer { alpha = 0.5f }
+    Box(modifier = cardModifier) {
         NiThumbCard(
             title = history.videoName,
             durationText = formatTime(history.videoDuration),

@@ -70,6 +70,7 @@ import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.designsystem.components.niCardOpacity
 import com.nichx.niplayer.designsystem.components.niHasCustomBackground
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import com.nichx.niplayer.designsystem.motion.niPressable
 import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.common.media.MediaFileTypes.isImageFile
@@ -320,19 +321,11 @@ internal fun GalleryCell(
     val isImage = MediaFileTypes.isImageFile(file.name)
     // 方形画廊为正方形（1:1）；瀑布流按缩略图/图片原始宽高比；瓦片一律无缝（无圆角）
     val cellShape = RoundedCornerShape(0.dp)
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = tween(durationMillis = NiMotion.DURATION_MICRO),
-        label = "galleryCellScale",
-    )
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(aspectRatio)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(cellShape)
             .then(
                 if (isSelected) {
@@ -346,8 +339,9 @@ internal fun GalleryCell(
                 }
             )
             .background(NiExtraColors.current.surfaceLevel3)
-            .combinedClickable(
-                interactionSource = interactionSource,
+            // 按压反馈：非按压态不挂图层（原实现恒等 graphicsLayer 常驻，画廊密度高时逐格多一层）
+            .niPressable(
+                pressedScale = 0.96f,
                 onClick = {
                     if (isMultiSelect) {
                         onToggleSelection()

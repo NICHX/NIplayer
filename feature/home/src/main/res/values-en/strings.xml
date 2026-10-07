@@ -315,6 +315,8 @@
     <string name="settings_glass_overlay_opacity">Nav bar</string>
     <string name="settings_glass_top_bar_opacity">Top bar</string>
     <string name="settings_glass_panel_opacity">Dialogs &amp; menus</string>
+    <string name="settings_reduce_motion">Reduce motion</string>
+    <string name="settings_reduce_motion_desc">Skip transitions and jump straight to the end state</string>
     <string name="settings_entry_update">Check for updates</string>
     <string name="settings_entry_update_sub">Check and download new versions</string>
     <string name="settings_entry_about">About</string>

@@ -63,6 +63,8 @@ import com.nichx.niplayer.designsystem.components.AppMessageHost
 import com.nichx.niplayer.designsystem.components.LocalNiBackdrop
 import com.nichx.niplayer.designsystem.components.LocalNiCustomBackground
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
+import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
+import com.nichx.niplayer.designsystem.motion.rememberNiReduceMotion
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassTopBarOpacity
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
@@ -149,6 +151,9 @@ class MainActivity : ComponentActivity() {
             val glassTopBarOpacity by GlassSettings.topBarOpacityFlow.collectAsStateWithLifecycle()
             // 面板（对话框/菜单）不透明度：与薄浮层分开设置，经 LocalNiGlassPanelOpacity 下发
             val glassPanelOpacity by GlassSettings.panelOpacityFlow.collectAsStateWithLifecycle()
+            // 减少动态效果：应用内设置 ∪ 系统动画倍率（无障碍/开发者选项把动画关掉时同样生效）
+            val reduceMotionSetting by GlassSettings.reduceMotionFlow.collectAsStateWithLifecycle()
+            val reduceMotion = rememberNiReduceMotion(reduceMotionSetting)
             // 自定义背景图：路径 + 不透明度，绘制在内容层最底部，经 LocalNiCustomBackground 下发
             // （视频播放器为独立 PlayerActivity，天然不受此处影响，符合"不含播放器"的生效范围）
             val backgroundImagePath by BackgroundSettings.imagePathFlow.collectAsStateWithLifecycle()
@@ -326,6 +331,7 @@ class MainActivity : ComponentActivity() {
                     LocalNiGlassOpacity provides glassOpacity,
                     LocalNiGlassTopBarOpacity provides glassTopBarOpacity,
                     LocalNiGlassPanelOpacity provides glassPanelOpacity,
+                    LocalNiReduceMotion provides reduceMotion,
                     LocalAppMessageController provides appMessageController,
                 ) {
                     // 液态玻璃 backdrop 源：捕获全部页面内容，供同窗口玻璃面板（NiGlassBottomSheet）真模糊

@@ -1,8 +1,6 @@
 package com.nichx.niplayer.feature.player
 
 import android.content.res.Configuration
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -66,6 +64,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nichx.niplayer.designsystem.components.NiDialogItem
+import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
+import com.nichx.niplayer.designsystem.theme.MotionTokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -223,8 +223,8 @@ fun PlayerDialog(
 }
 
 /** 抽屉入场/退场时长（ms），退场时长同时用于延迟销毁窗口。 */
-private const val DRAWER_ENTER_MS = 280
-private const val DRAWER_EXIT_MS = 220
+private const val DRAWER_ENTER_MS = MotionTokens.SURFACE
+private val DRAWER_EXIT_MS = MotionTokens.exitOf(DRAWER_ENTER_MS)
 
 /**
  * 播放器侧边 / 底部弹层（视频场景专用）。
@@ -301,28 +301,30 @@ fun PlayerSideDrawer(
                         onClick = requestClose,
                     ),
             )
-            AnimatedVisibility(
+            NiAnimatedVisibility(
+                // 用 NiAnimatedVisibility：该节点可能以 visible=true 首次组合，
+                // 裸 AnimatedVisibility 会把过渡直接置为已完成、跳过入场。
                 visible = visible,
                 enter = if (isPortrait) {
                     slideInVertically(
                         initialOffsetY = { it },
-                        animationSpec = tween(DRAWER_ENTER_MS, easing = FastOutSlowInEasing),
+                        animationSpec = tween(DRAWER_ENTER_MS, easing = MotionTokens.easeEnter),
                     ) + fadeIn(animationSpec = tween(DRAWER_ENTER_MS))
                 } else {
                     slideInHorizontally(
                         initialOffsetX = { it },
-                        animationSpec = tween(DRAWER_ENTER_MS, easing = FastOutSlowInEasing),
+                        animationSpec = tween(DRAWER_ENTER_MS, easing = MotionTokens.easeEnter),
                     ) + fadeIn(animationSpec = tween(DRAWER_ENTER_MS))
                 },
                 exit = if (isPortrait) {
                     slideOutVertically(
                         targetOffsetY = { it },
-                        animationSpec = tween(DRAWER_EXIT_MS, easing = FastOutSlowInEasing),
+                        animationSpec = tween(DRAWER_EXIT_MS, easing = MotionTokens.easeExit),
                     ) + fadeOut(animationSpec = tween(DRAWER_EXIT_MS))
                 } else {
                     slideOutHorizontally(
                         targetOffsetX = { it },
-                        animationSpec = tween(DRAWER_EXIT_MS, easing = FastOutSlowInEasing),
+                        animationSpec = tween(DRAWER_EXIT_MS, easing = MotionTokens.easeExit),
                     ) + fadeOut(animationSpec = tween(DRAWER_EXIT_MS))
                 },
                 modifier = Modifier.align(sheetAlignment),

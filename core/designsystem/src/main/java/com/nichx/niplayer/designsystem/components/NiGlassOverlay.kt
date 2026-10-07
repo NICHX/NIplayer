@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
+import com.nichx.niplayer.designsystem.theme.MotionTokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -199,16 +201,52 @@ fun NiGlassOverlayHost(
             .distinctUntilChanged()
             .collect { reqs ->
                 val idSet = reqs.map { it.id }.toSet()
+                // 本次新增的浮层：用于识别「旧浮层被新浮层接替」这一交接场景
+                val incoming = idSet.filterNot { it in rendered.keys }
                 reqs.forEach { rendered[it.id] = it }
                 rendered.keys
                     .filterNot { it in idSet }
                     .forEach { id ->
-                        scope.launch {
-                            delay(EXIT_ANIM_BUFFER_MS)
-                            if (NiGlassOverlay.requests.none { it.id == id }) rendered.remove(id)
+                        if (incoming.isNotEmpty()) {
+                            // 同一帧内「旧浮层关闭 + 新浮层打开」= 菜单 → 弹窗的交接。
+                            // 旧浮层必须立即移除、不播退场：否则旧浮层退场与新浮层进场在同一帧叠加，
+                            // 交接瞬间会看到两层同时在动（用户感知为“多闪一次”，与更新/备份弹窗同因）。
+                            rendered.remove(id)
+                        } else {
+                            scope.launch {
+                                delay(EXIT_ANIM_BUFFER_MS)
+                                if (NiGlassOverlay.requests.none { it.id == id }) rendered.remove(id)
+                            }
                         }
                     }
             }
+    }
+
+    // ── 全局压暗层（唯一）──
+    // 由「是否存在需要压暗的浮层（底部面板/居中弹窗）」驱动，只在这一处做一次淡入淡出。
+    // 浮层之间交接（如「⋮ 菜单 → 属性弹窗」）时压暗层保持不变：
+    // 若让每个浮层各带一层压暗，交接时「旧压暗淡出 + 新压暗淡入」会叠加，亮度先掉再回升，
+    // 用户感知为「压暗层闪一下」。
+    val scrimActive = NiGlassOverlay.requests.any { it.kind != NiGlassOverlayKind.Dropdown }
+    NiAnimatedVisibility(
+        visible = scrimActive,
+        enter = fadeIn(tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter)),
+        exit = fadeOut(
+            tween(MotionTokens.exitOf(MotionTokens.SURFACE), easing = MotionTokens.easeExit),
+        ),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = NiGlassSheetScrimAlpha))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    NiGlassOverlay.dismissTop()
+                },
+        )
     }
 
     rendered.forEach { (id, request) ->

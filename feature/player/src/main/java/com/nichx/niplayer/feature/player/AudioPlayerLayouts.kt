@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -156,6 +157,13 @@ internal fun BackgroundLayer(coverData: Any?) {
 private val CoverCorner = 20.dp
 
 /**
+ * 背景光采样边长（px）：以极小分辨率采样封面，再拉伸铺满，天然形成柔和背景光。
+ *
+ * 这样**不需要** `Modifier.blur`（整屏 RenderEffect）：整屏逐帧重建离屏层是硬约束禁止项。
+ */
+private const val CoverBackdropSampleSize = 64
+
+/**
  * 简约封面主题的全屏背景：主题底色 + 封面高斯模糊铺底 + 主题色 scrim。
  *
  * 与黑胶主题 [BackgroundLayer]（弱化封面 + 底部渐变）不同，这里把封面放大高斯模糊，
@@ -174,9 +182,11 @@ internal fun CoverBlurBackground(coverData: Any?) {
                 when (coverData) {
                     is String -> ImageRequest.Builder(context)
                         .data(coverData)
+                        .size(CoverBackdropSampleSize, CoverBackdropSampleSize)
                         .diskCachePolicy(CachePolicy.DISABLED)
                         .build()
                     is ImageRequest -> coverData.newBuilder()
+                        .size(CoverBackdropSampleSize, CoverBackdropSampleSize)
                         .diskCachePolicy(CachePolicy.DISABLED)
                         .build()
                     else -> coverData
@@ -186,12 +196,8 @@ internal fun CoverBlurBackground(coverData: Any?) {
                 model = request,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    // 放大避免模糊边缘露出底色，再高斯模糊形成环境光
-                    .graphicsLayer { scaleX = 1.25f; scaleY = 1.25f }
-                    .blur(32.dp)
-                    .alpha(0.95f),
+                // 低分辨率图被拉伸铺满即得背景光：不再挂整屏 blur / 缩放 / alpha 图层
+                modifier = Modifier.fillMaxSize(),
             )
         }
         // 主题色 scrim：顶部轻、底部重，压住模糊纹理保证前景文字对比度
@@ -271,7 +277,7 @@ internal fun PortraitLayout(
     onRetry: () -> Unit,
     showLyrics: Boolean,
     lrcLines: List<LrcLine>,
-    positionMs: Long,
+    positionMs: State<Long>,
     durationMs: Long,
     onSeek: (Long) -> Unit,
     title: String,
@@ -680,7 +686,7 @@ internal fun LandscapeLayout(
     playbackError: String?,
     onRetry: () -> Unit,
     lrcLines: List<LrcLine>,
-    positionMs: Long,
+    positionMs: State<Long>,
     durationMs: Long,
     onSeek: (Long) -> Unit,
     title: String,

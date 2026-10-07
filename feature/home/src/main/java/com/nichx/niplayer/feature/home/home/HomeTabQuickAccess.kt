@@ -41,6 +41,7 @@ import com.nichx.niplayer.designsystem.components.niCardOpacity
 import com.nichx.niplayer.designsystem.components.niHasCustomBackground
 import com.nichx.niplayer.designsystem.components.niNestedSurface
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import com.nichx.niplayer.designsystem.motion.niPressable
 import com.nichx.niplayer.designsystem.theme.NiMotion
 import com.nichx.niplayer.common.media.MediaFileTypes
 import androidx.compose.material.icons.Icons
@@ -102,14 +103,6 @@ internal fun HomeQuickAccessGridItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.97f else 1f,
-        animationSpec = tween(durationMillis = NiMotion.DURATION_MICRO),
-        label = "homeQaScale",
-    )
-
     val cardShape = RoundedCornerShape(16.dp)
     val name = item.entity.name
     val isVideo = !item.entity.isDirectory && MediaFileTypes.isVideoFile(name)
@@ -121,8 +114,7 @@ internal fun HomeQuickAccessGridItem(
         modifier = modifier
             .fillMaxWidth()
             // 语义合并：封面/名称合并为单一节点，降低语义树节点数
-            .semantics(mergeDescendants = true) {}
-            .graphicsLayer { scaleX = scale; scaleY = scale },
+            .semantics(mergeDescendants = true) {},
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -139,9 +131,10 @@ internal fun HomeQuickAccessGridItem(
                 )
                 .clip(cardShape)
                 .background(NiExtraColors.current.surfaceLevel3)
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
+                // 按压反馈收敛到封面，恒等图层不再常驻；保留原来的"无涟漪"观感
+                .niPressable(
+                    pressedScale = 0.97f,
+                    indicationEnabled = false,
                     onClick = onClick,
                 ),
         ) {

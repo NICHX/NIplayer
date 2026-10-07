@@ -25,6 +25,8 @@ import com.nichx.niplayer.datastore.GlassSettings
 import com.nichx.niplayer.datastore.LanguageSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
+import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
+import com.nichx.niplayer.designsystem.motion.rememberNiReduceMotion
 import com.nichx.niplayer.designsystem.components.LocalNiGlassPanelOpacity
 import com.nichx.niplayer.designsystem.components.LocalNiGlassTopBarOpacity
 import com.nichx.niplayer.designsystem.theme.NiScheme
@@ -123,6 +125,9 @@ class PlayerActivity : ComponentActivity() {
             val glassOpacity by GlassSettings.opacityFlow.collectAsStateWithLifecycle()
             val glassTopBarOpacity by GlassSettings.topBarOpacityFlow.collectAsStateWithLifecycle()
             val glassPanelOpacity by GlassSettings.panelOpacityFlow.collectAsStateWithLifecycle()
+            // 减少动态效果：应用内设置 ∪ 系统动画倍率
+            val reduceMotionSetting by GlassSettings.reduceMotionFlow.collectAsStateWithLifecycle()
+            val reduceMotion = rememberNiReduceMotion(reduceMotionSetting)
             val darkTheme = when (themeConfig.mode) {
                 ThemeSettings.Mode.LIGHT -> false
                 ThemeSettings.Mode.DARK -> true
@@ -133,6 +138,7 @@ class PlayerActivity : ComponentActivity() {
                     LocalNiGlassOpacity provides glassOpacity,
                     LocalNiGlassTopBarOpacity provides glassTopBarOpacity,
                     LocalNiGlassPanelOpacity provides glassPanelOpacity,
+                    LocalNiReduceMotion provides reduceMotion,
                 ) {
                     PlayerScreen(onBack = { finish() })
                 }

@@ -167,8 +167,6 @@ fun NiGlassBottomBar(
             }
         }
     }
-    var currentIndex by remember { mutableIntStateOf(selectedIndex()) }
-
     class DampedDragAnimationHolder {
         var instance: DampedDragAnimation? = null
     }
@@ -200,11 +198,13 @@ fun NiGlassBottomBar(
             onDragStarted = {},
             onDragStopped = {
                 val targetIndex = targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
-                currentIndex = targetIndex
-                animateToValue(targetIndex.toFloat())
                 if (targetIndex != selectedIndex()) {
+                    // 选中变化：由下方 LaunchedEffect(selectedIndex) 统一驱动弹簧吸附，
+                    // 此处不再重复 animateToValue（否则同一 Animatable 被两次启动、互相取消）。
                     onSelected(targetIndex)
                 } else {
+                    // 选中未变（拖回原 tab 后回弹）：无人驱动，就地收尾
+                    animateToValue(targetIndex.toFloat())
                     onReselected(targetIndex)
                 }
                 animationScope.launch {
@@ -226,7 +226,6 @@ fun NiGlassBottomBar(
     }
     LaunchedEffect(selectedIndex, dampedDragAnimation) {
         snapshotFlow { selectedIndex() }.collectLatest { index ->
-            currentIndex = index
             dampedDragAnimation.animateToValue(index.toFloat())
         }
     }

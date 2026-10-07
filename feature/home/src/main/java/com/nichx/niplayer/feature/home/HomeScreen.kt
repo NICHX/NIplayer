@@ -3,6 +3,10 @@ package com.nichx.niplayer.feature.home
 import android.app.Activity
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -35,7 +39,9 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
 import com.nichx.niplayer.designsystem.components.niHasCustomBackground
+import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
 import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
+import com.nichx.niplayer.designsystem.theme.MotionTokens
 import com.nichx.niplayer.designsystem.theme.NiWindowWidthSizeClass
 import com.nichx.niplayer.feature.home.home.HomeTabScreen
 import com.nichx.niplayer.feature.home.library.FileBrowserScreen
@@ -201,15 +207,25 @@ fun HomeScreen(
                 .layerBackdrop(floatingBarBackdrop),
         )
 
-        // 共享玻璃底栏：文件浏览多选态下隐藏（操作栏贴底，避免堆叠）
-        if (!inFileBrowserMultiSelect) {
+        // 共享玻璃底栏：文件浏览多选态下隐藏（操作栏贴底，避免堆叠）。
+        // 用进出场动画表达"让位"，避免整条底栏硬闪。
+        NiAnimatedVisibility(
+            visible = !inFileBrowserMultiSelect,
+            enter = fadeIn(tween(MotionTokens.QUICK, easing = MotionTokens.easeEnter)) +
+                slideInVertically(tween(MotionTokens.QUICK, easing = MotionTokens.easeEnter)) { it },
+            exit = fadeOut(
+                tween(MotionTokens.exitOf(MotionTokens.QUICK), easing = MotionTokens.easeExit),
+            ) + slideOutVertically(
+                tween(MotionTokens.exitOf(MotionTokens.QUICK), easing = MotionTokens.easeExit),
+            ) { it },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
             HomeBottomNavBar(
                 selectedIndex = { pagerState.targetPage },
                 onSelect = onTabSelected,
                 backdrop = floatingBarBackdrop,
                 maxWidth = bottomBarMaxWidth,
                 bottomInset = 8.dp + bottomNavInset,
-                modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
     }
@@ -306,7 +322,8 @@ private fun HomeTabContent(
  * 切 tab 轻量交叉淡入淡出：仅 alpha 淡入淡出，无 scale 无位移。
  * 内容已由 scrollToPage 瞬时就位，通过合成级 alpha（graphicsLayer）实现旧页淡出+新页淡入。
  */
-private const val TabCrossfadeDurationMs = 120
+private const val TabCrossfadeInMs = MotionTokens.QUICK
+private val TabCrossfadeOutMs = MotionTokens.exitOf(MotionTokens.QUICK)
 
 @Composable
 private fun CrossfadePage(
@@ -322,14 +339,14 @@ private fun CrossfadePage(
         if (current == page) {
             // 是当前激活页：向不透明度 1 收敛。冷启动由 remember 初值 1 直接可见；
             // 切 tab（previous != page）时该页初值为 0，这里仍从 0 淡入，切换动画不变
-            alpha.animateTo(1f, tween(durationMillis = TabCrossfadeDurationMs))
+            alpha.animateTo(1f, tween(TabCrossfadeInMs, easing = MotionTokens.easeStandard))
         } else if (previous == page) {
             // 刚离开的页面淡出
-            alpha.animateTo(0f, tween(durationMillis = TabCrossfadeDurationMs))
+            alpha.animateTo(0f, tween(TabCrossfadeOutMs, easing = MotionTokens.easeExit))
         } else {
             // 其它页淡出到透明。用动画而非 snap：切换瞬间 previousPage 会滞后一帧，
             // 直接 snapTo(0) 会让刚离开的页面（及顶栏渐变遮罩）瞬间闪一下，故统一走淡出
-            alpha.animateTo(0f, tween(durationMillis = TabCrossfadeDurationMs))
+            alpha.animateTo(0f, tween(TabCrossfadeOutMs, easing = MotionTokens.easeExit))
         }
     }
     Box(
