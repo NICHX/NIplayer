@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -224,8 +225,10 @@ internal fun PlaybackControls(
     val gap = when { appleStyle -> 18.dp; compact -> 12.dp; else -> 16.dp }
     val containerColor = if (appleStyle) Color.Transparent else onSurface.copy(alpha = 0.08f)
     val iconColor = if (appleStyle) Color.White else onSurface
-    val mainContainerColor = if (appleStyle) Color.Transparent else primary.copy(alpha = 0.2f)
-    val mainIconColor = if (appleStyle) Color.White else primary
+    // 主播放键：实心主色 + 投影，建立明确的「主操作」层次（Apple 仍走扁平纯白）
+    val mainContainerColor = if (appleStyle) Color.Transparent else primary
+    val mainIconColor = if (appleStyle) Color.White else MaterialTheme.colorScheme.onPrimary
+    val mainElevation = if (appleStyle) 0.dp else if (compact) 6.dp else 8.dp
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -280,6 +283,7 @@ internal fun PlaybackControls(
             Box(
                 modifier = Modifier
                     .size(mainSize)
+                    .shadow(elevation = mainElevation, shape = CircleShape, clip = false)
                     .clip(CircleShape)
                     .background(mainContainerColor)
                     .clickable(enabled = !buffering) { onTogglePlay() },

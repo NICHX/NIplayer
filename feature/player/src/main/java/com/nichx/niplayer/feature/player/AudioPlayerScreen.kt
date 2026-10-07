@@ -39,6 +39,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.util.Locale
 
 @Composable
 fun AudioPlayerScreen(
@@ -73,6 +74,9 @@ fun AudioPlayerScreen(
     val durationMs by audioPlaybackManager?.durationMs?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(0L) }
     val playlist by audioPlaybackManager?.playlist?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(emptyList()) }
     val currentIndex by audioPlaybackManager?.currentIndex?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(-1) }
+    // 相邻曲目封面：黑胶主题左右滑动时预览邻居唱片。切歌/切播放模式即刷新，
+    // 未命中项在后台补取（随机模式下"下一首"由播放器预定，因此预览与实际一致）。
+    val neighborCovers by viewModel.neighborCovers.collectAsStateWithLifecycle()
     val lrcText by audioPlaybackManager?.lrcText?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
     val playbackError by audioPlaybackManager?.playbackError?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
     val showDownloadDialog by viewModel.showDownloadDialog.collectAsStateWithLifecycle()
@@ -104,6 +108,10 @@ fun AudioPlayerScreen(
     val playMode by audioPlaybackManager?.playModeIndex?.collectAsStateWithLifecycle()
         ?: remember { mutableIntStateOf(0) }
     val mode = PlayMode.entries[playMode]
+    // 切歌 / 切播放模式后刷新相邻封面（随机模式下"下一首"由播放器预定，故预览与实际一致）
+    LaunchedEffect(currentIndex, playMode) {
+        viewModel.refreshNeighborCovers()
+    }
     val modeIcon = when (mode) {
         PlayMode.Loop -> Icons.Rounded.Repeat
         PlayMode.Shuffle -> Icons.Rounded.Shuffle
@@ -128,7 +136,7 @@ fun AudioPlayerScreen(
             AudioPlayerStyle.GLASS -> glassStyleName
             AudioPlayerStyle.APPLE_MUSIC -> appleMusicStyleName
         }
-        messageController.post(NiMessage.info(appearanceSwitchedTemplate.format(nextName)))
+        messageController.post(NiMessage.info(appearanceSwitchedTemplate.format(Locale.ROOT, nextName)))
     }
 
     var showLyrics by remember { mutableStateOf(false) }
@@ -145,8 +153,17 @@ fun AudioPlayerScreen(
         PlayerSettings.audioSpeedIndex = speedIndex
     }
 
-    val hasNext = currentIndex in 0 until playlist.lastIndex
-    val hasPrev = currentIndex > 0
+    // 传输键可用性：与「能否真的切到**另一首**」一致，取播放器**预定**的下标。
+    // 顺序/随机模式且列表 ≥ 2 首 → 可用；列表只有 1 首、或"下一首"就是当前曲目
+    // （单曲循环）→ 禁用。
+    // 原实现用 currentIndex 与列表边界比较（`in 0 until lastIndex` / `> 0`），
+    // 在随机模式与首尾回绕下都是错的：末位明明能回绕到 0、随机模式也可能抽到更小的下标。
+    val upcomingNextIndex by audioPlaybackManager?.upcomingNextIndex?.collectAsStateWithLifecycle()
+        ?: remember { mutableIntStateOf(-1) }
+    val upcomingPreviousIndex by audioPlaybackManager?.upcomingPreviousIndex?.collectAsStateWithLifecycle()
+        ?: remember { mutableIntStateOf(-1) }
+    val hasNext = upcomingNextIndex >= 0 && upcomingNextIndex != currentIndex
+    val hasPrev = upcomingPreviousIndex >= 0 && upcomingPreviousIndex != currentIndex
 
     // 横屏 / 竖屏自适应：横屏用左右分栏布局（黑胶 + 控制区），竖屏用原单列布局
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -256,6 +273,10 @@ fun AudioPlayerScreen(
                 style = playerStyle,
                 playlist = playlist,
                 currentIndex = currentIndex,
+                neighborPrevCover = neighborCovers.previous,
+                neighborNextCover = neighborCovers.next,
+                canSwipePrevious = neighborCovers.previousIndex >= 0,
+                canSwipeNext = neighborCovers.nextIndex >= 0,
                 playMode = playMode,
                 modeIcon = modeIcon,
                 modeLabel = stringResource(mode.labelRes),

@@ -261,6 +261,7 @@
 
     <!-- Lyrics -->
     <string name="lyrics_empty">No lyrics</string>
+    <string name="lyrics_back_to_record">Back to record</string>
 
     <!-- VR look-around -->
     <string name="player_vr">VR Look-around</string>

@@ -114,6 +114,21 @@ class AudioPlaybackManager @Inject constructor(
     private val _currentIndex = MutableStateFlow(-1)
     val currentIndex: StateFlow<Int> = _currentIndex.asStateFlow()
 
+    private val _upcomingPreviousIndex = MutableStateFlow(-1)
+
+    /** 预定的「上一首」下标（随机模式同样向前退一位）。 */
+    val upcomingPreviousIndex: StateFlow<Int> = _upcomingPreviousIndex.asStateFlow()
+
+    private val _upcomingNextIndex = MutableStateFlow(-1)
+
+    /**
+     * 预定的「下一首」下标。
+     *
+     * 随机模式下随机值在**切歌那一刻**就定下来（而不是等到播放时才抽），
+     * 这样 UI 的「下一张唱片」预览与实际会播放的是同一首。
+     */
+    val upcomingNextIndex: StateFlow<Int> = _upcomingNextIndex.asStateFlow()
+
     /** 当前播放模式索引，从持久化设置恢复。 */
     private val _playModeIndex = MutableStateFlow(PlayerSettings.audioPlayModeIndex)
     val playModeIndex: StateFlow<Int> = _playModeIndex.asStateFlow()
@@ -123,6 +138,8 @@ class AudioPlaybackManager @Inject constructor(
         val next = (_playModeIndex.value + 1) % PlayMode.entries.size
         _playModeIndex.value = next
         PlayerSettings.audioPlayModeIndex = next
+        // 播放模式变了 →「下一首是谁」随之变化，重算预定下标
+        refreshUpcomingIndices()
     }
 
     /** 当前播放倍速，UI 可订阅显示；由 [setPlaybackSpeed] 修改，切歌后保持。 */
@@ -552,6 +569,7 @@ class AudioPlaybackManager @Inject constructor(
         _durationMs.value = 0L
         _playlist.value = playlist
         _currentIndex.value = startIndex
+        refreshUpcomingIndices()
         // 同步当前曲目的历史描述符（切歌/首播均在此更新，供进度保存使用）
         currentHistory = history
         // 先落 _currentSource：loadLocalAudioCover() 在 refreshAudioCover 内同步读取它，
@@ -626,6 +644,7 @@ class AudioPlaybackManager @Inject constructor(
         if (items.isEmpty() || startIndex !in items.indices) return
         _playlist.value = items
         _currentIndex.value = startIndex
+        refreshUpcomingIndices()
     }
 
     fun togglePlayPause() {
@@ -673,6 +692,23 @@ class AudioPlaybackManager @Inject constructor(
         val size = _playlist.value.size
         if (size == 0) return -1
         return if (current <= 0) size - 1 else current - 1
+    }
+
+    /**
+     * 依据当前下标 / 列表 / 播放模式，刷新「上/下一首」的预定下标。
+     *
+     * 任何会改变"下一首是谁"的时机（切歌、列表更新、切播放模式、清空）都要调用，
+     * 保证 [upcomingNextIndex] / [upcomingPreviousIndex] 始终对应当前曲目。
+     */
+    private fun refreshUpcomingIndices() {
+        val current = _currentIndex.value
+        if (current < 0) {
+            _upcomingPreviousIndex.value = -1
+            _upcomingNextIndex.value = -1
+        } else {
+            _upcomingPreviousIndex.value = previousIndex(current)
+            _upcomingNextIndex.value = nextIndex(current)
+        }
     }
 
     /**
@@ -739,10 +775,21 @@ class AudioPlaybackManager @Inject constructor(
     fun playNext() {
         if (_playlist.value.isEmpty()) return
         scope.launch {
-            // 索引在 Mutex 排队执行时计算，连点下一首时每次读取最新 currentIndex，
-            // 保证快速连点 3 次依次切到 1、2、3 而非都基于调用时刻的旧索引
-            val index = nextIndex(_currentIndex.value)
-            if (index >= 0) switchToIndex(index)
+            // 用**切歌时就定下**的「下一首」（随机模式下这样 UI 预览与实际播放才一致）；
+            // 预定值不可用时（如列表刚变）回退为按最新下标现算。
+            // 用掉之后立刻为新的当前曲目重新预算，因此连点三次仍会依次前进
+            // （协程在 Mutex 串行执行，第二次读到的是第一次算好的下一首）。
+            val planned = _upcomingNextIndex.value
+            val index = if (planned in _playlist.value.indices) {
+                planned
+            } else {
+                nextIndex(_currentIndex.value)
+            }
+            if (index >= 0) {
+                _upcomingPreviousIndex.value = previousIndex(index)
+                _upcomingNextIndex.value = nextIndex(index)
+                switchToIndex(index)
+            }
         }
     }
 
@@ -750,9 +797,18 @@ class AudioPlaybackManager @Inject constructor(
     fun playPrevious() {
         if (_playlist.value.isEmpty()) return
         scope.launch {
-            // 与 playNext 一致：索引在排队执行时计算，避免连点回退时跳位
-            val index = previousIndex(_currentIndex.value)
-            if (index >= 0) switchToIndex(index)
+            // 与 playNext 一致：优先用预定值，避免连点回退时跳位
+            val planned = _upcomingPreviousIndex.value
+            val index = if (planned in _playlist.value.indices) {
+                planned
+            } else {
+                previousIndex(_currentIndex.value)
+            }
+            if (index >= 0) {
+                _upcomingPreviousIndex.value = previousIndex(index)
+                _upcomingNextIndex.value = nextIndex(index)
+                switchToIndex(index)
+            }
         }
     }
 
@@ -1082,6 +1138,7 @@ class AudioPlaybackManager @Inject constructor(
         setCoverBitmap(null)
         _playlist.value = emptyList()
         _currentIndex.value = -1
+        refreshUpcomingIndices()
         currentHistory = null
         _lrcText.value = null
         _playbackError.value = null

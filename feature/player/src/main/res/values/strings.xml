@@ -261,6 +261,7 @@
 
     <!-- 歌词 -->
     <string name="lyrics_empty">暂无歌词</string>
+    <string name="lyrics_back_to_record">回到唱片</string>
 
     <!-- VR 环视 -->
     <string name="player_vr">VR 环视</string>

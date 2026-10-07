@@ -1,12 +1,26 @@
 package com.nichx.niplayer.feature.player
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDp
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -23,7 +37,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -32,6 +48,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,20 +59,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -68,8 +88,12 @@ import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import com.nichx.niplayer.datastore.AudioPlayerStyle
+import com.nichx.niplayer.designsystem.theme.MotionTokens
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import kotlin.math.abs
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 
 /** 横屏沉浸模式：无操作自动隐藏控件的延时（ms）。 */
@@ -124,52 +148,86 @@ private const val APPLE_FLOW_OVERLAY_ALPHA = 0.85f
 /** 歌词层在「切出歌词页」后保留的时长（ms）：覆盖退场动画后再卸载，避免退场途中断帧。 */
 private const val APPLE_LYRICS_LAYER_EXIT_MS = 420L
 
+/** 甩动切歌：松手瞬间的横向速度超过该值（px/s）即视为「甩动」，即使位移没到阈值也切歌。 */
+private const val FLICK_VELOCITY_PX_PER_S = 900f
+
+/** 拖动超出半个屏宽后的跟随比例：越小越「重」，避免在边界硬邦邦地卡住。 */
+private const val DRAG_OVERSHOOT_DAMPING = 0.3f
+
+/**
+ * 黑胶主题的全屏背景：主题底色 + 封面主色氛围光 + 主题色 scrim + 四角暗角。
+ *
+ * 氛围光用 `CoverBackdropSampleSize` 极小分辨率采样封面再拉伸铺满，天然形成柔和
+ * 环境光，**不使用** `Modifier.blur`（整屏 RenderEffect 是硬约束禁止项）；
+ * scrim 保证前景控件对比度，暗角把视线收拢到唱盘、增强纵深。
+ */
 @Composable
 internal fun BackgroundLayer(coverData: Any?) {
     val background = MaterialTheme.colorScheme.background
+    val isDark = NiExtraColors.current.isDark
     Box(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize().background(background))
-        if (coverData != null) {
-            val context = LocalContext.current
-            val request = remember(coverData) {
-                when (coverData) {
-                    is String -> ImageRequest.Builder(context)
-                        .data(coverData)
-                        .diskCachePolicy(CachePolicy.DISABLED)
-                        .build()
-                    is ImageRequest -> coverData.newBuilder()
-                        .diskCachePolicy(CachePolicy.DISABLED)
-                        .build()
-                    else -> coverData
+        // 封面变化（切歌）时让环境光淡入淡出，避免背景「啪」地硬切
+        Crossfade(
+            targetState = coverData,
+            animationSpec = tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter),
+            modifier = Modifier.fillMaxSize(),
+            label = "vinylBackdrop",
+        ) { cover ->
+            if (cover != null) {
+                val context = LocalContext.current
+                val request = remember(cover) {
+                    when (cover) {
+                        is String -> ImageRequest.Builder(context)
+                            .data(cover)
+                            .size(CoverBackdropSampleSize, CoverBackdropSampleSize)
+                            .diskCachePolicy(CachePolicy.DISABLED)
+                            .build()
+                        is ImageRequest -> cover.newBuilder()
+                            .size(CoverBackdropSampleSize, CoverBackdropSampleSize)
+                            .diskCachePolicy(CachePolicy.DISABLED)
+                            .build()
+                        else -> cover
+                    }
                 }
+                AsyncImage(
+                    model = request,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alpha(if (isDark) 0.30f else 0.36f),
+                )
             }
-            AsyncImage(
-                model = request,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                alpha = 0.20f,
-            )
         }
-        // Bottom gradient overlay for depth
-        Column(
+        // 主题色 scrim：整体压一层、顶/底更重。中部不再「透到底」（原为 0.18）——
+        // 歌词与唱盘恰好落在屏幕中部，那正是最需要对比度的地方。
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .align(Alignment.BottomCenter),
-        ) {
-            Spacer(modifier = Modifier.weight(0.55f))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.45f)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                background.copy(alpha = 0.7f),
-                            ),
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            background.copy(alpha = 0.46f),
+                            background.copy(alpha = 0.42f),
+                            background.copy(alpha = 0.54f),
+                            background.copy(alpha = 0.84f),
                         ),
                     ),
+                ),
+        )
+        // 四角暗角：把视线收拢到唱盘，增强纵深。
+        // 用显式 center/radius 的径向渐变，避免依赖 Brush 默认中心/半径的解析行为。
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        background.copy(alpha = if (isDark) 0.72f else 0.52f),
+                    ),
+                    center = Offset(size.width / 2f, size.height / 2f),
+                    radius = size.maxDimension * 0.62f,
+                ),
             )
         }
     }
@@ -314,6 +372,10 @@ internal fun PortraitLayout(
     style: AudioPlayerStyle = AudioPlayerStyle.VINYL,
     playlist: List<*>,
     currentIndex: Int,
+    neighborPrevCover: Any? = null,
+    neighborNextCover: Any? = null,
+    canSwipePrevious: Boolean = false,
+    canSwipeNext: Boolean = false,
     playMode: Int,
     modeIcon: androidx.compose.ui.graphics.vector.ImageVector,
     modeLabel: String,
@@ -374,6 +436,75 @@ internal fun PortraitLayout(
         rememberAppleArtworkPalette(coverFile)
     } else {
         AppleArtworkPalette.Fallback
+    }
+
+    // 换片时序：旧盘抬针 → 平移换片 → 新盘落针开播。
+    // 平移时长即 AnimatedContent 的 PAGE_ENTER；抬针覆盖整段平移，平移走完才落针。
+    var needleLifted by remember { mutableStateOf(false) }
+    var lastTrackIndex by remember { mutableIntStateOf(currentIndex) }
+    LaunchedEffect(currentIndex) {
+        // LaunchedEffect 首次组合也会执行一次：下标没变就直接返回，
+        // 否则「进入播放页」时会白抬一次唱针（看起来像多了一次切歌）。
+        if (currentIndex == lastTrackIndex) return@LaunchedEffect
+        val previous = lastTrackIndex
+        lastTrackIndex = currentIndex
+        // 载入首个曲目（此前无下标）不抬针，避免唱片刚出现就抬一下
+        if (currentIndex < 0 || previous < 0) return@LaunchedEffect
+        needleLifted = true
+        delay(MotionTokens.PAGE_ENTER.toLong())
+        needleLifted = false
+    }
+
+    // 换片跟手：唱片随手指横向平移的实时位移（px）；[discSettleJob] 持松手后的归位动画。
+    var discDragOffset by remember { mutableFloatStateOf(0f) }
+    var discSettleJob by remember { mutableStateOf<Job?>(null) }
+    val dragScope = rememberCoroutineScope()
+
+    // 手指是否按在唱片上。
+    var discDragging by remember { mutableStateOf(false) }
+    // 已提交换片、但播放器还没真正切下标：此期间位移**冻结**在松手处，不弹回。
+    var commitPending by remember { mutableStateOf(false) }
+    // 下标已变化、位置交接给换片动画：此时邻居须立刻退场，否则会出现两张新唱片。
+    var neighborHandoff by remember { mutableStateOf(false) }
+
+    // 本次切歌的「意图方向」：手势或上/下一首按钮发起时记 ±1，其余为 0。
+    var pendingSwipeDirection by remember { mutableIntStateOf(0) }
+    // 冻结到本次下标变化：换页动画用它决定方向，而不是用下标差——
+    // 随机模式/列表回绕时下标增量与视觉方向不一致，只看下标会让动画反向（就是「乱」）。
+    val slideDirection = remember(currentIndex) { pendingSwipeDirection }
+    LaunchedEffect(currentIndex) {
+        // 意图方向只服务「本次」下标变化，变化后立刻清零，不影响后续（自动续播、点歌单等）
+        pendingSwipeDirection = 0
+    }
+
+    // 邻居唱片的显示条件：正在拖动；或已松手但位移尚未收回、且还没交接给换片动画。
+    // 用 derivedStateOf 只在布尔翻转时通知重组，拖动过程不逐帧重建整页。
+    val showNeighbors by remember {
+        derivedStateOf { discDragging || (discDragOffset != 0f && !neighborHandoff) }
+    }
+
+    // 唱片一旦被拖走（或正在归位），唱针就抬起来——否则唱针会「指着空处」，看着像错位。
+    // 用 derivedStateOf：只在「抬起 / 落下」翻转时才通知重组，拖动过程中不逐帧重建整页。
+    val needleUp by remember {
+        derivedStateOf { needleLifted || discDragOffset != 0f }
+    }
+
+    // 换片提交后：等播放器真正切了下标，再把位移与换片平移**同步**收回。
+    // 二者同时长、同曲线，读起来是一段连续运动；若在松手时就归位，会变成
+    // 「先弹回中心 → 再滑出换片」的两段运动——那就是之前的松手动画 bug。
+    LaunchedEffect(currentIndex) {
+        if (!commitPending) return@LaunchedEffect
+        commitPending = false
+        neighborHandoff = true
+        discSettleJob?.cancel()
+        discSettleJob = dragScope.launch {
+            animate(
+                discDragOffset,
+                0f,
+                animationSpec = tween(MotionTokens.PAGE_ENTER, easing = MotionTokens.easeStandard),
+            ) { v, _ -> discDragOffset = v }
+            neighborHandoff = false
+        }
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -644,7 +775,32 @@ internal fun PortraitLayout(
                     errorMessage = playbackError,
                     onRetry = onRetry,
                 )
-            } else if (showLyrics) {
+            } else {
+                // 唱片 ↔ 歌词 的切换：淡入淡出 + 轻微纵向位移，避免硬切；
+                // 出向略快于入向（MotionTokens 的退场≈出场×0.65 口径），读起来更跟手。
+                AnimatedContent(
+                    targetState = showLyrics,
+                    transitionSpec = {
+                        // 与底部「回到唱片」的 ▼ 语义对齐：进入歌词整组上移、回到唱片整组下移。
+                        //
+                        // 进/出用**同一时长同一曲线**、位移取**整幅**，两块内容因此始终首尾相接：
+                        // 像一张竖版胶片被推上/推下，全程既不重叠、也不留缝。
+                        // 这里刻意**不**套窗口转场的「退场 ≈ 出场 × 0.65」，也不做淡入淡出——
+                        // 一旦进出不同步、或半透明叠加，读起来就是「重叠」。
+                        val up = targetState
+                        slideInVertically(
+                            animationSpec = tween(MotionTokens.PAGE_ENTER, easing = MotionTokens.easeStandard),
+                            initialOffsetY = { if (up) it else -it },
+                        ) togetherWith slideOutVertically(
+                            animationSpec = tween(MotionTokens.PAGE_ENTER, easing = MotionTokens.easeStandard),
+                            targetOffsetY = { if (up) -it else it },
+                        )
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                    label = "discLyrics",
+                ) { lyricsVisible ->
+                if (lyricsVisible) {
                 // 歌词视图：点击**空白处**切换底部控件显隐，点击歌词文本才是跳转进度。
                 //
                 // 这一层只负责空白处，所以用普通（冒泡阶段）的 clickable 就够了——歌词
@@ -706,57 +862,252 @@ internal fun PortraitLayout(
                                 )
                             }
                         }
-                        // 歌词区域只占中间 75% 高度并居中，上下各留约 12.5% 空白，
-                        // 便于点击空白处切换回唱片；行数限制为 7 行，避免显示过多。
+                        // 歌词：占满剩余高度，不设行数上限（能显示多少由高度与行距决定）
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Box(
-                                modifier = Modifier.fillMaxHeight(if (isAppleStyle) 1f else 0.75f),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                LyricsView(
-                                    lrcLines = lrcLines,
-                                    currentPositionMs = positionMs,
-                                    onSeek = onSeek,
-                                    // Apple：歌词铺满整页；其它风格限制 7 行
-                                    maxVisibleLines = if (isAppleStyle) Int.MAX_VALUE else 7,
-                                    modifier = Modifier.fillMaxSize(),
-                                    appleStyle = isAppleStyle,
-                                )
-                            }
+                            LyricsView(
+                                lrcLines = lrcLines,
+                                currentPositionMs = positionMs,
+                                onSeek = onSeek,
+                                maxVisibleLines = Int.MAX_VALUE,
+                                modifier = Modifier.fillMaxSize(),
+                                appleStyle = isAppleStyle,
+                            )
+                        }
+                        // 非 Apple 主题：底部常驻「回到唱片」触发条。
+                        // 行数放开后歌词几乎铺满、可点空白被挤没，这里给一个全宽 48dp、
+                        // 带图标与文案的明确入口（Apple 主题另有小封面入口，故不重复）。
+                        if (!isAppleStyle) {
+                            BackToRecordBar(onClick = onToggleLyrics)
                         }
                     }
                 }
-            } else {
+                } else {
                 // 封面/唱片视图（Apple 的封面页不走这里，见上面的 Apple 分支）
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        // 横向跟手换片：拖动时唱片随手指平移，松手过阈值即切上一首/下一首。
+                        // 唱针不参与平移（见下方 VinylNeedle）——唱机上的针是固定的。
+                        .pointerInput(currentIndex, canSwipeNext, canSwipePrevious) {
+                            val threshold = 72.dp.toPx()
+                            val flickMinDistance = 24.dp.toPx()
+                            // 拖动超过半个屏宽后转为阻尼跟随（越拖越「重」），避免硬邦邦地卡在边界
+                            val softLimit = size.width * 0.5f
+                            val velocityTracker = VelocityTracker()
+                            detectHorizontalDragGestures(
+                                // 按下先掐掉上一次的归位动画，避免两个动画抢方向盘
+                                onDragStart = {
+                                    discSettleJob?.cancel()
+                                    discDragging = true
+                                    commitPending = false
+                                    neighborHandoff = false
+                                    velocityTracker.resetTracking()
+                                },
+                                onDragCancel = {
+                                    discDragging = false
+                                    commitPending = false
+                                    neighborHandoff = false
+                                    discSettleJob = dragScope.launch {
+                                        animate(
+                                            discDragOffset,
+                                            0f,
+                                            animationSpec = MotionTokens.springPanel,
+                                        ) { v, _ -> discDragOffset = v }
+                                    }
+                                },
+                                onDragEnd = {
+                                    discDragging = false
+                                    // 松手速度：快速甩动即使位移没到阈值也该切歌——这是手感的关键一环
+                                    val velocityX = velocityTracker.calculateVelocity().x
+                                    val flicking = abs(velocityX) > FLICK_VELOCITY_PX_PER_S
+                                    val commit = when {
+                                        discDragOffset <= -threshold && canSwipeNext -> 1
+                                        discDragOffset >= threshold && canSwipePrevious -> -1
+                                        flicking && discDragOffset <= -flickMinDistance && canSwipeNext -> 1
+                                        flicking && discDragOffset >= flickMinDistance && canSwipePrevious -> -1
+                                        else -> 0
+                                    }
+                                    if (commit == 0) {
+                                        // 未过阈值：弹簧回中（邻居随之滑回屏外）
+                                        discSettleJob = dragScope.launch {
+                                            animate(
+                                                discDragOffset,
+                                                0f,
+                                                animationSpec = MotionTokens.springPanel,
+                                            ) { v, _ -> discDragOffset = v }
+                                        }
+                                    } else {
+                                        // 已换片：记下意图方向；位移**冻结**在松手处，
+                                        // 等下标真正变化后由 LaunchedEffect(currentIndex) 与换片平移同步收回
+                                        commitPending = true
+                                        pendingSwipeDirection = commit
+                                        if (commit > 0) onNext() else onPrevious()
+                                    }
+                                },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                    val next = discDragOffset + dragAmount
+                                    discDragOffset = if (abs(next) <= softLimit) {
+                                        next
+                                    } else {
+                                        // 超出软上限后只跟三成：给出「拖不动了」的阻尼手感，又不硬断
+                                        val sign = if (next > 0f) 1f else -1f
+                                        sign * (softLimit + (abs(next) - softLimit) * DRAG_OVERSHOOT_DAMPING)
+                                    }
+                                },
+                            )
+                        }
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                         ) { onToggleLyrics() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    when (style) {
-                        AudioPlayerStyle.GLASS -> CoverCard(
-                            coverData = coverPath,
+                    // 三层共享同一个几何盒子：**先定盒子尺寸，三层一律 fillMaxSize**。
+                    //
+                    // 为什么必须这样：AnimatedContent 会用「紧密约束」测量其内容，
+                    // 内容里的 fillMaxWidth(0.85f) 会被直接顶到容器宽 —— 唱片会按整幅宽算布局
+                    // （碟径 0.80W 而非 0.68W），而唱针层是松约束的兄弟、仍按 0.85W 算，
+                    // 于是出现「唱片变大 + 唱针错位」。把尺寸挪到共享盒子上，三层拿到完全
+                    // 相同的约束，尺寸与对齐都被钉死。
+                    val discBoxFraction = if (style == AudioPlayerStyle.GLASS) 0.78f else 0.85f
+                    // 碟面区域：BoxWithConstraints 拿到可用宽度，据此**显式**算出三层共用的
+                    // 盒子边长 side —— 不能依赖父级约束：父级一旦给紧密约束，fillMaxWidth 就失效，
+                    // 这正是之前「唱片被放大 + 唱针错位」的成因。
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        val side = maxWidth * discBoxFraction
+                        // 邻居间距 = 1.06 × 页宽 ≈ 1.32 × 碟径，与网易云的观感一致
+                        // （原先 0.84× 两张几乎相切，太挤）。
+                        val pageShift = side * 1.06f
+                        // 最底层：唱盘阴影。语义上属于「唱机」——唱片滑走时它**原地不动**。
+                        if (style == AudioPlayerStyle.VINYL) {
+                            VinylPlatter(modifier = Modifier.size(side))
+                        }
+                        // 跟手平移条：三页（上一张 / 当前 / 下一张）一起跟着手指走。
+                        //
+                        // 宽度必须用 requiredWidth 撑到 **3 个页宽**：普通 fillMaxWidth 会被父级宽度
+                        // 卡住，邻居页正好落在容器之外被裁掉，拖动时只剩边缘一条缝——就是「只看到一个角」。
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth(0.78f)
-                                .aspectRatio(1f),
-                        )
-                        else -> VinylRecordPlayer(
-                            coverData = coverPath,
-                            isPlaying = isPlaying,
-                            modifier = Modifier
-                                .fillMaxWidth(0.85f)
-                                .aspectRatio(1f),
-                        )
+                                .requiredWidth(side * 3f)
+                                .height(side)
+                                .graphicsLayer {
+                                    translationX = discDragOffset
+                                    // 进度以「一个页宽」为基准（size.width = 3 个页宽）
+                                    val pageW = (size.width / 3f).coerceAtLeast(1f)
+                                    val p = (abs(discDragOffset) / pageW).coerceIn(0f, 1f)
+                                    val s = 1f - 0.06f * p
+                                    scaleX = s
+                                    scaleY = s
+                                    alpha = 1f - 0.25f * p
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            // 邻居唱片：各占一个「页宽」，与当前唱片首尾相接，拖动时从两侧滑入。
+                            // isPlaying=false：邻居不转，也不带自身投影（投影在固定的唱盘层上）。
+                            // 只要存在上一首/下一首就画出来（封面未就绪则显示无封面空盘）；
+                            // 显示条件见 showNeighbors——拖动中，或松手后尚未交接给换片动画时。
+                            if (showNeighbors && canSwipePrevious) {
+                                VinylRecordPlayer(
+                                    coverData = neighborPrevCover,
+                                    isPlaying = false,
+                                    modifier = Modifier
+                                        .size(side)
+                                        .offset(x = -pageShift),
+                                    drawShadow = false,
+                                )
+                            }
+                            if (showNeighbors && canSwipeNext) {
+                                VinylRecordPlayer(
+                                    coverData = neighborNextCover,
+                                    isPlaying = false,
+                                    modifier = Modifier
+                                        .size(side)
+                                        .offset(x = pageShift),
+                                    drawShadow = false,
+                                )
+                            }
+                            // 切歌动画：旧唱片向一侧平移出场、新唱片自另一侧进场，形成「换唱片」的观感。
+                            // 方向由下标变化推断——`targetState > initialState` 即「下一首」
+                            // （自右入、向左出），所以各种切歌方式都能得到正确取向。
+                            AnimatedContent(
+                                targetState = currentIndex,
+                                transitionSpec = {
+                                    val base = if (initialState < 0 || targetState < 0) {
+                                        // 载入跳变（下标尚未有效，如 -1 → 首曲）不做动效
+                                        EnterTransition.None togetherWith ExitTransition.None
+                                    } else {
+                                        val dir = if (slideDirection != 0) {
+                                            // 手势/按钮的意图方向（随机模式、列表回绕同样正确）
+                                            slideDirection
+                                        } else if (targetState > initialState) {
+                                            // 其余来源（自动续播、点歌单跳转）退回按下标差推断
+                                            1
+                                        } else {
+                                            -1
+                                        }
+                                        // 进出并行（同时长同曲线）、位移取整幅宽，两张唱片首尾相接，
+                                        // 不重叠、不留缝——读起来是「一条胶片横移换片」。
+                                        slideInHorizontally(
+                                            animationSpec = tween(
+                                                MotionTokens.PAGE_ENTER,
+                                                easing = MotionTokens.easeStandard,
+                                            ),
+                                            initialOffsetX = { dir * it },
+                                        ) togetherWith slideOutHorizontally(
+                                            animationSpec = tween(
+                                                MotionTokens.PAGE_ENTER,
+                                                easing = MotionTokens.easeStandard,
+                                            ),
+                                            targetOffsetX = { -dir * it },
+                                        )
+                                    }
+                                    // 容器只有唱片盒子那么大，必须关掉裁剪，
+                                    // 否则唱片滑到容器边缘会被切出一条硬边。
+                                    base.using(SizeTransform(clip = false))
+                                },
+                                modifier = Modifier.size(side),
+                                contentAlignment = Alignment.Center,
+                                label = "trackChange",
+                            ) {
+                                when (style) {
+                                    AudioPlayerStyle.GLASS -> CoverCard(
+                                        coverData = coverPath,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                    AudioPlayerStyle.APPLE_MUSIC,
+                                    AudioPlayerStyle.VINYL,
+                                    -> VinylRecordPlayer(
+                                        coverData = coverPath,
+                                        isPlaying = isPlaying,
+                                        modifier = Modifier.fillMaxSize(),
+                                        // 投影由固定的 VinylPlatter 画（见上）；唱片自带影子会跟着滑走
+                                        drawShadow = false,
+                                    )
+                                }
+                            }
+                        }
+                        // 唱针：**不随唱片平移**——唱机上的针是固定的，跟手的只是唱片。
+                        if (style == AudioPlayerStyle.VINYL) {
+                            VinylNeedle(
+                                isPlaying = isPlaying,
+                                // 拖动中/归位中也算抬起（见 needleUp）
+                                needleLifted = needleUp,
+                                modifier = Modifier.size(side),
+                            )
+                        }
                     }
+                }
+            }
                 }
             }
         }
@@ -834,8 +1185,15 @@ internal fun PortraitLayout(
                     hasPrev = hasPrev,
                     hasNext = hasNext,
                     onTogglePlay = onTogglePlay,
-                    onPrevious = onPrevious,
-                    onNext = onNext,
+                    onPrevious = {
+                        // 记下意图方向，让换页动画与按钮语义一致（随机模式下下标差不可靠）
+                        pendingSwipeDirection = -1
+                        onPrevious()
+                    },
+                    onNext = {
+                        pendingSwipeDirection = 1
+                        onNext()
+                    },
                     playMode = playMode,
                     modeIcon = modeIcon,
                     modeLabel = modeLabel,
@@ -863,6 +1221,42 @@ internal fun PortraitLayout(
             modifier = Modifier.align(Alignment.TopStart),
         )
     }
+    }
+}
+
+/**
+ * 歌词页底部「回到唱片」触发条：全宽 48dp，图标 + 文案。
+ *
+ * 行数放开后歌词几乎铺满整屏、可点空白被压缩，因此需要一个明确且足够大的返回入口。
+ * 用「向下箭头」表达收起语义，并配文案，避免纯图标按钮的可发现性问题。
+ */
+@Composable
+private fun BackToRecordBar(onClick: () -> Unit) {
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowDown,
+            contentDescription = null,
+            tint = onSurface.copy(alpha = 0.55f),
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = stringResource(R.string.lyrics_back_to_record),
+            style = MaterialTheme.typography.labelMedium,
+            color = onSurface.copy(alpha = 0.55f),
+        )
     }
 }
 
@@ -1000,11 +1394,11 @@ internal fun LandscapeLayout(
                 else -> VinylRecordPlayer(
                     coverData = coverPath,
                     isPlaying = isPlaying,
-                    // 横屏移除唱针；高度留白较多，让出空间给歌词区
+                    // 横屏不放唱针；高度留白较多，让出空间给歌词区
                     modifier = Modifier
                         .fillMaxHeight(0.78f)
                         .aspectRatio(1f),
-                    showNeedle = false,
+                    needleSpace = false,
                 )
             }
         }

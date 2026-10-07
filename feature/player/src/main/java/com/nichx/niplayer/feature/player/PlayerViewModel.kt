@@ -57,6 +57,7 @@ import com.nichx.niplayer.subtitle.renderer.SubtitleEngine
 import com.nichx.niplayer.subtitle.renderer.SubtitleStyleConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -127,6 +128,105 @@ class PlayerViewModel @Inject constructor(
     /** 播放状态（WhileSubscribed(5000) 避免短暂配置变化导致 Player 释放）。 */
     val state: StateFlow<PlaybackState> = player.state
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PlaybackState.Idle)
+
+    /**
+     * 相邻两张唱片的信息（黑胶主题左右滑动时预览「上/下一张唱片」用）。
+     *
+     * [previousIndex] / [nextIndex] 为 -1 表示「没有」——既覆盖列表首尾，
+     * 也覆盖单曲循环（预定下标与当前相同，预览没有意义）。
+     */
+    data class NeighborCovers(
+        val previous: String?,
+        val next: String?,
+        val previousIndex: Int,
+        val nextIndex: Int,
+    )
+
+    private val _neighborCovers = MutableStateFlow(NeighborCovers(null, null, -1, -1))
+    val neighborCovers: StateFlow<NeighborCovers> = _neighborCovers.asStateFlow()
+
+    /**
+     * 刷新相邻曲目封面，并在后台补取未命中项。
+     *
+     * 「上/下一首」取播放器**预定**的下标（`upcomingPreviousIndex` / `upcomingNextIndex`），
+     * 而不是简单的 `index ± 1`——随机模式下随机值在切歌时已定下，因此预览与实际播放一致。
+     * 缓存命中的立即可用；未命中的走与正常播放一致的取图链路，完成后再次刷新。
+     * 任何失败都只是「该侧没有封面」——滑动时回退为空盘，不影响播放。
+     */
+    fun refreshNeighborCovers() {
+        val covers = readNeighborCovers()
+        _neighborCovers.value = covers
+        val playlist = audioPlaybackManager.playlist.value
+        listOf(covers.previousIndex, covers.nextIndex).distinct().forEach { i ->
+            val item = playlist.getOrNull(i) ?: return@forEach
+            // 已缓存 / 开关关闭 / 该存储关闭了「播放后生成」→ 都不必预取
+            if (thumbnailManager.getCachedAudioCoverPath(item.libraryId, item.filePath) != null) {
+                return@forEach
+            }
+            if (!ThumbnailSettings.generateThumbnail || !ThumbnailSettings.generateForAudio) {
+                return@forEach
+            }
+            if (!ThumbnailSettings.shouldGenerateOnPlayback(item.libraryId)) return@forEach
+            prefetchAudioCover(item)
+        }
+    }
+
+    private fun readNeighborCovers(): NeighborCovers {
+        val playlist = audioPlaybackManager.playlist.value
+        val current = audioPlaybackManager.currentIndex.value
+        fun coverAt(i: Int): String? = playlist.getOrNull(i)?.let { item ->
+            thumbnailManager.getCachedAudioCoverPath(item.libraryId, item.filePath)
+        }
+        // 预定下标须有效且不同于当前曲目（单曲循环时"下一首"就是自己，不预览）
+        val prev = audioPlaybackManager.upcomingPreviousIndex.value
+            .takeIf { it in playlist.indices && it != current } ?: -1
+        val next = audioPlaybackManager.upcomingNextIndex.value
+            .takeIf { it in playlist.indices && it != current } ?: -1
+        return NeighborCovers(
+            previous = coverAt(prev),
+            next = coverAt(next),
+            previousIndex = prev,
+            nextIndex = next,
+        )
+    }
+
+    /** 后台为单曲取封面（仅填充本地缓存），完成后刷新邻居封面状态。 */
+    private fun prefetchAudioCover(item: PlaylistItem) {
+        appScope.launch {
+            try {
+                val library = withContext(Dispatchers.IO) { mediaLibraryDao.getById(item.libraryId) }
+                    ?: return@launch
+                val storage = withContext(Dispatchers.IO) { storageFactory.create(library) }
+                    ?: return@launch
+                try {
+                    val file = MediaSourceBuilder.createVirtualFile(
+                        item.filePath,
+                        item.fileName,
+                        item.fileSize,
+                    )
+                    var loaded = false
+                    withContext(Dispatchers.IO) {
+                        thumbnailManager.preloadAudioCovers(storage, item.libraryId, listOf(file)) { _, _ ->
+                            loaded = true
+                        }
+                    }
+                    if (!loaded) {
+                        withContext(Dispatchers.IO) {
+                            thumbnailManager.generateAudioCover(storage, item.libraryId, file)
+                        }
+                    }
+                } finally {
+                    withContext(NonCancellable) { storage.close() }
+                }
+                _neighborCovers.value = readNeighborCovers()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 预取失败只是「该侧没有封面」，刷新回退即可，不打扰用户
+                _neighborCovers.value = readNeighborCovers()
+            }
+        }
+    }
 
     /** 当前播放位置（ms）。 */
     val positionMs: StateFlow<Long> = player.positionMs

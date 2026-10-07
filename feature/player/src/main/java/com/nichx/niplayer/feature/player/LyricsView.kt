@@ -38,8 +38,10 @@ import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
 import com.nichx.niplayer.designsystem.theme.MotionTokens
 import kotlin.math.PI
@@ -64,12 +67,30 @@ import kotlinx.coroutines.delay
 /** Apple 风格歌词字号倍率：titleLarge 22sp × 1.4 ≈ 31sp。 */
 private const val APPLE_FONT_BOOST = 1.4f
 
+/**
+ * 黑胶主题歌词字号倍率：titleLarge 22sp × 1.15 ≈ 25sp（当前句）。
+ *
+ * 放大后单行更易读；代价是行高同比放大，同屏可见行数相应减少。
+ */
+private const val VINYL_FONT_BOOST = 1.15f
+
+/**
+ * 黑胶主题：非当前句相对当前句的字号比例。
+ *
+ * 0.78 → 非当前句约 20sp，主次分明又保证远处可读；两档共用同一 lineHeight，
+ * 因此行距均匀、不忽宽忽窄（也让自动跟随的落点计算与实际行高吻合）。
+ */
+private const val VINYL_IDLE_FONT_RATIO = 0.78f
+
+/** 黑胶主题：歌词字距。中日韩字形略放宽一点，读起来更透气。 */
+private val VINYL_LYRIC_LETTER_SPACING = 0.2.sp
+
 /** Apple 风格：当前行落在视口高度的该比例处（偏上方，而非居中）。 */
 private const val APPLE_FOCUS_FRACTION = 0.34f
 
 /** 句与句之间的额外留白：句内换行间距由字体 lineHeight 决定，句间再多出这一段。 */
 private val APPLE_SENTENCE_GAP = 20.dp
-private val PLAIN_SENTENCE_GAP = 16.dp
+private val PLAIN_SENTENCE_GAP = 18.dp
 
 /**
  * 距离 → 模糊半径（dp）的整形。
@@ -188,6 +209,18 @@ private fun distanceOpacity(lineDistance: Float, focus: Float): Float {
     return dimmed + (1f - dimmed) * f
 }
 
+/**
+ * 黑胶主题的距离 → 不透明度。
+ *
+ * 比 Apple 的口径更平缓、下限更高（0.40）：远处的歌词只是变暗、仍保持可读，
+ * 层次由明暗与放大来体现，而不是「淡到几乎看不见」。聚焦行由 [focus] 抬回 1。
+ */
+private fun vinylDistanceOpacity(lineDistance: Float, focus: Float): Float {
+    val base = (1f - lineDistance * 0.20f).coerceIn(0.40f, 1f)
+    val f = focus.coerceIn(0f, 1f)
+    return base + (1f - base) * f
+}
+
 /** 距离（行）→ 模糊半径（dp）：1.35 行内为 0，之后线性增长封顶；聚焦行不模糊。 */
 private fun distanceBlurDp(lineDistance: Float, focus: Float): Float {
     val progress = (lineDistance - 1.35f).coerceAtLeast(0f)
@@ -250,7 +283,7 @@ fun LyricsView(
             maxWidth < 560.dp -> 1.15f
             else -> 1.3f
         }
-        val fontBoost = if (appleStyle) APPLE_FONT_BOOST else 1f
+        val fontBoost = if (appleStyle) APPLE_FONT_BOOST else VINYL_FONT_BOOST
 
         // 行高（单行文字盒高）：居中落点、视口行数与距离换算都以它为单位
         val lineHeightSp = baseTitleLarge.lineHeight * scale * fontBoost
@@ -371,7 +404,30 @@ fun LyricsView(
         // 自动跟随：按项号差；浏览：按屏幕距离（像素/行高）。二者统一成「行」为单位。
         val distanceReference: Float? = if (browsing) browseAnchor else null
 
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                // 黑胶主题：歌词带背后加一层柔和的主题色底衬（上下渐隐）。
+                // 背景是封面氛围光，明暗/纹理不可控；底衬为文字提供稳定的对比度，
+                // 又因与全屏 scrim 同色系、两端透明，不会读成一块突兀的色带。
+                .then(
+                    if (appleStyle) {
+                        Modifier
+                    } else {
+                        Modifier.background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
+                                    MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
+                                    Color.Transparent,
+                                ),
+                            ),
+                        )
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
             if (lrcLines.isEmpty()) {
                 Text(
                     text = stringResource(R.string.lyrics_empty),
@@ -468,10 +524,18 @@ private fun LyricRowItem(
         animationSpec = tween(FOCUS_TRANSITION_MS),
         label = "lyricFocus",
     )
-    // 透明度与模糊都只由「距离 + 焦点」决定：整句共享一套（长句多行不会各行不同）
-    val alpha = distanceOpacity(lineDistance, focus)
-    val glowAlpha = if (appleStyle) focus * 0.62f else 0f
+    // 透明度与模糊都只由「距离 + 焦点」决定：整句共享一套（长句多行不会各行不同）。
+    // 黑胶主题走更平缓、下限更高的口径，并用「光晕 + 轻微放大」强调焦点行。
+    val alpha = if (appleStyle) {
+        distanceOpacity(lineDistance, focus)
+    } else {
+        vinylDistanceOpacity(lineDistance, focus)
+    }
+    val glowAlpha = if (appleStyle) focus * 0.62f else focus * 0.55f
     val blurAmount = if (appleStyle) distanceBlurDp(lineDistance, focus).dp else 0.dp
+
+    // 焦点行的轻微放大：graphicsLayer 只影响绘制、不触发重新布局，避免滚动抖动
+    val focusScale = if (appleStyle) 1f else 1f + focus * 0.05f
 
     val highlightColor = if (appleStyle) Color.White else primary
     val normalColor = if (appleStyle) Color.White else onSurface
@@ -523,7 +587,21 @@ private fun LyricRowItem(
                 lineHeight = lineHeight,
             )
         }
-        Box(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                // 缩放只用于黑胶主题；Apple 风格不加图层，避免每行都多一层离屏缓冲
+                .then(
+                    if (appleStyle) {
+                        Modifier
+                    } else {
+                        Modifier.graphicsLayer {
+                            scaleX = focusScale
+                            scaleY = focusScale
+                        }
+                    },
+                ),
+        ) {
         Text(
             text = displayText ?: AnnotatedString(text),
             style = when {
@@ -538,11 +616,25 @@ private fun LyricRowItem(
                     },
                 )
                 isCurrent -> MaterialTheme.typography.titleLarge.copy(
-                    fontSize = MaterialTheme.typography.titleLarge.fontSize * scale,
+                    fontSize = MaterialTheme.typography.titleLarge.fontSize * scale * fontBoost,
+                    lineHeight = MaterialTheme.typography.titleLarge.lineHeight * scale * fontBoost,
                     fontWeight = FontWeight.Bold,
+                    letterSpacing = VINYL_LYRIC_LETTER_SPACING,
+                    // 当前句的柔和光晕：用主题色，让「正在唱」的那句从背景里浮起来
+                    shadow = if (glowAlpha > 0f) {
+                        Shadow(color = highlightColor.copy(alpha = glowAlpha), blurRadius = 12f)
+                    } else {
+                        null
+                    },
                 )
-                else -> MaterialTheme.typography.titleMedium.copy(
-                    fontSize = MaterialTheme.typography.titleMedium.fontSize * scale,
+                else -> MaterialTheme.typography.titleLarge.copy(
+                    // 与当前句共用同一 lineHeight（= 声明行高 × fontBoost），故行距均匀；
+                    // 只把字号收小到 [VINYL_IDLE_FONT_RATIO]，拉开主次又保证可读。
+                    fontSize = MaterialTheme.typography.titleLarge.fontSize *
+                        VINYL_IDLE_FONT_RATIO * scale * fontBoost,
+                    lineHeight = MaterialTheme.typography.titleLarge.lineHeight * scale * fontBoost,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = VINYL_LYRIC_LETTER_SPACING,
                 )
             },
             // Apple 用统一的纯白大字（靠透明度/模糊分层），其它风格用主题色的层级
