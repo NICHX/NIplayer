@@ -59,6 +59,7 @@ import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.nichx.niplayer.designsystem.components.NiGeneratedCoverArt
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import java.util.Locale
 import kotlinx.coroutines.delay
@@ -215,6 +216,13 @@ private fun FloatingMiniPlayerCard(
                     )
                 },
         ) {
+            // 无封面底衬：**始终**画在封面图之下。封面路径可能非空却已失效，
+            // 此时图片库什么都不画，没有底衬就只剩一块深色卡片。
+            NiGeneratedCoverArt(
+                fileName = title,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxSize(),
+            )
             if (coverPath != null) {
                 val context = LocalContext.current
                 val request = remember(coverPath) {

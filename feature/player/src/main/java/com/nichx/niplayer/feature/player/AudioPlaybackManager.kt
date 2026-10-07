@@ -562,9 +562,9 @@ class AudioPlaybackManager @Inject constructor(
 
         _currentTitle.value = title
         _currentArtist.value = artist
-        _audioCoverPath.value = coverPath
+        _audioCoverPath.value = coverPath.asValidCoverPath()
         // 在 IO 线程预解码封面 Bitmap 并缓存，避免通知刷新时在主线程重复解码
-        decodeCoverAsync(coverPath)
+        decodeCoverAsync(_audioCoverPath.value)
         _positionMs.value = startPositionMs
         _durationMs.value = 0L
         _playlist.value = playlist
@@ -736,7 +736,12 @@ class AudioPlaybackManager @Inject constructor(
                 // W-N7：以 uniqueKey 作为 mediaId，与应用层唯一键一致，便于 MediaSession 集成
                 val source = MediaSourceBuilder.buildMediaSource(storage, file, mediaId = uniqueKey)
                 val startPositionMs = withContext(Dispatchers.IO) {
-                    playHistoryDao.getPlayHistory(uniqueKey, library.id)?.resumeStartPositionMs() ?: 0L
+                    playHistoryDao.getPlayHistory(uniqueKey, library.id)
+                        ?.resumeStartPositionMs(
+                            isAudio = true,
+                            rememberAudioProgress = PlayerSettings.rememberAudioProgress,
+                            audioMinDurationMs = PlayerSettings.audioProgressMinDurationMs,
+                        ) ?: 0L
                 }
 
                 val newHistory = HistoryDescriptor(
@@ -882,6 +887,9 @@ class AudioPlaybackManager @Inject constructor(
         position: Long,
         duration: Long,
     ) {
+        // 音频进度策略：关闭「记住音频播放进度」或总时长不足用户设定门槛（普通歌曲）时不落盘，
+        // 避免短音频被记录进度后切歌从中间续播。
+        if (!PlayerSettings.rememberAudioProgress || duration < PlayerSettings.audioProgressMinDurationMs) return
         // 文件夹访问加密：加密目录内的文件不写入播放历史（含进度）
         if (encryptedFolderManager.isWithinEncrypted(storageId, history.storagePath)) return
         withContext(Dispatchers.IO + NonCancellable) {
@@ -1168,9 +1176,21 @@ class AudioPlaybackManager @Inject constructor(
     fun getCoverBitmap(): Bitmap? = lastCoverBitmap
 
     fun updateCoverPath(path: String?) {
-        _audioCoverPath.value = path
+        val valid = path.asValidCoverPath()
+        _audioCoverPath.value = valid
         // 封面路径变化时在 IO 线程预解码并缓存，避免通知刷新在主线程解码
-        decodeCoverAsync(path)
+        decodeCoverAsync(valid)
+    }
+
+    /**
+     * 封面路径有效化：文件不存在 / 为空一律视为**无封面**。
+     *
+     * 「路径非空但文件已失效」（缓存被清、文件被删/改名）这个模式已经咬过多处 UI：
+     * 下游拿着失效路径去加载，图片库什么都不画，界面就只剩一块空底。
+     * 在入口处收敛成 null，所有消费方自然落到「无封面」的兜底外观上。
+     */
+    private fun String?.asValidCoverPath(): String? = this?.takeIf { path ->
+        path.isNotBlank() && java.io.File(path).let { it.isFile && it.length() > 0L }
     }
 
     /**

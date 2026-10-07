@@ -836,6 +836,21 @@ class PlayerViewModel @Inject constructor(
     )
     val resumeEvent: SharedFlow<Long> = _resumeEvent.asSharedFlow()
 
+    /**
+     * 音频续播提示位置（ms），非 null 时音频播放页显示「继续 / 从头」对话框。
+     *
+     * 与视频的 [resumeEvent]（SharedFlow）不同，此处用 StateFlow 保存待处理值，
+     * 避免用户在 ViewModel 初始化时（UI 尚未订阅）主动打开长音频导致事件丢失。
+     * 仅在**用户主动打开**音频（[applyPlaybackRequest]）时设置；切歌/自动下一首不设置。
+     */
+    private val _audioResumePromptMs = MutableStateFlow<Long?>(null)
+    val audioResumePromptMs: StateFlow<Long?> = _audioResumePromptMs.asStateFlow()
+
+    /** 清除音频续播提示（用户选择「继续」或「从头播放」后调用）。 */
+    fun clearAudioResumePrompt() {
+        _audioResumePromptMs.value = null
+    }
+
     // endregion
 
     // region P2 A-B 段循环
@@ -1111,6 +1126,9 @@ class PlayerViewModel @Inject constructor(
             )
             // 封面/歌词提取与加载已下沉 AudioPlaybackManager（play 内部异步触发）
             registerAudioCallbacks()
+            // 音频续播提示：仅用户主动打开且已保存位置超过 30 秒时弹「继续 / 从头」；
+            // 切歌/自动下一首走 AudioPlaybackManager.switchToIndex，不会触发此处。
+            _audioResumePromptMs.value = request.startPositionMs.takeIf { it > 30_000 }
         } else {
             // 视频：使用 NxPlayer
             swapStorage(request.source)

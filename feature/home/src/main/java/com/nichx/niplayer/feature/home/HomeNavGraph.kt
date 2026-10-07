@@ -20,6 +20,7 @@ import com.nichx.niplayer.feature.home.library.StoragePlusScreen
 import com.nichx.niplayer.feature.home.quickaccess.QuickAccessScreen
 import com.nichx.niplayer.feature.home.search.SearchScreen
 import com.nichx.niplayer.feature.home.settings.AboutScreen
+import com.nichx.niplayer.feature.home.settings.AudioPlayerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.BackupScreen
 import com.nichx.niplayer.feature.home.settings.CacheManagerScreen
 import com.nichx.niplayer.feature.home.settings.EqualizerSettingsScreen
@@ -28,10 +29,10 @@ import com.nichx.niplayer.feature.home.settings.IconScreen
 import com.nichx.niplayer.feature.home.settings.LanguageScreen
 import com.nichx.niplayer.feature.home.settings.MediaLibrarySettingsScreen
 import com.nichx.niplayer.feature.home.settings.PlaybackStatsScreen
-import com.nichx.niplayer.feature.home.settings.PlayerSettingsScreen
 import com.nichx.niplayer.feature.home.settings.ScanManagerScreen
 import com.nichx.niplayer.feature.home.settings.ThemeScreen
 import com.nichx.niplayer.feature.home.settings.TransferScreen
+import com.nichx.niplayer.feature.home.settings.VideoPlayerSettingsScreen
 import com.nichx.niplayer.navigation.Routes
 
 /**
@@ -201,7 +202,12 @@ fun NavGraphBuilder.homeNavGraph(
     composable(
         route = Routes.Settings.SETTING_PLAYER,
     ) {
-        PlayerSettingsScreen(onBack = navController.navBack())
+        VideoPlayerSettingsScreen(onBack = navController.navBack())
+    }
+    composable(
+        route = Routes.Settings.SETTING_AUDIO,
+    ) {
+        AudioPlayerSettingsScreen(onBack = navController.navBack())
     }
     composable(
         route = Routes.Settings.MEDIA_LIBRARY,

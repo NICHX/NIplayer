@@ -60,6 +60,7 @@ import com.nichx.niplayer.datastore.LanguageSettings
 import com.nichx.niplayer.datastore.ThemeSettings
 import com.nichx.niplayer.datastore.GlassSettings
 import com.nichx.niplayer.designsystem.components.AppMessageHost
+import com.nichx.niplayer.designsystem.components.LocalGeneratedCoverFont
 import com.nichx.niplayer.designsystem.components.LocalNiBackdrop
 import com.nichx.niplayer.designsystem.components.LocalNiCustomBackground
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
@@ -173,7 +174,12 @@ class MainActivity : ComponentActivity() {
                     cardOpacity = backgroundCardOpacity,
                 )
             }
-            CompositionLocalProvider(LocalNiCustomBackground provides customBackground) {
+            CompositionLocalProvider(
+                LocalNiCustomBackground provides customBackground,
+                // 生成封面的字体：用户自选字体（设置 → 音频播放器设置 → 外观）在此解析一次并下发，
+                // 设计系统组件只读 LocalGeneratedCoverFont，不必依赖数据层
+                LocalGeneratedCoverFont provides rememberGeneratedCoverFont(),
+            ) {
             NiTheme(
                 darkTheme = darkTheme,
                 // A1 修复：datastore 只存序号，在 UI 边界还原为配色方案枚举

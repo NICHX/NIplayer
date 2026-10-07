@@ -289,8 +289,10 @@
     <string name="settings_entry_download_sub">管理下载与上传任务</string>
     <string name="settings_entry_cache">缓存管理</string>
     <string name="settings_entry_cache_sub">清理各类缓存</string>
-    <string name="settings_entry_player">播放器</string>
-    <string name="settings_entry_player_sub">播放内核、字幕与手势</string>
+    <string name="settings_entry_player">视频播放器</string>
+    <string name="settings_entry_player_sub">内核、字幕与手势</string>
+    <string name="settings_entry_audio_player">音频播放器</string>
+    <string name="settings_entry_audio_player_sub">外观、播放进度与音调</string>
     <string name="settings_entry_media_library">媒体库</string>
     <string name="settings_entry_media_library_sub">缩略图与文件浏览设置</string>
     <string name="settings_entry_playback_stats">播放统计</string>
@@ -702,8 +704,15 @@
     <string name="home_playlist_count">%1$d 个条目</string>
     <string name="thumbnail_none">无缩略图</string>
 
-    <!-- 播放器设置（PlayerSettingsScreen） -->
-    <string name="player_settings_title">播放器设置</string>
+    <!-- 播放器设置（VideoPlayerSettingsScreen） -->
+    <string name="player_settings_title">视频播放器设置</string>
+    <!-- 音频播放器设置（AudioPlayerSettingsScreen） -->
+    <string name="player_audio_settings_title">音频播放器设置</string>
+    <string name="player_audio_group_playback">音频播放</string>
+    <string name="player_audio_group_appearance">外观</string>
+    <string name="player_audio_progress_threshold">进度记录门槛</string>
+    <string name="player_audio_progress_threshold_title">进度记录门槛</string>
+    <string name="player_audio_progress_threshold_value">≥ %1$d 分钟</string>
     <string name="player_ctrl_customize_desc">拖放调整顺序与位置</string>
     <string name="player_ctrl_portrait">竖屏控制栏</string>
     <string name="player_ctrl_landscape">横屏控制栏</string>
@@ -740,11 +749,18 @@
     <string name="player_current_kernel">当前内核</string>
     <string name="player_pitch_preserve">倍速音调保持</string>
     <string name="player_pitch_preserve_desc">倍速播放时保持原音调，关闭则变速变调（适合快速浏览）</string>
+    <string name="player_remember_audio_progress">记住音频播放进度</string>
+    <string name="player_remember_audio_progress_desc">仅对达到下方门槛的长音频（有声书/播客）记录并断点续播，普通歌曲从头播放</string>
     <string name="player_orientation_mode">进入播放器方向</string>
     <string name="player_audio_appearance">音频播放器外观</string>
     <string name="player_audio_appearance_vinyl">黑胶唱片</string>
     <string name="player_audio_appearance_glass">简约封面</string>
     <string name="player_audio_appearance_apple_music">Apple Music 风格</string>
+    <string name="player_cover_font">生成封面字体</string>
+    <string name="player_cover_font_desc">无封面时生成的封面上，文件名所用字体；选一个 TTF/OTF 文件即可</string>
+    <string name="player_cover_font_default">系统默认</string>
+    <string name="player_cover_font_reset">恢复默认字体</string>
+    <string name="player_cover_font_invalid">该文件不是有效的字体文件（需要 TTF / OTF）</string>
     <string name="player_orientation_title">默认播放方向</string>
     <string name="player_orientation_landscape">横屏</string>
     <string name="player_orientation_portrait">竖屏</string>
@@ -831,14 +847,10 @@
     <string name="lrcapi_auth_set">已设置</string>
     <string name="lrcapi_help">帮助</string>
 
-    <!-- 下载管理页面（DownloadManagerScreen） -->
-    <string name="download_manager_title">下载管理</string>
+    <!-- 下载管理（下载 tab，供传输管理中心复用） -->
     <string name="download_manager_empty">暂无下载任务</string>
     <string name="download_manager_empty_hint">在文件浏览页长按文件即可下载</string>
     <string name="download_manager_more">更多</string>
-    <string name="download_manager_clear_completed">清空已完成</string>
-    <string name="download_manager_retry_failed">重试所有失败</string>
-    <string name="download_manager_clear_failed">清空失败/已取消</string>
     <string name="download_manager_has_dir">下载目录</string>
     <string name="download_manager_no_dir">未设置下载目录</string>
     <string name="download_manager_no_dir_hint">请先设置下载目录才可以下载</string>

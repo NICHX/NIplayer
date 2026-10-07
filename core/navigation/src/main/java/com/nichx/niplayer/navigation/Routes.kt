@@ -50,6 +50,7 @@ object Routes {
     /** 设置中心及其全部二级页。 */
     object Settings {
         const val SETTING_PLAYER = "user/setting_player"
+        const val SETTING_AUDIO = "user/setting_audio"
         const val MEDIA_LIBRARY = "user/media_library"
         const val SCAN_MANAGER = "user/scan_manager"
         const val CACHE_MANAGER = "user/cache_manager"

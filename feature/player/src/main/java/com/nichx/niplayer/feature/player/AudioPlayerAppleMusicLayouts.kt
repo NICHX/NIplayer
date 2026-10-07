@@ -79,6 +79,7 @@ import androidx.core.graphics.ColorUtils
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
+import com.nichx.niplayer.designsystem.components.NiGeneratedCoverArt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.floor
@@ -439,13 +440,15 @@ private fun Int.appleLifted(): Int {
 
 /**
  * Apple Music 风格专辑封面：方形、8dp 圆角、10dp 投影；**暂停时回缩到 0.86**。
- * 无封面时音符占位。
+ *
+ * 无封面（或封面路径已失效）时由 [GeneratedCoverArt] 现场生成一张：淡主题色纸面 + 文件名。
  */
 @Composable
 internal fun AppleMusicArtwork(
     coverData: Any?,
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
+    labelTitle: String = "",
 ) {
     val context = LocalContext.current
     val shape = RoundedCornerShape(AppleArtworkCorner)
@@ -462,9 +465,15 @@ internal fun AppleMusicArtwork(
         modifier = modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .shadow(10.dp, shape, clip = false)
-            .clip(shape)
-            .background(Color(0xFF1C1C1E)),
+            .clip(shape),
     ) {
+        // 无封面底衬：始终画在封面图之下 —— 封面路径失效时 Coil 什么都不画，
+        // 没有它就会是一个空白方块（详见 GeneratedCoverArt 注释）。
+        NiGeneratedCoverArt(
+            fileName = labelTitle,
+            shape = shape,
+            modifier = Modifier.fillMaxSize(),
+        )
         if (coverData != null) {
             val request = remember(coverData) { appleCoverRequest(context, coverData) }
             AsyncImage(
@@ -473,15 +482,6 @@ internal fun AppleMusicArtwork(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-        } else {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Filled.MusicNote,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.3f),
-                    modifier = Modifier.size(56.dp),
-                )
-            }
         }
         // 参考里封面卡带一圈很细的浅色描边（画在图片之上）
         Box(

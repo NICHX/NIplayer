@@ -9,16 +9,10 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
@@ -42,10 +35,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
+import com.nichx.niplayer.designsystem.components.NiGeneratedCoverArt
 import com.nichx.niplayer.designsystem.theme.MotionTokens
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import kotlin.math.min
@@ -103,6 +96,7 @@ private fun decodeNeedleBitmap(context: Context): Bitmap =
  *   但几何必须与本层一致，故该开关仍留在本层。
  * @param drawShadow 是否绘制碟面投影。跟手换片时唱片会滑出唱盘，投影交由固定的
  *   [VinylPlatter] 单独绘制，本层需传 `false`，否则会「影子跟着唱片跑」。
+ * @param labelTitle 无封面时中心那张手写纸贴纸上要写的内容（通常传当前曲目文件名）。
  */
 @Composable
 fun VinylRecordPlayer(
@@ -111,6 +105,7 @@ fun VinylRecordPlayer(
     modifier: Modifier = Modifier,
     needleSpace: Boolean = true,
     drawShadow: Boolean = true,
+    labelTitle: String = "",
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -213,27 +208,8 @@ fun VinylRecordPlayer(
                     style = Stroke(width = borderWidth * 0.9f),
                 )
 
-                // 中心轴心：径向渐变金属质感 + 高光描边
-                val spindleRadius = l.discDiameter * 0.045f
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF5A5A5A),
-                            Color(0xFF2A2A2A),
-                            Color(0xFF111111),
-                        ),
-                        center = Offset(l.discCenterX, l.discCenterY),
-                        radius = spindleRadius,
-                    ),
-                    radius = spindleRadius,
-                    center = Offset(l.discCenterX, l.discCenterY),
-                )
-                drawCircle(
-                    color = Color.White.copy(alpha = 0.18f),
-                    radius = spindleRadius * 1.6f,
-                    center = Offset(l.discCenterX, l.discCenterY),
-                    style = Stroke(width = 1f),
-                )
+                // 注：此处原有一段「中心金属轴心」。但 coverSizePx = unit*4、discDiameter = unit*6，
+                // 中心那张图（或占位标签）直径是碟面的 2/3，轴心恒被其完全覆盖、永远不可见，故移除。
             }
         }
 
@@ -241,6 +217,16 @@ fun VinylRecordPlayer(
         val l = layout
         if (l != null) {
             val coverSizeDp = with(density) { l.coverSizePx.toDp() }
+
+            // 中心底衬：**始终**先铺一层「生成封面」，真实封面图再叠在它上面。
+            // 详见 [GeneratedCoverArt] 注释：封面路径失效时 Coil 什么都不画，
+            // 没有这层底衬就会透出下层唱盘投影（浅色背景上即那块「大洞」灰圆）。
+            NiGeneratedCoverArt(
+                fileName = labelTitle,
+                shape = CircleShape,
+                rotation = discRotation,
+                modifier = Modifier.size(coverSizeDp),
+            )
 
             if (coverData != null) {
                 val ctx = LocalContext.current
@@ -270,21 +256,6 @@ fun VinylRecordPlayer(
                         .clip(CircleShape),
                     contentScale = ContentScale.Crop,
                 )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(coverSizeDp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.MusicNote,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                        modifier = Modifier.size(48.dp),
-                    )
-                }
             }
         }
     }

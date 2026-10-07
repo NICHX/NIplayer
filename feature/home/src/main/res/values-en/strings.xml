@@ -289,8 +289,10 @@
     <string name="settings_entry_download_sub">Manage downloads and uploads</string>
     <string name="settings_entry_cache">Cache manager</string>
     <string name="settings_entry_cache_sub">Clear various caches</string>
-    <string name="settings_entry_player">Player</string>
+    <string name="settings_entry_player">Video player</string>
     <string name="settings_entry_player_sub">Kernel, subtitles &amp; gestures</string>
+    <string name="settings_entry_audio_player">Audio player</string>
+    <string name="settings_entry_audio_player_sub">Appearance, resume &amp; pitch</string>
     <string name="settings_entry_media_library">Media library</string>
     <string name="settings_entry_media_library_sub">Thumbnail &amp; file browsing settings</string>
     <string name="settings_entry_playback_stats">Playback stats</string>
@@ -702,8 +704,15 @@
     <string name="home_playlist_count">%1$d items</string>
     <string name="thumbnail_none">No thumbnail</string>
 
-    <!-- Player settings (PlayerSettingsScreen) -->
-    <string name="player_settings_title">Player settings</string>
+    <!-- Player settings (VideoPlayerSettingsScreen) -->
+    <string name="player_settings_title">Video player settings</string>
+    <!-- Audio player settings (AudioPlayerSettingsScreen) -->
+    <string name="player_audio_settings_title">Audio player settings</string>
+    <string name="player_audio_group_playback">Audio playback</string>
+    <string name="player_audio_group_appearance">Appearance</string>
+    <string name="player_audio_progress_threshold">Resume progress threshold</string>
+    <string name="player_audio_progress_threshold_title">Resume progress threshold</string>
+    <string name="player_audio_progress_threshold_value">≥ %1$d min</string>
     <string name="player_ctrl_customize_desc">Order / left-right</string>
     <string name="player_ctrl_portrait">Portrait controls</string>
     <string name="player_ctrl_landscape">Landscape controls</string>
@@ -740,11 +749,18 @@
     <string name="player_current_kernel">Current kernel</string>
     <string name="player_pitch_preserve">Keep pitch when speeding up</string>
     <string name="player_pitch_preserve_desc">Keep the original pitch at faster speeds; turn off to change pitch with speed (for quick browsing)</string>
+    <string name="player_remember_audio_progress">Remember audio playback position</string>
+    <string name="player_remember_audio_progress_desc">Only long audio (audiobooks/podcasts) reaching the threshold below keeps and resumes progress; songs always play from the start</string>
     <string name="player_orientation_mode">Player orientation</string>
     <string name="player_audio_appearance">Audio player appearance</string>
     <string name="player_audio_appearance_vinyl">Vinyl record</string>
     <string name="player_audio_appearance_glass">Minimal cover</string>
     <string name="player_audio_appearance_apple_music">Apple Music style</string>
+    <string name="player_cover_font">Generated cover font</string>
+    <string name="player_cover_font_desc">Font used for the file name on the generated cover when a track has no artwork; pick a TTF/OTF file</string>
+    <string name="player_cover_font_default">System default</string>
+    <string name="player_cover_font_reset">Reset to default font</string>
+    <string name="player_cover_font_invalid">Not a valid font file (TTF / OTF required)</string>
     <string name="player_orientation_title">Default orientation</string>
     <string name="player_orientation_landscape">Landscape</string>
     <string name="player_orientation_portrait">Portrait</string>
@@ -831,14 +847,10 @@
     <string name="lrcapi_auth_set">Configured</string>
     <string name="lrcapi_help">Help</string>
 
-    <!-- Download manager page (DownloadManagerScreen) -->
-    <string name="download_manager_title">Download manager</string>
+    <!-- Download manager (download tab, reused by the transfer hub) -->
     <string name="download_manager_empty">No download tasks</string>
     <string name="download_manager_empty_hint">Long-press a file in the file browser to download it</string>
     <string name="download_manager_more">More</string>
-    <string name="download_manager_clear_completed">Clear completed</string>
-    <string name="download_manager_retry_failed">Retry all failed</string>
-    <string name="download_manager_clear_failed">Clear failed/cancelled</string>
     <string name="download_manager_has_dir">Download directory</string>
     <string name="download_manager_no_dir">No download directory set</string>
     <string name="download_manager_no_dir_hint">Set a download directory before downloading</string>

@@ -80,6 +80,8 @@ fun AudioPlayerScreen(
     val lrcText by audioPlaybackManager?.lrcText?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
     val playbackError by audioPlaybackManager?.playbackError?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
     val showDownloadDialog by viewModel.showDownloadDialog.collectAsStateWithLifecycle()
+    // 音频续播提示位置：用户主动打开长音频（有声书等）且已存进度时非 null，弹「继续 / 从头」
+    val audioResumePromptMs by viewModel.audioResumePromptMs.collectAsStateWithLifecycle()
     // 本地文件（已下载/缓存直链）来源时隐藏下载按钮
     val isLocalSource by audioPlaybackManager?.isLocalSource?.collectAsStateWithLifecycle()
         ?: remember { mutableStateOf(false) }
@@ -334,6 +336,20 @@ fun AudioPlayerScreen(
                 title = stringResource(R.string.player_sleep_timer),
                 items = items,
                 onDismiss = { showSleepTimerDialog = false },
+            )
+        }
+
+        audioResumePromptMs?.let { savedPosition ->
+            PlayerConfirmDialog(
+                title = stringResource(R.string.player_resume_title),
+                text = stringResource(R.string.player_resume_text, formatDuration(savedPosition)),
+                onConfirm = { viewModel.clearAudioResumePrompt() },
+                onDismiss = {
+                    audioPlaybackManager?.seekTo(0)
+                    viewModel.clearAudioResumePrompt()
+                },
+                confirmText = stringResource(R.string.player_resume_continue),
+                dismissText = stringResource(R.string.player_play_from_start),
             )
         }
 

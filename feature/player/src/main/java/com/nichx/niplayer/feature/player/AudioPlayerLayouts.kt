@@ -50,7 +50,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -89,6 +88,7 @@ import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import com.nichx.niplayer.datastore.AudioPlayerStyle
+import com.nichx.niplayer.designsystem.components.NiGeneratedCoverArt
 import com.nichx.niplayer.designsystem.theme.MotionTokens
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import kotlin.math.abs
@@ -301,21 +301,24 @@ internal fun CoverBlurBackground(coverData: Any?) {
 
 /**
  * 简约封面主题的封面卡：方形圆角封面 + 轻投影，**不含任何玻璃质感**。
- * 无封面时回退为音符占位。
+ *
+ * 无封面（或封面路径已失效）时由 [GeneratedCoverArt] 现场生成一张：淡主题色纸面 + 文件名。
+ * 该底衬**始终**绘制在封面图之下，所以「没有封面」不再是缺陷，而是现场造一张封面。
  */
 @Composable
 internal fun CoverCard(
     coverData: Any?,
     modifier: Modifier = Modifier,
+    labelTitle: String = "",
 ) {
     val context = LocalContext.current
     val shape = RoundedCornerShape(CoverCorner)
-    Box(
-        modifier = modifier
-            .shadow(18.dp, shape)
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-    ) {
+    Box(modifier = modifier.shadow(18.dp, shape).clip(shape)) {
+        NiGeneratedCoverArt(
+            fileName = labelTitle,
+            shape = shape,
+            modifier = Modifier.fillMaxSize(),
+        )
         if (coverData != null) {
             val request = remember(coverData) {
                 when (coverData) {
@@ -335,18 +338,6 @@ internal fun CoverCard(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-        } else {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.MusicNote,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                    modifier = Modifier.size(48.dp),
-                )
-            }
         }
     }
 }
@@ -370,7 +361,7 @@ internal fun PortraitLayout(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     coverPath: Any?,
-    style: AudioPlayerStyle = AudioPlayerStyle.VINYL,
+    style: AudioPlayerStyle = AudioPlayerStyle.APPLE_MUSIC,
     playlist: List<*>,
     currentIndex: Int,
     neighborPrevCover: Any? = null,
@@ -481,6 +472,17 @@ internal fun PortraitLayout(
         pageIndex >= 0 && pageIndex == neighborNextIndex && neighborNextCover != null -> neighborNextCover
         else -> pageCoverCache[pageIndex] ?: coverPath
     }
+
+    // 「下标 → 文件名」的本地记录：与 [pageCoverCache] 同理——无封面时贴纸要写上**这一页自己**
+    // 的文件名，而 title 与 currentIndex 分属两条流，换片头一两帧会拿到新曲目的标题。
+    val pageTitleCache = remember { mutableMapOf<Int, String>() }
+    SideEffect {
+        if (title.isNotEmpty()) pageTitleCache[currentIndex] = title
+    }
+
+    /** 某一页（无封面贴纸）该写的文件名；邻居若从未播放过则留白，绝不写错别人的名字。 */
+    fun titleForPage(pageIndex: Int): String =
+        if (pageIndex == currentIndex) title else pageTitleCache[pageIndex] ?: ""
 
     // 换片跟手：唱片随手指横向平移的实时位移（px）；[discSettleJob] 持松手后的归位动画。
     var discDragOffset by remember { mutableFloatStateOf(0f) }
@@ -1052,6 +1054,7 @@ internal fun PortraitLayout(
                             if (showNeighbors && canSwipePrevious) {
                                 VinylRecordPlayer(
                                     coverData = coverForPage(neighborPrevIndex),
+                                    labelTitle = titleForPage(neighborPrevIndex),
                                     isPlaying = false,
                                     modifier = Modifier
                                         .size(side)
@@ -1062,6 +1065,7 @@ internal fun PortraitLayout(
                             if (showNeighbors && canSwipeNext) {
                                 VinylRecordPlayer(
                                     coverData = coverForPage(neighborNextIndex),
+                                    labelTitle = titleForPage(neighborNextIndex),
                                     isPlaying = false,
                                     modifier = Modifier
                                         .size(side)
@@ -1117,12 +1121,14 @@ internal fun PortraitLayout(
                                 when (style) {
                                     AudioPlayerStyle.GLASS -> CoverCard(
                                         coverData = pageCover,
+                                        labelTitle = titleForPage(pageIndex),
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                     AudioPlayerStyle.APPLE_MUSIC,
                                     AudioPlayerStyle.VINYL,
                                     -> VinylRecordPlayer(
                                         coverData = pageCover,
+                                        labelTitle = titleForPage(pageIndex),
                                         isPlaying = isPlaying,
                                         modifier = Modifier.fillMaxSize(),
                                         // 投影由固定的 VinylPlatter 画（见上）；唱片自带影子会跟着滑走
@@ -1316,7 +1322,7 @@ internal fun LandscapeLayout(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     coverPath: Any?,
-    style: AudioPlayerStyle = AudioPlayerStyle.VINYL,
+    style: AudioPlayerStyle = AudioPlayerStyle.APPLE_MUSIC,
     playMode: Int,
     modeIcon: androidx.compose.ui.graphics.vector.ImageVector,
     modeLabel: String,
@@ -1412,6 +1418,7 @@ internal fun LandscapeLayout(
                 )
                 style == AudioPlayerStyle.APPLE_MUSIC -> AppleMusicArtwork(
                     coverData = coverPath,
+                    labelTitle = title,
                     isPlaying = isPlaying,
                     modifier = Modifier
                         .fillMaxHeight(0.86f)
@@ -1419,6 +1426,7 @@ internal fun LandscapeLayout(
                 )
                 style == AudioPlayerStyle.GLASS -> CoverCard(
                     coverData = coverPath,
+                    labelTitle = title,
                     modifier = Modifier
                         .fillMaxHeight(0.86f)
                         .aspectRatio(1f),

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -357,7 +358,7 @@ private fun SettingsItemRow(
             )
         }
         Spacer(Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
             Text(
                 text = stringResource(entry.titleRes),
                 style = MaterialTheme.typography.titleMedium,
@@ -420,7 +421,7 @@ private fun OtherGroupCard(promo: PromoInfo?, onOpen: (String) -> Unit) {
                         )
                     }
                     Spacer(Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
                         Text(
                             text = promo.title,
                             style = MaterialTheme.typography.titleMedium,
@@ -470,7 +471,7 @@ private fun OtherGroupCard(promo: PromoInfo?, onOpen: (String) -> Unit) {
                     )
                 }
                 Spacer(Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
                     Text(
                         text = stringResource(R.string.promo_sponsor_title),
                         style = MaterialTheme.typography.titleMedium,
@@ -527,7 +528,7 @@ enum class SettingsGroup(
 ) {
     PLAYBACK(
         labelRes = R.string.settings_group_playback,
-        entries = listOf(SettingsEntry.PLAYER, SettingsEntry.MEDIA_LIBRARY, SettingsEntry.PLAYBACK_STATS, SettingsEntry.SCAN, SettingsEntry.CACHE),
+        entries = listOf(SettingsEntry.PLAYER, SettingsEntry.AUDIO_PLAYER, SettingsEntry.MEDIA_LIBRARY, SettingsEntry.PLAYBACK_STATS, SettingsEntry.SCAN, SettingsEntry.CACHE),
     ),
     STORAGE(
         labelRes = R.string.settings_group_storage,
@@ -565,6 +566,13 @@ enum class SettingsEntry(
         subtitleRes = R.string.settings_entry_player_sub,
         icon = Icons.Filled.PlayCircleOutline,
         iconBg = Color(0xFF2095F4),
+    ),
+    AUDIO_PLAYER(
+        route = Routes.Settings.SETTING_AUDIO,
+        titleRes = R.string.settings_entry_audio_player,
+        subtitleRes = R.string.settings_entry_audio_player_sub,
+        icon = Icons.Filled.MusicNote,
+        iconBg = Color(0xFF1DB954),
     ),
     MEDIA_LIBRARY(
         route = Routes.Settings.MEDIA_LIBRARY,

@@ -25,7 +25,7 @@ import com.tencent.mmkv.MMKV
  * - [applyEmbeddedStyles]=false 时，文字颜色与描边颜色强制使用用户配置覆盖 ASS Style
  *
  * 本对象保持纯净（无 Compose 依赖），仅存原始值类型。
- * Compose Color / FontFamily 的转换由 UI 层（PlayerSettingsScreen、SubtitleOverlay）完成。
+ * Compose Color / FontFamily 的转换由 UI 层（VideoPlayerSettingsScreen、SubtitleOverlay）完成。
  *
  * 字段命名统一为 `assrtToken`（此前 `shooterSecret` 易误认为射手网密钥，实际是 assrt.net 的 token）。
  * 射手网 hash 自动匹配（autoMatchSubtitle）已失效，不再提供。

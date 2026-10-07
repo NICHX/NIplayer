@@ -1944,9 +1944,14 @@ class StorageFileViewModel @Inject constructor(
                 // 文件夹访问加密双保险：加密目录内的文件不写播放历史（history = null 走现有"不记历史"机制）
                 val withinEncrypted = encryptedFolderManager.isWithinEncrypted(library.id, file.path)
 
-                // 查询续播位置（已播完的曲目从头播放）
+                // 查询续播位置（已播完的曲目从头播放；音频按「记住音频播放进度」+总时长门槛决定）
                 val startPositionMs = withContext(Dispatchers.IO) {
-                    playHistoryDao.getPlayHistory(uniqueKey, library.id)?.resumeStartPositionMs() ?: 0L
+                    playHistoryDao.getPlayHistory(uniqueKey, library.id)
+                        ?.resumeStartPositionMs(
+                            isAudio = isAudioFile(file.name),
+                            rememberAudioProgress = PlayerSettings.rememberAudioProgress,
+                            audioMinDurationMs = PlayerSettings.audioProgressMinDurationMs,
+                        ) ?: 0L
                 }
 
                 // 构造同目录播放列表（按当前排序顺序）

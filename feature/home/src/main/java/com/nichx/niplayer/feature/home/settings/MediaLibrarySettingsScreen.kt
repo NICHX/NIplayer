@@ -48,7 +48,7 @@ import com.nichx.niplayer.designsystem.components.NiTopBar
 /**
  * 媒体库设置页：收纳与“播放器”语义无关的媒体库/文件浏览设置。
  *
- * 从旧 [PlayerSettingsScreen] 中剥离，包含三组：
+ * 从旧 [VideoPlayerSettingsScreen] 中剥离，包含三组：
  * - **缩略图**：全局缩略图生成总开关、媒体类型（视频/图片/音频）、回写与更新策略、
  *   生成时机、取帧位置
  * - **存储源缩略图**：按存储源独立覆盖全局生成时机（跟随全局/全部生成/仅播放后生成/关闭）

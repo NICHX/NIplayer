@@ -28,6 +28,8 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.mmkv)
+    // CoverLabelFontStore 用 MutableStateFlow 把「自定义字体路径」暴露给 UI 层
+    implementation(libs.kotlinx.coroutines.android)
     // A1 修复：原先因 ThemeSettings 持有 NiScheme 类型而依赖 :core:designsystem（数据层依赖 UI 层）。
     // 改为只存序号后该依赖已删除。
     // A1 修复：备份 SPI（BackupItem / RestoreMode）位于 :core:common，AppSettingsBackup 在本模块自注册

@@ -5,9 +5,9 @@ import com.tencent.mmkv.MMKV
 /**
  * 音频播放器外观样式。
  *
- * - [VINYL]：黑胶唱片（默认，保持既有观感）。
+ * - [VINYL]：黑胶唱片。
  * - [GLASS]：简约封面（保留模糊封面背景与方形封面卡，控件与黑胶一致，无玻璃质感）。
- * - [APPLE_MUSIC]：Apple Music 风格（封面主色渐变背景 + 极简扁平控件 + 左对齐大字歌词）。
+ * - [APPLE_MUSIC]：Apple Music 风格（封面主色渐变背景 + 极简扁平控件 + 左对齐大字歌词），默认样式。
  */
 enum class AudioPlayerStyle { VINYL, GLASS, APPLE_MUSIC }
 
@@ -35,6 +35,10 @@ object PlayerSettings {
     private const val KEY_AUDIO_PLAYER_STYLE = "player_audio_player_style"
     private const val KEY_ORIENTATION_MODE = "player_orientation_mode"
     private const val KEY_SCALE_MODE_INDEX = "player_scale_mode_index"
+    private const val KEY_REMEMBER_AUDIO_PROGRESS = "player_remember_audio_progress"
+    private const val KEY_AUDIO_PROGRESS_MIN_MINUTES = "player_audio_progress_min_minutes"
+    private const val KEY_COVER_LABEL_FONT_PATH = "player_cover_label_font_path"
+    private const val KEY_COVER_LABEL_FONT_NAME = "player_cover_label_font_name"
 
     /** 缩放模式索引：适应（Contain）。 */
     const val SCALE_MODE_CONTAIN = 0
@@ -138,18 +142,33 @@ object PlayerSettings {
         set(value) { mmkv.encode(KEY_AUDIO_SPEED_INDEX, value) }
 
     /**
-     * 音频播放器外观样式（[AudioPlayerStyle]）。默认 [AudioPlayerStyle.VINYL]（既有黑胶观感）。
+     * 音频播放器外观样式（[AudioPlayerStyle]）。默认 [AudioPlayerStyle.APPLE_MUSIC]。
      *
-     * 由「播放器设置 → 音频播放器外观」写入，[com.nichx.niplayer.feature.player.AudioPlayerScreen]
+     * 由「设置 → 音频播放器设置 → 外观」写入，[com.nichx.niplayer.feature.player.AudioPlayerScreen]
      * 读取并按样式渲染竖屏/横屏布局；播放器内也可临时切换并同步写回，作为持久默认。
      */
     var audioPlayerStyle: AudioPlayerStyle
         get() = runCatching {
             AudioPlayerStyle.valueOf(
-                mmkv.decodeString(KEY_AUDIO_PLAYER_STYLE) ?: AudioPlayerStyle.VINYL.name,
+                mmkv.decodeString(KEY_AUDIO_PLAYER_STYLE) ?: AudioPlayerStyle.APPLE_MUSIC.name,
             )
-        }.getOrDefault(AudioPlayerStyle.VINYL)
+        }.getOrDefault(AudioPlayerStyle.APPLE_MUSIC)
         set(value) { mmkv.encode(KEY_AUDIO_PLAYER_STYLE, value.name) }
+
+    /**
+     * 无封面「生成封面」上文件名使用的自定义字体文件路径（应用私有目录内的副本）。
+     *
+     * 空串表示未设置 —— 用系统默认字体。应用**不内置**字体（CJK 手写体近 3MB），
+     * 由用户在「设置 → 音频播放器设置 → 外观」里自选，选中后复制到私有目录。
+     */
+    var coverLabelFontPath: String
+        get() = mmkv.decodeString(KEY_COVER_LABEL_FONT_PATH) ?: ""
+        set(value) { mmkv.encode(KEY_COVER_LABEL_FONT_PATH, value) }
+
+    /** 自定义字体的原始文件名，仅用于设置页展示。 */
+    var coverLabelFontName: String
+        get() = mmkv.decodeString(KEY_COVER_LABEL_FONT_NAME) ?: ""
+        set(value) { mmkv.encode(KEY_COVER_LABEL_FONT_NAME, value) }
 
     /**
      * 进入播放器时的方向模式。默认 0（横屏，保持既有行为）。
@@ -163,6 +182,37 @@ object PlayerSettings {
     var orientationMode: Int
         get() = mmkv.decodeInt(KEY_ORIENTATION_MODE, 0)
         set(value) { mmkv.encode(KEY_ORIENTATION_MODE, value) }
+
+    /**
+     * 是否记住音频播放进度。默认 true。
+     *
+     * 仅对总时长达到 [audioProgressMinDurationMinutes] 的长音频（有声书/播客）生效：
+     * 普通歌曲短于门槛时不记录也不续播，避免切歌时从中间开始。关闭后所有音频都不记录、不续播。
+     */
+    var rememberAudioProgress: Boolean
+        get() = mmkv.decodeBool(KEY_REMEMBER_AUDIO_PROGRESS, true)
+        set(value) { mmkv.encode(KEY_REMEMBER_AUDIO_PROGRESS, value) }
+
+    /** 音频进度记录门槛候选值（分钟），供设置页选择。 */
+    val AUDIO_PROGRESS_MIN_MINUTES_OPTIONS: List<Int> = listOf(1, 3, 5, 10, 15, 30)
+
+    /** 音频进度记录门槛默认值（分钟）。 */
+    const val DEFAULT_AUDIO_PROGRESS_MIN_MINUTES = 5
+
+    /**
+     * 音频记录/续播播放进度的最小总时长（分钟），默认 [DEFAULT_AUDIO_PROGRESS_MIN_MINUTES]。
+     *
+     * 仅对总时长不小于该值的音频（有声书/播客）记录并断点续播；普通歌曲从头播放。
+     * 读取时若值不在 [AUDIO_PROGRESS_MIN_MINUTES_OPTIONS] 内（历史/异常数据）回退到默认值。
+     */
+    var audioProgressMinDurationMinutes: Int
+        get() = mmkv.decodeInt(KEY_AUDIO_PROGRESS_MIN_MINUTES, DEFAULT_AUDIO_PROGRESS_MIN_MINUTES)
+            .takeIf { it in AUDIO_PROGRESS_MIN_MINUTES_OPTIONS } ?: DEFAULT_AUDIO_PROGRESS_MIN_MINUTES
+        set(value) { mmkv.encode(KEY_AUDIO_PROGRESS_MIN_MINUTES, value) }
+
+    /** 音频进度记录门槛（毫秒），供续播判定与落盘使用。 */
+    val audioProgressMinDurationMs: Long
+        get() = audioProgressMinDurationMinutes * 60_000L
 
     // region 去黑边判决缓存
 

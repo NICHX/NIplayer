@@ -69,6 +69,8 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
             playerAudioPlayModeIndex = PlayerSettings.audioPlayModeIndex,
             playerAudioSpeedIndex = PlayerSettings.audioSpeedIndex,
             playerAudioPlayerStyle = PlayerSettings.audioPlayerStyle.name,
+            playerRememberAudioProgress = PlayerSettings.rememberAudioProgress,
+            playerAudioProgressMinMinutes = PlayerSettings.audioProgressMinDurationMinutes,
             playerControlLayouts = PlayerControlLayout.snapshotAll().ifEmpty { null },
             // 字幕
             subtitleAutoLoadSameName = SubtitleSettings.autoLoadSameNameSubtitle,
@@ -151,6 +153,8 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.playerAudioPlayerStyle?.let { saved ->
             runCatching { PlayerSettings.audioPlayerStyle = AudioPlayerStyle.valueOf(saved) }
         }
+        s.playerRememberAudioProgress?.let { PlayerSettings.rememberAudioProgress = it }
+        s.playerAudioProgressMinMinutes?.let { PlayerSettings.audioProgressMinDurationMinutes = it }
         s.playerControlLayouts?.let { PlayerControlLayout.restoreAll(it) }
         // 字幕
         s.subtitleAutoLoadSameName?.let { SubtitleSettings.autoLoadSameNameSubtitle = it }
@@ -255,6 +259,9 @@ data class AppSettingsData(
     val playerAudioSpeedIndex: Int? = null,
     // 音频播放器外观样式（AudioPlayerStyle 名称：VINYL / GLASS / APPLE_MUSIC）
     val playerAudioPlayerStyle: String? = null,
+    // 音频进度记忆：开关 + 门槛（分钟）
+    val playerRememberAudioProgress: Boolean? = null,
+    val playerAudioProgressMinMinutes: Int? = null,
     // 播放器控制功能自定义布局（"ORIENTATION_id" -> "surface|visible|order"）
     val playerControlLayouts: Map<String, String>? = null,
     // 字幕

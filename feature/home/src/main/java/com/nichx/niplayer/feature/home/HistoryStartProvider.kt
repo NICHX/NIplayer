@@ -98,7 +98,11 @@ class HistoryStartProvider @Inject constructor(
                 PlaybackRequest(
                     source = source,
                     title = history.videoName,
-                    startPositionMs = history.resumeStartPositionMs(),
+                    startPositionMs = history.resumeStartPositionMs(
+                        isAudio = isAudio,
+                        rememberAudioProgress = PlayerSettings.rememberAudioProgress,
+                        audioMinDurationMs = PlayerSettings.audioProgressMinDurationMs,
+                    ),
                     history = HistoryDescriptor(
                         uniqueKey = history.uniqueKey,
                         url = history.url,

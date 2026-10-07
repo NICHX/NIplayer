@@ -38,7 +38,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import com.nichx.niplayer.datastore.AudioPlayerStyle
 import com.nichx.niplayer.datastore.PlayerControlOrientation
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SubtitleSettings
@@ -53,18 +52,20 @@ import com.nichx.niplayer.designsystem.components.NiTopBar
 private const val ASSRT_URL = "https://secure.assrt.net/user/logon.xml"
 
 /**
- * 播放器设置页：只保留与“播放行为”直接相关的设置。
+ * 视频播放器设置页：只保留与视频“播放行为”直接相关的设置。
  *
- * 三个分组（与播放器语义无关的缩略图/存储源缩略图/文件浏览设置已迁移到
- * [MediaLibrarySettingsScreen]）：
- * - **播放器内核**：内核信息、倍速音调保持
+ * 音频专属设置（外观、音频进度记忆等）已拆分到 [AudioPlayerSettingsScreen]；
+ * 缩略图/存储源缩略图/文件浏览设置已迁移到 [MediaLibrarySettingsScreen]。
+ *
+ * 三个分组：
+ * - **播放器内核**：内核信息、倍速音调保持、进入播放器方向、控制栏自定义
  * - **字幕**：自动加载同名字幕、字幕优先级、ASSRT Token、字幕样式
  * - **手势与进度**：长按倍速、滑动灵敏度、双击快进
  *
  * @param onBack 返回回调
  */
 @Composable
-fun PlayerSettingsScreen(
+fun VideoPlayerSettingsScreen(
     onBack: () -> Unit = {},
 ) {
     var autoLoadSubtitle by remember { mutableStateOf(SubtitleSettings.autoLoadSameNameSubtitle) }
@@ -74,9 +75,7 @@ fun PlayerSettingsScreen(
     var seekSensitivity by remember { mutableStateOf(PlayerSettings.seekSensitivity) }
     var doubleTapStepSeconds by remember { mutableStateOf(PlayerSettings.doubleTapStepSeconds) }
     var orientationMode by remember { mutableStateOf(PlayerSettings.orientationMode) }
-    var audioPlayerStyle by remember { mutableStateOf(PlayerSettings.audioPlayerStyle) }
     var showOrientationDialog by remember { mutableStateOf(false) }
-    var showAppearanceDialog by remember { mutableStateOf(false) }
     var showOrientationHintDialog by remember { mutableStateOf(false) }
     var showTokenDialog by remember { mutableStateOf(false) }
     var showPriorityDialog by remember { mutableStateOf(false) }
@@ -109,11 +108,6 @@ fun PlayerSettingsScreen(
         1 -> stringResource(R.string.player_orientation_portrait)
         2 -> stringResource(R.string.player_orientation_auto)
         else -> stringResource(R.string.player_orientation_landscape)
-    }
-    val audioStyleLabel = when (audioPlayerStyle) {
-        AudioPlayerStyle.APPLE_MUSIC -> stringResource(R.string.player_audio_appearance_apple_music)
-        AudioPlayerStyle.GLASS -> stringResource(R.string.player_audio_appearance_glass)
-        AudioPlayerStyle.VINYL -> stringResource(R.string.player_audio_appearance_vinyl)
     }
 
     NiScaffold(
@@ -155,12 +149,6 @@ fun PlayerSettingsScreen(
                     value = orientationModeLabel,
                     infoOnClick = { showOrientationHintDialog = true },
                     onClick = { showOrientationDialog = true },
-                )
-                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                SettingClickRow(
-                    label = stringResource(R.string.player_audio_appearance),
-                    value = audioStyleLabel,
-                    onClick = { showAppearanceDialog = true },
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingClickRow(
@@ -234,29 +222,6 @@ fun PlayerSettingsScreen(
             }
             Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
-    }
-
-    if (showAppearanceDialog) {
-        NiListItemDialog(
-            title = stringResource(R.string.player_audio_appearance),
-            onDismiss = { showAppearanceDialog = false },
-            items = listOf(
-                AudioPlayerStyle.VINYL to stringResource(R.string.player_audio_appearance_vinyl),
-                AudioPlayerStyle.GLASS to stringResource(R.string.player_audio_appearance_glass),
-                AudioPlayerStyle.APPLE_MUSIC to stringResource(R.string.player_audio_appearance_apple_music),
-            )
-                .map { (option, label) ->
-                    NiDialogItem(
-                        label = label,
-                        isSelected = audioPlayerStyle == option,
-                        onClick = {
-                            audioPlayerStyle = option
-                            PlayerSettings.audioPlayerStyle = option
-                            showAppearanceDialog = false
-                        },
-                    )
-                },
-        )
     }
 
     if (showOrientationDialog) {
