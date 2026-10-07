@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Palette
@@ -77,6 +78,8 @@ internal fun TopBarActions(
     appleStyle: Boolean = false,
     /** Apple 主题把「更多」移到标题行，顶栏只保留返回。 */
     showMore: Boolean = true,
+    /** 简约封面主题的顶栏用三横线（☰）而不是竖三点（⋮）。 */
+    menuIcon: Boolean = false,
     /** 非空时在菜单里提供「外观」二级菜单用于切换主题。 */
     audioStyle: AudioPlayerStyle? = null,
     onStyleSelect: (AudioPlayerStyle) -> Unit = {},
@@ -87,7 +90,12 @@ internal fun TopBarActions(
     // Apple Music 风格：更多按钮为浅色圆底 + 横向三点
     val moreContainerColor = if (appleStyle) Color.White.copy(alpha = 0.16f) else onSurface.copy(alpha = 0.08f)
     val moreIconColor = if (appleStyle) Color.White else onSurface.copy(alpha = 0.8f)
-    val moreIcon = if (appleStyle) Icons.Rounded.MoreHoriz else Icons.Rounded.MoreVert
+    val moreIcon = when {
+        appleStyle -> Icons.Rounded.MoreHoriz
+        menuIcon -> Icons.Rounded.Menu
+        else -> Icons.Rounded.MoreVert
+    }
+    val moreIconSize = if (menuIcon) 22.dp else 24.dp
     val moreButtonSize = if (appleStyle) 44.dp else 40.dp
     // 外观三个选项的名称（子菜单用）
     val vinylStyleName = stringResource(R.string.player_audio_appearance_vinyl)
@@ -143,6 +151,7 @@ internal fun TopBarActions(
                         imageVector = moreIcon,
                         contentDescription = stringResource(R.string.player_more),
                         tint = moreIconColor,
+                        modifier = Modifier.size(moreIconSize),
                     )
                 }
             }

@@ -39,6 +39,7 @@ object PlayerSettings {
     private const val KEY_AUDIO_PROGRESS_MIN_MINUTES = "player_audio_progress_min_minutes"
     private const val KEY_COVER_LABEL_FONT_PATH = "player_cover_label_font_path"
     private const val KEY_COVER_LABEL_FONT_NAME = "player_cover_label_font_name"
+    private const val KEY_LYRIC_PER_CHAR = "player_lyric_per_char"
 
     /** 缩放模式索引：适应（Contain）。 */
     const val SCALE_MODE_CONTAIN = 0
@@ -61,6 +62,17 @@ object PlayerSettings {
     var autoDetectBlackBars: Boolean
         get() = mmkv.decodeBool(KEY_AUTO_DETECT_BLACK_BARS, false)
         set(value) { mmkv.encode(KEY_AUTO_DETECT_BLACK_BARS, value) }
+
+    /**
+     * 歌词「逐字铺色」开关。默认 **true**。
+     *
+     * 开启后当前句按播放进度逐字点亮，**三套主题、两种歌词格式都生效**：
+     * 带逐字时间戳的（Enhanced LRC）精确到词，普通 LRC 按「本行 → 下一行」的时长估算推进。
+     * 关掉后当前句整句同色（不再逐字），适合不喜欢歌词「动」的用户。
+     */
+    var lyricPerCharEnabled: Boolean
+        get() = mmkv.decodeBool(KEY_LYRIC_PER_CHAR, true)
+        set(value) { mmkv.encode(KEY_LYRIC_PER_CHAR, value) }
 
     /** 缩放模式索引（[SCALE_MODE_CONTAIN] / [SCALE_MODE_COVER] / [SCALE_MODE_FILL]）。默认适应。 */
     var scaleModeIndex: Int

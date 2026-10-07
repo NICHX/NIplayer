@@ -110,10 +110,6 @@ fun AudioPlayerScreen(
     val playMode by audioPlaybackManager?.playModeIndex?.collectAsStateWithLifecycle()
         ?: remember { mutableIntStateOf(0) }
     val mode = PlayMode.entries[playMode]
-    // 切歌 / 切播放模式后刷新相邻封面（随机模式下"下一首"由播放器预定，故预览与实际一致）
-    LaunchedEffect(currentIndex, playMode) {
-        viewModel.refreshNeighborCovers()
-    }
     val modeIcon = when (mode) {
         PlayMode.Loop -> Icons.Rounded.Repeat
         PlayMode.Shuffle -> Icons.Rounded.Shuffle
@@ -126,6 +122,15 @@ fun AudioPlayerScreen(
 
     // 音频播放器外观：默认读设置，主题切换走「更多 → 外观」二级菜单
     var playerStyle by remember { mutableStateOf(PlayerSettings.audioPlayerStyle) }
+
+    // 切歌 / 切播放模式后刷新相邻封面（随机模式下"下一首"由播放器预定，故预览与实际一致）。
+    // 只有黑胶主题会用到相邻封面（左右滑动时的邻居唱片预览）；简约封面不做滑动切歌，
+    // 也就没必要为它白白取图解码。主题切到黑胶时这里会重新取一次。
+    LaunchedEffect(currentIndex, playMode, playerStyle) {
+        if (playerStyle == AudioPlayerStyle.VINYL) {
+            viewModel.refreshNeighborCovers()
+        }
+    }
     val vinylStyleName = stringResource(R.string.player_audio_appearance_vinyl)
     val glassStyleName = stringResource(R.string.player_audio_appearance_glass)
     val appleMusicStyleName = stringResource(R.string.player_audio_appearance_apple_music)

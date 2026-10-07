@@ -52,7 +52,7 @@ import kotlinx.coroutines.withContext
  *
  * 两个分组：
  * - **音频播放**：记住音频播放进度、进度记录门槛、倍速音调保持
- * - **外观**：音频播放器外观样式
+ * - **外观**：音频播放器外观样式、逐字歌词开关、生成封面字体
  *
  * @param onBack 返回回调
  */
@@ -64,6 +64,7 @@ fun AudioPlayerSettingsScreen(
     var minMinutes by remember { mutableStateOf(PlayerSettings.audioProgressMinDurationMinutes) }
     var pitchPreservation by remember { mutableStateOf(PlayerSettings.pitchPreservationEnabled) }
     var audioPlayerStyle by remember { mutableStateOf(PlayerSettings.audioPlayerStyle) }
+    var lyricPerChar by remember { mutableStateOf(PlayerSettings.lyricPerCharEnabled) }
     var showThresholdDialog by remember { mutableStateOf(false) }
     var showAppearanceDialog by remember { mutableStateOf(false) }
 
@@ -149,6 +150,16 @@ fun AudioPlayerSettingsScreen(
                     label = stringResource(R.string.player_audio_appearance),
                     value = audioStyleLabel,
                     onClick = { showAppearanceDialog = true },
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                SettingSwitchRow(
+                    label = stringResource(R.string.player_lyric_per_char),
+                    description = stringResource(R.string.player_lyric_per_char_desc),
+                    checked = lyricPerChar,
+                    onCheckedChange = {
+                        lyricPerChar = it
+                        PlayerSettings.lyricPerCharEnabled = it
+                    },
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 SettingClickRow(

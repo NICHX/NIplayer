@@ -1,5 +1,6 @@
 package com.nichx.niplayer.feature.player
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,8 +40,10 @@ import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -47,13 +51,10 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -84,6 +85,50 @@ private const val VINYL_IDLE_FONT_RATIO = 0.78f
 
 /** 黑胶主题：歌词字距。中日韩字形略放宽一点，读起来更透气。 */
 private val VINYL_LYRIC_LETTER_SPACING = 0.2.sp
+
+/**
+ * 简约封面主题的歌词字号倍率：titleLarge 22sp × 1.2 ≈ 26sp（当前句）。
+ *
+ * 比黑胶的 1.15 还大一档 —— 这是「聚光」方案的核心：把字号差拉开，
+ * 当前句一眼就能锁定。代价是行高同比放大、同屏可见行数减少。
+ */
+private const val GLASS_FONT_BOOST = 1.2f
+
+/**
+ * 简约封面主题：非当前句相对当前句的字号比例。
+ *
+ * 0.73 → 非当前句约 19sp。与 [GLASS_FONT_BOOST] 一起构成「聚光」的字号差
+ * （26 / 19，对比黑胶的 25 / 20）。
+ */
+private const val GLASS_IDLE_FONT_RATIO = 0.73f
+
+/** 简约封面主题：歌词字距。比黑胶更松，配合更小的字号差，整页更透气。 */
+private val GLASS_LYRIC_LETTER_SPACING = 0.6.sp
+
+/** 简约封面主题的句间留白：比黑胶（18dp）更松 —— 行间字号差更小，靠留白分层。 */
+private val GLASS_SENTENCE_GAP = 26.dp
+
+/**
+ * 简约封面：当前句背后「流动光带」的参数。
+ *
+ * 周期 7.2s 比封面浮动的 5.6s 更慢 —— 光带是**环境**而不是主角，动快了会抢走对歌词的注意力。
+ */
+private const val GLASS_BAND_PERIOD_MS = 7_200
+private const val GLASS_BAND_DRIFT = 0.10f
+private const val GLASS_BAND_BREATHE = 0.18f
+
+/**
+ * 光带亮度：亮核 + 两侧柔光。
+ *
+ * 一开始只给了单档 0.20，实机上「看不到」—— 文字本身比它亮得多，0.2 的色块完全被压住了。
+ * 现在核心抬到 0.42，并补一档更淡的两侧过渡，让它读成「一束光」而不是一层薄雾。
+ */
+private const val GLASS_BAND_ALPHA = 0.42f
+private const val GLASS_BAND_SOFT_ALPHA = 0.12f
+private const val GLASS_BAND_SPAN = 0.55f
+/** 光带高度 = 行高的多少倍（纵向柔化会吃掉上下各一段，所以要留富余）。封面页与歌词页共用。 */
+internal const val GLASS_BAND_HEIGHT_RATIO = 1.8f
+private val GlassBandTwoPi = (2.0 * PI).toFloat()
 
 /** Apple 风格：当前行落在视口高度的该比例处（偏上方，而非居中）。 */
 private const val APPLE_FOCUS_FRACTION = 0.34f
@@ -148,8 +193,8 @@ private const val LYRIC_FOLLOW_DELAY_MS = 2_600L
  * 逐字时间戳的**不可变包装**。
  *
  * `List` 在 Compose 里被判为不稳定，会连累整个歌词行在每次位置上报（1Hz）时都重组一遍。
- * 包成 `@Immutable` 后，行参数全部稳定——只有"当前行"因 [doneWordCount] 变化而重组，
- * 其余行直接跳过重组（观感不变，纯性能优化）。
+ * 包成 `@Immutable` 后，行参数全部稳定 —— 加上逐字进度改由 `snapshotFlow` 驱动，
+ * 位置上报连「当前行」都不再重组，只有绘制层重画。
  */
 @Immutable
 internal data class LyricWordTimes(val words: List<Pair<String, Long>>)
@@ -221,6 +266,19 @@ private fun vinylDistanceOpacity(lineDistance: Float, focus: Float): Float {
     return base + (1f - base) * f
 }
 
+/**
+ * 简约封面主题的距离 → 不透明度（「聚光」口径）。
+ *
+ * 每行衰减 0.30、下限 0.28：相邻行 0.70、隔一行 0.40、再远就落到底噪。
+ * 比黑胶（每行 0.20、下限 0.40）陡得多 —— 配合放大的当前句，把视线收在焦点附近；
+ * 黑胶那种「远处也只是变暗、仍保持可读」的口径在这里会让整屏一样重。
+ */
+private fun glassDistanceOpacity(lineDistance: Float, focus: Float): Float {
+    val base = (1f - lineDistance * 0.30f).coerceIn(0.28f, 1f)
+    val f = focus.coerceIn(0f, 1f)
+    return base + (1f - base) * f
+}
+
 /** 距离（行）→ 模糊半径（dp）：1.35 行内为 0，之后线性增长封顶；聚焦行不模糊。 */
 private fun distanceBlurDp(lineDistance: Float, focus: Float): Float {
     val progress = (lineDistance - 1.35f).coerceAtLeast(0f)
@@ -229,7 +287,16 @@ private fun distanceBlurDp(lineDistance: Float, focus: Float): Float {
 }
 
 /**
- * 同步歌词视图（Apple Music 风格）。
+ * 歌词视图的样式族：三套主题各一种，**互不复用**。
+ *
+ * - [APPLE]：左对齐白色大字，当前行明亮、其余发散模糊（Apple Music 口径）；
+ * - [VINYL]：居中，当前句放大 + 主题色光晕 + 整行轻微放大（唱片封面的语言）；
+ * - [GLASS]：居中，字号几乎齐平，层次**只由颜色与透明度**给出（简约封面口径）。
+ */
+enum class LyricsStyle { APPLE, VINYL, GLASS }
+
+/**
+ * 同步歌词视图。
  *
  * 实现要点：
  * - **一句歌词 = 一个列表项**：句内折行交给文字引擎（按 lineHeight），句间才加留白，
@@ -238,10 +305,10 @@ private fun distanceBlurDp(lineDistance: Float, focus: Float): Float {
  *   animateScrollToItem，当前句首行精确落在焦点位置（与句高无关，故长句也准）；
  * - 距离只驱动「透明度 + 模糊」：自动跟随时按**行号差**，手动浏览时按**屏幕距离**——
  *   后者保证用户滑到哪儿、哪儿就是清晰带，不会「滑过去一片全糊」；
- * - 点击跳转；非 Apple 风格保留「先预览再确认」的两次点击。
+ * - 点击跳转；[LyricsStyle.APPLE] 点一下即跳，另两套保留「先预览再确认」的两次点击。
  *
  * @param maxVisibleLines 最多同时显示的行数（受容器高度约束，取较小值）。
- * @param appleStyle Apple Music 风格：左对齐、白色大字，当前行明亮、其它行暗淡且发散模糊。
+ * @param style 样式族，见 [LyricsStyle]。
  * @param onUserScroll 用户开始手动滚动时回调（供外层「任何交互即呼出控件」用）。
  */
 @Composable
@@ -251,17 +318,35 @@ fun LyricsView(
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
     maxVisibleLines: Int = Int.MAX_VALUE,
-    appleStyle: Boolean = false,
+    style: LyricsStyle = LyricsStyle.VINYL,
+    /** 当前句 / 逐字高亮的颜色。默认主题色；简约封面主题传入从封面取到的强调色。 */
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    /** 是否正在播放：逐字铺色与光带的动画只在播放时推进（暂停即停、不请求帧）。 */
+    isPlaying: Boolean = false,
+    /** 「逐字歌词」开关：关掉后当前句整句同色，不做逐字铺色。 */
+    perChar: Boolean = true,
     onUserScroll: () -> Unit = {},
 ) {
+    val appleStyle = style == LyricsStyle.APPLE
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val baseTitleLarge = MaterialTheme.typography.titleLarge
 
-    val currentSentenceIndex = remember(currentPositionMs.value, lrcLines) {
-        if (lrcLines.isEmpty()) 0 else {
-            val index = lrcLines.indexOfLast { it.timeMs <= currentPositionMs.value }
-            if (index < 0) 0 else index
+    // 实时播放位置：整个歌词页**只建一个**，向下传给每一行 —— 换句、滚动、逐字、间奏点缀
+    // 都从它算，不会每行各起一个帧循环。
+    val livePosition = rememberLivePosition(
+        positionMs = currentPositionMs,
+        isPlaying = isPlaying,
+        enabled = lrcLines.isNotEmpty(),
+    )
+    // 当前句号由**实时位置**派生，而不是 1Hz 的上报值 —— 否则换句（以及随之而来的滚动）
+    // 最多晚一整秒，听起来就是「歌词慢半拍才滚」。
+    // derivedStateOf 只在句号真的变化时才通知重组，因此不会每帧重建整页。
+    val currentSentenceIndex by remember(lrcLines, livePosition) {
+        derivedStateOf {
+            if (lrcLines.isEmpty()) 0 else {
+                lrcLines.indexOfLast { it.timeMs <= livePosition.value }.coerceAtLeast(0)
+            }
         }
     }
 
@@ -283,16 +368,24 @@ fun LyricsView(
             maxWidth < 560.dp -> 1.15f
             else -> 1.3f
         }
-        val fontBoost = if (appleStyle) APPLE_FONT_BOOST else VINYL_FONT_BOOST
+        val fontBoost = when (style) {
+            LyricsStyle.APPLE -> APPLE_FONT_BOOST
+            LyricsStyle.VINYL -> VINYL_FONT_BOOST
+            LyricsStyle.GLASS -> GLASS_FONT_BOOST
+        }
 
         // 行高（单行文字盒高）：居中落点、视口行数与距离换算都以它为单位
         val lineHeightSp = baseTitleLarge.lineHeight * scale * fontBoost
         val lineHeightPx = with(density) { lineHeightSp.toPx() }
         val lineHeight = with(density) { lineHeightPx.toDp() }
-        val sentenceGap = if (appleStyle) APPLE_SENTENCE_GAP else PLAIN_SENTENCE_GAP
+        val sentenceGap = when (style) {
+            LyricsStyle.APPLE -> APPLE_SENTENCE_GAP
+            LyricsStyle.VINYL -> PLAIN_SENTENCE_GAP
+            LyricsStyle.GLASS -> GLASS_SENTENCE_GAP
+        }
 
         // 列表项：每句一项；Apple 风格把长间隔处生成的间奏点缀挂到**下一句**的项内
-        val items = remember(lrcLines, appleStyle) {
+        val items = remember(lrcLines, style) {
             lrcLines.mapIndexed { sentenceIndex, line ->
                 val interlude = if (appleStyle && sentenceIndex > 0) {
                     interludeOf(lrcLines[sentenceIndex - 1], line)
@@ -359,11 +452,21 @@ fun LyricsView(
             browsing = false
         }
 
+        // 首次落位（进入歌词页、或换歌后第一次跟随）：**直接瞬移**，不做动画。
+        // 此刻列表还停在顶部，用动画滚过去会先「飞」一整屏才到位。
+        var followSettled by remember(lrcLines) { mutableStateOf(false) }
+
+        // 逐行追赶的共享状态（见 LyricCascade）：行侧要在绘制阶段读「列表滚了多少」
+        val cascade = remember(lrcLines) { LyricCascade() }
+        var previousFocusedIndex by remember(lrcLines) { mutableIntStateOf(-1) }
+
         // 自动跟随：当前句 / 间奏切换时回到焦点项；浏览期间不打断，浏览结束再触发回位。
         LaunchedEffect(focusedIndex, browsing) {
             if (focusedIndex < 0 || browsing) return@LaunchedEffect
-            if (reducedMotion) {
+            if (reducedMotion || !followSettled) {
                 listState.scrollToItem(focusedIndex)
+                followSettled = true
+                previousFocusedIndex = focusedIndex
                 return@LaunchedEffect
             }
             // 目标项已在屏内时，按「像素差」用更柔的弹性滚过去（项顶端到锚点 = item.offset，
@@ -371,15 +474,33 @@ fun LyricsView(
             // 默认的偏硬弹簧顺得多；不在屏内（含跳转）才交给它处理。
             val visible = listState.layoutInfo.visibleItemsInfo
                 .firstOrNull { it.index == focusedIndex }
-            if (visible != null) {
-                // 本句带间奏点缀时，点缀盒在项顶：多滚一个行高，让**文字首行**（而非点缀）落在锚点
-                val dotsLead = if (items[focusedIndex].interludeBefore != null) lineHeightPx else 0f
-                listState.animateScrollBy(
-                    visible.offset.toFloat() + dotsLead,
-                    MotionTokens.springScroll,
-                )
-            } else {
+            if (visible == null) {
+                // 目标项不在屏内（用户跳了很远 / 跳转）。
+                // 注意 LazyListState.animateScrollToItem **不接受** animationSpec，只能用它的内置弹簧；
+                // 屏内的精细跟随才走下面的手动滚动 + MotionTokens.springScroll。
+                previousFocusedIndex = focusedIndex
                 listState.animateScrollToItem(focusedIndex)
+                return@LaunchedEffect
+            }
+            // 本句带间奏点缀时，点缀盒在项顶：多滚一个行高，让**文字首行**（而非点缀）落在锚点
+            val dotsLead = if (items[focusedIndex].interludeBefore != null) lineHeightPx else 0f
+            val delta = visible.offset.toFloat() + dotsLead
+            // 「逐行追赶」**只在 Apple Music 主题做**，且只对**相邻向前**的换句生效
+            // （跨行跳转 / 向后跳转直接滚过去）—— 参考实现的口径：只有一行一行往前走时，
+            // 追赶才有意义。
+            val chasing = style == LyricsStyle.APPLE &&
+                focusedIndex - previousFocusedIndex == 1 && delta > 0f
+            previousFocusedIndex = focusedIndex
+            cascade.distance.snapTo(0f)
+            cascade.applied = 0f
+            if (chasing) cascade.generation += 1
+            // 手动驱动滚动：同一份进度要同时喂给「列表滚动」与行侧的追赶补偿，
+            // animateScrollBy 把进度藏在内部、拿不到，所以自己 animateTo + scrollBy。
+            listState.scroll {
+                cascade.distance.animateTo(delta, MotionTokens.springScroll) {
+                    scrollBy(value - cascade.applied)
+                    cascade.applied = value
+                }
             }
         }
 
@@ -407,13 +528,14 @@ fun LyricsView(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                // 黑胶主题：歌词带背后加一层柔和的主题色底衬（上下渐隐）。
-                // 背景是封面氛围光，明暗/纹理不可控；底衬为文字提供稳定的对比度，
-                // 又因与全屏 scrim 同色系、两端透明，不会读成一块突兀的色带。
+                // 主题色底衬（上下渐隐）只为黑胶准备：那里的背景是封面氛围光，明暗/纹理不可控，
+                // 底衬给文字一个稳定的对比度，又因与全屏 scrim 同色系、两端透明而不显突兀。
+                //
+                // 简约封面**不画**：它的背景本身就是「封面模糊 + 主题色 scrim」的平滑渐变，
+                // 再压一层主题色会在屏幕中间显出一块方形的深色带（用户反馈「像遮罩」），
+                // 而对比度已经由 scrim 保证。Apple 靠纯白大字 + 模糊分层，也不需要。
                 .then(
-                    if (appleStyle) {
-                        Modifier
-                    } else {
+                    if (style == LyricsStyle.VINYL) {
                         Modifier.background(
                             Brush.verticalGradient(
                                 colors = listOf(
@@ -424,6 +546,8 @@ fun LyricsView(
                                 ),
                             ),
                         )
+                    } else {
+                        Modifier
                     },
                 ),
             contentAlignment = Alignment.Center,
@@ -458,7 +582,8 @@ fun LyricsView(
                         LyricRowItem(
                             text = item.text,
                             interludeBefore = item.interludeBefore,
-                            positionMs = currentPositionMs,
+                            // 传**实时**位置：行内的逐字比例与间奏点缀都按它算
+                            positionMs = livePosition,
                             isCurrent = sentenceIndex == currentSentenceIndex,
                             isPending = pendingSentenceIndex == sentenceIndex,
                             timeLabel = formatDurationShort(sentenceTimeMs),
@@ -474,20 +599,20 @@ fun LyricsView(
                                 }
                             },
                             lineDistance = lineDistance,
+                            focusOffset = index - focusedIndex,
+                            cascade = cascade,
                             lineHeight = lineHeight,
                             sentenceGap = sentenceGap,
                             scale = scale,
                             fontBoost = fontBoost,
-                            appleStyle = appleStyle,
+                            style = style,
+                            accentColor = accentColor,
+                            lineStartMs = sentenceTimeMs,
+                            nextLineStartMs = lrcLines.getOrNull(sentenceIndex + 1)?.timeMs,
+                            isPlaying = isPlaying,
+                            perChar = perChar,
                             wordTimes = remember(sentence.wordTimes) {
                                 LyricWordTimes(sentence.wordTimes)
-                            },
-                            // 非当前句的已唱词数恒为 -1：位置每秒上报时该参数不变，
-                            // 行因此可被跳过重组（观感不变）。
-                            doneWordCount = if (sentenceIndex == currentSentenceIndex) {
-                                sentence.wordTimes.count { it.second <= currentPositionMs.value }
-                            } else {
-                                -1
                             },
                         )
                     }
@@ -505,18 +630,31 @@ private fun LyricRowItem(
     timeLabel: String?,
     onClick: () -> Unit,
     lineDistance: Float,
+    /** 本行相对焦点行的偏移（负=在上方，正=在下方）：逐行追赶按它算等待时长。 */
+    focusOffset: Int,
+    cascade: LyricCascade,
     lineHeight: Dp,
     sentenceGap: Dp,
     scale: Float,
     fontBoost: Float,
-    appleStyle: Boolean,
+    style: LyricsStyle,
+    /** 当前句 / 逐字高亮的颜色。默认主题色；简约封面主题传入从封面取到的强调色。 */
+    accentColor: Color = MaterialTheme.colorScheme.primary,
     wordTimes: LyricWordTimes,
-    doneWordCount: Int,
-    interludeBefore: InterludeSpan?,
+    /** 本行开始时间与下一行开始时间：逐字铺色要按它们算「已唱到多少」。 */
+    lineStartMs: Long,
+    nextLineStartMs: Long?,
+    /** 实时播放位置（[rememberLivePosition] 的产物），不是 1Hz 的上报值。 */
     positionMs: State<Long>,
+    isPlaying: Boolean,
+    perChar: Boolean,
+    interludeBefore: InterludeSpan?,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
-    val primary = MaterialTheme.colorScheme.primary
+    val appleStyle = style == LyricsStyle.APPLE
+    val glassStyle = style == LyricsStyle.GLASS
+    val density = LocalDensity.current
+    val reduceMotion = LocalNiReduceMotion.current
 
     // 焦点进度：当前句 → 1，其它 → 0；平滑过渡，交接时不闪断
     val focus by animateFloatAsState(
@@ -525,50 +663,62 @@ private fun LyricRowItem(
         label = "lyricFocus",
     )
     // 透明度与模糊都只由「距离 + 焦点」决定：整句共享一套（长句多行不会各行不同）。
-    // 黑胶主题走更平缓、下限更高的口径，并用「光晕 + 轻微放大」强调焦点行。
-    val alpha = if (appleStyle) {
-        distanceOpacity(lineDistance, focus)
-    } else {
-        vinylDistanceOpacity(lineDistance, focus)
+    // 三套主题三种口径：Apple 压得最狠 + 模糊；黑胶平缓 + 光晕 + 轻微放大；
+    // 简约封面只做很轻的淡出，层次交给颜色。
+    val alpha = when (style) {
+        LyricsStyle.APPLE -> distanceOpacity(lineDistance, focus)
+        LyricsStyle.VINYL -> vinylDistanceOpacity(lineDistance, focus)
+        LyricsStyle.GLASS -> glassDistanceOpacity(lineDistance, focus)
     }
-    val glowAlpha = if (appleStyle) focus * 0.62f else focus * 0.55f
+    // 光晕与放大是黑胶的语言（Apple 另有白色辉光）；简约封面两者都不用
+    val glowAlpha = when (style) {
+        LyricsStyle.APPLE -> focus * 0.62f
+        LyricsStyle.VINYL -> focus * 0.55f
+        LyricsStyle.GLASS -> 0f
+    }
     val blurAmount = if (appleStyle) distanceBlurDp(lineDistance, focus).dp else 0.dp
 
     // 焦点行的轻微放大：graphicsLayer 只影响绘制、不触发重新布局，避免滚动抖动
-    val focusScale = if (appleStyle) 1f else 1f + focus * 0.05f
+    val focusScale = if (style == LyricsStyle.VINYL) 1f + focus * 0.05f else 1f
 
-    val highlightColor = if (appleStyle) Color.White else primary
+    // 逐行追赶：焦点下方的行先**抵消掉列表的滚动**（视觉上留在原地），再按距离依次抬升归位。
+    // 越靠下等得越久 —— 这就是「下方歌词逐行抬升」。只有相邻向前的换句才会让 generation 变化，
+    // 跨行跳转 / 向后跳转时这里不动，行随列表一起走。
+    val chase = remember { Animatable(1f) }
+    LaunchedEffect(cascade.generation, appleStyle) {
+        if (!appleStyle || focusOffset <= 0) {
+            chase.snapTo(1f)
+            return@LaunchedEffect
+        }
+        chase.snapTo(0f)
+        delay(lyricCascadeDelayMs(focusOffset))
+        chase.animateTo(1f, MotionTokens.springSoft)
+    }
+
+    val idleFontRatio = if (glassStyle) GLASS_IDLE_FONT_RATIO else VINYL_IDLE_FONT_RATIO
+    val letterSpacing = if (glassStyle) GLASS_LYRIC_LETTER_SPACING else VINYL_LYRIC_LETTER_SPACING
+
+    val highlightColor = if (appleStyle) Color.White else accentColor
     val normalColor = if (appleStyle) Color.White else onSurface
 
-    // 逐字高亮：当前句且有逐字时间戳时，已唱到的词用高亮色，未唱到的用浅色。
-    val displayText = if (isCurrent && wordTimes.words.isNotEmpty()) {
-        buildAnnotatedString {
-            val baseColor = highlightColor.copy(alpha = if (appleStyle) 0.45f else alpha)
-            val doneColor = highlightColor.copy(alpha = 1f)
-            var cursor = 0
-            wordTimes.words.forEachIndexed { index, entry ->
-                val word = entry.first
-                val found = text.indexOf(word, cursor)
-                if (found >= 0) {
-                    withStyle(
-                        SpanStyle(
-                            color = if (index < doneWordCount) doneColor else baseColor,
-                        ),
-                    ) {
-                        append(word)
-                    }
-                    cursor = found + word.length
-                }
-            }
-            // 尾部多余文本（逐字时间戳覆盖不到的）用基础色
-            if (cursor < text.length) {
-                withStyle(SpanStyle(color = baseColor)) {
-                    append(text.substring(cursor))
-                }
-            }
+    // 逐字铺色：当前句按「已唱到多少」的比例，把上层文字裁切出已唱的部分并逐字抬升（见 perCharSung）。
+    // 所有主题、所有歌词格式共用这一套 —— 有逐字时间戳的精确到词，普通 LRC 按行时长估算。
+    // 比例只在绘制阶段被读，因此逐帧变化只重画这一层、不触发重组。
+    val perCharFraction = rememberSungFraction(
+        text = text,
+        wordTimes = wordTimes.words,
+        lineStartMs = lineStartMs,
+        nextLineStartMs = nextLineStartMs,
+        livePosition = positionMs,
+        enabled = perChar && isCurrent,
+    )
+    var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // 三段几何（已唱完 / 正在唱 / 未唱）只算一次，两层共用
+    // 抬升只在 Apple Music 主题做（另两套只做逐字铺色）
+    val sungSplit = remember(layoutResult, perCharFraction, appleStyle) {
+        derivedStateOf {
+            layoutResult?.let { buildSungSplit(it, perCharFraction.value, lift = appleStyle) }
         }
-    } else {
-        null
     }
 
     // 句间留白挂在**项底部**：句内折行由文字引擎按 lineHeight 排，句与句之间才多出这段间隔。
@@ -590,55 +740,119 @@ private fun LyricRowItem(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                // 缩放只用于黑胶主题；Apple 风格不加图层，避免每行都多一层离屏缓冲
-                .then(
-                    if (appleStyle) {
-                        Modifier
-                    } else {
-                        Modifier.graphicsLayer {
-                            scaleX = focusScale
-                            scaleY = focusScale
-                        }
-                    },
-                ),
+                // 只用位移/缩放的图层不会分配离屏缓冲；两个值都在绘制阶段读，不触发重组。
+                .graphicsLayer {
+                    // 缩放只用于黑胶主题
+                    if (style == LyricsStyle.VINYL) {
+                        scaleX = focusScale
+                        scaleY = focusScale
+                    }
+                    // 逐行追赶：把「列表已经滚掉的距离」按追赶进度抵消掉
+                    translationY = cascade.distance.value * (1f - chase.value)
+                },
         ) {
+        val textStyle = when {
+            appleStyle -> MaterialTheme.typography.titleLarge.copy(
+                fontSize = MaterialTheme.typography.titleLarge.fontSize * scale * fontBoost,
+                lineHeight = MaterialTheme.typography.titleLarge.lineHeight * scale * fontBoost,
+                fontWeight = FontWeight.ExtraBold,
+                shadow = if (glowAlpha > 0f) {
+                    Shadow(color = Color.White.copy(alpha = glowAlpha), blurRadius = 14f)
+                } else {
+                    null
+                },
+            )
+            isCurrent -> MaterialTheme.typography.titleLarge.copy(
+                fontSize = MaterialTheme.typography.titleLarge.fontSize * scale * fontBoost,
+                lineHeight = MaterialTheme.typography.titleLarge.lineHeight * scale * fontBoost,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = letterSpacing,
+                // 当前句的柔和光晕：用主题色，让「正在唱」的那句从背景里浮起来
+                // （简约封面不发光：glowAlpha 恒为 0，这里自然拿到 null）
+                shadow = if (glowAlpha > 0f) {
+                    Shadow(color = highlightColor.copy(alpha = glowAlpha), blurRadius = 12f)
+                } else {
+                    null
+                },
+            )
+            else -> MaterialTheme.typography.titleLarge.copy(
+                // 与当前句共用同一 lineHeight（= 声明行高 × fontBoost），故行距均匀；
+                // 只把字号收小到 [idleFontRatio]，拉开主次又保证可读。
+                fontSize = MaterialTheme.typography.titleLarge.fontSize *
+                    idleFontRatio * scale * fontBoost,
+                lineHeight = MaterialTheme.typography.titleLarge.lineHeight * scale * fontBoost,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = letterSpacing,
+            )
+        }
+        // 逐字抬升量：字号的 10%，夹在 1.5~6dp。
+        // **只在 Apple Music 主题做**，且「减少动态效果」时不做。
+        val lyricRisePx = if (reduceMotion || !appleStyle) {
+            0f
+        } else {
+            with(density) {
+                (textStyle.fontSize.value * LYRIC_LIFT_FONT_RATIO)
+                    .coerceIn(LYRIC_LIFT_MIN_DP, LYRIC_LIFT_MAX_DP)
+                    .dp
+                    .toPx()
+            }
+        }
+        val textModifier = if (appleStyle) {
+            Modifier
+                // padding 在外、clickable 在内：点击范围就是文字本身（左右各让出
+                // 28dp 的边距留给「点空白切换控件」）
+                .padding(horizontal = 28.dp)
+                .clickable(onClick = onClick)
+                .then(
+                    if (blurAmount > 0.05.dp) {
+                        Modifier.blur(blurAmount, BlurredEdgeTreatment.Unbounded)
+                    } else {
+                        Modifier
+                    },
+                )
+        } else {
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+        }
+        // 简约封面：当前句背后一条**流动的光带**（亮核缓慢左右漂移 + 极轻呼吸）。
+        // 另两套主题的高级感来自各自的光晕/模糊，这里用「光」的另一种形态，不重复它们的语言。
+        if (glassStyle && isCurrent) {
+            GlassLyricLightBand(
+                accent = accentColor,
+                isPlaying = isPlaying,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    // 光带比行高高，align(TopCenter) 会让它整体偏下 —— 补一个负 offset
+                    // 把它的中心对到**首行**的中心（整句折行时也该压在正在唱的那一行上）
+                    .offset(y = lineHeight * (1f - GLASS_BAND_HEIGHT_RATIO) / 2f)
+                    .fillMaxWidth()
+                    .height(lineHeight * GLASS_BAND_HEIGHT_RATIO),
+            )
+        }
+        // 逐字铺色靠「两层同款文本 + 上层裁切」：底层是未唱色，上层是高亮色、按进度裁切。
+        // 两层排版必须完全一致，所以样式与修饰符逐字照搬。
+        //
+        // 两层的配色要分主题：Apple 是统一的纯白大字（它没有主题色层级），逐字只能靠**明暗**
+        // 区分 —— 未唱 0.45、已唱 1.0（与原来按词上色的口径一致）；另两套用「正文色 → 强调色」。
+        val highlightActive = perChar && isCurrent
+        val unsungColor = if (appleStyle) {
+            Color.White.copy(alpha = 0.45f)
+        } else {
+            normalColor.copy(alpha = alpha)
+        }
+        val sungColor = if (appleStyle) {
+            Color.White
+        } else {
+            highlightColor.copy(alpha = alpha)
+        }
         Text(
-            text = displayText ?: AnnotatedString(text),
-            style = when {
-                appleStyle -> MaterialTheme.typography.titleLarge.copy(
-                    fontSize = MaterialTheme.typography.titleLarge.fontSize * scale * fontBoost,
-                    lineHeight = MaterialTheme.typography.titleLarge.lineHeight * scale * fontBoost,
-                    fontWeight = FontWeight.ExtraBold,
-                    shadow = if (glowAlpha > 0f) {
-                        Shadow(color = Color.White.copy(alpha = glowAlpha), blurRadius = 14f)
-                    } else {
-                        null
-                    },
-                )
-                isCurrent -> MaterialTheme.typography.titleLarge.copy(
-                    fontSize = MaterialTheme.typography.titleLarge.fontSize * scale * fontBoost,
-                    lineHeight = MaterialTheme.typography.titleLarge.lineHeight * scale * fontBoost,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = VINYL_LYRIC_LETTER_SPACING,
-                    // 当前句的柔和光晕：用主题色，让「正在唱」的那句从背景里浮起来
-                    shadow = if (glowAlpha > 0f) {
-                        Shadow(color = highlightColor.copy(alpha = glowAlpha), blurRadius = 12f)
-                    } else {
-                        null
-                    },
-                )
-                else -> MaterialTheme.typography.titleLarge.copy(
-                    // 与当前句共用同一 lineHeight（= 声明行高 × fontBoost），故行距均匀；
-                    // 只把字号收小到 [VINYL_IDLE_FONT_RATIO]，拉开主次又保证可读。
-                    fontSize = MaterialTheme.typography.titleLarge.fontSize *
-                        VINYL_IDLE_FONT_RATIO * scale * fontBoost,
-                    lineHeight = MaterialTheme.typography.titleLarge.lineHeight * scale * fontBoost,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = VINYL_LYRIC_LETTER_SPACING,
-                )
-            },
+            text = text,
+            style = textStyle,
             // Apple 用统一的纯白大字（靠透明度/模糊分层），其它风格用主题色的层级
-            color = if (appleStyle) {
+            color = if (highlightActive) {
+                unsungColor
+            } else if (appleStyle) {
                 Color.White.copy(alpha = alpha)
             } else if (isCurrent) {
                 highlightColor.copy(alpha = alpha)
@@ -649,25 +863,35 @@ private fun LyricRowItem(
             // 整句完整折行显示，绝不截断
             maxLines = Int.MAX_VALUE,
             overflow = TextOverflow.Clip,
-            modifier = if (appleStyle) {
-                Modifier
-                    // padding 在外、clickable 在内：点击范围就是文字本身（左右各让出
-                    // 28dp 的边距留给「点空白切换控件」）
-                    .padding(horizontal = 28.dp)
-                    .clickable(onClick = onClick)
-                    .then(
-                        if (blurAmount > 0.05.dp) {
-                            Modifier.blur(blurAmount, BlurredEdgeTreatment.Unbounded)
-                        } else {
-                            Modifier
-                        },
-                    )
+            // 只有当前句需要 layout（逐字裁切按它算），其余行不必写这个状态
+            onTextLayout = if (highlightActive) {
+                { layoutResult = it }
             } else {
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
+                null
             },
+            // 底层只画未唱区：已唱的字被抬起后原位会空出来，照常画整句会留下影子
+            modifier = textModifier.then(
+                if (highlightActive) {
+                    Modifier.perCharUnsung { sungSplit.value }
+                } else {
+                    Modifier
+                },
+            ),
         )
+        if (highlightActive) {
+            Text(
+                text = text,
+                style = textStyle,
+                color = sungColor,
+                textAlign = if (appleStyle) TextAlign.Start else TextAlign.Center,
+                maxLines = Int.MAX_VALUE,
+                overflow = TextOverflow.Clip,
+                modifier = textModifier.perCharSung(
+                    splitProvider = { sungSplit.value },
+                    risePx = lyricRisePx,
+                ),
+            )
+        }
 
         // 预览态：该项右上角显示该句时间，提示再次点击可跳转
         if (isPending && timeLabel != null) {
@@ -682,11 +906,62 @@ private fun LyricRowItem(
                 Text(
                     text = timeLabel,
                     style = MaterialTheme.typography.labelMedium,
-                    color = primary,
+                    color = accentColor,
                 )
             }
         }
         }
+    }
+}
+
+/**
+ * 简约封面：当前句背后「流动的光带」。
+ *
+ * 做法：一条横向渐变（中间亮、两端透明）画一遍，再用一条纵向渐变以 [BlendMode.DstIn]
+ * 把上下边缘压掉 —— 否则会看到一条有硬边的色带。亮核按相位缓慢左右漂移、亮度轻微呼吸，
+ * 于是那束光是**流动**的，而不是一块静止的色斑。
+ *
+ * 相位与亮度都在绘制阶段读，每帧只重画这一层；暂停或开启「减少动态效果」时相位不推进
+ * （循环退出、不请求帧），光带就静静停在原处。
+ */
+@Composable
+internal fun GlassLyricLightBand(
+    accent: Color,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val reduceMotion = LocalNiReduceMotion.current
+    val phase = rememberLoopPhase(
+        enabled = isPlaying && !reduceMotion,
+        periodMs = GLASS_BAND_PERIOD_MS,
+        label = "glassLyricBand",
+    )
+    Canvas(
+        modifier = modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+    ) {
+        val t = phase.value * GlassBandTwoPi
+        val drift = sin(t) * size.width * GLASS_BAND_DRIFT
+        val breathe = 1f + sin(t) * GLASS_BAND_BREATHE
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colorStops = arrayOf(
+                    0f to Color.Transparent,
+                    0.34f to accent.copy(alpha = (GLASS_BAND_SOFT_ALPHA * breathe).coerceIn(0f, 1f)),
+                    0.5f to accent.copy(alpha = (GLASS_BAND_ALPHA * breathe).coerceIn(0f, 1f)),
+                    0.66f to accent.copy(alpha = (GLASS_BAND_SOFT_ALPHA * breathe).coerceIn(0f, 1f)),
+                    1f to Color.Transparent,
+                ),
+                startX = size.width / 2f + drift - size.width * GLASS_BAND_SPAN,
+                endX = size.width / 2f + drift + size.width * GLASS_BAND_SPAN,
+            ),
+        )
+        // 纵向柔化：把上下边缘压掉，只留中间一段
+        drawRect(
+            brush = Brush.verticalGradient(
+                listOf(Color.Transparent, Color.Black, Color.Transparent),
+            ),
+            blendMode = BlendMode.DstIn,
+        )
     }
 }
 

@@ -749,6 +749,9 @@
     <string name="player_current_kernel">Current kernel</string>
     <string name="player_pitch_preserve">Keep pitch when speeding up</string>
     <string name="player_pitch_preserve_desc">Keep the original pitch at faster speeds; turn off to change pitch with speed (for quick browsing)</string>
+    <!-- 歌词逐字铺色开关（三套主题、两种歌词格式都生效） -->
+    <string name="player_lyric_per_char">Word-by-word lyrics</string>
+    <string name="player_lyric_per_char_desc">Light up the current line word by word as it plays (lyrics without word timestamps are estimated from the line duration, not exact). Works in all three themes; turn off to keep the line a single color</string>
     <string name="player_remember_audio_progress">Remember audio playback position</string>
     <string name="player_remember_audio_progress_desc">Only long audio (audiobooks/podcasts) reaching the threshold below keeps and resumes progress; songs always play from the start</string>
     <string name="player_orientation_mode">Player orientation</string>

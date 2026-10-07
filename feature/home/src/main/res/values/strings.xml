@@ -749,6 +749,9 @@
     <string name="player_current_kernel">当前内核</string>
     <string name="player_pitch_preserve">倍速音调保持</string>
     <string name="player_pitch_preserve_desc">倍速播放时保持原音调，关闭则变速变调（适合快速浏览）</string>
+    <!-- 歌词逐字铺色开关（三套主题、两种歌词格式都生效） -->
+    <string name="player_lyric_per_char">逐字歌词</string>
+    <string name="player_lyric_per_char_desc">当前句按播放进度逐字点亮（没有逐字时间戳的歌词按行时长**估算**，不是精确对齐），三套主题都生效；关闭后当前句整句同色</string>
     <string name="player_remember_audio_progress">记住音频播放进度</string>
     <string name="player_remember_audio_progress_desc">仅对达到下方门槛的长音频（有声书/播客）记录并断点续播，普通歌曲从头播放</string>
     <string name="player_orientation_mode">进入播放器方向</string>

@@ -21,6 +21,9 @@
     <string name="player_unknown_song">未知歌曲</string>
     <string name="player_unknown_error">未知错误</string>
 
+    <!-- 简约封面主题：顶栏居中的两行标题 -->
+    <string name="player_now_playing">正在播放</string>
+
     <!-- 音频播放器外观 -->
     <string name="player_appearance">外观</string>
     <string name="player_audio_appearance">音频播放器外观</string>
@@ -262,6 +265,8 @@
     <!-- 歌词 -->
     <string name="lyrics_empty">暂无歌词</string>
     <string name="lyrics_back_to_record">回到唱片</string>
+    <!-- 简约封面主题：封面不是唱片，用「收起歌词」表达同一件事 -->
+    <string name="lyrics_collapse">收起歌词</string>
 
     <!-- VR 环视 -->
     <string name="player_vr">VR 环视</string>

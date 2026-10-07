@@ -21,6 +21,9 @@
     <string name="player_unknown_song">Unknown song</string>
     <string name="player_unknown_error">Unknown error</string>
 
+    <!-- 简约封面主题：顶栏居中的两行标题 -->
+    <string name="player_now_playing">Now Playing</string>
+
     <!-- Audio player appearance -->
     <string name="player_appearance">Appearance</string>
     <string name="player_audio_appearance">Audio player appearance</string>
@@ -262,6 +265,8 @@
     <!-- Lyrics -->
     <string name="lyrics_empty">No lyrics</string>
     <string name="lyrics_back_to_record">Back to record</string>
+    <!-- 简约封面主题：封面不是唱片，用「收起歌词」表达同一件事 -->
+    <string name="lyrics_collapse">Collapse lyrics</string>
 
     <!-- VR look-around -->
     <string name="player_vr">VR Look-around</string>
