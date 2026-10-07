@@ -1,6 +1,10 @@
 package com.nichx.niplayer.feature.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -36,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -101,6 +106,23 @@ private const val APPLE_COVER_HEIGHT_FRACTION = 0.60f
  */
 private const val APPLE_TOP_SLACK_WEIGHT = 0.45f
 private const val APPLE_BOTTOM_SLACK_WEIGHT = 0.55f
+
+/** 封面 → 歌词：封面整组上移的距离（dp），与歌词一起构成上下错位的推入感。 */
+private val APPLE_ARTWORK_EXIT_DISTANCE = 300.dp
+
+/** 封面 → 歌词：歌词自下方进入的起始距离（dp）。 */
+private val APPLE_LYRICS_ENTER_DISTANCE = 400.dp
+
+/**
+ * 有封面时，动态流光背景作为**叠加层**的不透明度。
+ *
+ * 无封面时流光整屏兜底（1f）；有封面时压在封面色彩网格之上、封面横幅之下，
+ * 取一个偏高的值让「流动」看得见，又不至于把封面自身的底色冲淡。
+ */
+private const val APPLE_FLOW_OVERLAY_ALPHA = 0.85f
+
+/** 歌词层在「切出歌词页」后保留的时长（ms）：覆盖退场动画后再卸载，避免退场途中断帧。 */
+private const val APPLE_LYRICS_LAYER_EXIT_MS = 420L
 
 @Composable
 internal fun BackgroundLayer(coverData: Any?) {
@@ -318,18 +340,41 @@ internal fun PortraitLayout(
     val secondaryColor =
         if (isAppleStyle) Color.White.copy(alpha = 0.6f) else onSurface.copy(alpha = 0.6f)
 
-    // Apple 歌词页：底部控件（进度 + 传输键）一段时间无操作后自动收起，整页交给歌词
+    // Apple 歌词页：底部控件（进度 + 传输键）一段时间无操作后自动收起，整页交给歌词。
+    // controlsActivityGeneration 让「滚动等交互」也能把计时器重新计时（否则控件已可见时不会再续期）。
     var lyricsControlsVisible by remember(showLyrics) { mutableStateOf(true) }
-    LaunchedEffect(isAppleStyle, showLyrics, lyricsControlsVisible) {
+    var controlsActivityGeneration by remember(showLyrics) { mutableIntStateOf(0) }
+    LaunchedEffect(isAppleStyle, showLyrics, lyricsControlsVisible, controlsActivityGeneration) {
         if (isAppleStyle && showLyrics && lyricsControlsVisible) {
             delay(APPLE_LYRICS_CONTROLS_IDLE_MS)
             lyricsControlsVisible = false
         }
     }
 
+    // 歌词层较重（整条 LyricsView + 逐行模糊图层 + 文本测量）：
+    // 封面页（例如「最近播放」直接进播放器）**不为一个不可见的歌词层付出组合/layout 代价**，
+    // 只在歌词页、以及刚切出歌词页的退场动画期间保留。
+    var keepLyricsLayer by remember { mutableStateOf(showLyrics) }
+    LaunchedEffect(showLyrics) {
+        if (showLyrics) {
+            keepLyricsLayer = true
+        } else {
+            delay(APPLE_LYRICS_LAYER_EXIT_MS)
+            keepLyricsLayer = false
+        }
+    }
+
+    // Apple：封面文件路径（Apple 风格的封面是本地抽帧文件，形如 String 路径）
+    val coverFile = coverPath as? String
     // Apple 封面页：封面自身的颜色网格 + 全宽贴顶的封面（参照 BitChord）。
     // 网格由封面从小图解码后算一次并缓存，不涉及整屏 RenderEffect。
-    val appleMesh = if (isAppleStyle) rememberAppleArtworkMesh(coverPath as? String) else null
+    val appleMesh = if (isAppleStyle) rememberAppleArtworkMesh(coverFile) else null
+    // 动态流光背景用的 9 色取色（无封面时是兜底配色）
+    val applePalette = if (isAppleStyle) {
+        rememberAppleArtworkPalette(coverFile)
+    } else {
+        AppleArtworkPalette.Fallback
+    }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
     // 封面从屏幕 y=0 起画（含状态栏背后）。参考里的封面块是「方形封面 + 状态栏 +
@@ -341,23 +386,152 @@ internal fun PortraitLayout(
         // 给歌名行和底部控件留出底线，短屏上封面不能把下面的内容顶出去
         (maxHeight - APPLE_COVER_RESERVED).coerceAtLeast(0.dp),
     )
-    val coverShown = isAppleStyle && !showLyrics && hasActiveContent && playbackError == null
-    // 封面页的内容块按自身高度布局（封面是固定高度），多余的空间交给下面两段
-    // 带权重的 Spacer 去分，所以这一块不能再是 weight(1f)。
-    val coverLayout = coverShown
+    // Apple：有可显示的封面/歌词内容（无内容或播放失败时另走提示分支）
+    val appleActive = isAppleStyle && hasActiveContent && playbackError == null
+
+    // 封面页 ↔ 歌词页 切换动效优化：
+    // - 封面整组上移 −300dp 并淡出；
+    // - 歌词自下方 +400dp 上移并淡入；
+    // - 同一时间线，走 bounce≈0.3（ζ=0.7）的弹性，切换带一点回弹。
+    val pageTransition = updateTransition(targetState = showLyrics, label = "applePage")
+    val artworkAlpha by pageTransition.animateFloat(
+        transitionSpec = { spring(dampingRatio = 0.7f, stiffness = 300f) },
+        label = "appleArtworkAlpha",
+    ) { if (it) 0f else 1f }
+    val artworkOffset by pageTransition.animateDp(
+        transitionSpec = { spring(dampingRatio = 0.7f, stiffness = 300f) },
+        label = "appleArtworkOffset",
+    ) { if (it) -APPLE_ARTWORK_EXIT_DISTANCE else 0.dp }
+    val lyricsAlpha by pageTransition.animateFloat(
+        transitionSpec = { spring(dampingRatio = 0.7f, stiffness = 300f) },
+        label = "appleLyricsAlpha",
+    ) { if (it) 1f else 0f }
+    val lyricsOffset by pageTransition.animateDp(
+        transitionSpec = { spring(dampingRatio = 0.7f, stiffness = 300f) },
+        label = "appleLyricsOffset",
+    ) { if (it) 0.dp else APPLE_LYRICS_ENTER_DISTANCE }
+
+    // 封面组是否还「可交互」：用 derivedStateOf 只在跨过阈值时变一次（避免逐帧重组整个布局）。
+    // 封面淡出后其按钮必须立刻失效——否则那层透明按钮会盖在歌词上、把一大片点击吃掉。
+    val artworkInteractive by remember {
+        derivedStateOf { artworkAlpha > 0.01f }
+    }
+
     if (isAppleStyle) {
-        AppleArtworkMeshBackdrop(
-            mesh = appleMesh,
-            seam = if (coverShown) coverHeight else 0.dp,
+        if (coverFile != null) {
+            AppleArtworkMeshBackdrop(
+                mesh = appleMesh,
+                // 网格接缝随封面页让位：进歌词页时收回到 0，整屏变成连续渐变
+                seam = if (showLyrics) 0.dp else coverHeight,
+            )
+        }
+        // 动态流光背景：无封面时作为整屏兜底；有封面时半透明叠加在色彩网格之上
+        // （封面横幅随后盖在其上，所以封面本身仍保持清晰）。
+        AppleFlowingLightBackdrop(
+            palette = applePalette,
+            isPlaying = isPlaying,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = if (coverFile == null) 1f else APPLE_FLOW_OVERLAY_ALPHA },
         )
-        if (coverShown) {
+        if (appleActive) {
             AppleMusicCoverBanner(
                 coverData = coverPath,
                 height = coverHeight,
-                modifier = Modifier.align(Alignment.TopStart),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .graphicsLayer {
+                        alpha = artworkAlpha
+                        translationY = artworkOffset.toPx()
+                    },
             )
         }
     }
+
+    // 歌词页：铺满整屏的独立层（自下方上滑 + 淡入）。
+    // 放在 Column **之前**，这样 Column 里的底部控件叠在它之上、可正常点击；
+    // 未进入歌词页时它已被推到屏外且 alpha=0，不会拦截触摸。
+    if (appleActive && keepLyricsLayer) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    alpha = lyricsAlpha
+                    translationY = lyricsOffset.toPx()
+                },
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { lyricsControlsVisible = !lyricsControlsVisible },
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // 顶部信息条：缩略图 + 歌名/艺术家 + 「···」
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        AppleMusicThumbnail(
+                            coverData = coverPath,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clickable(onClick = onToggleLyrics),
+                        )
+                        AppleTrackTitle(
+                            title = title,
+                            artist = artist,
+                            modifier = Modifier.weight(1f),
+                            compact = true,
+                        )
+                        TopBarActions(
+                            onDownload = onDownload,
+                            onEqualizer = onEqualizer,
+                            speedOptions = speedOptions,
+                            currentSpeedIndex = currentSpeedIndex,
+                            onSpeedSelect = onSpeedSelect,
+                            showDownload = showDownload,
+                            sleepTimerText = sleepTimerText,
+                            onSleepTimer = onSleepTimer,
+                            showExternalActions = showExternalActions,
+                            onOpenWith = onOpenWith,
+                            onShare = onShare,
+                            appleStyle = true,
+                            audioStyle = style,
+                            onStyleSelect = onStyleSelect,
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        LyricsView(
+                            lrcLines = lrcLines,
+                            currentPositionMs = positionMs,
+                            onSeek = onSeek,
+                            maxVisibleLines = Int.MAX_VALUE,
+                            modifier = Modifier.fillMaxSize(),
+                            appleStyle = true,
+                            // 任何滚动交互都把控件呼出并把自动收起计时器重新计时
+                            onUserScroll = {
+                                lyricsControlsVisible = true
+                                controlsActivityGeneration += 1
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -387,52 +561,69 @@ internal fun PortraitLayout(
         )
         }
 
-        if (coverLayout) {
-            // ---- Apple 封面页：封面点击区 + 歌名行 ----
+        if (isAppleStyle && appleActive) {
+            // ---- Apple 封面页：封面点击区 + 歌名行（整组随切换上移 + 淡出）----
             // 封面本身画在背景层上（全宽贴顶），这里只放一个与封面等高的透明点击区，
             // 点它进歌词页；歌名行紧贴在封面下方。
             //
             // 顺序很重要：这一块是**固定高度**、不带权重，权重只给下面两段 Spacer，
             // Column 会先把固定高度的孩子量完再分剩下的——否则底部的进度与传输键
             // 会被挤成 0 高度（就是「控件没了」）。
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height((coverHeight - statusBarTop).coerceAtLeast(0.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) { onToggleLyrics() },
-            )
-            Spacer(Modifier.height(APPLE_CREDITS_TOP_GAP))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = APPLE_PLAYER_GUTTER),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Column(
+                modifier = Modifier.graphicsLayer {
+                    alpha = artworkAlpha
+                    translationY = artworkOffset.toPx()
+                },
             ) {
-                AppleTrackTitle(
-                    title = title,
-                    artist = artist,
-                    modifier = Modifier.weight(1f),
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height((coverHeight - statusBarTop).coerceAtLeast(0.dp))
+                        // 封面淡出后撤掉点击：避免这层透明区域挡住歌词交互
+                        .then(
+                            if (artworkInteractive) {
+                                Modifier.clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) { onToggleLyrics() }
+                            } else {
+                                Modifier
+                            },
+                        ),
                 )
-                TopBarActions(
-                    onDownload = onDownload,
-                    onEqualizer = onEqualizer,
-                    speedOptions = speedOptions,
-                    currentSpeedIndex = currentSpeedIndex,
-                    onSpeedSelect = onSpeedSelect,
-                    showDownload = showDownload,
-                    sleepTimerText = sleepTimerText,
-                    onSleepTimer = onSleepTimer,
-                    showExternalActions = showExternalActions,
-                    onOpenWith = onOpenWith,
-                    onShare = onShare,
-                    appleStyle = true,
-                    audioStyle = style,
-                    onStyleSelect = onStyleSelect,
-                )
+                Spacer(Modifier.height(APPLE_CREDITS_TOP_GAP))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = APPLE_PLAYER_GUTTER),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    AppleTrackTitle(
+                        title = title,
+                        artist = artist,
+                        modifier = Modifier.weight(1f),
+                    )
+                    // 同理：淡出后不再渲染动作按钮（它们是不可见的点击目标，会吃掉歌词页的点击）
+                    if (artworkInteractive) {
+                        TopBarActions(
+                            onDownload = onDownload,
+                            onEqualizer = onEqualizer,
+                            speedOptions = speedOptions,
+                            currentSpeedIndex = currentSpeedIndex,
+                            onSpeedSelect = onSpeedSelect,
+                            showDownload = showDownload,
+                            sleepTimerText = sleepTimerText,
+                            onSleepTimer = onSleepTimer,
+                            showExternalActions = showExternalActions,
+                            onOpenWith = onOpenWith,
+                            onShare = onShare,
+                            appleStyle = true,
+                            audioStyle = style,
+                            onStyleSelect = onStyleSelect,
+                        )
+                    }
+                }
             }
             Spacer(Modifier.weight(APPLE_TOP_SLACK_WEIGHT))
         } else {
@@ -541,7 +732,7 @@ internal fun PortraitLayout(
                     }
                 }
             } else {
-                // 封面/唱片视图（Apple 的封面页不走这里，见上面的 coverLayout 分支）
+                // 封面/唱片视图（Apple 的封面页不走这里，见上面的 Apple 分支）
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -658,9 +849,10 @@ internal fun PortraitLayout(
             }
         }
 
-        // Apple 封面页：底部再留一段空白，与控件上方那段一起把空余分掉
-        // （见 APPLE_BOTTOM_SLACK_WEIGHT）；歌词页整幅占满，不需要。
-        if (coverLayout) {
+        // Apple：底部再留一段空白，与控件上方那段一起把空余分掉
+        // （见 APPLE_BOTTOM_SLACK_WEIGHT）。条件只取决于「有无可播放内容」，与是否歌词页无关，
+        // 这样封面/歌词切换时控件位置稳定、不会跳。
+        if (isAppleStyle && appleActive) {
             Spacer(Modifier.weight(APPLE_BOTTOM_SLACK_WEIGHT))
         }
     }
