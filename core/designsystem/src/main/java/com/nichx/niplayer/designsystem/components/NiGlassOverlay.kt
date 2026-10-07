@@ -38,7 +38,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -47,8 +46,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
 import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
 import com.nichx.niplayer.designsystem.theme.MotionTokens
 import kotlinx.coroutines.delay
@@ -288,11 +285,8 @@ fun NiGlassOverlayHost(
 /** 浮层退场动画缓冲：等待的内部 exit 动画最长约 280ms，留出裕量后再销毁节点。 */
 private const val EXIT_ANIM_BUFFER_MS = 450L
 
-/** 下拉菜单出场/收起的时长与缩放起止点（从锚点那一角长出来）。 */
-private const val DROPDOWN_ENTER_MS = 180
+/** 下拉菜单收起的时长（进场走 [MotionTokens.springPanel]，缩放起止点见 [MotionTokens.SCALE_MENU_IN]）。 */
 private const val DROPDOWN_EXIT_MS = 120
-private const val DROPDOWN_ENTER_SCALE = 0.86f
-private const val DROPDOWN_EXIT_SCALE = 0.94f
 
 /**
  * 锚定玻璃下拉菜单（同窗口 overlay）。
@@ -338,22 +332,22 @@ private fun DropdownGlassOverlay(
         visibleState.targetState = active
         AnimatedVisibility(
             visibleState = visibleState,
-            // 从锚点那一角（右上）长出来 + 淡入 + 轻微下落，像从按钮下掉出来
-            enter = fadeIn(tween(DROPDOWN_ENTER_MS, easing = FastOutSlowInEasing)) +
+            // 从锚点那一角（右上）弹性长出来 + 淡入 + 轻微下落，像从按钮下掉出来、带一下回弹
+            enter = fadeIn(animationSpec = MotionTokens.springPanel) +
                 scaleIn(
-                    animationSpec = tween(DROPDOWN_ENTER_MS, easing = FastOutSlowInEasing),
-                    initialScale = DROPDOWN_ENTER_SCALE,
-                    transformOrigin = TransformOrigin(1f, 0f),
+                    animationSpec = MotionTokens.springPanel,
+                    initialScale = MotionTokens.SCALE_MENU_IN,
+                    transformOrigin = MotionTokens.OriginTopEnd,
                 ) +
                 slideInVertically(
-                    animationSpec = tween(DROPDOWN_ENTER_MS, easing = FastOutSlowInEasing),
+                    animationSpec = MotionTokens.panelSpring<IntOffset>(IntOffset(1, 1)),
                     initialOffsetY = { -it / 6 },
                 ),
             exit = fadeOut(tween(DROPDOWN_EXIT_MS, easing = FastOutSlowInEasing)) +
                 scaleOut(
                     animationSpec = tween(DROPDOWN_EXIT_MS, easing = FastOutSlowInEasing),
-                    targetScale = DROPDOWN_EXIT_SCALE,
-                    transformOrigin = TransformOrigin(1f, 0f),
+                    targetScale = MotionTokens.SCALE_MENU_OUT,
+                    transformOrigin = MotionTokens.OriginTopEnd,
                 ),
         ) {
             // 玻璃菜单卡片
@@ -382,17 +376,15 @@ private fun DropdownGlassOverlay(
                     .width(IntrinsicSize.Max)
                     .then(
                         if (glassEnabled) {
-                            Modifier.drawBackdrop(
+                            Modifier.niLiquidGlassPanel(
                                 backdrop = backdrop!!,
-                                shape = { dropdownShape },
-                                effects = {
-                                    blur(NiGlassSheetBlurRadius.toPx())
-                                },
-                                onDrawSurface = { drawRect(panelSurface) },
+                                shape = dropdownShape,
+                                surface = panelSurface,
+                                blurRadius = NiGlassSheetBlurRadius,
                             )
                         } else {
                             Modifier.background(panelSurface, dropdownShape)
-                        }
+                        },
                     )
                     .border(NiGlassHairWidth, niGlassBorderColor(), dropdownShape)
                     .padding(vertical = 4.dp),

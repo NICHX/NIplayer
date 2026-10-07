@@ -1,7 +1,6 @@
 package com.nichx.niplayer.designsystem.components
 
 import android.os.Build
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -38,8 +37,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
 import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
 import com.nichx.niplayer.designsystem.theme.MotionTokens
 
@@ -95,20 +92,19 @@ fun NiGlassDialog(
             // 时长统一走 SURFACE（令牌表中「弹窗」属于 surface），与压暗层同长同曲线，避免"卡片先弹好、压暗还在变"。
             NiAnimatedVisibility(
                 visible = show,
-                enter = fadeIn(tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter)) +
+                // 进场走浮层弹性（ζ=0.86，轻微收一下）；退场用更紧的弹性快速收掉。
+                enter = fadeIn(animationSpec = MotionTokens.springPanel) +
                     scaleIn(
-                        animationSpec = tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter),
-                        initialScale = 0.92f,
+                        animationSpec = MotionTokens.springPanel,
+                        initialScale = MotionTokens.SCALE_PANEL_IN,
+                        transformOrigin = MotionTokens.OriginCenter,
                     ),
-                exit = fadeOut(
-                    tween(MotionTokens.exitOf(MotionTokens.SURFACE), easing = MotionTokens.easeExit),
-                ) + scaleOut(
-                    animationSpec = tween(
-                        MotionTokens.exitOf(MotionTokens.SURFACE),
-                        easing = MotionTokens.easeExit,
+                exit = fadeOut(animationSpec = MotionTokens.springPanelExit) +
+                    scaleOut(
+                        animationSpec = MotionTokens.springPanelExit,
+                        targetScale = MotionTokens.SCALE_PANEL_OUT,
+                        transformOrigin = MotionTokens.OriginCenter,
                     ),
-                    targetScale = 0.92f,
-                ),
             ) {
                 Column(
                     modifier = Modifier
@@ -117,20 +113,18 @@ fun NiGlassDialog(
                         .graphicsLayer { alpha = if (revealed) 1f else 0f }
                         .then(
                             if (glassEnabled) {
-                                Modifier.drawBackdrop(
+                                Modifier.niLiquidGlassPanel(
                                     backdrop = backdrop,
-                                    shape = { shape },
-                                    effects = {
-                                        blur(blurRadius.toPx())
-                                    },
-                                    onDrawSurface = { drawRect(panelSurface) },
+                                    shape = shape,
+                                    surface = panelSurface,
+                                    blurRadius = blurRadius,
                                 )
                             } else {
                                 Modifier.background(
                                     color = niFrostSurfaceColor(),
                                     shape = shape,
                                 )
-                            }
+                            },
                         )
                         .border(NiGlassHairWidth, niGlassBorderColor(), shape)
                         .padding(vertical = 8.dp),

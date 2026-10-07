@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
@@ -120,8 +121,8 @@ fun NiDrawerPanel(
             visible = isVisible,
             enter = slideInHorizontally(
                 initialOffsetX = { it },
-                animationSpec = tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter),
-            ) + fadeIn(animationSpec = tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter)),
+                animationSpec = MotionTokens.panelSpring<IntOffset>(IntOffset(1, 1)),
+            ) + fadeIn(animationSpec = MotionTokens.springPanel),
             exit = slideOutHorizontally(
                 targetOffsetX = { it },
                 animationSpec = tween(DrawerExitMs, easing = MotionTokens.easeExit),

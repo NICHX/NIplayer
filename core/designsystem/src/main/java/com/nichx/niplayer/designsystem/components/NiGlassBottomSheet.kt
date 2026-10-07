@@ -33,9 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
 import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
 import com.nichx.niplayer.designsystem.theme.MotionTokens
 
@@ -99,7 +98,7 @@ fun NiGlassBottomSheet(
         NiAnimatedVisibility(
             visible = show,
             enter = slideInVertically(
-                animationSpec = tween(MotionTokens.SURFACE, easing = MotionTokens.easeEnter),
+                animationSpec = MotionTokens.panelSpring<IntOffset>(IntOffset(1, 1)),
             ) { it },
             exit = slideOutVertically(
                 animationSpec = tween(
@@ -118,20 +117,18 @@ fun NiGlassBottomSheet(
                         .heightIn(max = maxHeight)
                         .then(
                             if (glassEnabled) {
-                                Modifier.drawBackdrop(
+                                Modifier.niLiquidGlassPanel(
                                     backdrop = backdrop,
-                                    shape = { sheetShape },
-                                    effects = {
-                                        blur(blurRadius.toPx())
-                                    },
-                                    onDrawSurface = { drawRect(panelSurface) },
+                                    shape = sheetShape,
+                                    surface = panelSurface,
+                                    blurRadius = blurRadius,
                                 )
                             } else {
                                 Modifier.background(
                                     color = niFrostSurfaceColor(),
                                     shape = sheetShape,
                                 )
-                            }
+                            },
                         ),
                 ) {
                     // 内容层：导航栏避让 + 底部 inset（玻璃背景保持贴底）

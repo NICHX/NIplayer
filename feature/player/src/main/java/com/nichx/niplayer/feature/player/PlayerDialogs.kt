@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -308,13 +309,13 @@ fun PlayerSideDrawer(
                 enter = if (isPortrait) {
                     slideInVertically(
                         initialOffsetY = { it },
-                        animationSpec = tween(DRAWER_ENTER_MS, easing = MotionTokens.easeEnter),
-                    ) + fadeIn(animationSpec = tween(DRAWER_ENTER_MS))
+                        animationSpec = MotionTokens.panelSpring<IntOffset>(IntOffset(1, 1)),
+                    ) + fadeIn(animationSpec = MotionTokens.springPanel)
                 } else {
                     slideInHorizontally(
                         initialOffsetX = { it },
-                        animationSpec = tween(DRAWER_ENTER_MS, easing = MotionTokens.easeEnter),
-                    ) + fadeIn(animationSpec = tween(DRAWER_ENTER_MS))
+                        animationSpec = MotionTokens.panelSpring<IntOffset>(IntOffset(1, 1)),
+                    ) + fadeIn(animationSpec = MotionTokens.springPanel)
                 },
                 exit = if (isPortrait) {
                     slideOutVertically(

@@ -7,10 +7,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import dev.chrisbanes.haze.ExperimentalHazeApi
 import dev.chrisbanes.haze.HazeProgressive
@@ -87,6 +94,15 @@ fun Modifier.niHazeSource(state: HazeState?): Modifier = this.then(
 object NiGlassDefaults {
     /** 背景高斯模糊半径。 */
     val BlurRadius = 16.dp
+
+    /** 面板边缘折射「厚度」：折射带的进深。 */
+    val RefractionHeight = 6.dp
+
+    /** 面板边缘折射位移量：越大，边缘的镜面弯折越明显。 */
+    val RefractionAmount = 18.dp
+
+    /** 面板内阴影半径：给内缘压一道暗边，衬出玻璃厚度。 */
+    val InnerShadowRadius = 8.dp
 }
 
 /** 玻璃描边宽度：统一 1px 细发丝线，用于对话框、菜单等面板表面及其内控件。 */
@@ -196,4 +212,56 @@ fun niGlassPanelSurfaceColor(): Color {
     val opacity = LocalNiGlassPanelOpacity.current
     if (opacity >= 1f) return container
     return container.copy(alpha = opacity)
+}
+
+/**
+ * 浮层玻璃面板的统一 backdrop 画法：模糊 + 边缘折射（lens）+ 高光 + 外投影 + 内阴影。
+ *
+ * 此前对话框 / 底部面板 / 下拉菜单只画了一层 `blur`，观感偏「磨砂塑料」；这里补齐
+ * 与悬浮底栏同源的液态玻璃层次——边缘折射带来镜面弯折、内阴影衬出厚度、高光勾出上缘。
+ * 折射量刻意压在面板尺度下的轻微量级：有边缘质感，但不产生可察觉的画面形变。
+ *
+ * 仅在 backdrop 真模糊可用（同窗口 overlay + API 33+）时由调用方使用；
+ * 否则回退 [niFrostSurfaceColor] / [niGlassPanelSurfaceColor]。
+ *
+ * @param backdrop 同窗口 backdrop 源（[LocalNiBackdrop] 提供）
+ * @param shape 面板形状（须为圆角矩形，lens 折射依赖圆角信息）
+ * @param surface 面板半透明底色，写入 `onDrawSurface`
+ * @param blurRadius 背景模糊半径
+ */
+@Composable
+fun Modifier.niLiquidGlassPanel(
+    backdrop: Backdrop,
+    shape: Shape,
+    surface: Color,
+    blurRadius: Dp = NiGlassSheetBlurRadius,
+): Modifier {
+    val isDark = NiExtraColors.current.isDark
+    return this.drawBackdrop(
+        backdrop = backdrop,
+        shape = { shape },
+        effects = {
+            blur(blurRadius.toPx())
+            // 模糊之后再折射：边缘按圆角形状弯折，`depthEffect` 让弯折带一点体块进深。
+            lens(
+                refractionHeight = NiGlassDefaults.RefractionHeight.toPx(),
+                refractionAmount = NiGlassDefaults.RefractionAmount.toPx(),
+                depthEffect = true,
+            )
+        },
+        highlight = {
+            // 上缘高光：深色主题压一点，浅色主题提亮，避免过曝成白边
+            Highlight.Default.copy(alpha = if (isDark) 0.7f else 0.9f)
+        },
+        shadow = {
+            Shadow.Default.copy(color = Color.Black.copy(alpha = if (isDark) 0.3f else 0.2f))
+        },
+        innerShadow = {
+            InnerShadow(
+                radius = NiGlassDefaults.InnerShadowRadius,
+                alpha = if (isDark) 0.4f else 0.24f,
+            )
+        },
+        onDrawSurface = { drawRect(surface) },
+    )
 }
