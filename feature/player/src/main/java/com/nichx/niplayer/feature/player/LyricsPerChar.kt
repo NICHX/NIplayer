@@ -48,9 +48,20 @@ import kotlinx.coroutines.flow.collectLatest
  */
 private const val MaxLyricExtrapolationMs = 1_500L
 
-/** 逐字裁切矩形在行盒外的上下余量（相对行高）。底部给得多 —— 要兜住 p / q / g 的降部。 */
+/**
+ * 逐字裁切矩形在行盒外的上下余量（相对行高）。
+ *
+ * 底部余量夹在两条互相挤压的线之间（按本项目「行高 ≈ 1.18 × 字号」的样式实机量过）：
+ * - **不能小**：p / q / g / y 的墨迹会伸出行盒底约 0.07 行高，小于它就把降部切掉；
+ * - **不能大**：下一行的**字头**在行盒底下方约 0.12 行高处，大于它就会把下一行的字也裁进「已唱层」——
+ *   已唱层是**整段上移**的（逐字抬升），于是那一小条会在下一行字头上方叠出一条被抬起、
+ *   又被硬切一刀的亮边（就是「折行时底下一行渲染有 bug」）。
+ *
+ * 0.09 落在两者之间。⚠️ 以前给到 0.20 是照「下一行字头在行顶下 0.20 行高」估的，实测只有 0.12 ——
+ * 于是窗口一路漏进下一行约 0.08 行高，刚好是抬升量那一档，看起来就像「下一行被整体抬起来一截」。
+ */
 private const val LYRIC_CLIP_TOP_PAD = 0.06f
-private const val LYRIC_CLIP_BOTTOM_PAD = 0.20f
+private const val LYRIC_CLIP_BOTTOM_PAD = 0.09f
 
 private fun elapsedRealtimeMs(): Long = System.nanoTime() / 1_000_000L
 
