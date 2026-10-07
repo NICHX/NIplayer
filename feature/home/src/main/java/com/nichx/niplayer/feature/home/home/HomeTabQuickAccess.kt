@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.nichx.niplayer.designsystem.components.NiGeneratedCoverArt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -172,6 +173,15 @@ internal fun HomeQuickAccessGridItem(
                 Box(
                     modifier = Modifier.fillMaxSize().background(thumbBg),
                 ) {
+                    // 音频底衬：**始终**画在缩略图之下。缩略图路径可能非空却已失效
+                    // （缓存文件被删/损坏），此时图片库什么都不画，没有底衬就只剩一块空背景。
+                    if (isAudio) {
+                        NiGeneratedCoverArt(
+                            fileName = name,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                     if (hasThumbnail) {
                         AsyncImage(
                             model = thumbnailUrl,
@@ -196,7 +206,7 @@ internal fun HomeQuickAccessGridItem(
                                 )
                             }
                         }
-                    } else {
+                    } else if (!isAudio) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center,
@@ -204,13 +214,11 @@ internal fun HomeQuickAccessGridItem(
                             Icon(
                                 imageVector = when {
                                     isVideo -> Icons.Rounded.Movie
-                                    isAudio -> Icons.Rounded.MusicNote
                                     isImage -> Icons.Rounded.Image
                                     else -> Icons.AutoMirrored.Rounded.InsertDriveFile
                                 },
                                 contentDescription = null,
                                 tint = when {
-                                    isAudio -> MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
                                     isVideo || isImage -> Color.White.copy(alpha = 0.65f)
                                     else -> MaterialTheme.colorScheme.outline
                                 },

@@ -250,7 +250,7 @@ private fun CacheItemRow(
             modifier = Modifier.size(26.dp),
         )
         Spacer(Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
             Text(
                 text = item.displayName,
                 style = MaterialTheme.typography.titleMedium,

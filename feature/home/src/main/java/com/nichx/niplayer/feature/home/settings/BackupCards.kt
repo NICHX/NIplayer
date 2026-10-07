@@ -249,7 +249,7 @@ internal fun PlayHistorySyncCard(
             Text(
                 text = stringResource(R.string.backup_cloud_sync),
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap),
             )
             NiGlassSwitch(
                 checked = config.enabled,
@@ -271,7 +271,7 @@ internal fun PlayHistorySyncCard(
                     text = stringResource(R.string.backup_auto_sync_hint),
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap),
                 )
                 NiGlassSwitch(
                     checked = config.autoSync,

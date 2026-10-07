@@ -623,8 +623,13 @@ class HomeTabViewModel @Inject constructor(
         storageId == null || _storageReachability.value[storageId] != false
 
     private companion object {
-        /** 首页拉取最近播放的窗口大小（混合视频+单曲，取大窗口再按类型拆，避免某类型被挤空）。 */
-        const val RECENT_WINDOW = 30
+        /**
+         * 首页拉取最近播放的窗口大小（混合视频+音频）。
+         *
+         * 取足够大的窗口再按扩展名拆成视频/音频各自取前 [ROW_PREVIEW_LIMIT] 条，
+         * 避免「最近 N 条全是音频」时把视频行（英雄卡）挤空——音视频分开计数展示。
+         */
+        const val RECENT_WINDOW = 200
         /** 首页快速访问条数。 */
         const val QUICK_ACCESS_LIMIT = 10
         /** 首页各类历史行的展示上限（有界预览，控制横滑长度）。 */

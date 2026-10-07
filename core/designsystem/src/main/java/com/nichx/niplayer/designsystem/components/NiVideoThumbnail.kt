@@ -69,13 +69,15 @@ fun NiVideoThumbnail(
     model: Any?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    /** 无缩略图 / 加载失败时展示的内容。默认只画渐变占位；调用方可传「生成封面」这类兜底外观。 */
+    fallback: (@Composable () -> Unit)? = null,
 ) {
     Box(
         // 缩略图底：启用自定义背景图时用透明画刷，避免不透明占位渐变与半透明卡片底叠加形成分层
         modifier = modifier.background(niNestedSurfaceBrush(NiExtraColors.current.thumbnailPlaceholder)),
     ) {
         when (model) {
-            null -> { /* 纯渐变占位 */ }
+            null -> fallback?.invoke()
             is PlaceholderText -> {
                 // BUG-38：无缩略图占位。居中大号水印字母衬托播放按钮，
                 // 左上角可选状态标签（[PlaceholderText.label]，区分播放状态）
@@ -127,7 +129,7 @@ fun NiVideoThumbnail(
                         .build()
                     else -> model  // 其他类型（如 ByteArray）原样传递
                 }
-                ThumbnailImage(request = request, contentScale = contentScale)
+                ThumbnailImage(request = request, contentScale = contentScale, fallback = fallback)
             }
         }
     }
@@ -139,7 +141,11 @@ fun NiVideoThumbnail(
  * 上一张图继续显示、新图就绪后经 [Crossfade] 淡入替换，避免"旧图 → 空白 → 新图"的闪烁。
  */
 @Composable
-private fun ThumbnailImage(request: Any, contentScale: ContentScale) {
+private fun ThumbnailImage(
+    request: Any,
+    contentScale: ContentScale,
+    fallback: (@Composable () -> Unit)? = null,
+) {
     val painter = rememberAsyncImagePainter(model = request)
     val state by painter.state.collectAsState()
     var lastPainter by remember { mutableStateOf<Painter?>(null) }
@@ -160,6 +166,10 @@ private fun ThumbnailImage(request: Any, contentScale: ContentScale) {
                 contentScale = contentScale,
                 modifier = Modifier.fillMaxSize(),
             )
+        } else {
+            // 加载中（且没有可保留的旧图）或加载失败：交给调用方的兜底内容。
+            // 否则这里只剩单调占位，调用方在外面画的封面会被盖掉、看起来「一闪而过」。
+            fallback?.invoke()
         }
     }
 }

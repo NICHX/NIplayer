@@ -131,7 +131,7 @@ fun EqualizerSettingsScreen(
                     .padding(horizontal = 18.dp, vertical = 16.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
                         Text(
                             text = stringResource(R.string.equalizer_enable),
                             style = MaterialTheme.typography.titleMedium,

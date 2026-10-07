@@ -187,7 +187,7 @@ private fun LicenseItemRow(dep: LicenseDependency) {
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
             Text(
                 text = dep.name,
                 style = MaterialTheme.typography.titleMedium,

@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -247,28 +248,35 @@ fun NiThumbCard(
                     .clip(RoundedCornerShape(8.dp))
                     .background(niNestedSurface(NiExtraColors.current.surfaceLevel2)),
             ) {
-                if (thumbnailModel != null) {
-                    NiVideoThumbnail(
-                        model = thumbnailModel,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = contentScale,
-                    )
-                    if (contentScale != ContentScale.Fit) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(24.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.45f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
+                NiVideoThumbnail(
+                    model = thumbnailModel,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = contentScale,
+                    // 无缩略图 / 加载失败时兜底：现场生成一张封面（淡主题色纸面 + 文件名），
+                    // 而不是让调用方在外面画 —— 那样会被本组件的占位底盖掉
+                    fallback = {
+                        NiGeneratedCoverArt(
+                            fileName = title,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    },
+                )
+                if (thumbnailModel != null && contentScale != ContentScale.Fit) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.45f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp),
+                        )
                     }
                 }
             }
@@ -354,6 +362,15 @@ fun NiThumbCard(
                     model = thumbnailModel,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = contentScale,
+                    // 无缩略图 / 加载失败时兜底：现场生成一张封面（淡主题色纸面 + 文件名）。
+                    // 形状取矩形：顶部圆角交给卡片自身的 clip，底部与信息区齐平。
+                    fallback = {
+                        NiGeneratedCoverArt(
+                            fileName = title,
+                            shape = RectangleShape,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    },
                 )
                 // 底部渐变 only，托住角标与进度条
                 Box(

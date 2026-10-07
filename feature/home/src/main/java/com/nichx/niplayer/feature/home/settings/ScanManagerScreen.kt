@@ -273,7 +273,7 @@ private fun ExtendFolderTab(
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
                         Text(
                             text = folder.folderPath,
                             style = MaterialTheme.typography.bodyMedium,
@@ -336,7 +336,7 @@ private fun FilterFolderTab(
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
                         Text(
                             text = folder.folderPath,
                             style = MaterialTheme.typography.bodyMedium,

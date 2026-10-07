@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.nichx.niplayer.designsystem.components.NiGeneratedCoverArt
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -355,6 +356,15 @@ private fun QuickAccessGridItem(
                         .fillMaxSize()
                         .background(NiExtraColors.current.surfaceLevel3),
                 ) {
+                    // 音频底衬：**始终**画在缩略图之下。缩略图路径可能非空却已失效
+                    // （缓存文件被删/损坏），此时图片库什么都不画，没有底衬就只剩一块空背景。
+                    if (isAudio) {
+                        NiGeneratedCoverArt(
+                            fileName = name,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                     if (hasThumbnail) {
                         AsyncImage(
                             model = thumbnailUrl,
@@ -380,7 +390,7 @@ private fun QuickAccessGridItem(
                                 )
                             }
                         }
-                    } else {
+                    } else if (!isAudio) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center,
@@ -388,13 +398,11 @@ private fun QuickAccessGridItem(
                             Icon(
                                 imageVector = when {
                                     isVideo -> Icons.Rounded.Movie
-                                    isAudio -> Icons.Rounded.MusicNote
                                     isImage -> Icons.Rounded.Image
                                     else -> Icons.AutoMirrored.Rounded.InsertDriveFile
                                 },
                                 contentDescription = null,
                                 tint = when {
-                                    isAudio -> MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
                                     isVideo || isImage -> Color.White.copy(alpha = 0.65f)
                                     else -> MaterialTheme.colorScheme.outline
                                 },

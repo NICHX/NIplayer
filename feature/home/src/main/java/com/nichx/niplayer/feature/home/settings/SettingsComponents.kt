@@ -31,6 +31,14 @@ import com.nichx.niplayer.designsystem.components.NiGlassSwitch
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 
 /**
+ * 设置行内「文本块」与「尾部控件」（开关 / 右值 / 信息图标 / 箭头）之间的水平间距。
+ *
+ * 文本块用 `weight(1f)` 占满剩余宽度，若不额外留白，说明文字会一直排到尾部控件边缘，
+ * 长描述尤显拥挤。统一在此留出固定间隙。
+ */
+internal val SettingsRowTrailingGap = 16.dp
+
+/**
  * 设置页通用分组卡片：带彩色小图标的分组标题 + surfaceLevel2 卡片容器。
  */
 @Composable
@@ -68,7 +76,7 @@ internal fun SettingsGroupSection(
 @Composable
 internal fun SettingInfoRow(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text = label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(text = label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap))
         Text(text = value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -86,7 +94,7 @@ internal fun SettingSwitchRow(label: String, description: String? = null, checke
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
             Text(text = label, style = MaterialTheme.typography.bodyLarge)
             description?.let { Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp)) }
         }
@@ -104,7 +112,7 @@ internal fun SettingClickRow(
     infoOnClick: (() -> Unit)? = null,
 ) {
     Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
             Text(text = label, style = MaterialTheme.typography.bodyLarge)
             description?.let {
                 Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))

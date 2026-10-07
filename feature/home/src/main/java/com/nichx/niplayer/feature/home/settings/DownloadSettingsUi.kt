@@ -63,7 +63,7 @@ internal fun DownloadSettingsCard(
             modifier = Modifier.size(20.dp),
         )
         Spacer(Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
             Text(
                 text = stringResource(R.string.download_settings_title),
                 style = MaterialTheme.typography.bodyMedium,
@@ -122,7 +122,7 @@ internal fun DownloadSettingsDialog(
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
                     Text(
                         text = stringResource(R.string.download_manager_has_dir),
                         style = MaterialTheme.typography.bodyMedium,
@@ -172,7 +172,7 @@ internal fun DownloadSettingsDialog(
                     .padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f).padding(end = SettingsRowTrailingGap)) {
                     Text(
                         text = stringResource(R.string.download_lrc_with_audio),
                         style = MaterialTheme.typography.bodyLarge,
