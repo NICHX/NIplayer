@@ -374,8 +374,9 @@ internal fun PortraitLayout(
     currentIndex: Int,
     neighborPrevCover: Any? = null,
     neighborNextCover: Any? = null,
-    canSwipePrevious: Boolean = false,
-    canSwipeNext: Boolean = false,
+    /** 预定的上/下一首下标；-1 表示没有（列表首尾、单曲循环）。 */
+    neighborPrevIndex: Int = -1,
+    neighborNextIndex: Int = -1,
     playMode: Int,
     modeIcon: androidx.compose.ui.graphics.vector.ImageVector,
     modeLabel: String,
@@ -453,6 +454,23 @@ internal fun PortraitLayout(
         needleLifted = true
         delay(MotionTokens.PAGE_ENTER.toLong())
         needleLifted = false
+    }
+
+    // 能否左右滑动切歌：由播放器预定的上/下一首下标决定（随机模式、首尾回绕同样正确）
+    val canSwipePrevious = neighborPrevIndex >= 0
+    val canSwipeNext = neighborNextIndex >= 0
+
+    /**
+     * 某一页（AnimatedContent 冻结在那一页的下标）该显示的封面。
+     *
+     * 必须按**页下标**取，而不是一律用实时 `coverPath`——滑出中的旧唱片要保持自己的封面，
+     * 否则换片途中它会提前变成新封面（一张唱片中途「换脸」）。
+     */
+    fun coverForPage(pageIndex: Int): Any? = when {
+        pageIndex == currentIndex -> coverPath
+        pageIndex >= 0 && pageIndex == neighborPrevIndex -> neighborPrevCover
+        pageIndex >= 0 && pageIndex == neighborNextIndex -> neighborNextCover
+        else -> coverPath
     }
 
     // 换片跟手：唱片随手指横向平移的实时位移（px）；[discSettleJob] 持松手后的归位动画。
@@ -1078,16 +1096,18 @@ internal fun PortraitLayout(
                                 modifier = Modifier.size(side),
                                 contentAlignment = Alignment.Center,
                                 label = "trackChange",
-                            ) {
+                            ) { pageIndex ->
+                                // 按页下标取封面：滑出中的旧唱片仍显示自己的封面（见 coverForPage）
+                                val pageCover = coverForPage(pageIndex)
                                 when (style) {
                                     AudioPlayerStyle.GLASS -> CoverCard(
-                                        coverData = coverPath,
+                                        coverData = pageCover,
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                     AudioPlayerStyle.APPLE_MUSIC,
                                     AudioPlayerStyle.VINYL,
                                     -> VinylRecordPlayer(
-                                        coverData = coverPath,
+                                        coverData = pageCover,
                                         isPlaying = isPlaying,
                                         modifier = Modifier.fillMaxSize(),
                                         // 投影由固定的 VinylPlatter 画（见上）；唱片自带影子会跟着滑走
