@@ -38,7 +38,9 @@ import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.nichx.niplayer.designsystem.components.LocalAppMessageController
+import com.nichx.niplayer.designsystem.components.NiBottomBarToneHost
 import com.nichx.niplayer.designsystem.components.niHasCustomBackground
+import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
 import com.nichx.niplayer.designsystem.theme.LocalNiWindowSizeClass
 import com.nichx.niplayer.designsystem.theme.MotionTokens
@@ -220,13 +222,17 @@ fun HomeScreen(
             ) { it },
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
-            HomeBottomNavBar(
-                selectedIndex = { pagerState.targetPage },
-                onSelect = onTabSelected,
-                backdrop = floatingBarBackdrop,
-                maxWidth = bottomBarMaxWidth,
-                bottomInset = 8.dp + bottomNavInset,
-            )
+            // 底栏明暗随背后内容自适应：Host 采样底栏上沿之上的背景带，把暗度标量下发到子树。
+            NiBottomBarToneHost(systemDark = NiExtraColors.current.isDark) { toneState ->
+                HomeBottomNavBar(
+                    selectedIndex = { pagerState.targetPage },
+                    onSelect = onTabSelected,
+                    backdrop = floatingBarBackdrop,
+                    maxWidth = bottomBarMaxWidth,
+                    bottomInset = 8.dp + bottomNavInset,
+                    toneState = toneState,
+                )
+            }
         }
     }
 }

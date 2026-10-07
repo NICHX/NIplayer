@@ -52,12 +52,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -65,18 +65,12 @@ import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.designsystem.components.LocalNiGlassOpacity
 import com.nichx.niplayer.designsystem.components.glassOnSurface
 import com.nichx.niplayer.designsystem.components.glassOnSurfaceMuted
+import com.nichx.niplayer.designsystem.components.niLiquidGlassPanel
 import com.nichx.niplayer.designsystem.iconstyle.NiAppIconStyle
 import com.nichx.niplayer.designsystem.iconstyle.NiStyleIcon
-import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.common.media.MediaFileTypes
 import com.nichx.niplayer.storage.StorageFile
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.Shadow
 
 
 /**
@@ -294,28 +288,22 @@ internal fun MultiSelectActionBar(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isInLightTheme = !NiExtraColors.current.isDark
-    // 与悬浮底栏一致的液态玻璃容器：vibrancy + blur + lens + 高光边 + 柔和阴影，
-    // 背景由 [backdrop] 捕获页面内容，实现真实背景模糊；不透明度由 LocalNiGlassOpacity 统一控制
+    // 与悬浮底栏／下拉菜单同源的液态玻璃材质：统一走 [niLiquidGlassPanel]
+    // （vibrancy + blur + lens + 高光 + 外投影 + 内阴影），不再各自内联一份画法。
+    // 折射/模糊口径与底部导航栏对齐（blur 2dp、lens 24dp），两个底部玻璃面观感一致。
     val containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = LocalNiGlassOpacity.current)
     // "更多"菜单锚点：取按钮右下角，从按钮下方展开（近屏底时自动上抬）
-    var moreAnchor by remember { mutableStateOf(Offset.Zero) }
+    var moreAnchor by remember { mutableStateOf(IntRect.Zero) }
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .drawBackdrop(
+            .niLiquidGlassPanel(
                 backdrop = backdrop,
-                shape = { RoundedCornerShape(28.dp) },
-                effects = {
-                    vibrancy()
-                    blur(8f.dp.toPx())
-                    lens(6f.dp.toPx(), 6f.dp.toPx())
-                },
-                highlight = { Highlight.Default.copy(alpha = 1f) },
-                shadow = {
-                    Shadow.Default.copy(color = Color.Black.copy(if (isInLightTheme) 0.1f else 0.2f))
-                },
-                onDrawSurface = { drawRect(containerColor) },
+                shape = RoundedCornerShape(28.dp),
+                surface = containerColor,
+                blurRadius = 2.dp,
+                refractionHeight = 24.dp,
+                refractionAmount = 24.dp,
             ),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -379,7 +367,7 @@ internal fun MultiSelectActionBar(
                         .weight(1f)
                         .onGloballyPositioned { coords ->
                             val topLeft = coords.localToRoot(Offset.Zero)
-                            moreAnchor = topLeft + Offset(coords.size.width.toFloat(), coords.size.height.toFloat())
+                            moreAnchor = IntRect(IntOffset(topLeft.x.toInt(), topLeft.y.toInt()), coords.size)
                         },
                 )
             }
@@ -388,7 +376,7 @@ internal fun MultiSelectActionBar(
         NiGlassDropdownMenu(
             expanded = moreMenuExpanded,
             onDismissRequest = { onMoreMenuOpenChange(false) },
-            anchor = IntOffset(moreAnchor.x.toInt(), moreAnchor.y.toInt()),
+            anchorBounds = moreAnchor,
         ) {
             val hasSelection = selectedCount > 0
             BatchActionMenuItem(

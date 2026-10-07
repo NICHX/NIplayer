@@ -15,6 +15,7 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
@@ -80,6 +81,15 @@ fun glassOnSurface(): Color =
 @ReadOnlyComposable
 fun glassOnSurfaceMuted(): Color =
     if (NiExtraColors.current.isDark) Color(0xFFD6D6D6) else Color(0xFF3C3C3C)
+
+/**
+ * 玻璃浮层上的高对比次要前景色，按暗度标量 [tone]（0 亮 / 1 暗）在亮 / 暗端点间插值。
+ *
+ * 供内容自适应底栏使用：底栏整体翻暗时未选中项随之下压，避免「玻璃暗了、文字还发灰」
+ * 的错位观感（一切深浅取值都必须由同一个 tone 推出）。
+ */
+fun glassOnSurfaceMuted(tone: Float): Color =
+    lerp(Color(0xFF3C3C3C), Color(0xFFD6D6D6), tone)
 
 /** 在根节点创建共享的 Haze 状态实例。 */
 @Composable
@@ -228,6 +238,10 @@ fun niGlassPanelSurfaceColor(): Color {
  * @param shape 面板形状（须为圆角矩形，lens 折射依赖圆角信息）
  * @param surface 面板半透明底色，写入 `onDrawSurface`
  * @param blurRadius 背景模糊半径
+ * @param applyVibrancy 是否叠加 vibrancy（提亮饱和度，玻璃更「活」；对齐 MeloX 面板口径）
+ * @param chromaticAberration 折射是否带色散（小面板如下拉菜单开启更像玻璃；大面板保持关闭）
+ * @param refractionHeight 折射带进深（默认面板量级；底部玻璃面可传导航栏口径 24dp）
+ * @param refractionAmount 折射位移量（默认面板量级；底部玻璃面可传导航栏口径 24dp）
  */
 @Composable
 fun Modifier.niLiquidGlassPanel(
@@ -235,18 +249,24 @@ fun Modifier.niLiquidGlassPanel(
     shape: Shape,
     surface: Color,
     blurRadius: Dp = NiGlassSheetBlurRadius,
+    applyVibrancy: Boolean = true,
+    chromaticAberration: Boolean = false,
+    refractionHeight: Dp = NiGlassDefaults.RefractionHeight,
+    refractionAmount: Dp = NiGlassDefaults.RefractionAmount,
 ): Modifier {
     val isDark = NiExtraColors.current.isDark
     return this.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
         effects = {
+            if (applyVibrancy) vibrancy()
             blur(blurRadius.toPx())
             // 模糊之后再折射：边缘按圆角形状弯折，`depthEffect` 让弯折带一点体块进深。
             lens(
-                refractionHeight = NiGlassDefaults.RefractionHeight.toPx(),
-                refractionAmount = NiGlassDefaults.RefractionAmount.toPx(),
+                refractionHeight = refractionHeight.toPx(),
+                refractionAmount = refractionAmount.toPx(),
                 depthEffect = true,
+                chromaticAberration = chromaticAberration,
             )
         },
         highlight = {

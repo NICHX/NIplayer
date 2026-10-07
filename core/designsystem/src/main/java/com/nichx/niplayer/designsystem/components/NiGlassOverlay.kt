@@ -3,15 +3,10 @@ package com.nichx.niplayer.designsystem.components
 import android.os.Build
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,12 +33,15 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.nichx.niplayer.designsystem.motion.NiAnimatedVisibility
@@ -122,7 +120,8 @@ enum class NiGlassOverlayKind {
  * @param id 稳定唯一标识（同 id 去重；dismiss 依据）
  * @param kind 浮层形态
  * @param title 可选标题
- * @param anchor 锚点屏幕坐标（[NiGlassOverlayKind.Dropdown] 用，菜单在锚点下方展开）
+ * @param anchorBounds 锚点按钮的根坐标矩形（[NiGlassOverlayKind.Dropdown] 用：菜单自其对应角
+ *   展开、收起，并按它的大小做「长出来」的几何 morph）
  * @param onDismiss 关闭回调（点击遮罩 / 返回键触发）
  * @param content 浮层内容；始终读取投递时捕获的最新状态
  */
@@ -130,7 +129,7 @@ data class NiGlassOverlayRequest(
     val id: String,
     val kind: NiGlassOverlayKind,
     val title: String? = null,
-    val anchor: IntOffset = IntOffset.Zero,
+    val anchorBounds: IntRect = IntRect.Zero,
     val onDismiss: () -> Unit,
     val content: @Composable () -> Unit,
 )
@@ -285,15 +284,18 @@ fun NiGlassOverlayHost(
 /** 浮层退场动画缓冲：等待的内部 exit 动画最长约 280ms，留出裕量后再销毁节点。 */
 private const val EXIT_ANIM_BUFFER_MS = 450L
 
-/** 下拉菜单收起的时长（进场走 [MotionTokens.springPanel]，缩放起止点见 [MotionTokens.SCALE_MENU_IN]）。 */
-private const val DROPDOWN_EXIT_MS = 120
-
 /**
- * 锚定玻璃下拉菜单（同窗口 overlay）。
+ * 锚定玻璃下拉菜单（同窗口 overlay）——**重写版**。
  *
- * 菜单从 [NiGlassOverlayRequest.anchor] 锚点下方展开，用 [androidx.compose.ui.layout.onGloballyPositioned]
- * 读取实际布局位置并校正，保证菜单始终落在屏幕内（不超出右/下边缘）。
- * Column + IntrinsicSize.Max 让菜单项垂直排列、宽度贴合最宽项。
+ * 与旧实现的区别（旧版用 AnimatedVisibility + MutableTransitionState，动画反复出问题）：
+ * - **单一 [Animatable] progress 驱动**：进场走 [MotionTokens.springMenu]（欠阻尼 ζ=0.82，
+ *   产生「自按钮长出来」的过冲），退场走 [MotionTokens.springMenuExit]（快速收敛）。
+ *   规避了「节点首次组合即 visible ⇒ 过渡被直接置为已完成、整段动画被跳过」的旧疾；
+ * - **几何 morph**：按锚点矩形与实测菜单尺寸做 x/y 非等比缩放，菜单自锚点所在的**那个角**
+ *   长出来（按锚点水平位置自动取 top-start / top-end）；progress 可过冲到 1.06 产生可见回弹；
+ * - **不再需要「测量前先不画」的遮罩**：progress 起步为 0 ⇒ 首帧 alpha=0，实测后的第一帧
+ *   定位修正天然不可见（旧版那面 `positioned` 遮掩因此删除）；
+ * - 方向：锚点偏屏幕右半则贴右、否则贴左；下方放不下且上方有空间时改为向上弹。
  */
 @Composable
 private fun DropdownGlassOverlay(
@@ -306,12 +308,57 @@ private fun DropdownGlassOverlay(
     anchorGapPx: Int,
 ) {
     val screenSize = LocalWindowInfo.current.containerSize
-    var position by remember(request.anchor) {
-        mutableStateOf(IntOffset(request.anchor.x, request.anchor.y + anchorGapPx))
+    val bounds = request.anchorBounds
+    // 单一动画驱动：active 变化即开始，不受节点创建时机影响
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(active) {
+        if (active) {
+            progress.animateTo(1f, MotionTokens.springMenu)
+        } else {
+            progress.animateTo(0f, MotionTokens.springMenuExit)
+        }
     }
-    // 首帧还没测出菜单尺寸，位置可能先落在锚点下方、下一帧才被夹回屏内并翻转为向上展开，
-    // 这一跳就是「展开时闪一下」。测量到位前先不画卡片。
-    var positioned by remember(request.anchor) { mutableStateOf(false) }
+    // 实测菜单尺寸（内容变化时重新测量；用于定位与几何 morph）
+    var menuSize by remember { mutableStateOf(IntSize.Zero) }
+    // 锚点偏屏幕右半 ⇒ 贴右（原点取右上/右下角），否则贴左
+    val alignEnd = bounds.left + bounds.width / 2 > screenSize.width / 2
+    // 目标位置：仅在锚点 / 尺寸变化时重算
+    val position = remember(bounds, menuSize, screenSize, alignEnd, anchorGapPx) {
+        if (menuSize == IntSize.Zero) {
+            IntOffset(bounds.left, bounds.bottom + anchorGapPx)
+        } else {
+            val roomBelow = bounds.bottom + anchorGapPx + menuSize.height
+            val yAbove = bounds.top - anchorGapPx - menuSize.height
+            val openAbove = roomBelow > screenSize.height && yAbove > 0
+            val x = if (alignEnd) bounds.right - menuSize.width else bounds.left
+            val y = if (openAbove) yAbove else bounds.bottom + anchorGapPx
+            IntOffset(
+                x.coerceIn(0, (screenSize.width - menuSize.width).coerceAtLeast(0)),
+                y.coerceIn(0, (screenSize.height - menuSize.height).coerceAtLeast(0)),
+            )
+        }
+    }
+    val openAbove = menuSize != IntSize.Zero && position.y < bounds.top
+    val origin = TransformOrigin(
+        pivotFractionX = if (alignEnd) 1f else 0f,
+        pivotFractionY = if (openAbove) 1f else 0f,
+    )
+    // 过冲几何（1.06 为多出的一点回弹）；视觉量（alpha / 模糊）只取 0..1
+    val geometry = progress.value.coerceIn(-0.04f, 1.06f)
+    val visual = progress.value.coerceIn(0f, 1f)
+    // 收起态 = 锚点按钮的相对大小（限制 0.25..1，避免按钮远小于菜单时缩放过头）
+    val collapsedX = if (menuSize.width > 0) {
+        (bounds.width.toFloat() / menuSize.width).coerceIn(0.25f, 1f)
+    } else {
+        0.86f
+    }
+    val collapsedY = if (menuSize.height > 0) {
+        (bounds.height.toFloat() / menuSize.height).coerceIn(0.25f, 1f)
+    } else {
+        0.86f
+    }
+    // 模糊随展开渐进（收起时更「清」，展开后到位），与 MeloX 下拉的 blur-in 同源
+    val glassBlur = 6f + (NiGlassSheetBlurRadius.value - 6f) * visual
     // 全屏透明点击层：点击外部关闭
     Box(
         modifier = Modifier
@@ -322,75 +369,39 @@ private fun DropdownGlassOverlay(
                 onClick = request.onDismiss,
             ),
     ) {
-        // 展开/收起动画。
-        //
-        // 这里必须用 visibleState 而不是 visible：浮层的节点是「请求到达时才被创建」的，
-        // 而 AnimatedVisibility 在首次组合时如果 visible 已经是 true，会把过渡直接置为
-        // 已完成——一帧动画都不走。这正是之前菜单「完全没有动画」的原因。用
-        // MutableTransitionState 从 false 起步，「出现」就成了一次真正的状态迁移。
-        val visibleState = remember { MutableTransitionState(false) }
-        visibleState.targetState = active
-        AnimatedVisibility(
-            visibleState = visibleState,
-            // 从锚点那一角（右上）弹性长出来 + 淡入 + 轻微下落，像从按钮下掉出来、带一下回弹
-            enter = fadeIn(animationSpec = MotionTokens.springPanel) +
-                scaleIn(
-                    animationSpec = MotionTokens.springPanel,
-                    initialScale = MotionTokens.SCALE_MENU_IN,
-                    transformOrigin = MotionTokens.OriginTopEnd,
-                ) +
-                slideInVertically(
-                    animationSpec = MotionTokens.panelSpring<IntOffset>(IntOffset(1, 1)),
-                    initialOffsetY = { -it / 6 },
-                ),
-            exit = fadeOut(tween(DROPDOWN_EXIT_MS, easing = FastOutSlowInEasing)) +
-                scaleOut(
-                    animationSpec = tween(DROPDOWN_EXIT_MS, easing = FastOutSlowInEasing),
-                    targetScale = MotionTokens.SCALE_MENU_OUT,
-                    transformOrigin = MotionTokens.OriginTopEnd,
-                ),
+        // 玻璃菜单卡片：Column + IntrinsicSize.Max 让菜单项垂直排列、宽度贴合最宽项
+        Column(
+            modifier = Modifier
+                .offset { position }
+                .onGloballyPositioned { coords ->
+                    val measured = IntSize(coords.size.width, coords.size.height)
+                    if (measured != menuSize) menuSize = measured
+                }
+                .graphicsLayer {
+                    transformOrigin = origin
+                    scaleX = androidx.compose.ui.util.lerp(collapsedX, 1f, geometry)
+                    scaleY = androidx.compose.ui.util.lerp(collapsedY, 1f, geometry)
+                    alpha = visual
+                }
+                .width(IntrinsicSize.Max)
+                .then(
+                    if (glassEnabled) {
+                        Modifier.niLiquidGlassPanel(
+                            backdrop = backdrop!!,
+                            shape = dropdownShape,
+                            surface = panelSurface,
+                            blurRadius = glassBlur.dp,
+                            // 下拉菜单是小面板：开色散折射更像「一块玻璃」，对齐 MeloX 下拉口径
+                            chromaticAberration = true,
+                        )
+                    } else {
+                        Modifier.background(panelSurface, dropdownShape)
+                    },
+                )
+                .border(NiGlassHairWidth, niGlassBorderColor(), dropdownShape)
+                .padding(vertical = 4.dp),
         ) {
-            // 玻璃菜单卡片
-            Column(
-                modifier = Modifier
-                    .offset { position }
-                    .graphicsLayer { alpha = if (positioned) 1f else 0f }
-                    .onGloballyPositioned { coords ->
-                        val menuW = coords.size.width
-                        val menuH = coords.size.height
-                        val maxX = screenSize.width - menuW
-                        val maxY = screenSize.height - menuH
-                        // 水平贴合锚点并限制在屏内
-                        val x = request.anchor.x.coerceIn(0, maxOf(0, maxX))
-                        // 默认从锚点下方展开
-                        var y = request.anchor.y + anchorGapPx
-                        // 紧贴屏幕底部（下方放不下）时改为向上展开，
-                        // 避免菜单被压制到屏幕底、叠压底部操作栏之上
-                        if (y + menuH > screenSize.height) {
-                            y = request.anchor.y - menuH - anchorGapPx
-                        }
-                        val corrected = IntOffset(x, y.coerceIn(0, maxOf(0, maxY)))
-                        if (corrected != position) position = corrected
-                        positioned = true
-                    }
-                    .width(IntrinsicSize.Max)
-                    .then(
-                        if (glassEnabled) {
-                            Modifier.niLiquidGlassPanel(
-                                backdrop = backdrop!!,
-                                shape = dropdownShape,
-                                surface = panelSurface,
-                                blurRadius = NiGlassSheetBlurRadius,
-                            )
-                        } else {
-                            Modifier.background(panelSurface, dropdownShape)
-                        },
-                    )
-                    .border(NiGlassHairWidth, niGlassBorderColor(), dropdownShape)
-                    .padding(vertical = 4.dp),
-            ) {
-                request.content()
-            }
+            request.content()
         }
     }
 }

@@ -16,60 +16,63 @@ import androidx.navigation.compose.rememberNavController
 import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
 import com.nichx.niplayer.designsystem.theme.MotionTokens
 
-// 页面转场时长走令牌（PAGE_ENTER / PAGE_EXIT）。
-private const val PAGE_TRANSITION_MS = MotionTokens.PAGE_ENTER
-private const val PAGE_EXIT_MS = MotionTokens.PAGE_EXIT
+/**
+ * 页面转场（push / pop）——**无重叠版**。
+ *
+ * 约束来自界面本身：本应用大量使用**半透明**表面（液态玻璃、自定义背景图透出等），
+ * 只要过渡中途两页**同时出现在屏幕上且相互叠加**，透过上层就能看到下层 ⇒ 发花、发糊。
+ * 因此这里**不允许任何形式的页面重叠**：
+ *
+ * - **同速同向「传送带」滑移**：新页自右侧整屏滑入、旧页同时**整屏**滑出到左侧，两页位移量
+ *   与缓动完全一致。设屏宽 W、进度 p：旧页占 [−Wp, W−Wp]、新页占 [W−Wp, 2W−Wp]，屏幕
+ *   [0, W] 恰好由「旧页右半 + 新页左半」首尾相接铺满 —— **既不重叠、也不露背景**；
+ * - **无淡入淡出**：任一页的整页 alpha 过渡都会让它在半透明界面里与背后内容混色（这正是
+ *   旧版「重影」的来源），故页面级一律不做 fade；
+ * - **无缩放**：缩放会破坏上面那条「首尾相接」的几何（缩小的一侧会与相邻页之间裂开缝），
+ *   所以退场页也不缩。
+ *
+ * 方向语义与导航一致：前进 = 整条内容带向左移动（新页自右入），返回 = 整条向右移动。
+ *
+ * 视频播放器已迁移为独立 Activity（PlayerActivity），其退出转场（黑色亮度蒙层）交由该
+ * Activity 的窗口过渡处理。导航内仅剩音频播放器（AUDIO_PLAYER），它与黑底播放器的**亮度
+ * 连续性**是特例，仍单独走纯 fade，不套上面这套位移。
+ */
 
-// 进入页整体自侧边滑入（**全宽**位移，`it`）；退出页只让出 1/4 宽（`it / 4`）做视差。
-// 这是 iOS push 手感的关键：新旧页位移量不等（全宽 : 1/4），层次立刻拉开；
-// 之前两页都只位移 1/4、量相等，看起来就是「平平地平移」。
-private const val PARALLAX_FRACTION = 4
-
-// 视频播放器已迁移为独立 Activity（PlayerActivity），其退出转场（黑色亮度蒙层）已交由
-// 该 Activity 的窗口过渡处理。导航内仅剩音频播放器（AUDIO_PLAYER），仍走纯 fade 过渡。
+// 纯 fade 的播放器衔接（亮度连续性，非运动），沿用旧口径。
 private const val FromPlayerTransitionMs = MotionTokens.SCENE
-// 返回页(首页)淡入起点：从很暗透明度起步，配合播放器黑底淡出形成连续的亮度渐变；
-// 若取 0 会在播放器淡出末期先暴露白色 window 底
 private const val ReturnFadeInInitialAlpha = 0.25f
 
-// 播放器退出单独用纯 fade 过渡：SurfaceView 是独立 layer 不随 Compose 淡出，
-// slide 的位移会让控件层与视频画面不同步；去掉位移仅 fade，避免放大退出时的不同步观感。
-// 仅影响播放器路由，其余页面保持 fade+slide
-private fun fromPlayer(entry: NavBackStackEntry?): Boolean {
-    return isPlayerRoute(entry?.destination?.route)
-}
+private fun isPlayerRoute(route: String?): Boolean = route == Routes.Player.AUDIO_PLAYER
 
-private fun isPlayerRoute(route: String?): Boolean {
-    return route == Routes.Player.AUDIO_PLAYER
-}
+private fun fromPlayer(entry: NavBackStackEntry?): Boolean = isPlayerRoute(entry?.destination?.route)
 
-/** 前进进场：新页自右侧**整屏**滑入并淡入。 */
+/** 前进进场：新页自右侧**整屏**滑入。 */
 private fun forwardEnter(): EnterTransition =
     slideInHorizontally(
-        animationSpec = tween(PAGE_TRANSITION_MS, easing = MotionTokens.easeStandard),
+        animationSpec = tween(MotionTokens.PAGE_ENTER, easing = MotionTokens.easeStandard),
         initialOffsetX = { it },
-    ) + fadeIn(tween(PAGE_TRANSITION_MS, easing = MotionTokens.easeStandard))
+    )
 
-/** 前进退场：旧页淡出并只向左让出 1/4 宽（视差，不滑出屏幕）。 */
+/** 前进退场：旧页**整屏**滑出到左侧（与新页同速同向，首尾相接、不重叠）。 */
 private fun forwardExit(): ExitTransition =
     slideOutHorizontally(
-        animationSpec = tween(PAGE_EXIT_MS, easing = MotionTokens.easeExit),
-        targetOffsetX = { -it / PARALLAX_FRACTION },
-    ) + fadeOut(tween(PAGE_EXIT_MS, easing = MotionTokens.easeExit))
+        animationSpec = tween(MotionTokens.PAGE_ENTER, easing = MotionTokens.easeStandard),
+        targetOffsetX = { -it },
+    )
 
-/** 返回进场：上一页自左侧 1/4 宽处滑回并淡入（与前进视差镜像）。 */
+/** 返回进场：上一页自左侧**整屏**滑回。 */
 private fun backwardEnter(): EnterTransition =
     slideInHorizontally(
-        animationSpec = tween(PAGE_TRANSITION_MS, easing = MotionTokens.easeStandard),
-        initialOffsetX = { -it / PARALLAX_FRACTION },
-    ) + fadeIn(tween(PAGE_TRANSITION_MS, easing = MotionTokens.easeStandard))
+        animationSpec = tween(MotionTokens.PAGE_ENTER, easing = MotionTokens.easeStandard),
+        initialOffsetX = { -it },
+    )
 
-/** 返回退场：当前页淡出并整屏向右滑出。 */
+/** 返回退场：当前页**整屏**滑出到右侧（与上一页同速同向，首尾相接、不重叠）。 */
 private fun backwardExit(): ExitTransition =
     slideOutHorizontally(
-        animationSpec = tween(PAGE_EXIT_MS, easing = MotionTokens.easeExit),
+        animationSpec = tween(MotionTokens.PAGE_ENTER, easing = MotionTokens.easeStandard),
         targetOffsetX = { it },
-    ) + fadeOut(tween(PAGE_EXIT_MS, easing = MotionTokens.easeExit))
+    )
 
 /** 从播放器返回/退出：纯 fade，`initialAlpha` 从很暗起步，与播放器黑底衔接。 */
 private fun fromPlayerEnter(): EnterTransition =

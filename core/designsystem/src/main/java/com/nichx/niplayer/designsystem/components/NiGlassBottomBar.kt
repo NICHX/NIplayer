@@ -16,14 +16,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -36,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -61,7 +60,8 @@ import com.kyant.backdrop.shadow.Shadow
 import com.kyant.capsule.ContinuousCapsule
 import com.nichx.niplayer.designsystem.glass.DampedDragAnimation
 import com.nichx.niplayer.designsystem.glass.InteractiveHighlight
-import com.nichx.niplayer.designsystem.theme.NiExtraColors
+import com.nichx.niplayer.designsystem.theme.LocalNiScheme
+import com.nichx.niplayer.designsystem.theme.NiSchemes
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -75,11 +75,40 @@ data class NiBottomBarTab(
     val unselectedIcon: ImageVector,
 )
 
-/** 玻璃底栏的模糊/折射参数。 */
+/**
+ * 玻璃底栏的模糊/折射参数。取值对齐 MeloX-Android：面板 blur 收紧到 2dp（去「奶油感」）、
+ * lens 提到 24dp（折射更明显）。
+ *
+ * ⚠ 面板与捕获层的 blur **必须同值**：二者一旦不等，「指示器 / 折射混乱」就会重现 ——
+ * 成因是锐利的页面内容穿进 lens，被放大链撕成碎片。
+ */
 private object NiGlassBarDefaults {
-    const val BlurRadius = 8f
-    const val LensRadius = 6f
+    const val BlurRadius = 2f
+    const val LensRadius = 24f
 }
+
+/**
+ * 水珠**静息态**的轮廓光 / 投影下限（对齐 MeloX v0.10.7）。
+ *
+ * 官方实现里水珠的 highlight / shadow / innerShadow **一律 × pressProgress** ⇒ 静息 p=0 时
+ * 三项全为 0：边界只剩「取样图与胶囊的明暗差」，真机读成「胶囊上挖了个洞」而不是
+ * 「胶囊里浮着一颗玻璃珠」。这里给静息一个下限，再按 p 插回按压态（p=1 时与官方逐字一致）。
+ */
+private const val DropletRestRimLight = 0.48f
+private const val DropletRestRimDark = 0.32f
+private const val DropletRestShadow = 0.50f
+private const val DropletRestInnerShadow = 0.60f
+
+/**
+ * 水珠 lens 的等比换算系数 = 本水珠高 ÷ kyant0 官方基准水珠高（56dp）。
+ *
+ * 本水珠可见胶囊高 48dp ⇒ 48/56 ≈ 0.857。`refractionHeight` 是「从水珠轮廓向内取样的
+ * 深度」，水珠越小、同一条边界在相对尺度上越靠外，照搬 56dp 的绝对值会让折射带相对过深。
+ */
+private const val DropletLensScale = 48f / 56f
+
+/** 折射可见阈值：低于此值整段跳过 lens（其输出与 shader 的「提前返回」逐像素等价）。 */
+private const val LensVisibleThreshold = 0.001f
 
 /** 提供给各 Tab 项的缩放因子（按压缩放由 DampedDragAnimation.pressProgress 驱动）。 */
 val LocalNiGlassBarTabScale = staticCompositionLocalOf { { 1f } }
@@ -139,15 +168,25 @@ fun NiGlassBottomBar(
     backdrop: Backdrop,
     tabsCount: Int,
     isBlurEnabled: Boolean = true,
+    toneState: NiBottomBarToneState? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val isInLightTheme = !NiExtraColors.current.isDark
+    // 暗度标量：由 NiBottomBarToneHost 按背后内容下发；未 Provide 时退化为主题二值。
+    val tone = niBottomBarTone()
+    // 底色：在「亮式 surfaceContainer」与「暗式 surfaceContainer」之间按 tone 插值，
+    // 使底栏能在明暗样式之间平滑翻转（而非跟随主题硬切）。
+    val scheme = LocalNiScheme.current
+    val lightContainer = remember(scheme) { NiSchemes.buildLight(scheme).surfaceContainer }
+    val darkContainer = remember(scheme) { NiSchemes.buildDark(scheme).surfaceContainer }
+    val baseContainer = lerp(lightContainer, darkContainer, tone)
     // 底色不透明度由 LocalNiGlassOpacity（根布局按 GlassSettings 下发）统一控制
     val containerColor = if (isBlurEnabled) {
-        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = LocalNiGlassOpacity.current)
+        baseContainer.copy(alpha = LocalNiGlassOpacity.current)
     } else {
-        MaterialTheme.colorScheme.surfaceContainer
+        baseContainer
     }
+    // 面板静息轮廓光（对齐 MeloX：亮 0.48 / 暗 0.32）
+    val restRim = lerp(DropletRestRimLight, DropletRestRimDark, tone)
     val tabsBackdrop = rememberLayerBackdrop()
     val density = LocalDensity.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
@@ -251,8 +290,14 @@ fun NiGlassBottomBar(
         } else {
             null
         }
+    // 向 tone 采样器汇报自身窗口矩形（采样带取其上沿之上），供内容自适应明暗。
+    val boundsReporter = if (toneState != null) {
+        Modifier.onGloballyPositioned { toneState.updateBounds(it) }
+    } else {
+        Modifier
+    }
     Box(
-        modifier = modifier,
+        modifier = modifier.then(boundsReporter),
         contentAlignment = Alignment.CenterStart,
     ) {
         // 1) 玻璃底座：整根胶囊模糊页面背景
@@ -279,11 +324,36 @@ fun NiGlassBottomBar(
                         }
                     },
                     highlight = {
-                        Highlight.Default.copy(alpha = if (isBlurEnabled) 1f else 0f)
+                        // 轮廓光随 tone 插值 + 按压增强（对齐 MeloX 面板口径）
+                        Highlight.Default.copy(
+                            alpha = if (isBlurEnabled) {
+                                (restRim + 0.30f * dampedDragAnimation.pressProgress)
+                                    .coerceIn(0f, 1f)
+                            } else {
+                                0f
+                            },
+                        )
                     },
                     shadow = {
-                        Shadow.Default.copy(
-                            color = Color.Black.copy(if (isInLightTheme) 0.1f else 0.2f),
+                        Shadow(
+                            radius = 24.dp,
+                            color = Color.Black.copy(alpha = 0.12f),
+                            alpha = if (isBlurEnabled) {
+                                0.08f + 0.22f * dampedDragAnimation.pressProgress
+                            } else {
+                                0f
+                            },
+                        )
+                    },
+                    innerShadow = {
+                        InnerShadow(
+                            radius = 4.dp + 8.dp * dampedDragAnimation.pressProgress,
+                            color = Color.Black.copy(alpha = 0.12f),
+                            alpha = if (isBlurEnabled) {
+                                0.10f + 0.30f * dampedDragAnimation.pressProgress
+                            } else {
+                                0f
+                            },
                         )
                     },
                     layerBlock = {
@@ -333,10 +403,14 @@ fun NiGlassBottomBar(
                                 val progress = dampedDragAnimation.pressProgress
                                 vibrancy()
                                 blur(NiGlassBarDefaults.BlurRadius.dp.toPx())
-                                lens(
-                                    NiGlassBarDefaults.LensRadius.dp.toPx() * progress,
-                                    NiGlassBarDefaults.LensRadius.dp.toPx() * progress,
-                                )
+                                // 静息（p≈0）整段跳过 lens：其输出与 shader 的「提前返回」逐像素等价，
+                                // 同时避免极小 refractionHeight 在抗锯齿边缘触发除零 / NaN 采样。
+                                if (progress > LensVisibleThreshold) {
+                                    lens(
+                                        NiGlassBarDefaults.LensRadius.dp.toPx() * progress,
+                                        NiGlassBarDefaults.LensRadius.dp.toPx() * progress,
+                                    )
+                                }
                             }
                         },
                         highlight = {
@@ -393,25 +467,45 @@ fun NiGlassBottomBar(
                         effects = {
                             if (isBlurEnabled) {
                                 val progress = dampedDragAnimation.pressProgress
-                                lens(10f.dp.toPx() * progress, 14f.dp.toPx() * progress, true)
+                                // 静息整段跳过 lens（同捕获层）；比例按水珠高等比换算，
+                                // 且只在按压可见时开折射（chromatic 的 uniform 更多，除零波及更大）。
+                                if (progress > LensVisibleThreshold) {
+                                    lens(
+                                        10f.dp.toPx() * progress * DropletLensScale,
+                                        14f.dp.toPx() * progress * DropletLensScale,
+                                        true,
+                                    )
+                                }
                             }
                         },
                         highlight = {
+                            // 静息轮廓光下限 → 按压插回官方值（p=1 时与官方逐字一致）
                             Highlight.Default.copy(
                                 alpha = if (isBlurEnabled) {
-                                    dampedDragAnimation.pressProgress
+                                    lerp(restRim, 1f, dampedDragAnimation.pressProgress)
                                 } else {
                                     0f
                                 },
                             )
                         },
                         shadow = {
-                            Shadow(alpha = if (isBlurEnabled) dampedDragAnimation.pressProgress else 0f)
+                            // 静息外投影下限：避免静息时读成「胶囊上挖了个洞」
+                            Shadow(
+                                alpha = if (isBlurEnabled) {
+                                    lerp(DropletRestShadow, 1f, dampedDragAnimation.pressProgress)
+                                } else {
+                                    0f
+                                },
+                            )
                         },
                         innerShadow = {
                             InnerShadow(
-                                radius = 8f.dp * dampedDragAnimation.pressProgress,
-                                alpha = if (isBlurEnabled) dampedDragAnimation.pressProgress else 0f,
+                                radius = 4.dp + 4.dp * dampedDragAnimation.pressProgress,
+                                alpha = if (isBlurEnabled) {
+                                    lerp(DropletRestInnerShadow, 1f, dampedDragAnimation.pressProgress)
+                                } else {
+                                    0f
+                                },
                             )
                         },
                         layerBlock = {
@@ -424,15 +518,16 @@ fun NiGlassBottomBar(
                             }
                         },
                         onDrawSurface = {
-                            // 与参考项目一致：柔和平铺底色，按压时显现折射/高光/内阴影，产生“液态”感
+                            // 与参考项目一致：柔和平铺底色，按压时显现折射/高光/内阴影，产生“液态”感。
+                            // 平铺底色随 tone 在「黑纱(亮式) → 白纱(暗式)」之间插值。
                             val progress =
                                 if (isBlurEnabled) dampedDragAnimation.pressProgress else 0f
                             drawRect(
-                                color = if (isInLightTheme) {
-                                    Color.Black.copy(0.1f)
-                                } else {
-                                    Color.White.copy(0.1f)
-                                },
+                                color = lerp(
+                                    Color.Black.copy(0.1f),
+                                    Color.White.copy(0.1f),
+                                    tone,
+                                ),
                                 alpha = 1f - progress,
                             )
                             drawRect(Color.Black.copy(alpha = 0.03f * progress))

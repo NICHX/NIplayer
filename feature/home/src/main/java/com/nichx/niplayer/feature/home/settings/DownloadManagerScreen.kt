@@ -6,22 +6,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,95 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
-import com.nichx.niplayer.designsystem.components.NiScaffold
-import com.nichx.niplayer.designsystem.components.NiTopBar
-import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
-import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
-import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import com.nichx.niplayer.storage.StorageAccess
 import com.nichx.niplayer.designsystem.components.FolderPickerDialog
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-@SuppressLint("LocalContextGetResourceValueCall")
-fun DownloadManagerScreen(
-    onBack: () -> Unit = {},
-    onPlayVideo: (Boolean) -> Unit = {},
-    onNavigateToImageViewer: () -> Unit = {},
-    viewModel: DownloadManagerViewModel = hiltViewModel(),
-) {
-    var showOverflowMenu by remember { mutableStateOf(false) }
-
-    NiScaffold(
-        topBar = {
-            NiTopBar(
-                title = stringResource(R.string.download_manager_title),
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back),
-                        )
-                    }
-                },
-                actions = {
-                    Box {
-                        IconButton(onClick = { showOverflowMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = stringResource(R.string.download_manager_more),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = showOverflowMenu,
-                            onDismissRequest = { showOverflowMenu = false },
-                            shape = RoundedCornerShape(16.dp),
-                            containerColor = niFrostSurfaceColor(),
-                            border = BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
-                            shadowElevation = 6.dp,
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.download_manager_clear_completed)) },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    viewModel.removeCompleted()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.download_manager_retry_failed)) },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    viewModel.retryAllFailed()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.download_manager_clear_failed)) },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    viewModel.clearFailed()
-                                },
-                            )
-                        }
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        DownloadManagerTab(
-            viewModel = viewModel,
-            onPlayVideo = onPlayVideo,
-            onNavigateToImageViewer = onNavigateToImageViewer,
-            topPadding = padding.calculateTopPadding(),
-        )
-    }
-}
-
 /**
- * 下载任务列表内容（无独立 Scaffold/顶栏），供独立下载管理页与统一的「传输管理」中心页复用。
+ * 下载任务列表内容（无独立 Scaffold/顶栏），供统一的「传输管理」中心页复用。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

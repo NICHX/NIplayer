@@ -34,7 +34,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.SdCard
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -56,22 +55,24 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
+import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
 import com.nichx.niplayer.designsystem.components.NiGlassHairWidth
 import com.nichx.niplayer.designsystem.components.NiGlassOverlay
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayKind
 import com.nichx.niplayer.designsystem.components.NiGlassOverlayRequest
 import com.nichx.niplayer.designsystem.components.glassOnSurface
 import com.nichx.niplayer.designsystem.components.glassOnSurfaceMuted
-import com.nichx.niplayer.designsystem.components.niFrostSurfaceColor
-import com.nichx.niplayer.designsystem.components.niGlassBorderColor
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.NiSpacings
 
@@ -95,6 +96,8 @@ internal fun LibrarySourceCard(
         derivedStateOf { library.mediaType != MediaType.LOCAL_STORAGE }
     }
     var showMenu by remember { mutableStateOf(false) }
+    // 长按菜单锚点：本卡片根坐标矩形（供玻璃菜单定位 + 自该角长出来）
+    var menuAnchor by remember { mutableStateOf(IntRect.Zero) }
 
     val brandColor = typeInfo.color
     val colorAlpha10 = remember(brandColor) { brandColor.copy(alpha = 0.1f) }
@@ -102,7 +105,12 @@ internal fun LibrarySourceCard(
     // 统一面板下：行间分割线复用设置页样式（outlineVariant@50%、左侧内缩 56dp）
     val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
 
-    Box {
+    Box(
+        modifier = Modifier.onGloballyPositioned { coords ->
+            val topLeft = coords.localToRoot(Offset.Zero)
+            menuAnchor = IntRect(IntOffset(topLeft.x.toInt(), topLeft.y.toInt()), coords.size)
+        },
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -206,67 +214,65 @@ internal fun LibrarySourceCard(
                 onDismiss = { showMenu = false },
                 onEdit = { showMenu = false; onEdit() },
                 onDelete = { showMenu = false; onDelete() },
+                anchorBounds = menuAnchor,
             )
         }
     }
 }
 
-/** 存储源卡片的长按编辑/删除菜单（列表卡片与网格卡片共用）。 */
+/** 存储源卡片的长按编辑/删除菜单（列表卡片与网格卡片共用，统一走同窗口玻璃菜单）。 */
 @Composable
 internal fun LibrarySourceDropdownMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    anchorBounds: IntRect = IntRect.Zero,
 ) {
-    Box {
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = onDismiss,
-            shape = menuShape,
-            containerColor = niFrostSurfaceColor(),
-            border = androidx.compose.foundation.BorderStroke(NiGlassHairWidth, niGlassBorderColor()),
-        ) {
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        stringResource(R.string.edit),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                },
-                onClick = onEdit,
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.Edit,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-            )
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 12.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-            )
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        stringResource(R.string.delete),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                },
-                onClick = onDelete,
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.Delete,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-            )
-        }
+    NiGlassDropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        anchorBounds = anchorBounds,
+    ) {
+        DropdownMenuItem(
+            text = {
+                Text(
+                    stringResource(R.string.edit),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            onClick = onEdit,
+            leadingIcon = {
+                Icon(
+                    Icons.Filled.Edit,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        )
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+        )
+        DropdownMenuItem(
+            text = {
+                Text(
+                    stringResource(R.string.delete),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            onClick = onDelete,
+            leadingIcon = {
+                Icon(
+                    Icons.Filled.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        )
     }
 }
 
@@ -331,13 +337,20 @@ internal fun LibrarySourceGridCard(
         derivedStateOf { library.mediaType != MediaType.LOCAL_STORAGE }
     }
     var showMenu by remember { mutableStateOf(false) }
+    // 长按菜单锚点：本卡片根坐标矩形（供玻璃菜单定位 + 自该角长出来）
+    var menuAnchor by remember { mutableStateOf(IntRect.Zero) }
 
     val brandColor = typeInfo.color
     val colorAlpha10 = remember(brandColor) { brandColor.copy(alpha = 0.1f) }
     // 网格卡片边界：surfaceLevel2 与页面背景接近，需 1dp 描边使其边界清晰
     val cardBorder = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
 
-    Box {
+    Box(
+        modifier = Modifier.onGloballyPositioned { coords ->
+            val topLeft = coords.localToRoot(Offset.Zero)
+            menuAnchor = IntRect(IntOffset(topLeft.x.toInt(), topLeft.y.toInt()), coords.size)
+        },
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -414,6 +427,7 @@ internal fun LibrarySourceGridCard(
                 onDismiss = { showMenu = false },
                 onEdit = { showMenu = false; onEdit() },
                 onDelete = { showMenu = false; onDelete() },
+                anchorBounds = menuAnchor,
             )
         }
     }

@@ -26,14 +26,15 @@ object MotionTokens {
     const val SCENE = 750
 
     /**
-     * 页面 push / pop 转场时长（ms）。
+     * 页面 push / pop 转场时长（ms）——**进出同长**，进入与退场共用本值。
      *
-     * 进入页整体自侧边滑入（全宽位移），退出页只让出 1/4 宽做视差——Apple/iOS 的
-     * push 手感来源。转场走 tween（[easeStandard]）而非 spring：整页位移一旦过冲会越过
-     * 屏幕边缘再弹回，观感是「撞了一下」而不是「灵动」，所以弹性只留给小尺度浮层。
+     * 页面转场采用「同速同向传送带」滑移：新页整屏滑入、旧页同时整屏滑出，两页位移量与
+     * 缓动完全一致，全程首尾相接铺满屏幕 —— **不重叠、不露背景**（界面多为半透明，
+     * 一旦两页同屏叠加就会透出下层而发花）。故进出必须同长同曲线。转场走 tween
+     * （[easeStandard]）而非 spring：整页位移一旦过冲会越过屏幕边缘再弹回，观感是
+     * 「撞了一下」而不是「灵动」。几何细节见 [com.nichx.niplayer.navigation.NiNavHost]。
      */
     const val PAGE_ENTER = 280
-    const val PAGE_EXIT = 220
 
     val easeStandard: Easing = FastOutSlowInEasing
     val easeEnter: Easing = CubicBezierEasing(0.05f, 0.70f, 0.10f, 1.00f)
@@ -66,6 +67,25 @@ object MotionTokens {
 
     val springPanel: SpringSpec<Float> = panelSpring()
     val springPanelExit: SpringSpec<Float> = panelExitSpring()
+
+    /**
+     * 锚定下拉菜单的进场弹簧：**欠阻尼**（ζ=0.82）以产生「自按钮长出来」的可见过冲。
+     *
+     * 下拉菜单是小尺度浮层，过冲正是它的灵动来源；刚度取 600——过冲窗口短、读作一次回弹
+     * 而非来回弹的卡通感。（与 [springPanel] 的分工：面板求稳、菜单求活。）
+     */
+    val springMenu: SpringSpec<Float> = spring(
+        dampingRatio = 0.82f,
+        stiffness = 600f,
+        visibilityThreshold = 0.001f,
+    )
+
+    /** 下拉菜单退场弹簧：更高阻尼 + 更高刚度，快速收敛、几乎不过冲。 */
+    val springMenuExit: SpringSpec<Float> = spring(
+        dampingRatio = 0.92f,
+        stiffness = 800f,
+        visibilityThreshold = 0.001f,
+    )
 
     /** [springPanel] 的任意类型版本（如 `IntOffset` 位移过渡）。 */
     fun <T> panelSpring(visibilityThreshold: T? = null): SpringSpec<T> =

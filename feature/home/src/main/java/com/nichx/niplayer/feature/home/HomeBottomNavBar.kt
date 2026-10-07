@@ -15,7 +15,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.nichx.niplayer.designsystem.components.NiBottomBarTab
+import com.nichx.niplayer.designsystem.components.NiBottomBarToneState
 import com.nichx.niplayer.designsystem.components.glassOnSurfaceMuted
+import com.nichx.niplayer.designsystem.components.niBottomBarTone
 import com.nichx.niplayer.designsystem.components.NiGlassBarItem
 import com.nichx.niplayer.designsystem.components.NiGlassBottomBar
 
@@ -43,7 +45,10 @@ fun HomeBottomNavBar(
     modifier: Modifier = Modifier,
     maxWidth: Dp = Dp.Unspecified,
     bottomInset: Dp = 8.dp,
+    toneState: NiBottomBarToneState? = null,
 ) {
+    // 暗度标量：由宿主 NiBottomBarToneHost 采样背后内容下发（未提供时退化为主题二值）
+    val tone = niBottomBarTone()
     val tabs = HomeTab.entries.map { tab ->
         NiBottomBarTab(
             route = tab.route,
@@ -59,6 +64,7 @@ fun HomeBottomNavBar(
         backdrop = backdrop,
         tabsCount = tabs.size,
         isBlurEnabled = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU,
+        toneState = toneState,
         modifier = modifier
             .fillMaxWidth()
             .widthIn(max = maxWidth)
@@ -70,8 +76,8 @@ fun HomeBottomNavBar(
                 // 组合色：选中态用三级色强调，与主色(primary)区分，形成多色观感
                 MaterialTheme.colorScheme.tertiary
             } else {
-                // 未选中项用玻璃浮层高对比前景色，避免灰色在玻璃底（复杂/深色背景）上对比不足
-                glassOnSurfaceMuted()
+                // 未选中项用玻璃浮层高对比前景色，并按 tone 插值——避免底栏翻暗后文字仍发灰
+                glassOnSurfaceMuted(tone)
             }
             NiGlassBarItem(onClick = { onSelect(index) }) {
                 Icon(

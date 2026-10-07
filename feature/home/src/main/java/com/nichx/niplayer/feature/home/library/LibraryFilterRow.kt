@@ -31,7 +31,6 @@ import com.nichx.niplayer.database.entity.MediaLibraryEntity
 import com.nichx.niplayer.database.enums.MediaType
 
 
-internal val menuShape = RoundedCornerShape(12.dp)
 internal val cardShape = RoundedCornerShape(12.dp)
 internal val pillShape = RoundedCornerShape(8.dp)
 

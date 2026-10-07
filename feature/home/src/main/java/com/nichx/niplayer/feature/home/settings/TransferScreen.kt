@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,14 +41,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.database.entity.DownloadState
 import com.nichx.niplayer.designsystem.components.NiEmptyState
+import com.nichx.niplayer.designsystem.components.NiGlassDropdownMenu
 import com.nichx.niplayer.designsystem.components.NiProgressTrack
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
@@ -74,6 +80,8 @@ fun TransferScreen(
 ) {
     var tab by remember { mutableStateOf(TransferTab.DOWNLOAD) }
     var showOverflowMenu by remember { mutableStateOf(false) }
+    // 溢出菜单锚点：触发按钮的根坐标矩形（供玻璃菜单定位 + 自该角长出来）
+    var overflowMenuAnchor by remember { mutableStateOf(IntRect.Zero) }
 
     NiScaffold(
         topBar = {
@@ -88,19 +96,26 @@ fun TransferScreen(
                     }
                 },
                 actions = {
-                    Box {
+                    Box(
+                        modifier = Modifier.onGloballyPositioned { coords ->
+                            val topLeft = coords.localToRoot(Offset.Zero)
+                            overflowMenuAnchor = IntRect(IntOffset(topLeft.x.toInt(), topLeft.y.toInt()), coords.size)
+                        },
+                    ) {
                         IconButton(onClick = { showOverflowMenu = true }) {
                             Icon(
                                 imageVector = Icons.Filled.MoreVert,
                                 contentDescription = stringResource(R.string.download_manager_more),
                             )
                         }
-                        androidx.compose.material3.DropdownMenu(
+                        // 与其他页统一：走同窗口玻璃菜单（真模糊 + 自按钮长出来的动画），
+                        // 不再用独立 Popup 窗口的 M3 DropdownMenu
+                        NiGlassDropdownMenu(
                             expanded = showOverflowMenu,
                             onDismissRequest = { showOverflowMenu = false },
-                            shape = RoundedCornerShape(16.dp),
+                            anchorBounds = overflowMenuAnchor,
                         ) {
-                            androidx.compose.material3.DropdownMenuItem(
+                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.transfer_clear_completed)) },
                                 onClick = {
                                     showOverflowMenu = false
@@ -110,7 +125,7 @@ fun TransferScreen(
                                     }
                                 },
                             )
-                            androidx.compose.material3.DropdownMenuItem(
+                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.transfer_clear_failed)) },
                                 onClick = {
                                     showOverflowMenu = false

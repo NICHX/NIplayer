@@ -47,6 +47,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -99,7 +100,7 @@ internal fun TopBarActions(
     }
     var menuPage by remember { mutableStateOf(MoreMenuPage.Idle) }
     // 更多/子菜单锚点（More 按钮屏幕坐标，供玻璃菜单定位）
-    var moreMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var moreMenuAnchor by remember { mutableStateOf(IntRect.Zero) }
     val safeSpeedIndex = currentSpeedIndex.coerceIn(0, speedOptions.lastIndex)
 
     // 任意下拉菜单展开/收起时通知外层（横屏用于暂停自动隐藏计时）
@@ -125,9 +126,9 @@ internal fun TopBarActions(
         // 更多：外观（二级菜单）/ 倍速（二级菜单）/ 均衡器 / 睡眠定时 / 下载 收进溢出菜单
         if (showMore) Box(
             modifier = Modifier.onGloballyPositioned { coords ->
-                // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
+                // 锚点取触发按钮的根坐标矩形（供玻璃菜单定位 + 自该角长出来）
                 val topLeft = coords.localToRoot(Offset.Zero)
-                moreMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                moreMenuAnchor = IntRect(IntOffset(topLeft.x.toInt(), topLeft.y.toInt()), coords.size)
             },
         ) {
             IconButton(onClick = { menuPage = MoreMenuPage.Main }) {
@@ -150,7 +151,7 @@ internal fun TopBarActions(
             NiGlassDropdownMenu(
                 expanded = menuPage != MoreMenuPage.Idle,
                 onDismissRequest = { menuPage = MoreMenuPage.Idle },
-                anchor = IntOffset(moreMenuAnchor.x.toInt(), moreMenuAnchor.y.toInt()),
+                anchorBounds = moreMenuAnchor,
                 contentVersion = menuPage,
             ) {
                 when (menuPage) {

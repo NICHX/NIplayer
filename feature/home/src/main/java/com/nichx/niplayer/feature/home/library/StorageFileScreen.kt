@@ -104,6 +104,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -350,15 +351,15 @@ fun FileBrowserScreen(
     var showFilterMenu by remember { mutableStateOf(false) }
     // 视图切换下拉菜单及其锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
     var showViewMenu by remember { mutableStateOf(false) }
-    var viewMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var viewMenuAnchor by remember { mutableStateOf(IntRect.Zero) }
     // 视图菜单是否已进入下一级「列数」选择子页
     var viewMenuColumnsPage by remember { mutableStateOf(false) }
     // 排序/过滤下拉菜单锚点（触发按钮的屏幕坐标，供玻璃菜单定位）
-    var sortMenuAnchor by remember { mutableStateOf(Offset.Zero) }
-    var filterMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var sortMenuAnchor by remember { mutableStateOf(IntRect.Zero) }
+    var filterMenuAnchor by remember { mutableStateOf(IntRect.Zero) }
     // 新建/上传 合并按钮的子菜单
     var showActionMenu by remember { mutableStateOf(false) }
-    var actionMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var actionMenuAnchor by remember { mutableStateOf(IntRect.Zero) }
     var showFileInfo by remember { mutableStateOf<StorageFile?>(null) }
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
     // 文件夹访问加密对话框状态
@@ -677,9 +678,9 @@ fun FileBrowserScreen(
                     // 常驻：视图切换（图标显示当前模式，点击打开下拉菜单选择并持久化）
                     Box(
                         modifier = Modifier.onGloballyPositioned { coords ->
-                            // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
+                            // 锚点取触发按钮的根坐标矩形（供玻璃菜单定位 + 自该角长出来）
                             val topLeft = coords.localToRoot(Offset.Zero)
-                            viewMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                            viewMenuAnchor = IntRect(IntOffset(topLeft.x.toInt(), topLeft.y.toInt()), coords.size)
                         },
                     ) {
                         GlassIconCircle(
@@ -710,7 +711,7 @@ fun FileBrowserScreen(
                                 showViewMenu = false
                                 viewMenuColumnsPage = false
                             },
-                            anchor = IntOffset(viewMenuAnchor.x.toInt(), viewMenuAnchor.y.toInt()),
+                            anchorBounds = viewMenuAnchor,
                             // 列数/布局/子页就地变化时用 showOrUpdate 刷新菜单内容（保持展开、不闪烁）
                             contentVersion = gridColumns * 1000 + galleryColumns * 10 +
                                 galleryLayout.ordinal + if (viewMenuColumnsPage) 100_000 else 0,
@@ -839,9 +840,9 @@ fun FileBrowserScreen(
                     // 常驻：排序
                     Box(
                         modifier = Modifier.onGloballyPositioned { coords ->
-                            // 锚点取按钮左下角，菜单从按钮正下方展开（不遮挡按钮）
+                            // 锚点取触发按钮的根坐标矩形（供玻璃菜单定位 + 自该角长出来）
                             val topLeft = coords.localToRoot(Offset.Zero)
-                            sortMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                            sortMenuAnchor = IntRect(IntOffset(topLeft.x.toInt(), topLeft.y.toInt()), coords.size)
                         },
                     ) {
                         GlassIconCircle(
@@ -854,7 +855,7 @@ fun FileBrowserScreen(
                         NiGlassDropdownMenu(
                             expanded = showSortMenu,
                             onDismissRequest = { showSortMenu = false },
-                            anchor = IntOffset(sortMenuAnchor.x.toInt(), sortMenuAnchor.y.toInt()),
+                            anchorBounds = sortMenuAnchor,
                         ) {
                             SortByMenuItem(
                                 label = stringResource(R.string.storage_file_sort_name),
@@ -951,7 +952,7 @@ fun FileBrowserScreen(
                                 Box(
                                     modifier = Modifier.onGloballyPositioned { coords ->
                                         val topLeft = coords.localToRoot(Offset.Zero)
-                                        filterMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                                        filterMenuAnchor = IntRect(IntOffset(topLeft.x.toInt(), topLeft.y.toInt()), coords.size)
                                     },
                                 ) {
                                     GlassIconCircle(
@@ -964,7 +965,7 @@ fun FileBrowserScreen(
                                     NiGlassDropdownMenu(
                                         expanded = showFilterMenu,
                                         onDismissRequest = { showFilterMenu = false },
-                                        anchor = IntOffset(filterMenuAnchor.x.toInt(), filterMenuAnchor.y.toInt()),
+                                        anchorBounds = filterMenuAnchor,
                                     ) {
                                         FilterMenuItem(
                                             label = stringResource(R.string.storage_file_filter_all),
@@ -1008,7 +1009,7 @@ fun FileBrowserScreen(
                                 Box(
                                     modifier = Modifier.onGloballyPositioned { coords ->
                                         val topLeft = coords.localToRoot(Offset.Zero)
-                                        actionMenuAnchor = topLeft + Offset(0f, coords.size.height.toFloat())
+                                        actionMenuAnchor = IntRect(IntOffset(topLeft.x.toInt(), topLeft.y.toInt()), coords.size)
                                     },
                                 ) {
                                     GlassIconCircle(
@@ -1021,7 +1022,7 @@ fun FileBrowserScreen(
                                     NiGlassDropdownMenu(
                                         expanded = showActionMenu,
                                         onDismissRequest = { showActionMenu = false },
-                                        anchor = IntOffset(actionMenuAnchor.x.toInt(), actionMenuAnchor.y.toInt()),
+                                        anchorBounds = actionMenuAnchor,
                                     ) {
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.storage_file_upload)) },
