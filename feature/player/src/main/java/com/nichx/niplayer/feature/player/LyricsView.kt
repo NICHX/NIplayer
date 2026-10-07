@@ -2,15 +2,19 @@ package com.nichx.niplayer.feature.player
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -21,57 +25,103 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlin.math.absoluteValue
+import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
+import com.nichx.niplayer.designsystem.theme.MotionTokens
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.sin
+import kotlinx.coroutines.delay
 
-/** 歌词物理行固定高度。 */
-private val ROW_HEIGHT = 44.dp
+/** Apple 风格歌词字号倍率：titleLarge 22sp × 1.4 ≈ 31sp。 */
+private const val APPLE_FONT_BOOST = 1.4f
+
+/** Apple 风格：当前行落在视口高度的该比例处（偏上方，而非居中）。 */
+private const val APPLE_FOCUS_FRACTION = 0.34f
+
+/** 句与句之间的额外留白：句内换行间距由字体 lineHeight 决定，句间再多出这一段。 */
+private val APPLE_SENTENCE_GAP = 20.dp
+private val PLAIN_SENTENCE_GAP = 16.dp
 
 /**
- * Apple Music 风格歌词行高（34sp ExtraBold）。
+ * 距离 → 模糊半径（dp）的整形。
  *
- * 行高明显大于字号：Apple 的歌词是一句一行、句间留白的排版，行距太小会挤成
- * 一整块，读起来分不出句子的边界。
+ * 近处（1.35 行以内）不模糊，之后按线性增长、封顶，再乘以强度；
+ * 聚焦中的行（[focus]→1）不做距离模糊。**不是**「超过 N 行就一律最大模糊」的硬截断——
+ * 那会把远处一片糊成一块。
  */
-private val APPLE_ROW_HEIGHT = 64.dp
+private const val BLUR_INTENSITY = 0.6f
 
-/** Apple 风格歌词字号倍率：titleLarge 22sp × 1.55 ≈ 34sp。 */
-private const val APPLE_FONT_BOOST = 1.55f
+/** 距离 → 不透明度的整体压暗量（0=不压暗，1=完全按曲线压暗）。 */
+private const val DIM_AMOUNT = 0.85f
 
-/**
- * Apple 非当前行的模糊：最多 [APPLE_BLUR_STEPS] 步、每步 [APPLE_BLUR_STEP_DP]。
- *
- * 模糊值只跟「离当前行多远」有关，是静态值——不做逐帧动画，每行的模糊图层只在
- * 行号交接时才重建一次，滚动的每一帧只是在合成已有图层。
- */
-private const val APPLE_BLUR_STEPS = 5
-private const val APPLE_BLUR_STEP_DP = 1.2f
+/** 焦点交接（当前行 ↔ 非当前行）的过渡时长。 */
+private const val FOCUS_TRANSITION_MS = 320
 
 /** 点击预览（选中该句显示时间、待二次点击跳转）的自动超时，避免预览态长期滞留。 */
 private const val LyricPreviewTimeoutMs = 2500L
+
+/** 相邻两句间隔超过该值即视为「间奏」，Apple 风格下显示间奏点缀。 */
+private const val INTERLUDE_MIN_GAP_MS = 4_000L
+
+/** 倒计时在下一句前该值处结束，让点缀先收掉、正句再起（Apple 口径）。 */
+private const val INTERLUDE_TAIL_MS = 250L
+
+/** 间奏点缀至少要有这么长的可视窗口才值得显示。 */
+private const val INTERLUDE_MIN_SHOW_MS = 1_200L
+
+/** 单句吟唱时长的估算：字数 × 每字时长，并夹在最短/最长之间（无句末时间戳时的近似）。 */
+private const val INTERLUDE_MS_PER_CHAR = 220L
+private const val INTERLUDE_MIN_LINE_MS = 1_500L
+private const val INTERLUDE_MAX_LINE_MS = 6_000L
+
+/** 间奏点缀：3 个圆点（Apple Music 口径），随进度依次点亮，**不显示数字倒计时**。 */
+private const val INTERLUDE_DOT_COUNT = 3
+private val INTERLUDE_DOT_RADIUS = 5.dp
+private val INTERLUDE_DOT_GAP = 18.dp
+
+/** 点缀的呼吸：±5% 呼吸幅度，周期 1.5s。 */
+private const val INTERLUDE_BREATHE_PERIOD_MS = 1_500.0
+private const val INTERLUDE_BREATHE_AMPLITUDE = 0.05f
+
+/** 收尾淡出时长：最后这段内整体淡掉，避免下一句到来时点缀还亮着。 */
+private const val INTERLUDE_FADE_TAIL_MS = 375f
+
+/**
+ * 手动浏览歌词后「回位」的延迟（ms）。
+ *
+ * 用户拖动/惯性停下后不立刻拽回当前行，而是等这段时间无操作再平滑归位——
+ * Apple 的「先拖出去、停一下再弹回来」手感；立即回位会显得在跟用户抢。
+ */
+private const val LYRIC_FOLLOW_DELAY_MS = 2_600L
 
 /**
  * 逐字时间戳的**不可变包装**。
@@ -83,44 +133,83 @@ private const val LyricPreviewTimeoutMs = 2500L
 @Immutable
 internal data class LyricWordTimes(val words: List<Pair<String, Long>>)
 
-/** 非首行（无逐字时间戳）共用的空实例，避免每次重建。 */
-private val EmptyLyricWordTimes = LyricWordTimes(emptyList())
-
-/** Apple 风格：当前行落在视口高度的该比例处（偏上方，而非居中）。 */
-private const val APPLE_FOCUS_FRACTION = 0.34f
-
 /**
- * 单句歌词最多拆分的物理行数。
- * 设为一个非常大的值：超长歌词按可用宽度完整自动换行，几乎不会触发截断。
- */
-private const val MAX_PHYSICAL_LINES_PER_SENTENCE = 30
-
-/**
- * 物理歌词行：由一句歌词按宽度拆分成的一行，用于等高管控与精确居中。
+ * 歌词列表项：**一句歌词是一整个列表项**（不按物理行拆）。
+ *
+ * 这样一句里的换行由文字引擎按 lineHeight 自然折行（句内行距紧），
+ * 句与句之间才加 [APPLE_SENTENCE_GAP] 的留白——「按句加大间隔」；同时
+ * 整句共用同一个模糊/透明度（不会出现「同一句的第一行清晰、后续行被模糊」）。
+ *
+ * 间奏点缀**画在紧随其后那一句的项内**（[interludeBefore]）、不单独占一个列表项：
+ * 一旦把间奏做成独立项，项号会在间奏开始/结束时整体偏移一格，自动跟随就会多滚一整行
+ * ——那正是「回滚跳变」的来源。画在本项内、且高度恒占位，则项号与布局都稳定。
  *
  * @param sentenceIndex 所属原句在 [lrcLines] 中的下标。
- * @param lineIndexInSentence 该物理行在句内的序号（0 起）。
- * @param text 该物理行显示的文本。
+ * @param text 整句文本。
+ * @param interludeBefore 本句之前的间奏区间；非 null 时在本项顶部画点缀。
  */
-private data class LyricRow(
+private data class LyricItem(
     val sentenceIndex: Int,
-    val lineIndexInSentence: Int,
     val text: String,
+    val interludeBefore: InterludeSpan? = null,
+)
+
+/** 一段间奏的时间区间（句末时间戳不可得，用估算出发时间）。 */
+private data class InterludeSpan(
+    val startMs: Long,
+    val endMs: Long,
 )
 
 /**
- * 同步歌词视图。
+ * 由相邻两句推算间奏区间；间隔不足或可视窗口太短时返回 null。
  *
- * 实现要点（物理行方案，保证当前行 100% 精确居中）：
- * - 长歌词先按可用宽度拆成多个等高物理行（每行 [ROW_HEIGHT]），整句显示完整、不截断；
- * - LazyColumn 每行等高，contentPadding 上下对称 = (视口高 − 行高) / 2，
- *   配合无偏移的 animateScrollToItem 滚动，当前行中心精确落在视口中央，不受
- *   scrollToItem scrollOffset 参数 clamp 的影响；
- * - 视口上下边缘的歌词按与当前行的距离动态降低透明度，实现自然淡出过渡；
- * - 点击歌词行进入预览态（右上角显示该句时间），再次点击同一句才跳转播放进度。
+ * 缺少句末时间戳，故按 [line] 的字数估算其吟唱时长（[INTERLUDE_MS_PER_CHAR]），
+ * 估算终点即间奏起点；终点取下一句前 [INTERLUDE_TAIL_MS]（让点缀先收掉、正句再起）。
+ */
+private fun interludeOf(line: LrcLine, next: LrcLine): InterludeSpan? {
+    val gap = next.timeMs - line.timeMs
+    if (gap < INTERLUDE_MIN_GAP_MS) return null
+    val estimated = (line.text.length * INTERLUDE_MS_PER_CHAR)
+        .coerceIn(INTERLUDE_MIN_LINE_MS, INTERLUDE_MAX_LINE_MS)
+    val startMs = line.timeMs + estimated
+    val endMs = next.timeMs - INTERLUDE_TAIL_MS
+    return if (endMs - startMs >= INTERLUDE_MIN_SHOW_MS) InterludeSpan(startMs, endMs) else null
+}
+
+/** 距离（行）→ 不透明度：近处接近 1，远处收到底噪 0.12；聚焦行按 [focus] 抬回 1。 */
+private fun distanceOpacity(lineDistance: Float, focus: Float): Float {
+    val base = when {
+        lineDistance <= 1f -> 1f - lineDistance * 0.44f
+        lineDistance <= 2f -> 0.56f - (lineDistance - 1f) * 0.22f
+        else -> (0.34f - (lineDistance - 2f) * 0.07f).coerceAtLeast(0.12f)
+    }
+    val dimmed = 1f - (1f - base) * DIM_AMOUNT
+    val f = focus.coerceIn(0f, 1f)
+    return dimmed + (1f - dimmed) * f
+}
+
+/** 距离（行）→ 模糊半径（dp）：1.35 行内为 0，之后线性增长封顶；聚焦行不模糊。 */
+private fun distanceBlurDp(lineDistance: Float, focus: Float): Float {
+    val progress = (lineDistance - 1.35f).coerceAtLeast(0f)
+    val base = (progress * 3.1f).coerceAtMost(10f)
+    return base * BLUR_INTENSITY * (1f - focus.coerceIn(0f, 1f))
+}
+
+/**
+ * 同步歌词视图（Apple Music 风格）。
+ *
+ * 实现要点：
+ * - **一句歌词 = 一个列表项**：句内折行交给文字引擎（按 lineHeight），句间才加留白，
+ *   「按句加大间隔」；同时整句共享同一套模糊/透明度，长句多行不会只有第一行清晰；
+ * - 当前句落点：contentPadding.top = 视口高 × [focusFraction] − 半行高，配合无偏移的
+ *   animateScrollToItem，当前句首行精确落在焦点位置（与句高无关，故长句也准）；
+ * - 距离只驱动「透明度 + 模糊」：自动跟随时按**行号差**，手动浏览时按**屏幕距离**——
+ *   后者保证用户滑到哪儿、哪儿就是清晰带，不会「滑过去一片全糊」；
+ * - 点击跳转；非 Apple 风格保留「先预览再确认」的两次点击。
  *
  * @param maxVisibleLines 最多同时显示的行数（受容器高度约束，取较小值）。
- * @param appleStyle Apple Music 风格：左对齐、白色大字，当前行明亮、其它行暗淡。
+ * @param appleStyle Apple Music 风格：左对齐、白色大字，当前行明亮、其它行暗淡且发散模糊。
+ * @param onUserScroll 用户开始手动滚动时回调（供外层「任何交互即呼出控件」用）。
  */
 @Composable
 fun LyricsView(
@@ -130,14 +219,10 @@ fun LyricsView(
     modifier: Modifier = Modifier,
     maxVisibleLines: Int = Int.MAX_VALUE,
     appleStyle: Boolean = false,
+    onUserScroll: () -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val density = LocalDensity.current
-    val textMeasurer = rememberTextMeasurer()
-    // 测量样式基准：当前行最宽渲染样式（titleLarge + Bold）。
-    // 这样无论该行是当前行（titleLarge+Bold）还是普通行（titleMedium），
-    // 渲染宽度都不超过测量宽度，整句完整自动换行、永不截断。
-    // 大屏自适应：最终字号按 scale 等比放大（见下方 BoxWithConstraints）。
     val baseTitleLarge = MaterialTheme.typography.titleLarge
 
     val currentSentenceIndex = remember(currentPositionMs.value, lrcLines) {
@@ -153,117 +238,138 @@ fun LyricsView(
     var pendingSentenceIndex by remember(lrcLines) { mutableStateOf<Int?>(null) }
     LaunchedEffect(pendingSentenceIndex) {
         if (pendingSentenceIndex != null) {
-            kotlinx.coroutines.delay(LyricPreviewTimeoutMs)
+            delay(LyricPreviewTimeoutMs)
             pendingSentenceIndex = null
         }
     }
 
     BoxWithConstraints(modifier = modifier) {
-        val maxWidthPx = with(density) { (maxWidth - 48.dp).toPx() }
-
-        // 大屏自适应：可用宽度越宽，行高与字号等比放大，
-        // 避免大屏（平板/大屏手机横屏）下歌词行数少、字体显小
+        // 大屏自适应：可用宽度越宽，字号与行高等比放大，避免大屏下字体显小
         val scale = when {
             maxWidth < 420.dp -> 1f
             maxWidth < 560.dp -> 1.15f
             else -> 1.3f
         }
-        val rowHeight = (if (appleStyle) APPLE_ROW_HEIGHT else ROW_HEIGHT) * scale
-        val rowHeightPx = with(density) { rowHeight.toPx() }
-        // Apple Music 风格：更大的字号与更松的行高
         val fontBoost = if (appleStyle) APPLE_FONT_BOOST else 1f
-        // 测量样式同步放大：保证拆行测量与渲染字号一致
-        val scaledMeasureStyle = baseTitleLarge.copy(
-            fontSize = baseTitleLarge.fontSize * scale * fontBoost,
-            lineHeight = baseTitleLarge.lineHeight * scale * fontBoost,
-            fontWeight = if (appleStyle) FontWeight.ExtraBold else FontWeight.Bold,
-        )
 
-        // 物理行拆分：先按可用宽度把每句完整拆成多行（不限行数），
-        // 再对每句限制最多 MAX_PHYSICAL_LINES_PER_SENTENCE 行，超出部分截断并给末行加省略号。
-        val rows = remember(lrcLines, maxWidthPx, scaledMeasureStyle, density) {
-            val all = buildList {
-                lrcLines.forEachIndexed { sentenceIndex, line ->
-                    if (line.text.isBlank()) {
-                        add(LyricRow(sentenceIndex, 0, ""))
-                        return@forEachIndexed
-                    }
-                    val measured = textMeasurer.measure(
-                        text = line.text,
-                        style = scaledMeasureStyle,
-                        constraints = Constraints(
-                            maxWidth = maxWidthPx.toInt().coerceAtLeast(1),
-                        ),
-                        maxLines = Int.MAX_VALUE,
-                        overflow = TextOverflow.Clip,
-                    )
-                    if (measured.size.height <= rowHeightPx) {
-                        add(LyricRow(sentenceIndex, 0, line.text))
-                    } else {
-                        val lineCount = measured.lineCount
-                        for (lineIdx in 0 until lineCount) {
-                            val lineStart = measured.getLineStart(lineIdx)
-                            val lineEnd = measured.getLineEnd(lineIdx, visibleEnd = false)
-                            if (lineStart >= lineEnd) continue
-                            add(
-                                LyricRow(
-                                    sentenceIndex = sentenceIndex,
-                                    lineIndexInSentence = lineIdx,
-                                    text = line.text.substring(lineStart, lineEnd).trim(),
-                                ),
-                            )
-                        }
-                    }
-                }
-            }
+        // 行高（单行文字盒高）：居中落点、视口行数与距离换算都以它为单位
+        val lineHeightSp = baseTitleLarge.lineHeight * scale * fontBoost
+        val lineHeightPx = with(density) { lineHeightSp.toPx() }
+        val lineHeight = with(density) { lineHeightPx.toDp() }
+        val sentenceGap = if (appleStyle) APPLE_SENTENCE_GAP else PLAIN_SENTENCE_GAP
 
-            val sentenceRowCount = mutableMapOf<Int, Int>()
-            buildList {
-                for (row in all) {
-                    val count = sentenceRowCount[row.sentenceIndex] ?: 0
-                    if (count < MAX_PHYSICAL_LINES_PER_SENTENCE) {
-                        sentenceRowCount[row.sentenceIndex] = count + 1
-                        add(row)
-                    } else if (count == MAX_PHYSICAL_LINES_PER_SENTENCE) {
-                        // 首次超限：给该句最后一行加省略号，后续超限行直接跳过
-                        val last = lastOrNull()?.takeIf { it.sentenceIndex == row.sentenceIndex }
-                        if (last != null) {
-                            val lastIdx = lastIndex
-                            this[lastIdx] = last.copy(text = last.text.trimEnd() + "…")
-                        }
-                        sentenceRowCount[row.sentenceIndex] = count + 1
-                    }
+        // 列表项：每句一项；Apple 风格把长间隔处生成的间奏点缀挂到**下一句**的项内
+        val items = remember(lrcLines, appleStyle) {
+            lrcLines.mapIndexed { sentenceIndex, line ->
+                val interlude = if (appleStyle && sentenceIndex > 0) {
+                    interludeOf(lrcLines[sentenceIndex - 1], line)
+                } else {
+                    null
                 }
+                LyricItem(sentenceIndex, line.text, interlude)
             }
         }
 
-        val currentRowIndex = remember(currentSentenceIndex, rows) {
-            rows.indexOfFirst { it.sentenceIndex == currentSentenceIndex }
+        val currentItemIndex = remember(currentSentenceIndex, items) {
+            items.indexOfFirst { it.sentenceIndex == currentSentenceIndex }
         }
+        // 焦点恒为「当前句所在的项」：间奏不再是独立项，项号不会因间奏而偏移，故无跳变。
+        val focusedIndex = currentItemIndex
 
+        // 行距（stride）= 单行高 + 句间留白：视口行数按它算，与「一行一句」的观感密度一致。
+        val sentenceGapPx = with(density) { sentenceGap.toPx() }
+        val stridePx = lineHeightPx + sentenceGapPx
+        val stride = with(density) { stridePx.toDp() }
         val viewportLines = minOf(
-            with(density) { (maxHeight / rowHeight).toInt().coerceAtLeast(3) },
+            with(density) { (maxHeight / stride).toInt().coerceAtLeast(3) },
             maxVisibleLines,
         )
-
-        val viewportHeightPx = with(density) { (rowHeight * viewportLines).toPx() }
-
-        // 当前行的落点：普通风格居中（0.5），Apple 风格偏上（0.34）。
-        // contentPadding 按该比例分配，无偏移的 animateScrollToItem 滚动后
-        // 当前行中心即落在视口高度的 focusFraction 处。
+        val viewportHeightPx = stridePx * viewportLines
         val focusFraction = if (appleStyle) APPLE_FOCUS_FRACTION else 0.5f
-        val topPaddingPx = (viewportHeightPx * focusFraction - rowHeightPx / 2f)
-            .toInt()
-            .coerceAtLeast(0)
-        val bottomPaddingPx = (viewportHeightPx - rowHeightPx - topPaddingPx)
-            .toInt()
-            .coerceAtLeast(0)
 
-        LaunchedEffect(currentRowIndex) {
-            if (currentRowIndex >= 0) {
-                listState.animateScrollToItem(currentRowIndex)
+        // 当前句落点：contentPadding.top 让「首行中心」落在焦点位置。用 lineHeight/2
+        // （而不是整句高/2），长句多行时首行同样精确对齐。
+        val topPaddingPx = (viewportHeightPx * focusFraction - lineHeightPx / 2f)
+            .toInt()
+            .coerceAtLeast(0)
+        // 底部留白：让最后一句也能滚到焦点位置（尾部滚动），其余作为自然尾部空白
+        val minTailPx = with(density) { 40.dp.toPx() }.toInt()
+        val bottomPaddingPx = (viewportHeightPx * (1f - focusFraction))
+            .toInt()
+            .coerceAtLeast(minTailPx)
+
+        val reducedMotion = LocalNiReduceMotion.current
+
+        // 手动浏览：用户一滚动就进入浏览态、暂停自动跟随；停止操作 LYRIC_FOLLOW_DELAY_MS
+        // 后退出浏览并平滑回到当前行——「拖出去、等一下再弹回来」的尾部回位。
+        //
+        // 只用嵌套滚动的 **UserInput** 判定：程序自身的 animateScrollToItem 不会把自己
+        // 误判成用户在拖，否则会出现「回位 → 被当成浏览 → 再回位」的自激抖动。
+        var browsing by remember { mutableStateOf(false) }
+        var browseGeneration by remember { mutableIntStateOf(0) }
+        val currentOnUserScroll by rememberUpdatedState(onUserScroll)
+        val browseConnection = remember {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (source == NestedScrollSource.UserInput && abs(available.y) > 0.01f) {
+                        browsing = true
+                        browseGeneration += 1
+                        currentOnUserScroll()
+                    }
+                    return Offset.Zero
+                }
             }
         }
+        LaunchedEffect(browseGeneration) {
+            if (browseGeneration <= 0) return@LaunchedEffect
+            delay(LYRIC_FOLLOW_DELAY_MS)
+            browsing = false
+        }
+
+        // 自动跟随：当前句 / 间奏切换时回到焦点项；浏览期间不打断，浏览结束再触发回位。
+        LaunchedEffect(focusedIndex, browsing) {
+            if (focusedIndex < 0 || browsing) return@LaunchedEffect
+            if (reducedMotion) {
+                listState.scrollToItem(focusedIndex)
+                return@LaunchedEffect
+            }
+            // 目标项已在屏内时，按「像素差」用更柔的弹性滚过去（项顶端到锚点 = item.offset，
+            // 见 LazyListMeasure：屏幕 y = offset − viewportStartOffset）。比 animateScrollToItem
+            // 默认的偏硬弹簧顺得多；不在屏内（含跳转）才交给它处理。
+            val visible = listState.layoutInfo.visibleItemsInfo
+                .firstOrNull { it.index == focusedIndex }
+            if (visible != null) {
+                // 本句带间奏点缀时，点缀盒在项顶：多滚一个行高，让**文字首行**（而非点缀）落在锚点
+                val dotsLead = if (items[focusedIndex].interludeBefore != null) lineHeightPx else 0f
+                listState.animateScrollBy(
+                    visible.offset.toFloat() + dotsLead,
+                    MotionTokens.springScroll,
+                )
+            } else {
+                listState.animateScrollToItem(focusedIndex)
+            }
+        }
+
+        // 浏览时的「焦点锚点」在行号空间的**小数**位置：由可见项的实际像素位置插值得出。
+        // 只有这样，滑到哪儿就哪儿清晰，而不是按「离正在播放那行多远」把一片都糊掉。
+        // 仅在浏览态被读取（自动跟随时返回 null，不触碰 layoutInfo）。
+        val browseAnchor by remember(viewportHeightPx, focusFraction) {
+            derivedStateOf {
+                val info = listState.layoutInfo
+                val visible = info.visibleItemsInfo
+                if (visible.isEmpty()) {
+                    null
+                } else {
+                    val anchorOffset = info.viewportStartOffset + viewportHeightPx * focusFraction
+                    val hit = visible.firstOrNull {
+                        anchorOffset >= it.offset && anchorOffset < it.offset + it.size
+                    } ?: visible.minByOrNull { abs(it.offset + it.size / 2f - anchorOffset) }
+                    hit?.let { it.index + (anchorOffset - it.offset) / it.size.toFloat() }
+                }
+            }
+        }
+        // 自动跟随：按项号差；浏览：按屏幕距离（像素/行高）。二者统一成「行」为单位。
+        val distanceReference: Float? = if (browsing) browseAnchor else null
 
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (lrcLines.isEmpty()) {
@@ -276,55 +382,53 @@ fun LyricsView(
             } else {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.height(with(density) { viewportHeightPx.toDp() }),
+                    modifier = Modifier
+                        .height(with(density) { viewportHeightPx.toDp() })
+                        .nestedScroll(browseConnection),
                     contentPadding = PaddingValues(
                         top = with(density) { topPaddingPx.toDp() },
                         bottom = with(density) { bottomPaddingPx.toDp() },
                     ),
                 ) {
                     itemsIndexed(
-                        items = rows,
-                        key = { index, row -> "${row.sentenceIndex}_${row.lineIndexInSentence}_$index" },
-                    ) { index, row ->
-                        val sentenceIndex = row.sentenceIndex
+                        items = items,
+                        key = { _, item -> "s_${item.sentenceIndex}" },
+                    ) { index, item ->
+                        val sentenceIndex = item.sentenceIndex
                         val sentence = lrcLines[sentenceIndex]
                         val sentenceTimeMs = sentence.timeMs
-                        val isFirstLine = row.lineIndexInSentence == 0
+                        val lineDistance = distanceReference?.let { abs(index - it) }
+                            ?: abs(index - focusedIndex).toFloat()
                         LyricRowItem(
-                            text = row.text,
+                            text = item.text,
+                            interludeBefore = item.interludeBefore,
+                            positionMs = currentPositionMs,
                             isCurrent = sentenceIndex == currentSentenceIndex,
                             isPending = pendingSentenceIndex == sentenceIndex,
-                            timeLabel = if (isFirstLine) {
-                                formatDurationShort(sentenceTimeMs)
-                            } else null,
+                            timeLabel = formatDurationShort(sentenceTimeMs),
                             onClick = {
-                                // Apple：点一下文字就跳转，不做「先预览再确认」那一步——
-                                // 这里的点击区域本来就只有文字，再要两次点击会很别扭。
-                                if (appleStyle) {
-                                    onSeek(sentenceTimeMs)
-                                } else if (pendingSentenceIndex == sentenceIndex) {
-                                    onSeek(sentenceTimeMs)
-                                    pendingSentenceIndex = null
-                                } else {
-                                    pendingSentenceIndex = sentenceIndex
+                                // Apple：点一下文字就跳转，不做「先预览再确认」那一步。
+                                when {
+                                    appleStyle -> onSeek(sentenceTimeMs)
+                                    pendingSentenceIndex == sentenceIndex -> {
+                                        onSeek(sentenceTimeMs)
+                                        pendingSentenceIndex = null
+                                    }
+                                    else -> pendingSentenceIndex = sentenceIndex
                                 }
                             },
-                            distanceFromCurrent = index - currentRowIndex,
-                            viewportLines = viewportLines,
-                            rowHeight = rowHeight,
+                            lineDistance = lineDistance,
+                            lineHeight = lineHeight,
+                            sentenceGap = sentenceGap,
                             scale = scale,
                             fontBoost = fontBoost,
                             appleStyle = appleStyle,
-                            wordTimes = if (isFirstLine) {
-                                remember(sentence.wordTimes) {
-                                    LyricWordTimes(sentence.wordTimes)
-                                }
-                            } else {
-                                EmptyLyricWordTimes
+                            wordTimes = remember(sentence.wordTimes) {
+                                LyricWordTimes(sentence.wordTimes)
                             },
-                            // 非当前行的已唱词数恒为 -1：位置每秒上报时该参数不变，
+                            // 非当前句的已唱词数恒为 -1：位置每秒上报时该参数不变，
                             // 行因此可被跳过重组（观感不变）。
-                            doneWordCount = if (isFirstLine && sentenceIndex == currentSentenceIndex) {
+                            doneWordCount = if (sentenceIndex == currentSentenceIndex) {
                                 sentence.wordTimes.count { it.second <= currentPositionMs.value }
                             } else {
                                 -1
@@ -344,54 +448,38 @@ private fun LyricRowItem(
     isPending: Boolean,
     timeLabel: String?,
     onClick: () -> Unit,
-    distanceFromCurrent: Int,
-    viewportLines: Int,
-    rowHeight: Dp,
+    lineDistance: Float,
+    lineHeight: Dp,
+    sentenceGap: Dp,
     scale: Float,
     fontBoost: Float,
     appleStyle: Boolean,
     wordTimes: LyricWordTimes,
     doneWordCount: Int,
+    interludeBefore: InterludeSpan?,
+    positionMs: State<Long>,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val primary = MaterialTheme.colorScheme.primary
 
-    // 按与当前行的距离动态降低透明度：越靠边缘越淡，实现自然淡出过渡
-    val distanceFraction = distanceFromCurrent.toFloat() / viewportLines.coerceAtLeast(1)
-    val edgeAlpha = (1f - distanceFraction.coerceIn(-1f, 1f).absoluteValue)
-        .coerceIn(0f, 1f)
-        .let { 0.2f + 0.8f * it }
-
-    val animAlpha by animateFloatAsState(
-        targetValue = if (isCurrent) 1f else edgeAlpha,
-        animationSpec = tween(300),
-        label = "lyricAlpha",
+    // 焦点进度：当前句 → 1，其它 → 0；平滑过渡，交接时不闪断
+    val focus by animateFloatAsState(
+        targetValue = if (isCurrent) 1f else 0f,
+        animationSpec = tween(FOCUS_TRANSITION_MS),
+        label = "lyricFocus",
     )
-    // Apple 风格：全部行统一的纯白大字，当前行明亮 + 辉光、其它行按距离更暗；
-    // 其它风格沿用主题色与「当前行更大」的层级。
+    // 透明度与模糊都只由「距离 + 焦点」决定：整句共享一套（长句多行不会各行不同）
+    val alpha = distanceOpacity(lineDistance, focus)
+    val glowAlpha = if (appleStyle) focus * 0.62f else 0f
+    val blurAmount = if (appleStyle) distanceBlurDp(lineDistance, focus).dp else 0.dp
+
     val highlightColor = if (appleStyle) Color.White else primary
     val normalColor = if (appleStyle) Color.White else onSurface
-    val normalAlpha = if (appleStyle) animAlpha * 0.85f else animAlpha
-    // Apple 的当前行辉光：随行淡入淡出，交接时不闪断
-    val glowAlpha by animateFloatAsState(
-        targetValue = if (appleStyle && isCurrent) 0.62f else 0f,
-        animationSpec = tween(durationMillis = 420),
-        label = "lyricGlow",
-    )
-    // Apple 风格：离当前行越远越模糊——这是 Apple 歌词质感的关键，只靠透明度会显得很平。
-    // 当前行不模糊；模糊量只随"行号差"变化（仅在行号交接时改变），故 RenderEffect 参数是静态的。
-    val blurAmount = if (appleStyle) {
-        (distanceFromCurrent.absoluteValue.coerceAtMost(APPLE_BLUR_STEPS) * APPLE_BLUR_STEP_DP).dp
-    } else {
-        0.dp
-    }
 
     // 逐字高亮：当前句且有逐字时间戳时，已唱到的词用高亮色，未唱到的用浅色。
-    // 已唱词数由父层按"是否当前行"预计算：[doneWordCount] 对非当前行恒为 -1，
-    // 使非当前行的参数在位置上报时保持不变 → 可被跳过重组。
     val displayText = if (isCurrent && wordTimes.words.isNotEmpty()) {
         buildAnnotatedString {
-            val baseColor = highlightColor.copy(alpha = if (appleStyle) 0.45f else animAlpha)
+            val baseColor = highlightColor.copy(alpha = if (appleStyle) 0.45f else alpha)
             val doneColor = highlightColor.copy(alpha = 1f)
             var cursor = 0
             wordTimes.words.forEachIndexed { index, entry ->
@@ -419,16 +507,23 @@ private fun LyricRowItem(
         null
     }
 
-    // Apple：点击区域收在**文字**上，一行里的空白留给外层去切换控件显隐，
-    // 所以整行不挂 clickable，只在 Text 上挂，且不给它撑满宽度。
-    // 其它风格整行可点：居中排版下整行点更跟手。
-    Box(
+    // 句间留白挂在**项底部**：句内折行由文字引擎按 lineHeight 排，句与句之间才多出这段间隔。
+    // Apple：点击区域收在文字上（空白留给外层切换控件显隐）；其它风格整项可点。
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(rowHeight)
+            .padding(bottom = sentenceGap)
             .then(if (appleStyle) Modifier else Modifier.clickable(onClick = onClick)),
-        contentAlignment = if (appleStyle) Alignment.CenterStart else Alignment.Center,
     ) {
+        // 间奏点缀画在本句**上方**：与文字同项，项号不随间奏出现/消失而偏移（避免自动跟随跳变）
+        if (interludeBefore != null) {
+            InterludeDots(
+                span = interludeBefore,
+                positionMs = positionMs,
+                lineHeight = lineHeight,
+            )
+        }
+        Box(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = displayText ?: AnnotatedString(text),
             style = when {
@@ -450,11 +545,18 @@ private fun LyricRowItem(
                     fontSize = MaterialTheme.typography.titleMedium.fontSize * scale,
                 )
             },
-            color = if (isCurrent) highlightColor.copy(alpha = animAlpha)
-            else normalColor.copy(alpha = normalAlpha),
+            // Apple 用统一的纯白大字（靠透明度/模糊分层），其它风格用主题色的层级
+            color = if (appleStyle) {
+                Color.White.copy(alpha = alpha)
+            } else if (isCurrent) {
+                highlightColor.copy(alpha = alpha)
+            } else {
+                normalColor.copy(alpha = alpha)
+            },
             textAlign = if (appleStyle) TextAlign.Start else TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            // 整句完整折行显示，绝不截断
+            maxLines = Int.MAX_VALUE,
+            overflow = TextOverflow.Clip,
             modifier = if (appleStyle) {
                 Modifier
                     // padding 在外、clickable 在内：点击范围就是文字本身（左右各让出
@@ -462,7 +564,7 @@ private fun LyricRowItem(
                     .padding(horizontal = 28.dp)
                     .clickable(onClick = onClick)
                     .then(
-                        if (blurAmount > 0.dp) {
+                        if (blurAmount > 0.05.dp) {
                             Modifier.blur(blurAmount, BlurredEdgeTreatment.Unbounded)
                         } else {
                             Modifier
@@ -475,11 +577,11 @@ private fun LyricRowItem(
             },
         )
 
-        // 预览态：该句首行右上角显示时间，提示再次点击可跳转
+        // 预览态：该项右上角显示该句时间，提示再次点击可跳转
         if (isPending && timeLabel != null) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
+                    .align(Alignment.TopEnd)
                     .padding(end = 12.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(onSurface.copy(alpha = 0.18f))
@@ -489,6 +591,72 @@ private fun LyricRowItem(
                     text = timeLabel,
                     style = MaterialTheme.typography.labelMedium,
                     color = primary,
+                )
+            }
+        }
+        }
+    }
+}
+
+/**
+ * 间奏点缀：Apple 风格的「点 · 点 · 点」进度点缀（**不显示数字倒计时**）。
+ *
+ * 高度取一行（[lineHeight]），画在紧随其后那句的上方；高度恒占位，所以不会造成布局/项号偏移。
+ * 未进入区间时完全不画（仅留位），到点即依次点亮，末段整体淡出。
+ */
+@Composable
+private fun InterludeDots(
+    span: InterludeSpan,
+    positionMs: State<Long>,
+    lineHeight: Dp,
+) {
+    val reduced = LocalNiReduceMotion.current
+    val density = LocalDensity.current
+    val dotsWidth = INTERLUDE_DOT_RADIUS * 2 * INTERLUDE_DOT_COUNT +
+        INTERLUDE_DOT_GAP * (INTERLUDE_DOT_COUNT - 1)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(lineHeight)
+            .padding(horizontal = 28.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Canvas(
+            modifier = Modifier
+                .width(dotsWidth)
+                // 高度给到直径的 3/2，容下「呼吸 + 末点长大」的峰值半径，避免上下被裁。
+                .height(INTERLUDE_DOT_RADIUS * 3),
+        ) {
+            // 只读 playback 位置：它变化只让本 Canvas 的**绘制**失效，不触发重组。
+            val now = positionMs.value
+            if (now < span.startMs) return@Canvas
+            val duration = (span.endMs - span.startMs).coerceAtLeast(1L)
+            val remaining = span.endMs - now
+            if (remaining <= 0L) return@Canvas
+            val durationF = duration.toFloat()
+            val elapsed = (now - span.startMs).coerceIn(0L, duration).toFloat()
+            val dotRadiusPx = with(density) { INTERLUDE_DOT_RADIUS.toPx() }
+            val dotGapPx = with(density) { INTERLUDE_DOT_GAP.toPx() }
+            val centerY = size.height / 2f
+            val fadeOut = (remaining / INTERLUDE_FADE_TAIL_MS).coerceIn(0f, 1f)
+            val breathe = if (reduced) {
+                1f
+            } else {
+                1f + sin(elapsed / INTERLUDE_BREATHE_PERIOD_MS * 2.0 * PI).toFloat() *
+                    INTERLUDE_BREATHE_AMPLITUDE
+            }
+            repeat(INTERLUDE_DOT_COUNT) { index ->
+                // 每个点在自己那一段里从 0.25 充到 1（Apple：点到即亮，越满越实）。
+                val segmentStart = durationF * index / INTERLUDE_DOT_COUNT
+                val progress = ((elapsed - segmentStart) / (durationF / INTERLUDE_DOT_COUNT))
+                    .coerceIn(0.25f, 1f)
+                // 最后一个点随充电微微长大，收尾更有指向性。
+                val grow = if (index == INTERLUDE_DOT_COUNT - 1) 1f + progress * 0.18f else 1f
+                drawCircle(
+                    color = Color.White.copy(alpha = progress * fadeOut),
+                    radius = dotRadiusPx * breathe * grow,
+                    center = Offset(dotRadiusPx + index * dotGapPx, centerY),
                 )
             }
         }

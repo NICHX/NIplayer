@@ -124,8 +124,12 @@ private const val APPLE_MESH_GRID = 6
  */
 private const val APPLE_MESH_TEX = 32
 
-/** 网格的解码尺寸，取 [APPLE_MESH_GRID] 的整数倍，保证每格取样均匀。 */
-private const val APPLE_MESH_DECODE_PX = 120
+/**
+ * 网格的解码尺寸，取 [APPLE_MESH_GRID] 的整数倍，保证每格取样均匀。
+ *
+ * 只需要 6×6 的均色，72px 足够（每格约 12×12 像素）；解码越小，进入播放器/切歌时越省。
+ */
+private const val APPLE_MESH_DECODE_PX = 72
 private const val APPLE_MESH_VIBRANCE = 1.12f
 private const val APPLE_MESH_FLOOR = 0.045f
 /** 网格换色（切歌）时的交叉淡入时长。 */
