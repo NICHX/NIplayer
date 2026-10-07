@@ -15,10 +15,15 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import kotlinx.coroutines.flow.collectLatest
 
 /**
@@ -154,6 +159,14 @@ internal class SungBand(val rects: Path, val lift: Float)
 internal class SungSplit(
     val bands: List<SungBand>,
     val unsung: Path,
+    /**
+     * 已唱区**向外扩一圈**的区域，专给荧光层用。
+     *
+     * 为什么需要它：荧光是「字的晕」，会伸到字外；而已唱区是按擦除边界裁的 —— 直接拿它去裁荧光，
+     * 最左和最右那个字的晕就会被切出一道竖直的边（用户反馈「像被切断了」）。
+     * 向外扩一个晕半径即可，多出来的部分被底层文字盖住，不会露出半个字。
+     */
+    val glow: Path,
 )
 
 /**
@@ -169,6 +182,7 @@ internal fun buildSungSplit(
     layout: TextLayoutResult,
     fraction: Float,
     lift: Boolean,
+    glowRadiusPx: Float = 0f,
 ): SungSplit? {
     val textLength = layout.layoutInput.text.length
     if (textLength == 0) return null
@@ -212,14 +226,21 @@ internal fun buildSungSplit(
     val revealed = charLeft + (charRight - charLeft) * inChar
 
     val bands = ArrayList<SungBand>(LYRIC_LIFT_SPAN_CHARS.toInt() + 2)
+    val glow = Path()
 
     if (!lift) {
+        // 系数取 0（而不是 1）：`lift = false` 的语义就是「不做抬升」，
+        // 不该依赖调用方把 risePx 也传成 0 —— 漏一处就会整段被抬起来。
         val all = Path()
         for (line in 0 until boundaryLine) {
-            all.addRect(rectOf(line, layout.getLineLeft(line), layout.getLineRight(line)))
+            val rect = rectOf(line, layout.getLineLeft(line), layout.getLineRight(line))
+            all.addRect(rect)
+            glow.addRect(rect.inflate(glowRadiusPx))
         }
-        all.addRect(rectOf(boundaryLine, lineLeft, revealed))
-        bands += SungBand(all, 1f)
+        val last = rectOf(boundaryLine, lineLeft, revealed)
+        all.addRect(last)
+        glow.addRect(last.inflate(glowRadiusPx))
+        bands += SungBand(all, 0f)
     } else {
         // 抬升量：这个字「唱过去多少个字」—— 0 表示刚开始唱，≥ LYRIC_LIFT_SPAN_CHARS 表示已抬到顶。
         fun liftOf(charIndex: Int): Float =
@@ -235,16 +256,18 @@ internal fun buildSungSplit(
 
         val lifted = Path()
         for (line in 0 until boundaryLine) {
-            lifted.addRect(rectOf(line, layout.getLineLeft(line), layout.getLineRight(line)))
+            val rect = rectOf(line, layout.getLineLeft(line), layout.getLineRight(line))
+            lifted.addRect(rect)
+            glow.addRect(rect.inflate(glowRadiusPx))
         }
         if (fullEnd > lineFirstChar) {
-            lifted.addRect(
-                rectOf(
-                    boundaryLine,
-                    lineLeft,
-                    layout.getHorizontalPosition(fullEnd, usePrimaryDirection = true),
-                ),
+            val rect = rectOf(
+                boundaryLine,
+                lineLeft,
+                layout.getHorizontalPosition(fullEnd, usePrimaryDirection = true),
             )
+            lifted.addRect(rect)
+            glow.addRect(rect.inflate(glowRadiusPx))
         }
         bands += SungBand(lifted, 1f)
 
@@ -264,9 +287,11 @@ internal fun buildSungSplit(
                 }
             }
             if (right <= left) continue
+            val rect = rectOf(boundaryLine, left, right)
             val band = Path()
-            band.addRect(rectOf(boundaryLine, left, right))
+            band.addRect(rect)
             bands += SungBand(band, liftOf(index))
+            glow.addRect(rect.inflate(glowRadiusPx))
         }
     }
 
@@ -276,7 +301,7 @@ internal fun buildSungSplit(
         unsung.addRect(rectOf(line, layout.getLineLeft(line), layout.getLineRight(line)))
     }
 
-    return SungSplit(bands = bands, unsung = unsung)
+    return SungSplit(bands = bands, unsung = unsung, glow = glow)
 }
 
 /**
@@ -296,6 +321,32 @@ internal fun Modifier.perCharSung(
             clipPath(band.rects) { this@drawWithContent.drawContent() }
         }
     }
+}
+
+/**
+ * 荧光层用的文本：**已唱部分不透明**（于是它的 shadow 会画出来）、**未唱部分透明**
+ * （shadow 随之消失）—— 两段共用同一份排版，所以位置和主文字完全一致。
+ *
+ * 为什么需要它：荧光层的裁切范围要往外扩一圈（否则首尾两个字的晕会被裁出竖直的边），
+ * 而扩出去的那一圈里正好有**紧邻的未唱字**；不把它涂透明，那个字也会跟着发光。
+ */
+internal fun lyricGlowText(text: String, boundary: Int): AnnotatedString = buildAnnotatedString {
+    val cut = boundary.coerceIn(0, text.length)
+    append(text.substring(0, cut))
+    if (cut < text.length) {
+        withStyle(SpanStyle(color = Color.Transparent)) { append(text.substring(cut)) }
+    }
+}
+
+/**
+ * 荧光层：只画「已唱区外扩一圈」的范围。
+ *
+ * 这一层**必须垫在底层文字之下**：外扩出来的部分会带上紧邻的未唱字的晕，
+ * 那一小块正好落在未唱区内，会被底层文字盖住 —— 既让首尾两个字的晕完整，又不会露出半个字。
+ */
+internal fun Modifier.perCharGlow(splitProvider: () -> SungSplit?): Modifier = drawWithContent {
+    val split = splitProvider() ?: return@drawWithContent
+    clipPath(split.glow) { this@drawWithContent.drawContent() }
 }
 
 /**

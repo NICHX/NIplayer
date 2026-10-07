@@ -40,10 +40,8 @@ import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -59,6 +57,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
+import com.nichx.niplayer.designsystem.theme.NiExtraColors
 import com.nichx.niplayer.designsystem.theme.MotionTokens
 import kotlin.math.PI
 import kotlin.math.abs
@@ -105,30 +104,43 @@ private const val GLASS_IDLE_FONT_RATIO = 0.73f
 /** 简约封面主题：歌词字距。比黑胶更松，配合更小的字号差，整页更透气。 */
 private val GLASS_LYRIC_LETTER_SPACING = 0.6.sp
 
-/** 简约封面主题的句间留白：比黑胶（18dp）更松 —— 行间字号差更小，靠留白分层。 */
-private val GLASS_SENTENCE_GAP = 26.dp
+/**
+ * 简约封面主题的句间留白。
+ *
+ * 原来给到 26dp（想「更松、靠留白分层」），但那是按「行间字号差更小」设的前提 ——
+ * 后来非当前句收到 0.73 倍、当前句放到 1.2 倍，字号差已经足够分层了，26dp 就只显得稀：
+ * 行距 / 字号约 2.17，比黑胶（1.89）和 Apple（1.83）都松一大截，正在播放那句的下一行
+ * 像是「掉下去了」。收到 18dp 后约为 1.85，与另两套齐平。
+ */
+private val GLASS_SENTENCE_GAP = 18.dp
 
 /**
- * 简约封面：当前句背后「流动光带」的参数。
+ * 简约封面：已唱的字带一层**荧光**（字自己发光）。
  *
- * 周期 7.2s 比封面浮动的 5.6s 更慢 —— 光带是**环境**而不是主角，动快了会抢走对歌词的注意力。
+ * 这是「光带」的替代方案 —— 光带那套（切薄条做竖向柔化、把擦除位置从文本坐标换算到行坐标、
+ * 离屏图层 + DstIn）又重又难调，而荧光只要给「已唱」那一层的文字样式加一个 shadow：
+ * 它天然**只作用于已唱的部分**（那一层本来就按擦除裁切），于是荧光跟着唱词走，
+ * 关掉「逐字歌词」时那一层不排，荧光也就没有了。
  */
-private const val GLASS_BAND_PERIOD_MS = 7_200
-private const val GLASS_BAND_DRIFT = 0.10f
-private const val GLASS_BAND_BREATHE = 0.18f
+/**
+ * 荧光强度：深色 / 浅色各一档。
+ *
+ * - **深色**：封面取色时强调色被重映射到亮档（感知亮度 0.44~0.62），亮字配亮晕才是「发光」，
+ *   可以给足；
+ * - **浅色**：强调色被重映射到暗档（0.26~0.42），此时「发光的晕」其实是一圈**暗晕** ——
+ *   在浅底上给到 0.85 会读成一块脏影子、还会把字糊粗，所以强度与半径都收一档。
+ */
+private const val GLASS_GLOW_ALPHA_DARK = 0.85f
+private const val GLASS_GLOW_ALPHA_LIGHT = 0.50f
 
 /**
- * 光带亮度：亮核 + 两侧柔光。
+ * 荧光扩散半径。
  *
- * 一开始只给了单档 0.20，实机上「看不到」—— 文字本身比它亮得多，0.2 的色块完全被压住了。
- * 现在核心抬到 0.42，并补一档更淡的两侧过渡，让它读成「一束光」而不是一层薄雾。
+ * ⚠️ `Shadow.blurRadius` 的单位是**像素**，不是 dp —— 早前写 `9f` 在 3x 屏上只有 3dp，
+ * 所以「荧光太弱」。这里按 dp 给、再换算成 px，跨设备才一致。
  */
-private const val GLASS_BAND_ALPHA = 0.42f
-private const val GLASS_BAND_SOFT_ALPHA = 0.12f
-private const val GLASS_BAND_SPAN = 0.55f
-/** 光带高度 = 行高的多少倍（纵向柔化会吃掉上下各一段，所以要留富余）。封面页与歌词页共用。 */
-internal const val GLASS_BAND_HEIGHT_RATIO = 1.8f
-private val GlassBandTwoPi = (2.0 * PI).toFloat()
+private val GLASS_GLOW_BLUR_DARK = 8.dp
+private val GLASS_GLOW_BLUR_LIGHT = 6.dp
 
 /** Apple 风格：当前行落在视口高度的该比例处（偏上方，而非居中）。 */
 private const val APPLE_FOCUS_FRACTION = 0.34f
@@ -714,10 +726,31 @@ private fun LyricRowItem(
     )
     var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     // 三段几何（已唱完 / 正在唱 / 未唱）只算一次，两层共用
-    // 抬升只在 Apple Music 主题做（另两套只做逐字铺色）
-    val sungSplit = remember(layoutResult, perCharFraction, appleStyle) {
+    // 荧光强度与半径：只在简约封面用，深色 / 浅色各一档（见 GLASS_GLOW_ALPHA_* 的说明）。
+    // 名字带 glass 前缀：上面那个 glowAlpha 是另两套主题的当前句光晕，别撞。
+    val glassGlowDark = NiExtraColors.current.isDark
+    val glassGlowAlpha = if (glassGlowDark) GLASS_GLOW_ALPHA_DARK else GLASS_GLOW_ALPHA_LIGHT
+    val glowPx = if (glassStyle) {
+        with(density) {
+            (if (glassGlowDark) GLASS_GLOW_BLUR_DARK else GLASS_GLOW_BLUR_LIGHT).toPx()
+        }
+    } else {
+        0f
+    }
+    // 已唱到第几个字。单独派生一个 Int：`SungSplit` 不是 data class，直接读它的 value
+    // 每帧都会得到一个「新对象」，整行会被带着每帧重组。
+    val glowBoundary by remember(layoutResult, perCharFraction) {
         derivedStateOf {
-            layoutResult?.let { buildSungSplit(it, perCharFraction.value, lift = appleStyle) }
+            val length = layoutResult?.layoutInput?.text?.length ?: 0
+            (perCharFraction.value * length).toInt().coerceIn(0, length)
+        }
+    }
+    // 抬升只在 Apple Music 主题做（另两套只做逐字铺色）；glow 区域给荧光层用
+    val sungSplit = remember(layoutResult, perCharFraction, appleStyle, glowPx) {
+        derivedStateOf {
+            layoutResult?.let {
+                buildSungSplit(it, perCharFraction.value, lift = appleStyle, glowRadiusPx = glowPx)
+            }
         }
     }
 
@@ -815,21 +848,6 @@ private fun LyricRowItem(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
         }
-        // 简约封面：当前句背后一条**流动的光带**（亮核缓慢左右漂移 + 极轻呼吸）。
-        // 另两套主题的高级感来自各自的光晕/模糊，这里用「光」的另一种形态，不重复它们的语言。
-        if (glassStyle && isCurrent) {
-            GlassLyricLightBand(
-                accent = accentColor,
-                isPlaying = isPlaying,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    // 光带比行高高，align(TopCenter) 会让它整体偏下 —— 补一个负 offset
-                    // 把它的中心对到**首行**的中心（整句折行时也该压在正在唱的那一行上）
-                    .offset(y = lineHeight * (1f - GLASS_BAND_HEIGHT_RATIO) / 2f)
-                    .fillMaxWidth()
-                    .height(lineHeight * GLASS_BAND_HEIGHT_RATIO),
-            )
-        }
         // 逐字铺色靠「两层同款文本 + 上层裁切」：底层是未唱色，上层是高亮色、按进度裁切。
         // 两层排版必须完全一致，所以样式与修饰符逐字照搬。
         //
@@ -845,6 +863,25 @@ private fun LyricRowItem(
             Color.White
         } else {
             highlightColor.copy(alpha = alpha)
+        }
+        // 荧光层**垫在最下面**：它的裁切范围比已唱区外扩了一圈，扩出来的那点会落到未唱区，
+        // 正好被下面的底层文字盖住 —— 既让首尾两个字的晕完整，又不会露出半个字。
+        if (highlightActive && glassStyle) {
+            // 已唱段不透明（发光）、未唱段透明（不发光）：扩出去的那圈里紧邻的未唱字就不会跟着亮
+            Text(
+                text = remember(text, glowBoundary) { lyricGlowText(text, glowBoundary) },
+                style = textStyle.copy(
+                    shadow = Shadow(
+                        color = accentColor.copy(alpha = glassGlowAlpha),
+                        blurRadius = glowPx,
+                    ),
+                ),
+                color = sungColor,
+                textAlign = if (appleStyle) TextAlign.Start else TextAlign.Center,
+                maxLines = Int.MAX_VALUE,
+                overflow = TextOverflow.Clip,
+                modifier = textModifier.perCharGlow { sungSplit.value },
+            )
         }
         Text(
             text = text,
@@ -911,57 +948,6 @@ private fun LyricRowItem(
             }
         }
         }
-    }
-}
-
-/**
- * 简约封面：当前句背后「流动的光带」。
- *
- * 做法：一条横向渐变（中间亮、两端透明）画一遍，再用一条纵向渐变以 [BlendMode.DstIn]
- * 把上下边缘压掉 —— 否则会看到一条有硬边的色带。亮核按相位缓慢左右漂移、亮度轻微呼吸，
- * 于是那束光是**流动**的，而不是一块静止的色斑。
- *
- * 相位与亮度都在绘制阶段读，每帧只重画这一层；暂停或开启「减少动态效果」时相位不推进
- * （循环退出、不请求帧），光带就静静停在原处。
- */
-@Composable
-internal fun GlassLyricLightBand(
-    accent: Color,
-    isPlaying: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val reduceMotion = LocalNiReduceMotion.current
-    val phase = rememberLoopPhase(
-        enabled = isPlaying && !reduceMotion,
-        periodMs = GLASS_BAND_PERIOD_MS,
-        label = "glassLyricBand",
-    )
-    Canvas(
-        modifier = modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
-    ) {
-        val t = phase.value * GlassBandTwoPi
-        val drift = sin(t) * size.width * GLASS_BAND_DRIFT
-        val breathe = 1f + sin(t) * GLASS_BAND_BREATHE
-        drawRect(
-            brush = Brush.horizontalGradient(
-                colorStops = arrayOf(
-                    0f to Color.Transparent,
-                    0.34f to accent.copy(alpha = (GLASS_BAND_SOFT_ALPHA * breathe).coerceIn(0f, 1f)),
-                    0.5f to accent.copy(alpha = (GLASS_BAND_ALPHA * breathe).coerceIn(0f, 1f)),
-                    0.66f to accent.copy(alpha = (GLASS_BAND_SOFT_ALPHA * breathe).coerceIn(0f, 1f)),
-                    1f to Color.Transparent,
-                ),
-                startX = size.width / 2f + drift - size.width * GLASS_BAND_SPAN,
-                endX = size.width / 2f + drift + size.width * GLASS_BAND_SPAN,
-            ),
-        )
-        // 纵向柔化：把上下边缘压掉，只留中间一段
-        drawRect(
-            brush = Brush.verticalGradient(
-                listOf(Color.Transparent, Color.Black, Color.Transparent),
-            ),
-            blendMode = BlendMode.DstIn,
-        )
     }
 }
 

@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -48,13 +47,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
-import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -63,6 +62,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nichx.niplayer.datastore.AudioPlayerStyle
+import com.nichx.niplayer.designsystem.theme.NiExtraColors
 
 /**
  * 「简约封面」主题（[AudioPlayerStyle.GLASS]）的竖屏视觉件。
@@ -83,6 +83,14 @@ private val GlassCreditsHeadHeight = 30.dp + 6.dp + 19.dp
 
 /** 信息栈里「当前歌词」一行占的高度（含它上方的留白）。与 [GlassLyricFontSize] 的行高同步。 */
 private val GlassCreditsLyricHeight = 47.dp + 27.dp
+
+/** 已唱字符的荧光：与歌词页同一口径（见 LyricsView 的 GLASS_GLOW_ALPHA_* 的说明）。 */
+private const val GlassGlowAlphaDark = 0.85f
+private const val GlassGlowAlphaLight = 0.50f
+
+/** ⚠️ `Shadow.blurRadius` 是像素，不是 dp —— 按 dp 给再换算。 */
+private val GlassGlowBlurDark = 8.dp
+private val GlassGlowBlurLight = 6.dp
 
 /** 封面页当前歌词的字号 / 行高。 */
 private val GlassLyricFontSize = 19.sp
@@ -289,26 +297,30 @@ private fun GlassCurrentLyricLine(
         enabled = perChar,
     )
     var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-    // 光带按「行高的 Dp」算尺寸：行高是 sp，需要按当前字体缩放换算，否则大字号下光带会偏小
-    val density = LocalDensity.current
-    val lineHeightDp = with(density) { GlassLyricLineHeight.toDp() }
-    val reduceMotion = LocalNiReduceMotion.current
     // 三段几何（已唱完 / 正在唱 / 未唱）只算一次，两层共用
-    // 抬升是 Apple Music 主题的效果，这里（简约封面）只做逐字铺色
-    val sungSplit = remember(layoutResult, fraction) {
-        derivedStateOf { layoutResult?.let { buildSungSplit(it, fraction.value, lift = false) } }
+    // 抬升是 Apple Music 主题的效果，这里（简约封面）只做逐字铺色；glow 区域给荧光层用
+    // 荧光强度与半径：深色 / 浅色各一档（浅色下强调色偏暗，「发光」会读成脏影子）
+    val glowIsDark = NiExtraColors.current.isDark
+    val glowAlpha = if (glowIsDark) GlassGlowAlphaDark else GlassGlowAlphaLight
+    val glowPx = with(LocalDensity.current) {
+        (if (glowIsDark) GlassGlowBlurDark else GlassGlowBlurLight).toPx()
     }
-    // 逐字抬升量：字号的 10%，夹在 1.5~6dp；「减少动态效果」时不做
-    val lyricRisePx = if (reduceMotion) {
-        0f
-    } else {
-        with(density) {
-            (GlassLyricFontSize.value * LYRIC_LIFT_FONT_RATIO)
-                .coerceIn(LYRIC_LIFT_MIN_DP, LYRIC_LIFT_MAX_DP)
-                .dp
-                .toPx()
+    // 已唱到第几个字（单独派生 Int：SungSplit 不是 data class，读它的 value 会每帧重组）
+    val glowBoundary by remember(layoutResult, fraction) {
+        derivedStateOf {
+            val length = layoutResult?.layoutInput?.text?.length ?: 0
+            (fraction.value * length).toInt().coerceIn(0, length)
         }
     }
+    val sungSplit = remember(layoutResult, fraction, glowPx) {
+        derivedStateOf {
+            layoutResult?.let {
+                buildSungSplit(it, fraction.value, lift = false, glowRadiusPx = glowPx)
+            }
+        }
+    }
+    // 逐字抬升是 Apple Music 主题的效果，简约封面不做 —— 这里恒为 0
+    val lyricRisePx = 0f
 
     val style = MaterialTheme.typography.titleLarge.copy(
         fontSize = GlassLyricFontSize,
@@ -323,16 +335,25 @@ private fun GlassCurrentLyricLine(
         modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
-        // 与歌词页同一套「流动光带」：封面页的这一行也是「当前句」，不该只在歌词页有光
-        GlassLyricLightBand(
-            accent = accent,
-            isPlaying = isPlaying,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = lineHeightDp * (1f - GLASS_BAND_HEIGHT_RATIO) / 2f)
-                .fillMaxWidth()
-                .height(lineHeightDp * GLASS_BAND_HEIGHT_RATIO),
-        )
+        // 荧光层垫在最下面（裁切范围外扩一圈，扩出来的部分被底层文字盖住）
+        if (perChar) {
+            Text(
+                text = remember(line.text, glowBoundary) {
+                    lyricGlowText(line.text, glowBoundary)
+                },
+                style = style.copy(
+                    shadow = Shadow(
+                        color = accent.copy(alpha = glowAlpha),
+                        blurRadius = glowPx,
+                    ),
+                ),
+                color = accent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.perCharGlow { sungSplit.value },
+            )
+        }
         Text(
             text = line.text,
             style = style,
