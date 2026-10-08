@@ -441,6 +441,27 @@ class NxMedia3Player @Inject constructor(
         syncPositionTicker()
     }
 
+    /**
+     * 复位位置轮询相位（BUG 修复：seek 后进度条/字幕最长 500ms 不刷新）。
+     *
+     * [seekTo] 会立即把 [positionMs] 写成目标值，但**不会**重启已在跑的 [positionTicker] ——
+     * 若上一次 tick 刚刚发出，下一次要等满 [POSITION_UPDATE_INTERVAL_MS] 才到；这期间位置
+     * 冻结在目标值（进度条/字幕都停住），之后又一次性跳一大截。落在字幕行切换点附近时就
+     * 表现为「快进后有时字幕不同步」。
+     *
+     * 这里在 seek 后立即补发一次 tick 并重新计时，使位置从 seek 目标点恢复连续上报，
+     * 让进度条与字幕引擎都在一帧内收敛到正确位置。
+     *
+     * 仅在轮询本应运行时操作（[tickerScheduled] 为 true，即 Playing/Buffering）；暂停/空闲态
+     * 位置静止，无需补发，避免把本已停掉的轮询重新拉起来。
+     */
+    private fun resyncPositionTicker() {
+        if (isReleased || !tickerScheduled) return
+        mainHandler.removeCallbacks(positionTicker)
+        tickerScheduled = false
+        mainHandler.post(positionTicker)
+    }
+
     init {
         okHttpDataSourceFactory.setTransferListener(speedListener)
         // 初始为 Idle，syncPositionTicker 不会启动轮询；首次进入 Buffering 时由 setState 启动
@@ -544,6 +565,10 @@ class NxMedia3Player @Inject constructor(
         // M-07 修复：立即更新 _positionMs，避免 UI 拖动进度条后 thumb 等 500ms（轮询周期）
         // 才跳到新位置。positionTicker 仍会持续覆盖，此处只是消除 UI 响应延迟。
         _positionMs.value = target
+        // BUG 修复：复位轮询相位，避免 seek 后位置冻结到下一次 tick（最长 500ms）才继续上报
+        // —— 这会让进度条/字幕在 seek 后出现"停一下再猛跳"，落在字幕行切换点附近时表现为
+        // 「快进后有时字幕不同步」。补发一次 tick 让位置立刻恢复连续。
+        resyncPositionTicker()
     }
 
     override fun setSpeed(speed: Float) {

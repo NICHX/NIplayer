@@ -58,13 +58,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -98,6 +99,7 @@ import com.nichx.niplayer.player.kernel.PlaybackState
 import com.nichx.niplayer.player.kernel.PlaylistItem
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.math.abs
 
 
 internal val AbLoopColorA = Color(0xFFFFAB40)
@@ -885,6 +887,13 @@ private fun NetworkSpeedLabel(
 private const val VideoPositionTickMs = 500
 
 /**
+ * seek 吸附阈值：单次位置变化超过总时长的该占比，即视为不连续（seek / 快进），
+ * 进度条直接吸附而不补间。用「占总时长比例」而非绝对毫秒判定，好处是与倍速无关 ——
+ * 正常播放每 tick 前进量 ≈ tick 周期，占比极小；而 seek 往往是大跨度跳变。
+ */
+private const val PositionJumpSnapFraction = 0.03f
+
+/**
  * 单手布局用的进度行：时间显示在进度条两侧（当前时间在左、剩余时间在右），
  * 省去独立的时间行，从而降低底部控制栏高度。
  */
@@ -902,19 +911,38 @@ private fun PlayerProgressInline(
     val bufferedMs by bufferedMsFlow.collectAsStateWithLifecycle()
     // 拖动进度条时记录预览位置（fraction），两侧时间跟随显示目标时间
     var dragFractionPreview by remember { mutableStateOf<Float?>(null) }
-    // 位置每 ~500ms 才更新一次，直接绑 UI 会一格格跳。用**等长线性补间**抹平台阶
-    // （只在叶子层做，不牵动整页重组）；开启"减少动态效果"时补间时长归零即瞬跳。
     val reducedMotion = LocalNiReduceMotion.current
-    val smoothPositionMs by animateFloatAsState(
-        targetValue = positionMs.toFloat(),
-        animationSpec = tween(
-            if (reducedMotion) 0 else VideoPositionTickMs,
-            easing = LinearEasing,
-        ),
-        label = "smoothPositionMs",
-    )
+
+    // 进度平滑 + seek 吸附（BUG 修复）。
+    //
+    // 为什么平滑：位置每 ~500ms 才更新一次（NxMedia3Player.positionTicker），直接绑 UI 会
+    // 一格格跳，故对**连续前进**做等长线性补间抹平台阶（只在叶子层做，不牵动整页重组）。
+    //
+    // 为什么要吸附：原实现用 animateFloatAsState 对 positionMs **无条件**补间 —— seek / 快进
+    // 造成的位置跳变也被当成"连续前进"，于是松手后进度条会从旧位置缓缓滑向新位置，
+    // 表现为「快进后进度条自己会跑」。现在先判断本次位置变化是否"不连续"：
+    //   - 位置回退：正常播放不会回退，必是 seek；
+    //   - 前进量超过总时长的 [PositionJumpSnapFraction]：相对占比判定，与倍速无关。
+    // 不连续 → 直接吸附到目标（不补间）；连续 → 才走线性补间。
+    val smoothedPosition = remember { Animatable(positionMs.toFloat()) }
+    var lastRawPosition by remember { mutableLongStateOf(positionMs) }
+    LaunchedEffect(positionMs, reducedMotion) {
+        val target = positionMs.toFloat()
+        val delta = positionMs - lastRawPosition
+        val jumpFraction = if (durationMs > 0) abs(delta).toFloat() / durationMs else 1f
+        val discontinuity = delta < 0L || jumpFraction > PositionJumpSnapFraction
+        lastRawPosition = positionMs
+        if (reducedMotion || discontinuity) {
+            smoothedPosition.snapTo(target)
+        } else {
+            smoothedPosition.animateTo(
+                targetValue = target,
+                animationSpec = tween(VideoPositionTickMs, easing = LinearEasing),
+            )
+        }
+    }
     val displayPositionMs = dragFractionPreview?.let { (it * durationMs).toLong() }
-        ?: smoothPositionMs.toLong()
+        ?: smoothedPosition.value.toLong()
     val previewPos = displayPositionMs
     Row(
         modifier = Modifier.fillMaxWidth(),
