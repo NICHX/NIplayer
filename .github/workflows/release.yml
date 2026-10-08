@@ -132,16 +132,6 @@ jobs:
             } >> "$BODY"
           fi
 
-          # 手写亮点说明（.github/release-notes/<tag>.md）即「正文」：放在版本头之后，
-          # 用「最终实现」的口径讲清楚这版做了什么。
-          # 自动提交明细只作追溯附录，折叠在文末 <details> 中（见下），
-          # 避免把「已被同区间后续提交覆盖的中间改动」当成并列成果呈现。
-          HIGHLIGHTS=".github/release-notes/${GITHUB_REF_NAME}.md"
-          if [ -f "$HIGHLIGHTS" ]; then
-            cat "$HIGHLIGHTS" >> "$BODY"
-            echo "" >> "$BODY"
-          fi
-
           # 按 Conventional Commits 前缀分类展示提交，并给出对应 commit 短哈希。
           # 发布说明面向用户：只保留 feat / fix / perf / refactor；
           # docs / ci / test / chore / build 等纯开发信息一律不写入说明。
@@ -191,29 +181,18 @@ jobs:
             done < "$RUNNER_TEMP/commits.txt"
           }
 
-          # 原始提交明细折叠展示：逐条提交与「最终净效果」存在固有偏差（过程提交
-          # 可能已被同区间后续提交覆盖），故收进 <details> 并注明，仅作追溯。
-          {
-            echo ""
-            echo "<details>"
-            echo "<summary>📋 原始提交明细（含可能已被后续提交覆盖的中间改动，仅作追溯）</summary>"
-            echo ""
-          } >> "$BODY"
-
+          # 正文：直接展示自动分类的变更列表（✨新功能 / 🐛问题修复 / ⚡性能优化 / ♻️重构）。
+          # 不再依赖手写亮点说明，也不再折叠 —— 折叠会让用户误以为「没有更新内容」，
+          # 且每次发版都要手动补写，故取消。
           write_group "✨" "新功能" "feat*"
           write_group "🐛" "问题修复" "fix*"
           write_group "⚡" "性能优化" "perf*"
           write_group "♻️" "重构" "refactor*"
 
-          # 有提交但没有一条面向用户的变化（例如纯 CI/测试/依赖调整）时给出统一提示
+          # 有提交但没有一条面向用户的变化（纯 CI/测试/依赖调整）时给出统一提示
           if [ "$SHOWN" -eq 0 ]; then
             printf '\n**本版本以内部改进为主，无面向用户的变化。**\n' >> "$BODY"
           fi
-
-          {
-            echo ""
-            echo "</details>"
-          } >> "$BODY"
 
           {
             echo ""
