@@ -16,7 +16,7 @@
 | 领域 | 核心能力 |
 |------|----------|
 | 🎬 **视频播放** | 手势控制 · 倍速不变调 · A-B 循环 · 黑边检测 · 画中画 · 独立窗口转场 · 控制栏自定义 |
-| 🎵 **音频播放** | 黑胶转盘 · LRC 歌词 · 均衡器 · 沉浸式横屏 · 通知栏后台播放 |
+| 🎵 **音频播放** | 三种外观（Apple Music / 简约封面 / 黑胶唱片）· LRC 歌词 · 均衡器 · 沉浸式横屏 · 通知栏后台播放 |
 | 📝 **字幕系统** | ASS/SSA 特效自研引擎 · 样式自定义 · Assrt 在线搜索 |
 | 💾 **多源存储** | 本地 / SAF / SMB / WebDAV 统一浏览与播放 · 远程文件管理 |
 | 🔒 **文件夹加密** | 目录密码门禁 · 离开自动上锁 · 加密内容不记历史 |
@@ -32,15 +32,29 @@
 
 **视频播放器 · 横屏沉浸回放**
 
-<img width="760" src="screenshots/player.jpg" alt="视频播放器（横屏）"/>
+<img width="820" src="screenshots/player.jpg" alt="视频播放器（横屏）"/>
+
+| 倍速播放 | ASS 特效字幕 | 双语字幕 | 影片字幕 |
+|:---:|:---:|:---:|:---:|
+| <img width="190" src="screenshots/player-speed.jpg" alt="倍速播放"/> | <img width="190" src="screenshots/subtitle-ass.jpg" alt="ASS 特效字幕"/> | <img width="190" src="screenshots/subtitle-bilingual.jpg" alt="双语字幕"/> | <img width="190" src="screenshots/subtitle-movie.jpg" alt="影片字幕"/> |
+
+**首页 · 媒体库 · 主题**
 
 | 首页 | 媒体库 | 主题设置 |
 |:---:|:---:|:---:|
 | <img width="230" src="screenshots/home.jpg" alt="首页"/> | <img width="230" src="screenshots/library.jpg" alt="媒体库"/> | <img width="230" src="screenshots/theme.jpg" alt="主题设置"/> |
 
-| 黑胶唱片 · 音频 | LRC 歌词 | 设置 |
-|:---:|:---:|:---:|
-| <img width="230" src="screenshots/vinyl.jpg" alt="黑胶唱片"/> | <img width="230" src="screenshots/lyrics.jpg" alt="歌词"/> | <img width="230" src="screenshots/settings.jpg" alt="设置"/> |
+**音乐播放器 · 三种外观（Apple Music / 简约封面 / 黑胶唱片）**
+
+| Apple Music 风格 | 简约封面 | 简约封面 · 歌词 | 黑胶唱片 |
+|:---:|:---:|:---:|:---:|
+| <img width="190" src="screenshots/apple-music.jpg" alt="Apple Music 风格"/> | <img width="190" src="screenshots/glass-cover.jpg" alt="简约封面"/> | <img width="190" src="screenshots/glass-lyrics.jpg" alt="简约封面 · 歌词"/> | <img width="190" src="screenshots/vinyl.jpg" alt="黑胶唱片"/> |
+
+**个性化主题 · 自定义背景**
+
+<p>
+  <img width="300" src="screenshots/theme-glass.jpg" alt="自定义玻璃背景"/>
+</p>
 
 > ⚠️ **版权免责声明**：截图中出现的影视、音乐及封面内容均为示例素材，仅用于展示本应用的功能与界面效果。所有影视作品、音乐、专辑封面之版权归各自版权方所有，请确保你拥有相应的播放与个人使用权限。
 
