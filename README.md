@@ -44,11 +44,11 @@
 |:---:|:---:|:---:|
 | <img width="230" src="screenshots/home.jpg" alt="首页"/> | <img width="230" src="screenshots/library.jpg" alt="媒体库"/> | <img width="230" src="screenshots/theme.jpg" alt="主题设置"/> |
 
-**音乐播放器 · 三种外观（Apple Music / 简约封面 / 黑胶唱片）**
+**音乐播放器 · 外观（Apple Music / 简约封面）**
 
-| Apple Music 风格 | 简约封面 | 简约封面 · 歌词 | 黑胶唱片 |
+| Apple Music 风格 | Apple Music · 歌词 | 简约封面 | 简约封面 · 歌词 |
 |:---:|:---:|:---:|:---:|
-| <img width="190" src="screenshots/apple-music.jpg" alt="Apple Music 风格"/> | <img width="190" src="screenshots/glass-cover.jpg" alt="简约封面"/> | <img width="190" src="screenshots/glass-lyrics.jpg" alt="简约封面 · 歌词"/> | <img width="190" src="screenshots/vinyl.jpg" alt="黑胶唱片"/> |
+| <img width="190" src="screenshots/apple-music-cover.jpg" alt="Apple Music 风格"/> | <img width="190" src="screenshots/apple-music-lyrics.jpg" alt="Apple Music · 歌词"/> | <img width="190" src="screenshots/glass-cover.jpg" alt="简约封面"/> | <img width="190" src="screenshots/glass-lyrics.jpg" alt="简约封面 · 歌词"/> |
 
 **个性化主题 · 自定义背景**
 
