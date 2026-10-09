@@ -70,18 +70,86 @@ internal class AudioCoverExtractor(
         val first = readHeader(storage, file, HEADER_READ_LIMIT) ?: return CoverOutcome.FAILED
         if (first.isEmpty()) return CoverOutcome.ABSENT
 
+        // 1) FLAC：自行解析 PICTURE 块。
+        //    部分平台（如 MIUI）的 MediaMetadataRetriever 对 FLAC 内嵌封面直接失败
+        //    （日志 getEmbeddedPicture failed），因此不能依赖平台 extractor。
+        if (isFlac(first)) return extractFlacCover(first, storage, file, cacheFile)
+
+        // 2) 其它格式：交给平台 retriever
         val firstOutcome = extractEmbeddedFromDataSource(byteArrayDataSource(first), cacheFile)
         if (firstOutcome == CoverOutcome.FOUND) return CoverOutcome.FOUND
 
-        // 首次只读了前 2MB：若内嵌封面（常见于大尺寸 FLAC 封面）跨越 2MB 就会被截断，
-        // 需按"包含完整封面所需的字节数"再精确补读一次；能确认无封面则直接返回，避免多余读取。
-        val required = requiredMetadataBytes(first) ?: return firstOutcome
-        if (required < 0L) return CoverOutcome.ABSENT
+        // 3) ID3v2 标签可能超出 2MB：按 syncsafe 长度补读一次
+        val required = requiredId3Bytes(first) ?: return firstOutcome
         if (required <= first.size || required > MAX_METADATA_BYTES) return firstOutcome
 
         val bigger = readHeader(storage, file, required.toInt().coerceAtMost(MAX_METADATA_BYTES))
             ?: return CoverOutcome.FAILED
         return extractEmbeddedFromDataSource(byteArrayDataSource(bigger), cacheFile)
+    }
+
+    private fun isFlac(bytes: ByteArray): Boolean =
+        bytes.size >= 4 && bytes[0] == 'f'.code.toByte() && bytes[1] == 'L'.code.toByte() &&
+            bytes[2] == 'a'.code.toByte() && bytes[3] == 'C'.code.toByte()
+
+    /**
+     * FLAC 封面提取：扫描元数据块定位 PICTURE，取出图片字节直接解码落盘。
+     *
+     * 按需补读：首块字节不足包含完整 PICTURE 时，按块末尾偏移再读一次（最多 [MAX_SCAN_ROUNDS] 轮）。
+     */
+    private suspend fun extractFlacCover(
+        first: ByteArray,
+        storage: Storage,
+        file: StorageFile,
+        cacheFile: File,
+    ): CoverOutcome {
+        var bytes = first
+        var rounds = 0
+        while (rounds++ < MAX_SCAN_ROUNDS) {
+            when (val scan = scanFlacMetadata(bytes)) {
+                is FlacScan.Picture -> {
+                    val picture = flacPictureBytes(bytes, scan.start, scan.end)
+                    return if (picture != null) decodeAndWrite(picture, cacheFile) else CoverOutcome.FAILED
+                }
+
+                FlacScan.NoPicture -> return CoverOutcome.ABSENT
+
+                is FlacScan.NeedMore -> {
+                    val target = scan.targetBytes
+                    if (target <= bytes.size || target > MAX_METADATA_BYTES) return CoverOutcome.FAILED
+                    bytes = readHeader(storage, file, target) ?: return CoverOutcome.FAILED
+                }
+            }
+        }
+        return CoverOutcome.FAILED
+    }
+
+    /** 把图片字节解码、缩放并写入缓存（按目标宽度降采样解码，避免大图 OOM）。 */
+    private fun decodeAndWrite(picture: ByteArray, cacheFile: File): CoverOutcome {
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(picture, 0, picture.size, bounds)
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = computeInSampleSize(bounds.outWidth, bounds.outHeight, ThumbnailManager.MAX_WIDTH)
+            }
+            val bitmap = BitmapFactory.decodeByteArray(picture, 0, picture.size, options)
+                ?: return CoverOutcome.ABSENT
+            val scaled = scaleToMaxWidth(bitmap, ThumbnailManager.MAX_WIDTH)
+            if (scaled !== bitmap) bitmap.recycle()
+            store.writeJpeg(cacheFile, scaled)
+            CoverOutcome.FOUND
+        } catch (e: Exception) {
+            Log.w(TAG, "decodeAndWrite failed: ${e.message}")
+            CoverOutcome.FAILED
+        }
+    }
+
+    /** 以 [maxWidth] 为目标计算 2 的幂降采样比例，避免整幅大图进入内存。 */
+    private fun computeInSampleSize(width: Int, height: Int, maxWidth: Int): Int {
+        if (width <= 0 || height <= 0 || maxWidth <= 0) return 1
+        var sample = 1
+        while (width / (sample * 2) >= maxWidth) sample *= 2
+        return sample
     }
 
     private suspend fun readHeader(storage: Storage, file: StorageFile, maxBytes: Int): ByteArray? = try {
@@ -107,30 +175,16 @@ internal class AudioCoverExtractor(
     }
 
     /**
-     * 依据已读头部推算"包含完整内嵌封面所需的最小字节数"。
-     *
-     * - 返回 > 0：需要的总字节数（含封面块）；
-     * - 返回 -1：已能确认元数据扫描完毕且无封面；
-     * - 返回 null：无法判定（非已知格式 / 字节不足），调用方维持既有 2MB 行为。
+     * ID3v2（MP3 等）：按 syncsafe 长度推算"包含完整标签（含 APIC 封面）所需字节数"。
+     * 非 ID3 或长度非法返回 null。
      */
-    private fun requiredMetadataBytes(bytes: ByteArray): Long? {
-        if (bytes.size < 4) return null
-        return when {
-            bytes[0] == 'f'.code.toByte() && bytes[1] == 'L'.code.toByte() &&
-                bytes[2] == 'a'.code.toByte() && bytes[3] == 'C'.code.toByte() -> flacRequiredBytes(bytes)
-
-            bytes[0] == 'I'.code.toByte() && bytes[1] == 'D'.code.toByte() &&
-                bytes[2] == '3'.code.toByte() -> id3RequiredBytes(bytes)
-
-            else -> null
+    private fun requiredId3Bytes(bytes: ByteArray): Long? {
+        if (bytes.size < 3) return null
+        if (bytes[0] != 'I'.code.toByte() || bytes[1] != 'D'.code.toByte() || bytes[2] != '3'.code.toByte()) {
+            return null
         }
+        return id3TagEndOffset(bytes)
     }
-
-    /** FLAC：扫描元数据块，遇到 PICTURE 返回其末尾偏移；确认无 PICTURE 返回 -1；不确定返回 null。 */
-    private fun flacRequiredBytes(bytes: ByteArray): Long? = flacPictureEndOffset(bytes)
-
-    /** ID3v2：按 syncsafe 长度返回整个标签的末尾偏移（含内嵌 APIC 封面）。 */
-    private fun id3RequiredBytes(bytes: ByteArray): Long? = id3TagEndOffset(bytes)
 
     private suspend fun findDirectoryCover(storage: Storage, file: StorageFile, cacheFile: File): Boolean {
         val dirPath = file.path.substringBeforeLast('/', "")
@@ -249,11 +303,7 @@ internal class AudioCoverExtractor(
     private fun extractEmbeddedPicture(retriever: MediaMetadataRetriever, cacheFile: File): CoverOutcome {
         return try {
             val pictureData = retriever.embeddedPicture ?: return CoverOutcome.ABSENT
-            val bitmap = BitmapFactory.decodeByteArray(pictureData, 0, pictureData.size) ?: return CoverOutcome.ABSENT
-            val scaled = scaleToMaxWidth(bitmap, ThumbnailManager.MAX_WIDTH)
-            if (scaled !== bitmap) bitmap.recycle()
-            store.writeJpeg(cacheFile, scaled)
-            CoverOutcome.FOUND
+            decodeAndWrite(pictureData, cacheFile)
         } catch (e: Exception) {
             Log.w(TAG, "extractEmbeddedPicture failed: ${e.message}")
             CoverOutcome.FAILED
@@ -283,6 +333,9 @@ internal class AudioCoverExtractor(
 
         /** 元数据（含内嵌封面）允许补读的最大字节数，防止异常文件导致超大读取。 */
         const val MAX_METADATA_BYTES = 32 * 1024 * 1024
+
+        /** FLAC 自解析封面时的最大补读轮数。 */
+        const val MAX_SCAN_ROUNDS = 4
         const val BUFFER_SIZE = 64 * 1024
         const val DIR_COVER_TTL_MS = 10 * 60 * 1000L
         val DIR_COVER_BASES = listOf("cover", "folder", "album")
@@ -290,30 +343,75 @@ internal class AudioCoverExtractor(
     }
 }
 
+/** FLAC 元数据扫描结果。 */
+internal sealed interface FlacScan {
+    /** 找到 PICTURE 块，其数据区间为 `[start, end)`。 */
+    data class Picture(val start: Int, val end: Int) : FlacScan
+
+    /** 元数据已扫描完且无 PICTURE。 */
+    object NoPicture : FlacScan
+
+    /** 需要读取更多字节才能判定；[targetBytes] 为所需总字节数。 */
+    data class NeedMore(val targetBytes: Int) : FlacScan
+}
+
 /**
- * FLAC：扫描元数据块，遇到 PICTURE（类型 6）返回其末尾偏移；确认扫描完且无 PICTURE 返回 -1；
- * 无法判定（字节不足 / 非法）返回 null。
+ * FLAC：扫描元数据块定位 PICTURE（类型 6）。
  *
  * 块头固定 4 字节：1 字节（最后块标志 `<<7` | 类型）+ 3 字节大端长度。
  * 仅依据**已读字节**判断，不依赖整个文件。
  */
-internal fun flacPictureEndOffset(bytes: ByteArray): Long? {
-    var offset = 4L
+internal fun scanFlacMetadata(bytes: ByteArray): FlacScan {
+    if (bytes.size < 4) return FlacScan.NeedMore(bytes.size + 64)
+    var offset = 4
     while (offset + 4 <= bytes.size) {
-        val i = offset.toInt()
-        val b0 = bytes[i].toInt() and 0xFF
+        val b0 = bytes[offset].toInt() and 0xFF
         val last = (b0 and 0x80) != 0
         val type = b0 and 0x7F
-        val len = ((bytes[i + 1].toInt() and 0xFF) shl 16) or
-            ((bytes[i + 2].toInt() and 0xFF) shl 8) or
-            (bytes[i + 3].toInt() and 0xFF)
-        val blockEnd = offset + 4 + len
-        if (type == 6) return blockEnd
-        if (last) return -1L
-        if (blockEnd > bytes.size) return null
-        offset = blockEnd
+        val len = ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
+            ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
+            (bytes[offset + 3].toInt() and 0xFF)
+        val dataStart = offset + 4
+        val dataEnd = dataStart + len
+        if (type == 6) {
+            return if (dataEnd <= bytes.size) FlacScan.Picture(dataStart, dataEnd) else FlacScan.NeedMore(dataEnd)
+        }
+        if (last) return FlacScan.NoPicture
+        if (dataEnd > bytes.size) return FlacScan.NeedMore(dataEnd)
+        offset = dataEnd
     }
-    return null
+    // 需要更多字节才能读到下一个块头
+    return FlacScan.NeedMore(bytes.size + 64)
+}
+
+/**
+ * 从 FLAC PICTURE 块数据区间 `[start, end)` 中取出图片字节。
+ *
+ * 结构：4B 类型 + 4B mime 长度 + mime + 4B 描述长度 + 描述 +
+ * 4B 宽 + 4B 高 + 4B 位深 + 4B 颜色数 + 4B 数据长度 + 图片数据。越界 / 非法返回 null。
+ */
+internal fun flacPictureBytes(bytes: ByteArray, start: Int, end: Int): ByteArray? {
+    var off = start
+    fun readInt(): Int? {
+        if (off + 4 > end) return null
+        val v = ((bytes[off].toInt() and 0xFF) shl 24) or
+            ((bytes[off + 1].toInt() and 0xFF) shl 16) or
+            ((bytes[off + 2].toInt() and 0xFF) shl 8) or
+            (bytes[off + 3].toInt() and 0xFF)
+        off += 4
+        return v
+    }
+    readInt() ?: return null // 图片类型
+    val mimeLen = readInt() ?: return null
+    if (mimeLen < 0 || off + mimeLen > end) return null
+    off += mimeLen
+    val descLen = readInt() ?: return null
+    if (descLen < 0 || off + descLen > end) return null
+    off += descLen
+    repeat(4) { if (readInt() == null) return null } // 宽 / 高 / 位深 / 颜色数
+    val dataLen = readInt() ?: return null
+    if (dataLen <= 0 || off + dataLen > end) return null
+    return bytes.copyOfRange(off, off + dataLen)
 }
 
 /** ID3v2：按 syncsafe 长度返回整个标签的末尾偏移（含内嵌 APIC 封面）；非法 / 字节不足返回 null。 */

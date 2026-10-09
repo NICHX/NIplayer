@@ -1,58 +1,88 @@
 package com.nichx.niplayer.thumbnail
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 
 /**
- * 音频头部扫描的单测：验证"包含完整内嵌封面所需字节数"的推算逻辑。
+ * 音频头部自解析的单测：验证 FLAC 内嵌封面定位/取图与 ID3v2 标签长度解析。
  *
- * 背景：远程音频只读文件头部，固定 2MB 上限会把大封面（如 FLAC 内嵌 5MB PNG）截断，
- * 需据容器结构精确补读。此处锁定 FLAC 元数据块扫描与 ID3v2 标签长度解析。
+ * 背景：远程音频只读头部，且部分平台（MIUI）MediaMetadataRetriever 对 FLAC 内嵌封面
+ * 直接失败，因此改为自行解析 FLAC PICTURE 块取出图片字节。
  */
 class AudioHeaderScanTest {
 
-    private fun block(type: Int, len: Int, last: Boolean, dataLen: Int = len): ByteArray {
+    private fun intTo4(v: Int): ByteArray = byteArrayOf(
+        (v ushr 24).toByte(), ((v shr 16) and 0xFF).toByte(), ((v shr 8) and 0xFF).toByte(), (v and 0xFF).toByte(),
+    )
+
+    private fun blockHeader(type: Int, len: Int, last: Boolean): ByteArray = byteArrayOf(
+        ((if (last) 0x80 else 0) or (type and 0x7F)).toByte(),
+        ((len shr 16) and 0xFF).toByte(),
+        ((len shr 8) and 0xFF).toByte(),
+        (len and 0xFF).toByte(),
+    )
+
+    private fun flac(vararg body: ByteArray): ByteArray {
         val out = ByteArrayOutputStream()
-        out.write((if (last) 0x80 else 0) or (type and 0x7F))
-        out.write((len shr 16) and 0xFF)
-        out.write((len shr 8) and 0xFF)
-        out.write(len and 0xFF)
-        repeat(dataLen) { out.write(0) }
+        out.write("fLaC".toByteArray())
+        body.forEach { out.write(it) }
         return out.toByteArray()
     }
 
-    private fun flac(vararg blocks: ByteArray): ByteArray {
+    private fun picturePayload(image: ByteArray, mime: String = "image/png"): ByteArray {
         val out = ByteArrayOutputStream()
-        out.write("fLaC".toByteArray())
-        blocks.forEach { out.write(it) }
+        out.write(intTo4(3)) // picture type = front cover
+        out.write(intTo4(mime.length)); out.write(mime.toByteArray())
+        out.write(intTo4(0)) // description 长度
+        out.write(intTo4(2048)); out.write(intTo4(2048)) // 宽 / 高
+        out.write(intTo4(32)); out.write(intTo4(0)) // 位深 / 颜色数
+        out.write(intTo4(image.size)); out.write(image)
         return out.toByteArray()
     }
 
     @Test
-    fun `FLAC 有 PICTURE 返回块末尾偏移`() {
+    fun `scanFlacMetadata 定位 PICTURE 块区间`() {
+        val payload = picturePayload(ByteArray(1000))
         val bytes = flac(
-            block(type = 0, len = 34, last = false),
-            block(type = 6, len = 1000, last = true, dataLen = 0),
+            blockHeader(0, 34, last = false), ByteArray(34),
+            blockHeader(6, payload.size, last = true), payload,
         )
-        // 4(magic) + 4+34(streaminfo) + 4(picture 头) + 1000 = 1046
-        assertEquals(1046L, flacPictureEndOffset(bytes))
+        val scan = scanFlacMetadata(bytes)
+        assertTrue(scan is FlacScan.Picture)
+        scan as FlacScan.Picture
+        assertEquals(payload.size, scan.end - scan.start)
     }
 
     @Test
-    fun `FLAC 无 PICTURE 且已到最后块返回 -1`() {
-        val bytes = flac(block(type = 0, len = 34, last = true))
-        assertEquals(-1L, flacPictureEndOffset(bytes))
+    fun `scanFlacMetadata PICTURE 超出已读字节时请求更多`() {
+        val payload = picturePayload(ByteArray(5000))
+        val bytes = flac(
+            blockHeader(0, 34, last = false), ByteArray(34),
+            blockHeader(6, payload.size, last = true), payload.copyOfRange(0, 10),
+        )
+        val scan = scanFlacMetadata(bytes)
+        assertTrue(scan is FlacScan.NeedMore)
+        scan as FlacScan.NeedMore
+        // 需要读到 PICTURE 数据末尾：4(magic)+4+34(streaminfo)+4(picture 头)+payload
+        assertEquals(4 + 4 + 34 + 4 + payload.size, scan.targetBytes)
     }
 
     @Test
-    fun `FLAC 块长超出已读字节且未到末块返回 null`() {
-        val out = ByteArrayOutputStream()
-        out.write("fLaC".toByteArray())
-        out.write(byteArrayOf(0x04, 0x00, 0x07, 0xD0.toByte())) // type4 len=2000 last=0
-        repeat(20) { out.write(0) }
-        assertNull(flacPictureEndOffset(out.toByteArray()))
+    fun `scanFlacMetadata 无 PICTURE 返回 NoPicture`() {
+        val bytes = flac(blockHeader(0, 34, last = true), ByteArray(34))
+        assertTrue(scanFlacMetadata(bytes) is FlacScan.NoPicture)
+    }
+
+    @Test
+    fun `flacPictureBytes 取出图片数据`() {
+        val image = ByteArray(1000) { it.toByte() }
+        val payload = picturePayload(image)
+        val block = flac(blockHeader(6, payload.size, last = true), payload)
+        // 图片块数据起点 = 4(magic) + 4(块头)
+        assertArrayEquals(image, flacPictureBytes(block, 8, 8 + payload.size))
     }
 
     @Test
