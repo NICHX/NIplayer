@@ -14,12 +14,11 @@ import java.io.InputStream
  * 设计要点：
  * - **不依赖 media3**：保持 :core:storage 纯净，播放器适配由 :player:kernel 承担
  * - **[createPlayUrl] 返回可空**：Local/WebDAV 返回可直接播放的 URL；
- *   SMB 返回 null（需通过 RandomAccessSource 注入 media3，Phase 4 后续实现）
+ *   SMB 返回 null（由 [StorageDataSource] 包装为 media3 DataSource 注入播放器）
  * - **Coroutines suspend**：全面改为挂起函数，替代同步阻塞调用
  * - **无 LiveData**：状态由调用方（ViewModel）通过 Flow 暴露
  *
- * AbstractStorage 曾承担的额外职责（字幕缓存 / 缩略图 / 搜索）已下沉到
- * utils 或 Phase 5 UI 层，本接口不包含。
+ * AbstractStorage 曾承担的额外职责（字幕缓存 / 缩略图 / 搜索）已下沉到各自模块，本接口不包含。
  */
 interface Storage {
 
@@ -293,7 +292,7 @@ interface Storage {
      * 基于 [uploadFile] 扩展：底层读取 [inputStream] 时，[onProgress] 上报**累计已写字节数**。
      * [totalBytes] 用于计算百分比；为负或 0 时表示未知总长，仅按字节累计（无百分比）。
      * [onProgress] 会在非挂起回调（可能 IO/网络线程），需线程安全且低开销。
-     * 默认返回 false 表示不支持（Local / FTP 走此回退）。
+     * 默认返回 false 表示不支持（Local 走此回退；FTP 协议已移除）。
      *
      * 实现必须**协作式响应协程取消**（在写入循环中检查 [kotlinx.coroutines.ensureActive]），
      * 以便上传任务可被暂停/取消：取消时抛 [kotlinx.coroutines.CancellationException]，

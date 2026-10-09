@@ -71,6 +71,12 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew assembleDebug
 
+      # O-19 之后 release 走 R8 混淆 + 资源压缩，这些路径此前**只在打 tag 时**被验证，
+      # PR 阶段完全没过 R8/资源裁剪，导致混淆规则问题只能在发版时才暴露。
+      # 这里补一次 release 组装（无签名则产出 unsigned APK，仍能验证 R8 链路）。
+      - name: Assemble release APK (validate R8)
+        run: ./gradlew assembleRelease
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         if: always()
