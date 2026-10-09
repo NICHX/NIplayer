@@ -1475,6 +1475,11 @@ fun FileBrowserScreen(
                 fileMenu = null
                 showResetPasswordDialog = file
             },
+            onRefreshThumbnail = {
+                val target = file
+                fileMenu = null
+                viewModel.refreshThumbnail(target)
+            },
         )
     }
 

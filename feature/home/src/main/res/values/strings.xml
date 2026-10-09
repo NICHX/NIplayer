@@ -472,6 +472,8 @@
     <string name="storage_file_action_move">移动</string>
     <string name="storage_file_action_delete">删除</string>
     <string name="storage_file_action_properties">属性</string>
+    <string name="storage_file_action_refresh_thumbnail">刷新缩略图</string>
+    <string name="storage_file_refresh_thumbnail_failed">缩略图刷新失败</string>
     <string name="storage_file_action_open_with">用其他应用打开</string>
     <string name="storage_file_action_share">分享</string>
     <string name="storage_file_external_unsupported">该文件不支持用其他应用打开或分享</string>

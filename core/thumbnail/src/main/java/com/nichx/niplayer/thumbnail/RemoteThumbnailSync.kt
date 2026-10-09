@@ -243,6 +243,27 @@ internal class RemoteThumbnailSync(private val store: ThumbnailStore) {
         }
     }
 
+    /**
+     * 删除服务端 `.cover/` 下由本应用上传的音频封面（手动强制刷新单文件封面时调用）。
+     *
+     * 不动同目录用户自带的 cover/folder 图，仅删本应用以 `{文件名}-cover.jpg` 约定上传的缓存。
+     */
+    suspend fun deleteServerAudioCover(storage: Storage, file: StorageFile) = withContext(Dispatchers.IO) {
+        val coverName = "${file.name}-cover.jpg"
+        val coverPath = "${buildCoverDirPath(file.path)}/$coverName"
+        try {
+            if (storage.fileExists(coverPath)) {
+                storage.deleteFile(
+                    object : AbstractStorageFile(path = coverPath, name = coverName, isDirectory = false) {},
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "deleteServerAudioCover failed: path=$coverPath, ${e.message}")
+        }
+    }
+
     /** 重命名视频后同步重命名服务端缩略图（受写回门控，目标已存在则保留现状）。 */
     suspend fun renameServerThumbnail(storage: Storage, oldFile: StorageFile, newFileName: String) =
         withContext(Dispatchers.IO) {

@@ -493,6 +493,9 @@ class ThumbnailManager @Inject constructor(
     suspend fun deleteServerThumbnail(storage: Storage, file: StorageFile) =
         remoteSync.deleteServerThumbnail(storage, file)
 
+    suspend fun deleteServerAudioCover(storage: Storage, file: StorageFile) =
+        remoteSync.deleteServerAudioCover(storage, file)
+
     suspend fun renameServerThumbnail(storage: Storage, oldFile: StorageFile, newFileName: String) =
         remoteSync.renameServerThumbnail(storage, oldFile, newFileName)
 

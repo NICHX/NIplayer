@@ -1584,6 +1584,72 @@ class StorageFileViewModel @Inject constructor(
     }
 
     /**
+     * 手动强制刷新**单个文件**的缩略图/封面。
+     *
+     * 与 [refreshThumbnails]（整目录）区分：仅处理传入的这一个文件，清除其本地缓存
+     * （含音频 no_cover 标记）与远程存储上的服务端缓存，再按当前生效策略重新生成。
+     * 生成成功后在 [_thumbnailUrls] 写入带 `?t=` 时间戳的路径作为 cache-buster，
+     * 触发 Compose 重组并绕过 Coil 内存缓存，实现"立即看到新图"。
+     *
+     * 仅对图片 / 音频 / 视频有效；目录或非媒体文件直接忽略。
+     */
+    fun refreshThumbnail(file: StorageFile) {
+        val s = storage ?: return
+        val libId = currentLibrary?.id ?: return
+        if (file.isDirectory) return
+        val isVideo = MediaFileTypes.isVideoFile(file.name)
+        val isAudio = MediaFileTypes.isAudioFile(file.name)
+        val isImage = MediaFileTypes.isImageFile(file.name)
+        if (!isVideo && !isAudio && !isImage) return
+        val isRemote = s.library.mediaType == MediaType.SMB_SERVER ||
+            s.library.mediaType == MediaType.WEBDAV_SERVER
+
+        viewModelScope.launch {
+            // 1) 清本地缓存（含 no_cover 标记），并顺带清服务端缓存，保证重新生成而非命中旧图
+            withContext(Dispatchers.IO) {
+                thumbnailManager.clearCache(libId, listOf(file))
+                if (isRemote) {
+                    if (isVideo) {
+                        thumbnailManager.deleteThumbnailsForVideo(s, libId, file)
+                    } else if (isAudio) {
+                        thumbnailManager.deleteServerAudioCover(s, file)
+                    }
+                }
+            }
+            // 2) 移除"永久失败不重试"标记，允许本次重新尝试
+            _noRetryPaths.update { it - file.path }
+            _thumbnailUrls.update { it - file.path }
+
+            // 3) 重新生成
+            val newPath = withContext(Dispatchers.IO) {
+                when {
+                    isVideo -> (thumbnailManager.generateThumbnail(
+                        s, libId, file, position = ThumbnailSettings.framePosition,
+                    ) as? ThumbnailResult.Success)?.path
+
+                    isAudio -> thumbnailManager.generateAudioCover(s, libId, file)
+                    else -> thumbnailManager.generateImageThumbnail(s, libId, file)
+                }
+            }
+
+            if (newPath != null) {
+                _thumbnailUrls.update { it + (file.path to "$newPath?t=${System.currentTimeMillis()}") }
+                // 远程存储：把新图回写服务端，替换刚删除的旧缓存（写回开关在 manager 内部把关）
+                if (isRemote) {
+                    withContext(Dispatchers.IO) {
+                        if (isVideo) thumbnailManager.uploadThumbnail(s, file)
+                        else if (isAudio) thumbnailManager.uploadAudioCover(s, file)
+                    }
+                }
+            } else {
+                _events.tryEmit(
+                    StorageFileEvent.ShowError(context.getString(R.string.storage_file_refresh_thumbnail_failed)),
+                )
+            }
+        }
+    }
+
+    /**
      * 跳到面包屑指定深度的目录（单次协程，避免多次 goUp 产生竞态）。
      *
      * @param targetDepth 目标在目录栈中的索引（0 = 根目录）。若等于当前栈顶索引则不操作。

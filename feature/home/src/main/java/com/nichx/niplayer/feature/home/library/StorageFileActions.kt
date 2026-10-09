@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
@@ -121,9 +122,15 @@ internal fun FileActionsSheet(
     onEncrypt: () -> Unit = {},
     onDecrypt: () -> Unit = {},
     onResetPassword: () -> Unit = {},
+    onRefreshThumbnail: () -> Unit = {},
 ) {
     val overlayId = remember(file.path) { "file_actions_${file.path}" }
     val isPlayable = !file.isDirectory && (MediaFileTypes.isVideoFile(file.name) || MediaFileTypes.isAudioFile(file.name))
+    val isMediaFile = !file.isDirectory && (
+        MediaFileTypes.isVideoFile(file.name) ||
+            MediaFileTypes.isAudioFile(file.name) ||
+            MediaFileTypes.isImageFile(file.name)
+        )
 
     // 投递到全局玻璃浮层槽位（NiGlassBottomSheet，backdrop 真模糊，透明度随面板设置）
     LaunchedEffect(file, isFavorited, canDownload, showFileManagement, isEncrypted, isRemoteStorage, showExternalActions) {
@@ -217,6 +224,13 @@ internal fun FileActionsSheet(
                         onClick = onEncrypt,
                     )
                 }
+            }
+            if (isMediaFile) {
+                ActionRow(
+                    icon = Icons.Rounded.Refresh,
+                    text = stringResource(R.string.storage_file_action_refresh_thumbnail),
+                    onClick = onRefreshThumbnail,
+                )
             }
             ActionRow(
                 icon = Icons.Rounded.Info,
