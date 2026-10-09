@@ -67,29 +67,70 @@ internal class AudioCoverExtractor(
     }
 
     private suspend fun extractEmbeddedFromHeader(storage: Storage, file: StorageFile, cacheFile: File): CoverOutcome {
-        val headerBytes = try {
-            storage.readFileBytes(file, HEADER_READ_LIMIT)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "header read failed: ${e.message}")
-            null
-        } ?: return CoverOutcome.FAILED
+        val first = readHeader(storage, file, HEADER_READ_LIMIT) ?: return CoverOutcome.FAILED
+        if (first.isEmpty()) return CoverOutcome.ABSENT
 
-        val dataSource = object : MediaDataSource() {
-            override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
-                if (position >= headerBytes.size) return -1
-                val count = minOf(size, headerBytes.size - position.toInt())
-                System.arraycopy(headerBytes, position.toInt(), buffer, offset, count)
-                return count
-            }
+        val firstOutcome = extractEmbeddedFromDataSource(byteArrayDataSource(first), cacheFile)
+        if (firstOutcome == CoverOutcome.FOUND) return CoverOutcome.FOUND
 
-            override fun getSize(): Long = headerBytes.size.toLong()
+        // 首次只读了前 2MB：若内嵌封面（常见于大尺寸 FLAC 封面）跨越 2MB 就会被截断，
+        // 需按"包含完整封面所需的字节数"再精确补读一次；能确认无封面则直接返回，避免多余读取。
+        val required = requiredMetadataBytes(first) ?: return firstOutcome
+        if (required < 0L) return CoverOutcome.ABSENT
+        if (required <= first.size || required > MAX_METADATA_BYTES) return firstOutcome
 
-            override fun close() {}
-        }
-        return extractEmbeddedFromDataSource(dataSource, cacheFile)
+        val bigger = readHeader(storage, file, required.toInt().coerceAtMost(MAX_METADATA_BYTES))
+            ?: return CoverOutcome.FAILED
+        return extractEmbeddedFromDataSource(byteArrayDataSource(bigger), cacheFile)
     }
+
+    private suspend fun readHeader(storage: Storage, file: StorageFile, maxBytes: Int): ByteArray? = try {
+        storage.readFileBytes(file, maxBytes)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "header read failed (maxBytes=$maxBytes): ${e.message}")
+        null
+    }
+
+    private fun byteArrayDataSource(bytes: ByteArray): MediaDataSource = object : MediaDataSource() {
+        override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
+            if (position >= bytes.size) return -1
+            val count = minOf(size, bytes.size - position.toInt())
+            System.arraycopy(bytes, position.toInt(), buffer, offset, count)
+            return count
+        }
+
+        override fun getSize(): Long = bytes.size.toLong()
+
+        override fun close() {}
+    }
+
+    /**
+     * 依据已读头部推算"包含完整内嵌封面所需的最小字节数"。
+     *
+     * - 返回 > 0：需要的总字节数（含封面块）；
+     * - 返回 -1：已能确认元数据扫描完毕且无封面；
+     * - 返回 null：无法判定（非已知格式 / 字节不足），调用方维持既有 2MB 行为。
+     */
+    private fun requiredMetadataBytes(bytes: ByteArray): Long? {
+        if (bytes.size < 4) return null
+        return when {
+            bytes[0] == 'f'.code.toByte() && bytes[1] == 'L'.code.toByte() &&
+                bytes[2] == 'a'.code.toByte() && bytes[3] == 'C'.code.toByte() -> flacRequiredBytes(bytes)
+
+            bytes[0] == 'I'.code.toByte() && bytes[1] == 'D'.code.toByte() &&
+                bytes[2] == '3'.code.toByte() -> id3RequiredBytes(bytes)
+
+            else -> null
+        }
+    }
+
+    /** FLAC：扫描元数据块，遇到 PICTURE 返回其末尾偏移；确认无 PICTURE 返回 -1；不确定返回 null。 */
+    private fun flacRequiredBytes(bytes: ByteArray): Long? = flacPictureEndOffset(bytes)
+
+    /** ID3v2：按 syncsafe 长度返回整个标签的末尾偏移（含内嵌 APIC 封面）。 */
+    private fun id3RequiredBytes(bytes: ByteArray): Long? = id3TagEndOffset(bytes)
 
     private suspend fun findDirectoryCover(storage: Storage, file: StorageFile, cacheFile: File): Boolean {
         val dirPath = file.path.substringBeforeLast('/', "")
@@ -239,9 +280,51 @@ internal class AudioCoverExtractor(
 
         /** 头部读取方式提取封面时的最大读取字节数（2MB）。 */
         const val HEADER_READ_LIMIT = 2 * 1024 * 1024
+
+        /** 元数据（含内嵌封面）允许补读的最大字节数，防止异常文件导致超大读取。 */
+        const val MAX_METADATA_BYTES = 32 * 1024 * 1024
         const val BUFFER_SIZE = 64 * 1024
         const val DIR_COVER_TTL_MS = 10 * 60 * 1000L
         val DIR_COVER_BASES = listOf("cover", "folder", "album")
         val COVER_EXTS = listOf(".jpg", ".jpeg", ".png")
     }
+}
+
+/**
+ * FLAC：扫描元数据块，遇到 PICTURE（类型 6）返回其末尾偏移；确认扫描完且无 PICTURE 返回 -1；
+ * 无法判定（字节不足 / 非法）返回 null。
+ *
+ * 块头固定 4 字节：1 字节（最后块标志 `<<7` | 类型）+ 3 字节大端长度。
+ * 仅依据**已读字节**判断，不依赖整个文件。
+ */
+internal fun flacPictureEndOffset(bytes: ByteArray): Long? {
+    var offset = 4L
+    while (offset + 4 <= bytes.size) {
+        val i = offset.toInt()
+        val b0 = bytes[i].toInt() and 0xFF
+        val last = (b0 and 0x80) != 0
+        val type = b0 and 0x7F
+        val len = ((bytes[i + 1].toInt() and 0xFF) shl 16) or
+            ((bytes[i + 2].toInt() and 0xFF) shl 8) or
+            (bytes[i + 3].toInt() and 0xFF)
+        val blockEnd = offset + 4 + len
+        if (type == 6) return blockEnd
+        if (last) return -1L
+        if (blockEnd > bytes.size) return null
+        offset = blockEnd
+    }
+    return null
+}
+
+/** ID3v2：按 syncsafe 长度返回整个标签的末尾偏移（含内嵌 APIC 封面）；非法 / 字节不足返回 null。 */
+internal fun id3TagEndOffset(bytes: ByteArray): Long? {
+    if (bytes.size < 10) return null
+    var size = 0L
+    for (i in 6..9) {
+        val raw = bytes[i].toInt()
+        if ((raw and 0x80) != 0) return null
+        size = (size shl 7) or (raw and 0x7F).toLong()
+    }
+    val footer = if ((bytes[5].toInt() and 0x10) != 0) 10L else 0L
+    return 10L + size + footer
 }
