@@ -474,6 +474,7 @@
     <string name="storage_file_action_properties">Properties</string>
     <string name="storage_file_action_refresh_thumbnail">Refresh thumbnail</string>
     <string name="storage_file_refresh_thumbnail_failed">Failed to refresh thumbnail</string>
+    <string name="storage_file_refresh_thumbnail_kept">Refresh failed; kept the original thumbnail</string>
     <string name="storage_file_action_open_with">Open with</string>
     <string name="storage_file_action_share">Share</string>
     <string name="storage_file_external_unsupported">This file can\'t be opened or shared with other apps</string>

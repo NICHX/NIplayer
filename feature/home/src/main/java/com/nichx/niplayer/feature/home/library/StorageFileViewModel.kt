@@ -80,6 +80,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import java.io.File
 import javax.inject.Inject
 
 /** 文件目录加载的总超时（ms）。不可达存储底层 listFiles 可能阻塞数十秒，此值兜底停止转圈。 */
@@ -1586,10 +1587,10 @@ class StorageFileViewModel @Inject constructor(
     /**
      * 手动强制刷新**单个文件**的缩略图/封面。
      *
-     * 与 [refreshThumbnails]（整目录）区分：仅处理传入的这一个文件，清除其本地缓存
-     * （含音频 no_cover 标记）与远程存储上的服务端缓存，再按当前生效策略重新生成。
-     * 生成成功后在 [_thumbnailUrls] 写入带 `?t=` 时间戳的路径作为 cache-buster，
-     * 触发 Compose 重组并绕过 Coil 内存缓存，实现"立即看到新图"。
+     * 与 [refreshThumbnails]（整目录）区分：仅处理传入的这一个文件。
+     * **非破坏性**：先备份现有本地缓存，重新生成成功才替换；失败则回滚，保留原缩略图。
+     * 服务端缓存同样改为"生成成功后再删除并回写"，避免失败时把服务端旧图也删掉。
+     * 生成成功后在 [_thumbnailUrls] 写入带 `?t=` 时间戳的路径作为 cache-buster。
      *
      * 仅对图片 / 音频 / 视频有效；目录或非媒体文件直接忽略。
      */
@@ -1605,22 +1606,24 @@ class StorageFileViewModel @Inject constructor(
             s.library.mediaType == MediaType.WEBDAV_SERVER
 
         viewModelScope.launch {
-            // 1) 清本地缓存（含 no_cover 标记），并顺带清服务端缓存，保证重新生成而非命中旧图
-            withContext(Dispatchers.IO) {
-                thumbnailManager.clearCache(libId, listOf(file))
-                if (isRemote) {
-                    if (isVideo) {
-                        thumbnailManager.deleteThumbnailsForVideo(s, libId, file)
-                    } else if (isAudio) {
-                        thumbnailManager.deleteServerAudioCover(s, file)
-                    }
-                }
+            // 0) 备份现有本地缓存：重新生成失败时回滚，避免"刷新失败还把原图删了"
+            val backup = withContext(Dispatchers.IO) {
+                val current = when {
+                    isVideo -> thumbnailManager.getCachedThumbnailPath(libId, file.path)
+                    isAudio -> thumbnailManager.getCachedAudioCoverPath(libId, file.path)
+                    else -> thumbnailManager.getCachedImageThumbnailPath(libId, file.path)
+                } ?: return@withContext null
+                runCatching {
+                    File(current).takeIf { it.exists() }?.readBytes()?.let { current to it }
+                }.getOrNull()
             }
-            // 2) 移除"永久失败不重试"标记，允许本次重新尝试
+
+            // 1) 仅清本地缓存（含 no_cover 标记）；服务端缓存留到成功后再清
+            withContext(Dispatchers.IO) { thumbnailManager.clearCache(libId, listOf(file)) }
             _noRetryPaths.update { it - file.path }
             _thumbnailUrls.update { it - file.path }
 
-            // 3) 重新生成
+            // 2) 重新生成
             val newPath = withContext(Dispatchers.IO) {
                 when {
                     isVideo -> (thumbnailManager.generateThumbnail(
@@ -1634,17 +1637,37 @@ class StorageFileViewModel @Inject constructor(
 
             if (newPath != null) {
                 _thumbnailUrls.update { it + (file.path to "$newPath?t=${System.currentTimeMillis()}") }
-                // 远程存储：把新图回写服务端，替换刚删除的旧缓存（写回开关在 manager 内部把关）
+                // 远程存储：成功后再替换服务端缓存（先删旧再上传，写回开关在 manager 内把关）
                 if (isRemote) {
                     withContext(Dispatchers.IO) {
-                        if (isVideo) thumbnailManager.uploadThumbnail(s, file)
-                        else if (isAudio) thumbnailManager.uploadAudioCover(s, file)
+                        if (isVideo) {
+                            thumbnailManager.deleteServerThumbnail(s, file)
+                            thumbnailManager.uploadThumbnail(s, file)
+                        } else if (isAudio) {
+                            thumbnailManager.deleteServerAudioCover(s, file)
+                            thumbnailManager.uploadAudioCover(s, file)
+                        }
                     }
                 }
             } else {
-                _events.tryEmit(
-                    StorageFileEvent.ShowError(context.getString(R.string.storage_file_refresh_thumbnail_failed)),
-                )
+                // 失败：回滚本地缓存，保留原缩略图
+                val restored = withContext(Dispatchers.IO) {
+                    backup?.let { (path, bytes) ->
+                        runCatching {
+                            File(path).also { it.parentFile?.mkdirs() }.writeBytes(bytes).let { path }
+                        }.getOrNull()
+                    }
+                }
+                if (restored != null) {
+                    _thumbnailUrls.update { it + (file.path to "$restored?t=${System.currentTimeMillis()}") }
+                    _events.tryEmit(
+                        StorageFileEvent.ShowError(context.getString(R.string.storage_file_refresh_thumbnail_kept)),
+                    )
+                } else {
+                    _events.tryEmit(
+                        StorageFileEvent.ShowError(context.getString(R.string.storage_file_refresh_thumbnail_failed)),
+                    )
+                }
             }
         }
     }
