@@ -346,7 +346,6 @@ private fun VerticalEqBandSlider(
 
         Spacer(Modifier.size(8.dp))
 
-        // 纵向滑块容器
         Box(
             modifier = Modifier
                 .width(sliderWidth)
@@ -390,7 +389,6 @@ private fun VerticalEqBandSlider(
 
         Spacer(Modifier.size(8.dp))
 
-        // 频率标签
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,

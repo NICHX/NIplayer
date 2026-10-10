@@ -88,7 +88,6 @@ class StorageDataSource private constructor(
             )
         }
 
-        // 跳过到起始位置
         // SmbParallelInputStream.skip 是 O(1)（只更新消费位置和预读起点）
         val position = dataSpec.position
         if (position > 0) {

@@ -79,7 +79,6 @@ fun PlaybackStatsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // 概览卡片
             item {
                 StatsOverviewSection(
                     totalPlayCount = state.totalPlayCount,
@@ -90,7 +89,6 @@ fun PlaybackStatsScreen(
                 )
             }
 
-            // 按存储类型分布
             if (state.mediaTypeStats.isNotEmpty()) {
                 item {
                     StatsSection(title = stringResource(R.string.playback_stats_by_type), icon = Icons.Filled.Storage) {
@@ -104,7 +102,6 @@ fun PlaybackStatsScreen(
                 }
             }
 
-            // 按存储源分布
             if (state.storageStats.isNotEmpty()) {
                 item {
                     StatsSection(title = stringResource(R.string.playback_stats_by_storage), icon = Icons.Filled.Storage) {
@@ -118,7 +115,6 @@ fun PlaybackStatsScreen(
                 }
             }
 
-            // Top 10 观看时长
             if (state.topWatched.isNotEmpty()) {
                 item {
                     StatsSection(title = stringResource(R.string.playback_stats_top10), icon = Icons.Filled.TrendingUp) {

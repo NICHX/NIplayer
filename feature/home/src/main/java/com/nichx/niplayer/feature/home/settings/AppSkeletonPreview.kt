@@ -150,7 +150,6 @@ fun AppSkeletonPreview(
                     )
                 }
             }
-            // 顶栏：返回 + 标题
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier

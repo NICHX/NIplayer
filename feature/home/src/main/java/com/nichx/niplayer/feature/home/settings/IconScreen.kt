@@ -233,7 +233,6 @@ private fun IconOptionCard(
                             shape = IconShape,
                         ),
                 )
-                // 右上角选中徽标
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)

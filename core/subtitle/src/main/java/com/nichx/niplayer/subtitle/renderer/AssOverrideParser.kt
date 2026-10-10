@@ -530,7 +530,6 @@ object AssOverrideParser {
 
         when {
             parts.size >= 3 && parts[0].toLongOrNull() != null && parts[1].toLongOrNull() != null -> {
-                // t1, t2, tags
                 t1 = parts[0].toLongOrNull() ?: 0L
                 t2 = parts[1].toLongOrNull() ?: 0L
                 tagsStr = parts.subList(2, parts.size).joinToString(",")

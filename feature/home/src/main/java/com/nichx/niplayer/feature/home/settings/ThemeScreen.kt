@@ -858,7 +858,6 @@ private fun SchemeCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // 三色圆点组
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 listOf(pal[0], pal[1], pal[2]).forEach { c ->
                     Box(modifier = Modifier.size(9.dp).clip(CircleShape).background(c))

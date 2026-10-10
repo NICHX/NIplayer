@@ -73,7 +73,6 @@ fun SubtitleStyleDialog(
     var bottomPaddingDp by remember { mutableStateOf(SubtitleSettings.bottomPaddingDp) }
     var applyEmbeddedStyles by remember { mutableStateOf(SubtitleSettings.applyEmbeddedStyles) }
 
-    // 子 Dialog 显示状态
     var showFontFamilyPicker by remember { mutableStateOf(false) }
     var showFontWeightPicker by remember { mutableStateOf(false) }
     var showTextSizePicker by remember { mutableStateOf(false) }
@@ -96,7 +95,6 @@ fun SubtitleStyleDialog(
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
         ) {
-            // 分区：字幕文字
             StyleSectionHeader(text = stringResource(R.string.subtitle_style_group_character))
             StyleClickRow(
                 label = stringResource(R.string.subtitle_font_label),
@@ -135,7 +133,6 @@ fun SubtitleStyleDialog(
             )
 
             Spacer(Modifier.height(4.dp))
-            // 分区：布局
             StyleSectionHeader(text = stringResource(R.string.subtitle_style_group_layout))
             StyleClickRow(
                 label = stringResource(R.string.subtitle_bottom_padding_label),

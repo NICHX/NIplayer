@@ -690,7 +690,6 @@ class VrSurfaceView(
             uHalfPano = GLES20.glGetUniformLocation(program, "uHalfPano")
             uInvertYaw = GLES20.glGetUniformLocation(program, "uInvertYaw")
 
-            // 球面 VBO
             val sphere = buildSphere(SPHERE_LONG_SEG, SPHERE_LAT_SEG)
             sphereCount = sphere.size / 3
             val vb = ByteBuffer.allocateDirect(sphere.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()

@@ -129,7 +129,6 @@ class WebDavStorage(
     override suspend fun listFiles(directory: StorageFile): List<StorageFile> {
         val cacheKey = directory.path
         val now = System.currentTimeMillis()
-        // 检查缓存命中
         val cached = listCache[cacheKey]
         val cachedAt = listCacheTimestamps[cacheKey]
         if (cached != null && cachedAt != null && now - cachedAt < LIST_CACHE_TTL_MS) {
@@ -145,7 +144,6 @@ class WebDavStorage(
                     kotlinx.coroutines.delay(delayMs)
                 }
                 val result = propfind(directory)
-                // 写入缓存
                 listCache[cacheKey] = result
                 listCacheTimestamps[cacheKey] = System.currentTimeMillis()
                 return result
@@ -703,7 +701,6 @@ class WebDavStorage(
             }
         }
         if (dirPutDataOk) {
-            // 删除临时文件
             runCatching {
                 client.newCall(buildRequest(dirUrlNoSlash).delete().build()).execute().close()
             }

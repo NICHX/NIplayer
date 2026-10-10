@@ -134,7 +134,6 @@ fun NiDrawerPanel(
                     .fillMaxHeight()
                     .width(320.dp),
             ) {
-                // 半透明渐变背景
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -162,7 +161,6 @@ fun NiDrawerPanel(
                             .fillMaxSize()
                             .padding(16.dp),
                     ) {
-                        // 标题栏
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -198,7 +196,6 @@ fun NiDrawerPanel(
                         HorizontalDivider(color = Color(0x33FFFFFF), thickness = 1.dp)
                         Spacer(Modifier.height(8.dp))
 
-                        // 可滚动内容
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()

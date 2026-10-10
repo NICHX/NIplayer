@@ -601,7 +601,6 @@ private fun computePosition(
         return (x - textWidth / 2f) to (y - textHeight / 2f)
     }
 
-    // 按 align 自动布局
     val horizontalPadding = canvasWidth * 0.05f // 左右各留 5% 边距
     // 垂直位置只由 align 的垂直分量决定，与水平分量无关。
     // 原先在三个水平分支里各嵌一层 `when + else`，现提为一次穷尽 when（9 个取值全覆盖）

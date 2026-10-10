@@ -135,7 +135,6 @@ internal fun AbLoopDialog(
 
                     Spacer(Modifier.height(12.dp))
 
-                    // 进度条
                     val aFrac = (abLoopA?.toFloat()?.div(durationMs) ?: 0f).coerceIn(0f, 1f)
                     val bFrac = (abLoopB?.toFloat()?.div(durationMs) ?: 0f).coerceIn(0f, 1f)
                     val posFrac = (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
@@ -260,7 +259,6 @@ internal fun AbLoopDialog(
                     }
                 }
 
-                // 快速操作提示
                 Spacer(Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),

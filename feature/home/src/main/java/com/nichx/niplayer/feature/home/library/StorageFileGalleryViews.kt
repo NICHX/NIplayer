@@ -373,7 +373,6 @@ internal fun GalleryCell(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                // 文件夹图标
                 Icon(
                     imageVector = Icons.Rounded.Folder,
                     contentDescription = null,

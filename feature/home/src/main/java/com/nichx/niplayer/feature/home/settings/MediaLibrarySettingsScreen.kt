@@ -372,7 +372,6 @@ fun MediaLibrarySettingsScreen(
             )
         }
         NiInfoDialog(title = dialogTitle, onDismiss = { configDialogLibId = null }) {
-            // 生成时机
             groupHeader(R.string.player_thumbnail_timing)
             NiDialogItemRow(
                 NiDialogItem(
@@ -396,7 +395,6 @@ fun MediaLibrarySettingsScreen(
                     ),
                 )
             }
-            // 回写服务器
             HorizontalDivider(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),

@@ -423,7 +423,6 @@ class SubtitleEngine {
         var outlineWidth = span.outlineWidth
 
         for (t in transforms) {
-            // 字号插值
             t.targetFontSize?.let { target ->
                 fontSize = when {
                     elapsedMs <= t.t1 -> fontSize // 动画未开始，保持当前值
@@ -436,7 +435,6 @@ class SubtitleEngine {
                 }
             }
 
-            // 主色插值
             t.targetPrimary?.let { target ->
                 primary = when {
                     elapsedMs <= t.t1 -> primary
@@ -449,7 +447,6 @@ class SubtitleEngine {
                 }
             }
 
-            // 边框色插值
             t.targetOutline?.let { target ->
                 outline = when {
                     elapsedMs <= t.t1 -> outline
@@ -462,7 +459,6 @@ class SubtitleEngine {
                 }
             }
 
-            // 主色 alpha 插值
             t.targetPrimaryAlpha?.let { target ->
                 primary = primary?.let { current ->
                     when {
@@ -476,7 +472,6 @@ class SubtitleEngine {
                 }
             }
 
-            // 旋转插值
             t.targetRotationZ?.let { target ->
                 rotationZ = when {
                     elapsedMs <= t.t1 -> rotationZ
@@ -489,7 +484,6 @@ class SubtitleEngine {
                 }
             }
 
-            // 边框宽度插值
             t.targetOutlineWidth?.let { target ->
                 outlineWidth = when {
                     elapsedMs <= t.t1 -> outlineWidth

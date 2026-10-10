@@ -333,7 +333,6 @@ object BlackBarDetector {
             }
             y += sampleStep
         }
-        // 边界补一个
         if (height > 0) {
             val lastPixel = pixels[(height - 1) * width + col]
             if (!isTransparent(lastPixel)) {

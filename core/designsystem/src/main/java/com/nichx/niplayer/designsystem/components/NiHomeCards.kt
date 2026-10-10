@@ -378,7 +378,6 @@ fun NiThumbCard(
                         .fillMaxSize()
                         .background(overlayBg),
                 )
-                // 中央播放按钮
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)

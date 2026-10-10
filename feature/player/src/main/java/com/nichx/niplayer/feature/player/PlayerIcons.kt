@@ -49,7 +49,6 @@ val AbLoopIcon: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round,
         )
-        // A 字形描边
         addPath(
             pathData = letterA,
             stroke = SolidColor(Color.White),
@@ -57,7 +56,6 @@ val AbLoopIcon: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round,
         )
-        // B 字形描边
         addPath(
             pathData = letterB,
             stroke = SolidColor(Color.White),

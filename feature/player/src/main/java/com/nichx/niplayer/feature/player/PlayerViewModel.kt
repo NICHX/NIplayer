@@ -985,7 +985,6 @@ class PlayerViewModel @Inject constructor(
         // 缩放档位持久化：把恢复出的档位同步给内核，避免 UI 状态与内核状态不一致
         player.setVideoScaleMode(SCALE_MODES[_scaleIndex.value])
 
-        // 消费播放列表
         playlistHolder.consume()?.let { (items, startIndex) ->
             if (items.isNotEmpty() && startIndex in items.indices) {
                 _playlist.value = items
@@ -1294,7 +1293,6 @@ class PlayerViewModel @Inject constructor(
             } catch (_: Exception) {
             }
         }
-        // 递归查找 cause 链
         return extractHttpStatusCode(cause.cause)
     }
 

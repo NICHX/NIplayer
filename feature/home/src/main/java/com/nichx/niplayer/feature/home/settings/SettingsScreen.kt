@@ -448,7 +448,6 @@ private fun OtherGroupCard(promo: PromoInfo?, onOpen: (String) -> Unit) {
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 )
             }
-            // 赞助支持
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

@@ -579,7 +579,6 @@ fun FileBrowserScreen(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
-            // 从 Uri 查询文件名
             val fileName = runCatching {
                 context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                     val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
@@ -837,7 +836,6 @@ fun FileBrowserScreen(
                         backdrop = multiSelectBarBackdrop,
                         modifier = Modifier.padding(horizontal = 2.dp),
                     )
-                    // 常驻：排序
                     Box(
                         modifier = Modifier.onGloballyPositioned { coords ->
                             // 锚点取触发按钮的根坐标矩形（供玻璃菜单定位 + 自该角长出来）
@@ -1487,7 +1485,6 @@ fun FileBrowserScreen(
         FileInfoDialog(file = file, onDismiss = { showFileInfo = null })
     }
 
-    // 文件管理对话框
     renameTarget?.let { file ->
         RenameFileDialog(
             fileName = file.name,

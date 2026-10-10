@@ -526,7 +526,6 @@ class StorageFileViewModel @Inject constructor(
     fun toggleFolderExpanded(file: StorageFile) {
         val path = file.path.trimEnd('/')
         if (path in _treeExpanded.value) {
-            // 已展开 → 折叠
             _treeExpanded.value = _treeExpanded.value - path
             return
         }
@@ -1576,7 +1575,6 @@ class StorageFileViewModel @Inject constructor(
         viewModelScope.launch {
             // BUG-T-M4 修复：仅清当前目录相关缓存，不影响其他目录/存储源/播放历史
             withContext(Dispatchers.IO) { thumbnailManager.clearCache(libId, filesToClear) }
-            // 清空状态
             _thumbnailUrls.value = emptyMap()
             _noRetryPaths.value = emptySet()
             // 重新列当前目录（触发 generateThumbnailUrls）
@@ -1623,7 +1621,6 @@ class StorageFileViewModel @Inject constructor(
             _noRetryPaths.update { it - file.path }
             _thumbnailUrls.update { it - file.path }
 
-            // 2) 重新生成
             val newPath = withContext(Dispatchers.IO) {
                 when {
                     isVideo -> (thumbnailManager.generateThumbnail(
@@ -1654,7 +1651,8 @@ class StorageFileViewModel @Inject constructor(
                 val restored = withContext(Dispatchers.IO) {
                     backup?.let { (path, bytes) ->
                         runCatching {
-                            File(path).also { it.parentFile?.mkdirs() }.writeBytes(bytes).let { path }
+                            File(path).also { it.parentFile?.mkdirs() }.writeBytes(bytes)
+                            path
                         }.getOrNull()
                     }
                 }

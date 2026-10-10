@@ -269,7 +269,6 @@ internal fun PlaybackControls(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 左端：播放模式
         Box(modifier = Modifier.weight(1f)) {
             IconButton(onClick = onCyclePlayMode) {
                 Box(
@@ -355,7 +354,6 @@ internal fun PlaybackControls(
             }
         }
 
-        // 右端：播放列表
         Box(modifier = Modifier.weight(1f)) {
             IconButton(
                 onClick = onShowPlaylist,

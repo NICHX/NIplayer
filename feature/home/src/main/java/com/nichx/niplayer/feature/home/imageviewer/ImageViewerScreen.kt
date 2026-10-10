@@ -638,7 +638,6 @@ private fun ZoomableImagePage(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            // 双击缩放
             .pointerInput(file.path) {
                 detectTapGestures(
                     onDoubleTap = {

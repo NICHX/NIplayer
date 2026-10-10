@@ -189,7 +189,6 @@ class ImageViewerViewModel @Inject constructor(
     suspend fun loadImage(file: StorageFile): ImageModel? {
         val s = storage ?: return null
 
-        // 先查缓存
         bytesCache.get(file.path)?.let { return ImageModel.Bytes(it) }
 
         return withContext(Dispatchers.IO) {
