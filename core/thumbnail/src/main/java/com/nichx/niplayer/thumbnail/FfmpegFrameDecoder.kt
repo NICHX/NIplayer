@@ -5,6 +5,25 @@ import android.media.MediaDataSource
 import android.util.Log
 
 /**
+ * 软解结果。
+ *
+ * @param bitmap 解码出的 BGRA 位图
+ * @param hdrKind 帧的 HDR 类型（[HDR_KIND_NONE] / [HDR_KIND_PQ] / [HDR_KIND_HLG]）——
+ *   ffmpeg 直解出的是原始码值、无系统 tone map，调用方需据此做色调映射补偿，
+ *   否则 HDR 片源的预览/缩略图会明显发暗
+ */
+internal data class FfmpegFrame(val bitmap: Bitmap, val hdrKind: Int)
+
+/** JNI 回传的 HDR 类型标记（与 native 侧 `color_trc` 判定一致）。 */
+internal const val HDR_KIND_NONE = 0
+
+/** HDR10 / PQ（SMPTE ST 2084）。 */
+internal const val HDR_KIND_PQ = 1
+
+/** HLG（ARIB STD-B67）。 */
+internal const val HDR_KIND_HLG = 2
+
+/**
  * ffmpeg 取帧（JNI）：把远程 [MediaDataSource] 桥接给 libavformat/libavcodec，软解一帧。
  *
  * 覆盖常见容器（matroska、mov(mp4)、mpegts、avi、flv…），走索引 seek 读取量小，且**不占用**
@@ -40,19 +59,24 @@ internal object FfmpegFrameDecoder {
         startMs: Long = -1L,
         fraction: Double = -1.0,
         pickNearest: Boolean = false,
-    ): Bitmap? {
+    ): FfmpegFrame? {
         if (!available) return null
         return try {
             val raw = nativeDecode(source, targetWidth, startMs, fraction, if (pickNearest) 1 else 0)
                 ?: return null
-            if (raw.size < 3) return null
+            // 头部 3 个 int：宽、高、HDR 类型；其后为 BGRA 像素
+            if (raw.size < 4) return null
             val width = raw[0]
             val height = raw[1]
+            val hdrKind = raw[2]
             val count = width * height
-            if (width <= 0 || height <= 0 || raw.size < count + 2) return null
+            if (width <= 0 || height <= 0 || raw.size < count + 3) return null
             val pixels = IntArray(count)
-            System.arraycopy(raw, 2, pixels, 0, count)
-            Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+            System.arraycopy(raw, 3, pixels, 0, count)
+            FfmpegFrame(
+                bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888),
+                hdrKind = hdrKind,
+            )
         } catch (t: Throwable) {
             Log.w(TAG, "decode failed: ${t.message}")
             null

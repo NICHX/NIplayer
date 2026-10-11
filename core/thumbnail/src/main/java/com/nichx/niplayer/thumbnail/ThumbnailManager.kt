@@ -582,9 +582,6 @@ class ThumbnailManager @Inject constructor(
         /** 同一缓存目录两次容量淘汰扫描的最小间隔（10s）。 */
         const val CACHE_TRIM_INTERVAL_MS = 10_000L
 
-        /** HDR 软件色调映射线性增益（HLG/PQ → SDR 近似）。 */
-        const val HDR_TONE_MAP_GAIN = 3.0f
-
         /** ColorTransfer = SMPTE ST 2084（PQ，HDR10 / Dolby Vision）。 */
         const val COLOR_TRANSFER_SMPTE_ST_2084 = 7
 

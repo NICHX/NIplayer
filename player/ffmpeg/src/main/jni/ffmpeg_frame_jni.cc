@@ -22,6 +22,9 @@ extern "C" {
 #define IO_BUFFER_SIZE (1 << 15)
 #define JNI_ARRAY_SIZE (1 << 20)
 
+// 已读这么多视频包仍一帧都没解出，即判定解码器不支持该流并提前放弃（见循环内注释）。
+#define NO_FRAME_ABORT_PACKETS 64
+
 namespace {
 
 struct JniIo {
@@ -251,13 +254,21 @@ Java_com_nichx_niplayer_thumbnail_FfmpegFrameDecoder_nativeDecode(
     bool reached = false;
     bool done = false;
     int readRet = 0;
+    int videoPackets = 0;
+    int sendFailures = 0;
+    int firstSendError = 0;
 
     while ((readRet = av_read_frame(format, packet)) >= 0) {
       if (packet->stream_index != videoStream) {
         av_packet_unref(packet);
         continue;
       }
-      if (avcodec_send_packet(decoder, packet) < 0) {
+      videoPackets++;
+      int sendRet = avcodec_send_packet(decoder, packet);
+      if (sendRet < 0) {
+        // 诊断用：解码器拒收所有包（如超出解码能力/缺参数集）时，靠这个计数定位
+        if (sendFailures == 0) firstSendError = sendRet;
+        sendFailures++;
         av_packet_unref(packet);
         continue;
       }
@@ -301,11 +312,21 @@ Java_com_nichx_niplayer_thumbnail_FfmpegFrameDecoder_nativeDecode(
         }
       }
       if (done) break;
+      // 提前中止：读了相当多的视频包却一帧都解不出来，说明解码器吃不下这个流（实测 8K 远程
+      // MP4 会 sendFail=ENOSYS）。此时继续读只会把整个读取预算耗光、白白拖慢（1.8s+65MB），
+      // 直接放弃让上层回退 retriever。
+      if (decoded == 0 && videoPackets >= NO_FRAME_ABORT_PACKETS) {
+        LOGW("abort: %d video packets, no frame decoded (sendFail=%d firstSendErr=%d)", videoPackets,
+             sendFailures, firstSendError);
+        break;
+      }
     }
 
     if (!best) {
-      LOGW("no frame decoded (readRet=%d frames=%d reads=%d seeks=%d bytes=%lld)", readRet, decoded,
-           io.reads, io.seeks, static_cast<long long>(io.bytesRead));
+      LOGW("no frame decoded (readRet=%d videoPkts=%d sendFail=%d firstSendErr=%d frames=%d reads=%d "
+           "seeks=%d bytes=%lld)",
+           readRet, videoPackets, sendFailures, firstSendError, decoded, io.reads, io.seeks,
+           static_cast<long long>(io.bytesRead));
       break;
     }
 
@@ -333,20 +354,29 @@ Java_com_nichx_niplayer_thumbnail_FfmpegFrameDecoder_nativeDecode(
     int dstLinesize[4] = {stride, 0, 0, 0};
     sws_scale(sws, best->data, best->linesize, 0, srcHeight, dstData, dstLinesize);
 
-    int total = 2 + dstWidth * dstHeight;
+    // 第 3 个头部字段：该帧的 HDR 类型（0=非 HDR，1=PQ/HDR10，2=HLG）。ffmpeg 直解出的是原始
+    // 码值、无系统 tone map，Java 侧据此决定用哪条曲线做色调映射（否则 HDR 预览会发暗或过曝）。
+    const int hdrKind = (best->color_trc == AVCOL_TRC_SMPTE2084)
+                            ? 1
+                            : (best->color_trc == AVCOL_TRC_ARIB_STD_B67) ? 2 : 0;
+    int total = 3 + dstWidth * dstHeight;
     jintArray out = env->NewIntArray(total);
     if (!out) break;
     jint* pixels = static_cast<jint*>(av_malloc(sizeof(jint) * total));
     if (!pixels) break;
     pixels[0] = dstWidth;
     pixels[1] = dstHeight;
-    memcpy(pixels + 2, rgb, static_cast<size_t>(stride) * dstHeight);
+    pixels[2] = hdrKind;
+    memcpy(pixels + 3, rgb, static_cast<size_t>(stride) * dstHeight);
     env->SetIntArrayRegion(out, 0, total, pixels);
     av_free(pixels);
     result = out;
-    LOGD("decoded %dx%d -> %dx%d dur=%.1fs seekPos=%.1fs seekRet=%d frames=%d luma=%d reads=%d seeks=%d bytes=%lld",
+    LOGD("decoded %dx%d -> %dx%d dur=%.1fs seekPos=%.1fs seekRet=%d frames=%d luma=%d hdrKind=%d "
+         "transfer=%d range=%d primaries=%d videoPkts=%d sendFail=%d reads=%d seeks=%d bytes=%lld",
          srcWidth, srcHeight, dstWidth, dstHeight, durationUs / 1000000.0, posUs / 1000000.0, seekRet,
-         evaluated, bestLuma, io.reads, io.seeks, static_cast<long long>(io.bytesRead));
+         evaluated, bestLuma, hdrKind, best->color_trc, best->color_range,
+         best->color_primaries, videoPackets, sendFailures, io.reads, io.seeks,
+         static_cast<long long>(io.bytesRead));
   } while (false);
 
   if (best) av_frame_free(&best);

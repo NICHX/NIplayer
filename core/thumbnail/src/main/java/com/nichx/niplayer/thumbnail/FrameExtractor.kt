@@ -2,10 +2,6 @@ package com.nichx.niplayer.thumbnail
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
 import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -20,6 +16,10 @@ import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.storage.impl.SmbMediaDataSource
 import com.nichx.niplayer.storage.impl.WebDavMediaDataSource
 import kotlinx.coroutines.CancellationException
+import java.util.Collections
+import java.util.LinkedHashMap
+import kotlin.math.exp
+import kotlin.math.pow
 
 /**
  * 视频取帧结果。
@@ -45,6 +45,23 @@ internal sealed interface FrameExtraction {
  * `extractAndSaveFrame*` 收敛为「一个数据源策略 + 一次取帧」，不再与落盘纠缠。
  */
 internal class VideoFrameExtractor(private val context: Context) {
+
+    /**
+     * ffmpeg 取帧失败（解不出任何帧）的文件路径集合（LRU，容量有限）。
+     *
+     * 拖动预览会高频请求取帧；对某些超高码率 / 超长时间的文件，ffmpeg 往往要**读满一次网络读取预算**
+     * 才能判定失败（实测 8K、近 30GB 的 MP4 耗时约 4s、读取 65MB）。记住这类文件后，后续预览直接
+     * 走 retriever 兜底，避免每次拖动都重复这趟重读取。
+     */
+    private val ffmpegUnsupported: MutableSet<String> = Collections.synchronizedSet(
+        Collections.newSetFromMap(
+            object : LinkedHashMap<String, Boolean>(16, 0.75f, true) {
+                override fun removeEldestEntry(
+                    eldest: MutableMap.MutableEntry<String, Boolean>?,
+                ): Boolean = size > FFMPEG_UNSUPPORTED_CACHE_MAX
+            },
+        ),
+    )
 
     /** 按用户配置的取帧位置策略 [position] 取帧。 */
     suspend fun extract(
@@ -180,13 +197,22 @@ internal class VideoFrameExtractor(private val context: Context) {
         pickNearest: Boolean = false,
     ): Bitmap? {
         return try {
-            FfmpegFrameDecoder.decodeFirstFrame(
+            val decoded = FfmpegFrameDecoder.decodeFirstFrame(
                 source,
                 ThumbnailManager.MAX_WIDTH,
                 startMs,
                 fraction,
                 pickNearest,
-            )
+            ) ?: return null
+            // ffmpeg 直解出的是原始码值、**没有系统 tone map**，HDR 帧必须自行色调映射，
+            // 否则 HDR 片源的预览/缩略图会发暗或过曝（retriever 路径同样做了补偿）。
+            if (decoded.hdrKind != HDR_KIND_NONE) {
+                val mapped = applyHdrToneMapCompensation(decoded.bitmap, decoded.hdrKind)
+                if (mapped !== decoded.bitmap) decoded.bitmap.recycle()
+                mapped
+            } else {
+                decoded.bitmap
+            }
         } catch (e: Exception) {
             Log.w(TAG, "ffmpeg decode failed: ${e.message}")
             null
@@ -231,7 +257,8 @@ internal class VideoFrameExtractor(private val context: Context) {
         exactFrame: Boolean = false,
     ): FrameExtraction {
         val startedAt = SystemClock.elapsedRealtime()
-        if (storage.library.mediaType != MediaType.LOCAL_STORAGE && FfmpegFrameDecoder.isAvailable) {
+        val isRemote = storage.library.mediaType != MediaType.LOCAL_STORAGE
+        if (isRemote && FfmpegFrameDecoder.isAvailable && file.path !in ffmpegUnsupported) {
             val source = openMediaDataSource(storage, file)
             if (source != null) {
                 val bitmap = decodeWithFfmpeg(
@@ -248,9 +275,16 @@ internal class VideoFrameExtractor(private val context: Context) {
                     )
                     return FrameExtraction.Ok(bitmap)
                 }
+                // 解不出任何帧：记住该文件，后续直接走 retriever，不再重复这趟重读取
+                ffmpegUnsupported.add(file.path)
+                Log.w(TAG, "ffmpeg unsupported, fall back to retriever: ${file.name}")
             }
         }
-        val option = if (exactFrame) {
+        // retriever 兜底：只有本地才用「就近解码」（精确、且本地读取便宜）；
+        // 远程兜底一律只用关键帧 —— 就近解码要自关键帧向前解码到目标帧，对高码率远程文件会
+        // 读穿单次读取预算（实测 8K 远程 MP4 直接取不到帧），用关键帧才能稳定出图。
+        val localExact = exactFrame && !isRemote
+        val option = if (localExact) {
             MediaMetadataRetriever.OPTION_CLOSEST
         } else {
             MediaMetadataRetriever.OPTION_CLOSEST_SYNC
@@ -422,6 +456,9 @@ internal class VideoFrameExtractor(private val context: Context) {
 
     private companion object {
         const val TAG = "VideoFrameExtractor"
+
+        /** `ffmpeg 不支持` 的文件路径缓存容量（LRU）。 */
+        const val FFMPEG_UNSUPPORTED_CACHE_MAX = 64
     }
 }
 
@@ -567,28 +604,92 @@ internal fun isHdrVideo(retriever: MediaMetadataRetriever): Boolean {
 }
 
 /**
- * HDR 软件色调映射补偿（仅 API < 34 使用）：线性增益 + [ColorMatrixColorFilter]，避免逐像素循环。
+ * HDR → SDR 色调映射（软件，逐像素）。
+ *
+ * 旧实现是「在 PQ **编码值**上乘 3.0 再截断」—— 编码值 0.333（约 33nits）以上全部爆到 255，
+ * 所以 HDR 画面严重过曝。现按物理链路做：
+ *
+ *   1. transfer 反变换（PQ 的 EOTF / HLG 的 inverse OETF）→ 线性光，归一化到 1.0 = 峰值亮度；
+ *   2. 换算成「相对 SDR 漫反射白（100nits）」的倍数；
+ *   3. 扩展 Reinhard 压缩：`L·(1 + L/W²)/(1 + L)`，把白点 [HDR_WHITE_POINT]（≈800nits）映射到 1.0，
+ *      以下不截断、以上缓慢逼近 1 —— 因此不会再出现大面积过曝；
+ *   4. gamma 编码回 8bit。
+ *
+ * 逐通道处理（会轻微降低高光饱和度），对预览/缩略图足够；不做 BT.2020→BT.709 色域映射。
+ *
+ * @param hdrKind 见 [HDR_KIND_PQ] / [HDR_KIND_HLG]
  */
-internal fun applyHdrToneMapCompensation(src: Bitmap): Bitmap {
-    val gain = ThumbnailManager.HDR_TONE_MAP_GAIN
-    val config = src.config ?: Bitmap.Config.ARGB_8888
-    val result = Bitmap.createBitmap(src.width, src.height, config)
-    val canvas = Canvas(result)
-    val paint = Paint().apply {
-        colorFilter = ColorMatrixColorFilter(
-            ColorMatrix(
-                floatArrayOf(
-                    gain, 0f, 0f, 0f, 0f,
-                    0f, gain, 0f, 0f, 0f,
-                    0f, 0f, gain, 0f, 0f,
-                    0f, 0f, 0f, 1f, 0f,
-                )
-            )
-        )
+internal fun applyHdrToneMapCompensation(src: Bitmap, hdrKind: Int = HDR_KIND_PQ): Bitmap {
+    val width = src.width
+    val height = src.height
+    if (width <= 0 || height <= 0) return src
+    val pixels = IntArray(width * height)
+    src.getPixels(pixels, 0, width, 0, 0, width, height)
+    val peakNits = if (hdrKind == HDR_KIND_HLG) HLG_PEAK_NITS else PQ_PEAK_NITS
+    for (i in pixels.indices) {
+        val p = pixels[i]
+        val a = p ushr 24 and 0xFF
+        if (a == 0) continue
+        val r = toneMapChannel((p ushr 16 and 0xFF) / 255f, hdrKind, peakNits)
+        val g = toneMapChannel((p ushr 8 and 0xFF) / 255f, hdrKind, peakNits)
+        val b = toneMapChannel((p and 0xFF) / 255f, hdrKind, peakNits)
+        pixels[i] = (a shl 24) or (r shl 16) or (g shl 8) or b
     }
-    canvas.drawBitmap(src, 0f, 0f, paint)
+    val result = Bitmap.createBitmap(width, height, src.config ?: Bitmap.Config.ARGB_8888)
+    result.setPixels(pixels, 0, width, 0, 0, width, height)
     return result
 }
+
+/** 单个通道：HDR 编码值 → 色调映射后的 8bit。 */
+private fun toneMapChannel(code: Float, hdrKind: Int, peakNits: Float): Int {
+    var linear = if (hdrKind == HDR_KIND_HLG) hlgInverseOetf(code) else pqEotf(code)
+    if (hdrKind == HDR_KIND_HLG) {
+        // HLG 的 OOTF：场景线性 → 显示线性（系统 gamma ≈1.2）
+        linear = linear.pow(HLG_SYSTEM_GAMMA)
+    }
+    val relative = linear * peakNits / SDR_WHITE_NITS
+    val mapped = relative * (1f + relative / (HDR_WHITE_POINT * HDR_WHITE_POINT)) / (1f + relative)
+    val value = mapped.coerceIn(0f, 1f).pow(1f / DISPLAY_GAMMA)
+    return (value * 255f + 0.5f).toInt().coerceIn(0, 255)
+}
+
+/** SMPTE ST 2084 (PQ) EOTF：编码值 → 线性光（0..1 对应 0..[PQ_PEAK_NITS]）。 */
+private fun pqEotf(code: Float): Float {
+    val v = code.coerceIn(0f, 1f).pow(1f / PQ_M2)
+    val numerator = (v - PQ_C1).coerceAtLeast(0f)
+    val denominator = PQ_C2 - PQ_C3 * v
+    if (denominator <= 0f) return 0f
+    return (numerator / denominator).pow(1f / PQ_M1)
+}
+
+/** ARIB STD-B67 (HLG) inverse OETF：编码值 → 场景线性。 */
+private fun hlgInverseOetf(code: Float): Float {
+    val v = code.coerceIn(0f, 1f)
+    return if (v <= 0.5f) {
+        v * v / 3f
+    } else {
+        (exp(((v - HLG_C) / HLG_A).toDouble()).toFloat() + HLG_B) / 12f
+    }
+}
+
+private const val PQ_M1 = 2610f / 16384f
+private const val PQ_M2 = 2523f / 4096f * 128f
+private const val PQ_C1 = 3424f / 4096f
+private const val PQ_C2 = 2413f / 4096f * 32f
+private const val PQ_C3 = 2392f / 4096f * 32f
+private const val HLG_A = 0.17883277f
+private const val HLG_B = 0.28466892f
+private const val HLG_C = 0.55991073f
+private const val HLG_SYSTEM_GAMMA = 1.2f
+private const val PQ_PEAK_NITS = 10000f
+private const val HLG_PEAK_NITS = 1000f
+private const val SDR_WHITE_NITS = 100f
+
+/** 色调映射白点（相对 SDR 白）：≈800nits 映射到显示白，以下不截断。 */
+private const val HDR_WHITE_POINT = 8f
+
+/** 显示 gamma（BT.1886 近似）。 */
+private const val DISPLAY_GAMMA = 2.2f
 
 /** 按需做 HDR 补偿：API 34+ 系统已 tone map，直接返回；否则对 HDR 帧补偿。 */
 internal fun applyHdrCompensationIfNeeded(src: Bitmap, isHdr: Boolean): Bitmap {
