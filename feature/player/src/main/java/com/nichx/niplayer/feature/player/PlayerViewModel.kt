@@ -1664,7 +1664,8 @@ class PlayerViewModel @Inject constructor(
         val fileName = _title.value.ifEmpty { history.url.substringAfterLast('/') }
         val file = MediaSourceBuilder.createVirtualFile(path, fileName)
         val live = currentStorage
-        return runCatching {
+        // 不用 runCatching：内含 suspend 调用，会吞掉 CancellationException（detekt 会拦）
+        return try {
             if (live != null) {
                 thumbnailManager.extractPreviewFrame(live, file, positionMs)
             } else {
@@ -1672,7 +1673,11 @@ class PlayerViewModel @Inject constructor(
                     thumbnailManager.extractPreviewFrame(storage, file, positionMs)
                 }
             }
-        }.getOrNull()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
     }
 
     // endregion
