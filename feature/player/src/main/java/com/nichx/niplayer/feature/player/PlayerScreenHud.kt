@@ -491,6 +491,11 @@ internal fun PlayerControllerLayer(
      * 与 HUD 列/「更多」菜单互为通用，从而实现「除播放控制外任意功能可放任意位置」。
      */
     ctrlButton: @Composable (String) -> HudButtonConfig? = { null },
+    /**
+     * 横滑快进拖动期间的目标进度（0..1）。非空时底部进度条跟随手指预览，
+     * 而不是显示真实播放位置（拖动期间不下发 seek，位置本身不动）。
+     */
+    previewFraction: Float? = null,
 ) {
     val context = LocalContext.current
     val audioManager = remember { context.getSystemService(AudioManager::class.java) }
@@ -699,6 +704,7 @@ internal fun PlayerControllerLayer(
                 abLoopB = abLoopB,
                 onSeek = onSeek,
                 onSeekFinished = onSeekFinished,
+                previewFractionOverride = previewFraction,
             )
 
             Spacer(Modifier.height(6.dp))
@@ -906,6 +912,8 @@ private fun PlayerProgressInline(
     abLoopB: Long?,
     onSeek: (Float) -> Unit,
     onSeekFinished: () -> Unit,
+    /** 外部（横滑快进手势）传入的目标进度预览；非空时优先于内部拖条预览与平滑位置。 */
+    previewFractionOverride: Float? = null,
 ) {
     val positionMs by positionMsFlow.collectAsStateWithLifecycle()
     val bufferedMs by bufferedMsFlow.collectAsStateWithLifecycle()
@@ -941,7 +949,8 @@ private fun PlayerProgressInline(
             )
         }
     }
-    val displayPositionMs = dragFractionPreview?.let { (it * durationMs).toLong() }
+    val displayPositionMs = (previewFractionOverride ?: dragFractionPreview)
+        ?.let { (it * durationMs).toLong() }
         ?: smoothedPosition.value.toLong()
     val previewPos = displayPositionMs
     Row(

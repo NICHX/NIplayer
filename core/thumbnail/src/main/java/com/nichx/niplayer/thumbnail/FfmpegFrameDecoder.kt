@@ -26,15 +26,25 @@ internal object FfmpegFrameDecoder {
 
     val isAvailable: Boolean get() = available
 
+    /**
+     * 软解一帧。
+     *
+     * @param startMs 目标时间点（ms，>=0 生效）；与 [fraction] 二选一
+     * @param fraction 目标位置占时长的比例（>0 生效）；与 [startMs] 二选一
+     * @param pickNearest true = 取"第一个不早于目标时刻"的帧（拖动预览，精确到帧）；
+     *   false = 在目标时刻之后的一小段窗口里取最亮帧（缩略图，跳过黑帧）
+     */
     fun decodeFirstFrame(
         source: MediaDataSource,
         targetWidth: Int,
         startMs: Long = -1L,
         fraction: Double = -1.0,
+        pickNearest: Boolean = false,
     ): Bitmap? {
         if (!available) return null
         return try {
-            val raw = nativeDecode(source, targetWidth, startMs, fraction) ?: return null
+            val raw = nativeDecode(source, targetWidth, startMs, fraction, if (pickNearest) 1 else 0)
+                ?: return null
             if (raw.size < 3) return null
             val width = raw[0]
             val height = raw[1]
@@ -54,5 +64,6 @@ internal object FfmpegFrameDecoder {
         targetWidth: Int,
         startMs: Long,
         fraction: Double,
+        pickNearest: Int,
     ): IntArray?
 }

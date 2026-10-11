@@ -173,9 +173,20 @@ internal class VideoFrameExtractor(private val context: Context) {
         ThumbnailFramePosition.POS_5S -> DEFAULT_FRAME_MS to -1.0
     }
 
-    private fun decodeWithFfmpeg(source: MediaDataSource, startMs: Long, fraction: Double): Bitmap? {
+    private fun decodeWithFfmpeg(
+        source: MediaDataSource,
+        startMs: Long,
+        fraction: Double,
+        pickNearest: Boolean = false,
+    ): Bitmap? {
         return try {
-            FfmpegFrameDecoder.decodeFirstFrame(source, ThumbnailManager.MAX_WIDTH, startMs, fraction)
+            FfmpegFrameDecoder.decodeFirstFrame(
+                source,
+                ThumbnailManager.MAX_WIDTH,
+                startMs,
+                fraction,
+                pickNearest,
+            )
         } catch (e: Exception) {
             Log.w(TAG, "ffmpeg decode failed: ${e.message}")
             null
@@ -201,17 +212,57 @@ internal class VideoFrameExtractor(private val context: Context) {
         extraction
     }
 
-    /** 在精确位置 [positionMs] 取帧（退出播放时用于覆盖缩略图）。 */
+    /**
+     * 在精确位置 [positionMs] 取帧（退出播放覆盖缩略图 / 拖动预览共用）。
+     *
+     * [exactFrame] = true（拖动预览）：要"精确到帧"——
+     * - 远程源走 ffmpeg 的 nearest 模式（取第一个不早于目标时刻的帧）；
+     * - 本地源用 `OPTION_CLOSEST` 就近解码，且不掺 10%/50% 兜底位置。
+     * 若走缩略图那套（ffmpeg 取窗口内最亮帧 / retriever `CLOSEST_SYNC` 只到关键帧），
+     * 预览画面会与目标时间对不上（长 GOP 甚至差数秒、场景切换处会跳到下一场景）。
+     *
+     * [exactFrame] = false（库缩略图）：保持"跳黑帧/关键帧"取向，画面稳定好看即可。
+     */
     suspend fun extractAt(
         storage: Storage,
         file: StorageFile,
         positionMs: Long,
         skipDurationCheck: Boolean,
+        exactFrame: Boolean = false,
     ): FrameExtraction {
         val startedAt = SystemClock.elapsedRealtime()
+        if (storage.library.mediaType != MediaType.LOCAL_STORAGE && FfmpegFrameDecoder.isAvailable) {
+            val source = openMediaDataSource(storage, file)
+            if (source != null) {
+                val bitmap = decodeWithFfmpeg(
+                    source,
+                    startMs = positionMs,
+                    fraction = -1.0,
+                    pickNearest = exactFrame,
+                )
+                if (bitmap != null) {
+                    Log.d(
+                        TAG,
+                        "extractAt ok(ffmpeg${if (exactFrame) ",exact" else ""}): " +
+                            "${file.name} ${SystemClock.elapsedRealtime() - startedAt}ms",
+                    )
+                    return FrameExtraction.Ok(bitmap)
+                }
+            }
+        }
+        val option = if (exactFrame) {
+            MediaMetadataRetriever.OPTION_CLOSEST
+        } else {
+            MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+        }
         val (extraction, dataSource) = withRetriever(storage, file) { retriever, _ ->
-            val positions = framePositionsAt(retriever, positionMs, skipDurationCheck)
-            readFrame(retriever, positions)
+            val positions = if (exactFrame) {
+                // 预览只认目标时间点本身：不掺缩略图用的 10%/50% 兜底位置
+                listOf(positionMs)
+            } else {
+                framePositionsAt(retriever, positionMs, skipDurationCheck)
+            }
+            readFrame(retriever, positions, option)
         }
         logExtraction(file, extraction, dataSource, startedAt)
         return extraction
@@ -427,11 +478,15 @@ internal fun framePositionsAt(
 }
 
 /** 依次尝试 [positions]，返回第一个成功解码并完成 HDR 补偿、缩放的帧；全部失败返回 [FrameExtraction.Failed]。 */
-internal fun readFrame(retriever: MediaMetadataRetriever, positions: List<Long>): FrameExtraction {
+internal fun readFrame(
+    retriever: MediaMetadataRetriever,
+    positions: List<Long>,
+    option: Int = MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+): FrameExtraction {
     val isHdr = isHdrVideo(retriever)
     var frame: Bitmap? = null
     for (posMs in positions) {
-        frame = retriever.frameAt(posMs * 1000L, ThumbnailManager.MAX_WIDTH)
+        frame = retriever.frameAt(posMs * 1000L, ThumbnailManager.MAX_WIDTH, option)
         if (frame != null) break
     }
     if (frame == null) return FrameExtraction.Failed
@@ -464,8 +519,15 @@ internal fun computeInSampleSize(srcWidth: Int, srcHeight: Int, maxDimension: In
  *
  * API 27+ 且视频无旋转（0/180）时优先 [MediaMetadataRetriever.getScaledFrameAtTime] 直接降采样解码，
  * 避免先解出全分辨率帧再缩小；其余情况回退 [MediaMetadataRetriever.getFrameAtTime]。
+ *
+ * @param option 取帧策略：缩略图用 `OPTION_CLOSEST_SYNC`（只到关键帧，快）；拖动预览用
+ * `OPTION_CLOSEST`（就近解码，准）。
  */
-internal fun MediaMetadataRetriever.frameAt(positionUs: Long, maxWidth: Int): Bitmap? {
+internal fun MediaMetadataRetriever.frameAt(
+    positionUs: Long,
+    maxWidth: Int,
+    option: Int = MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+): Bitmap? {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
         val rotation = extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
         if (rotation == 0 || rotation == 180) {
@@ -478,7 +540,7 @@ internal fun MediaMetadataRetriever.frameAt(positionUs: Long, maxWidth: Int): Bi
                 try {
                     return getScaledFrameAtTime(
                         positionUs,
-                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                        option,
                         dstWidth,
                         dstHeight,
                     )
@@ -489,7 +551,7 @@ internal fun MediaMetadataRetriever.frameAt(positionUs: Long, maxWidth: Int): Bi
         }
     }
     return try {
-        getFrameAtTime(positionUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        getFrameAtTime(positionUs, option)
     } catch (_: Exception) {
         null
     }

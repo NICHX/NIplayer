@@ -203,6 +203,40 @@ class ThumbnailManager @Inject constructor(
     }
 
     /**
+     * 拖动进度条 / 横滑快进时的实时预览取帧。
+     *
+     * 与 [generateThumbnailAtMs] 的关键差异：**完全不碰缓存文件**，只在内存返回 Bitmap。
+     * 预览帧随手指高频变化，若走 [generateThumbnailAtMs] 会把库封面刷成拖动途中的随机帧。
+     *
+     * 取帧失败（含远程读取太慢/失败）返回 null，调用方静默保留上一帧即可。
+     * 解码并发由 [decodeGate] / [extractionGate] 统一收口，避免高频预览把解码器挤爆。
+     */
+    suspend fun extractPreviewFrame(
+        storage: Storage,
+        file: StorageFile,
+        positionMs: Long,
+    ): Bitmap? = withContext(Dispatchers.IO) {
+        val skipDurationCheck = storage.library.mediaType == MediaType.LOCAL_STORAGE
+        extractionGate(storage.library.id, storage.thumbnailConcurrency).withPermit {
+            decodeGate.withPermit {
+                when (
+                    val extraction = videoExtractor.extractAt(
+                        storage,
+                        file,
+                        positionMs,
+                        skipDurationCheck,
+                        exactFrame = true,
+                    )
+                ) {
+                    is FrameExtraction.Ok -> extraction.bitmap
+                    FrameExtraction.Failed,
+                    FrameExtraction.PermanentFailure -> null
+                }
+            }
+        }
+    }
+
+    /**
      * 保存调用方已解码的 Bitmap 为缩略图（退出播放时 PixelCopy 抓帧）。
      *
      * @param isHdr 防御性参数：HDR 播放的抓帧一般已被调用方拦截，正常流程不会走到这里

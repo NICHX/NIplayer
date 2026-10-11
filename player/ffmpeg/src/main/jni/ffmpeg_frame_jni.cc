@@ -132,7 +132,8 @@ int meanLuma(const AVFrame* frame) {
 
 extern "C" JNIEXPORT jintArray JNICALL
 Java_com_nichx_niplayer_thumbnail_FfmpegFrameDecoder_nativeDecode(
-    JNIEnv* env, jobject /*thiz*/, jobject source, jint targetWidth, jlong startMs, jdouble fraction) {
+    JNIEnv* env, jobject /*thiz*/, jobject source, jint targetWidth, jlong startMs, jdouble fraction,
+    jint pickNearest) {
   if (!source || targetWidth <= 0) return nullptr;
 
   JavaVM* vm = nullptr;
@@ -274,6 +275,15 @@ Java_com_nichx_niplayer_thumbnail_FfmpegFrameDecoder_nativeDecode(
           }
           if (preRoll && decoded < maxDecode) continue;
           reached = true;
+        }
+        if (pickNearest != 0) {
+          // 预览取帧：取"第一个不早于目标时刻"的帧即可，不做亮度优选 —— 否则会在
+          // 场景切换处被窗口内的后续亮帧带走，导致预览画面与目标时间对不上。
+          best = av_frame_alloc();
+          if (best) av_frame_ref(best, frame);
+          evaluated++;
+          done = true;
+          break;
         }
         int luma = meanLuma(frame);
         if (luma > bestLuma) {

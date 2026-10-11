@@ -3,16 +3,23 @@ package com.nichx.niplayer.feature.player
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.media.AudioManager
 import android.os.BatteryManager
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -27,6 +34,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nichx.niplayer.designsystem.motion.LocalNiReduceMotion
 import com.nichx.niplayer.designsystem.theme.MotionTokens
 import androidx.compose.ui.graphics.Color
@@ -36,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.flow.StateFlow
 
 
 internal enum class GestureMode { None, Seek, Brightness, Volume }
@@ -209,6 +221,100 @@ internal fun GestureOsd(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
             )
+        }
+    }
+}
+
+/**
+ * 横滑快进/快退的居中 OSD，两段式：
+ * 1) 目标位置的预览帧 —— 固定 16:9 圆角卡片，深色底 + 极细描边 + 投影，与视频层分离；
+ * 2) 时间胶囊 —— 图标 + 目标时间（主）+ 位移（次），时间与位移做字号/透明度层级。
+ *
+ * 取帧是异步的：未就绪时只显示时间胶囊（优雅降级）。预览帧由 [previewFlow] 在本组件内
+ * 单独订阅 —— Bitmap 是重值，若放到 PlayerScreen 顶层收集，拖动中每来一帧都会让整屏重组。
+ */
+@Composable
+internal fun SeekGestureOsd(
+    icon: ImageVector,
+    timeText: String,
+    deltaText: String,
+    previewFlow: StateFlow<Bitmap?>,
+    modifier: Modifier = Modifier,
+) {
+    val preview by previewFlow.collectAsStateWithLifecycle()
+    // 挂载时淡入 + 轻微放大，与 [GestureOsd] 保持同一进入动画；收敛到终态后不再挂图层
+    val reduced = LocalNiReduceMotion.current
+    val progress = remember { Animatable(if (reduced) 1f else 0f) }
+    LaunchedEffect(Unit) {
+        if (!reduced) {
+            progress.animateTo(1f, tween(MotionTokens.QUICK, easing = MotionTokens.easeEnter))
+        }
+    }
+    val enterLayer = if (progress.value < 1f) {
+        Modifier.graphicsLayer {
+            alpha = progress.value
+            val s = 0.96f + 0.04f * progress.value
+            scaleX = s
+            scaleY = s
+        }
+    } else {
+        Modifier
+    }
+    val cardShape = RoundedCornerShape(14.dp)
+    Column(
+        modifier = modifier.then(enterLayer),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        preview?.let { bitmap ->
+            Box(
+                modifier = Modifier
+                    .width(240.dp)
+                    .aspectRatio(16f / 9f)
+                    .shadow(14.dp, cardShape)
+                    .clip(cardShape)
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .border(0.5.dp, Color.White.copy(alpha = 0.14f), cardShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color.Black.copy(alpha = 0.55f))
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = timeText,
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            if (deltaText.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = deltaText,
+                    color = Color.White.copy(alpha = 0.72f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
         }
     }
 }

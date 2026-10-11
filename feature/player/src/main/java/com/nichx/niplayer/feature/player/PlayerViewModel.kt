@@ -228,17 +228,25 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /** 当前播放位置（ms）。 */
-    val positionMs: StateFlow<Long> = player.positionMs
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+    /**
+     * 当前播放位置（ms）。
+     *
+     * 直接透出 player 的原始 StateFlow，**不经** `stateIn(WhileSubscribed)`。
+     * 进度条只在控件可见时组合，若用 WhileSubscribed，控件隐藏 5 秒后上游停订，
+     * 本值冻结；重新呼出控件时订阅者先收到冻结的旧值、随后才收到新值，两值之差
+     * 被进度条当作"连续前进"补间，表现为「呼出控件时进度条自己往前跑」。
+     * player.positionMs 本身即 StateFlow 且由 positionTicker 持续写入，直接透出即可。
+     */
+    val positionMs: StateFlow<Long>
+        get() = player.positionMs
 
     /** 总时长（ms）。 */
     val durationMs: StateFlow<Long> = player.durationMs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
-    /** 已缓冲位置（ms）。 */
-    val bufferedMs: StateFlow<Long> = player.bufferedMs
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+    /** 已缓冲位置（ms）。同 [positionMs]，直接透出避免控件隐藏后冻结导致缓冲条回跳。 */
+    val bufferedMs: StateFlow<Long>
+        get() = player.bufferedMs
 
     /** 当前视频尺寸。 */
     val videoSize: StateFlow<VideoSize> = player.videoSize
@@ -1587,6 +1595,88 @@ class PlayerViewModel @Inject constructor(
         player.seekTo(positionMs)
     }
 
+    // region 拖动预览取帧
+
+    /** 拖动进度条 / 横滑快进时的预览帧；null 表示无预览。 */
+    private val _seekPreview = MutableStateFlow<Bitmap?>(null)
+    val seekPreview: StateFlow<Bitmap?> = _seekPreview.asStateFlow()
+
+    private var seekPreviewJob: Job? = null
+
+    /**
+     * 待取帧位置；-1 表示当前无请求。
+     *
+     * [Volatile]：手势在主线程高频写入，取帧协程在 IO 线程读取。
+     */
+    @Volatile
+    private var pendingPreviewMs: Long = -1L
+
+    /**
+     * 请求在 [positionMs] 处取一帧预览。仅存储库播放（[HistoryDescriptor.storageId] 非空）支持。
+     *
+     * 拖动中位置高频变化，这里做「单飞 + 防抖」：同一时刻只有一个取帧任务，新请求只更新
+     * [pendingPreviewMs]（latest-wins），短时间内的连续请求合并成一次。
+     * 不做位置去重 —— 任何阈值都会让预览画面与目标时间对不上，而单飞本身就限住了取帧并发。
+     */
+    fun requestSeekPreview(positionMs: Long) {
+        if (currentHistory?.storageId == null) return
+        pendingPreviewMs = positionMs
+        if (seekPreviewJob?.isActive == true) return
+        seekPreviewJob = viewModelScope.launch {
+            while (true) {
+                // 防抖：合并拖动中高频请求，只取最新一次
+                delay(SEEK_PREVIEW_DEBOUNCE_MS)
+                val target = pendingPreviewMs
+                if (target < 0L) break
+                pendingPreviewMs = -1L
+                val bitmap = extractPreviewBitmap(target) ?: continue
+                _seekPreview.value = bitmap
+            }
+        }
+    }
+
+    /**
+     * 拖动结束：停止取帧，但**保留最后一帧** —— 让 OSD 收起前仍能看到目标帧，
+     * 与 OSD 同步消失（OSD 隐藏时由 [clearSeekPreview] 一并清掉）。
+     */
+    fun stopSeekPreview() {
+        pendingPreviewMs = -1L
+        seekPreviewJob?.cancel()
+        seekPreviewJob = null
+    }
+
+    /** 清空预览帧并停止取帧（OSD 收起时调用）。 */
+    fun clearSeekPreview() {
+        pendingPreviewMs = -1L
+        seekPreviewJob?.cancel()
+        seekPreviewJob = null
+        _seekPreview.value = null
+    }
+
+    /**
+     * 取一帧预览（不写缓存）。优先复用播放中的 [currentStorage]，避免每次预览都重建
+     * SMB 连接（握手很贵）；取帧失败静默返回 null。
+     */
+    private suspend fun extractPreviewBitmap(positionMs: Long): Bitmap? {
+        val history = currentHistory ?: return null
+        val storageId = history.storageId ?: return null
+        val path = history.storagePath ?: return null
+        val fileName = _title.value.ifEmpty { history.url.substringAfterLast('/') }
+        val file = MediaSourceBuilder.createVirtualFile(path, fileName)
+        val live = currentStorage
+        return runCatching {
+            if (live != null) {
+                thumbnailManager.extractPreviewFrame(live, file, positionMs)
+            } else {
+                withStorage(storageId) { storage ->
+                    thumbnailManager.extractPreviewFrame(storage, file, positionMs)
+                }
+            }
+        }.getOrNull()
+    }
+
+    // endregion
+
     /**
      * 桥接到后台播放（已废弃）。
      *
@@ -2897,3 +2987,11 @@ private const val FRAME_WAIT_MS = 300L
 
 /** 播放器退出后自动同步的延迟（ms），等待退出时的进度保存落库。 */
 private const val SYNC_DELAY_MS = 3_000L
+
+/**
+ * 拖动预览取帧的防抖窗口（ms）。
+ *
+ * 拖动中位置高频变化，短于此窗口内的多次请求只取最后一帧；窗口太小会让取帧请求过于密集
+ * （网络源尤其吃不住），太大则预览帧跟不上手指。
+ */
+private const val SEEK_PREVIEW_DEBOUNCE_MS = 90L

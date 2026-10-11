@@ -117,13 +117,14 @@ object PlayerSettings {
     const val LONG_PRESS_TIMEOUT_MIN_MS = 400
 
     /**
-     * 横滑快进灵敏度：滑动多少倍屏宽滑满整片时长。
+     * 横滑快进灵敏度：**快速滑动**时，滑动多少倍屏宽滑满整片时长。
      *
-     * - 1.0：满屏 = 整片时长（最灵敏，轻微滑动进度变化大）
+     * - 1.0：满屏（快速滑动）= 整片时长（最灵敏）
      * - 1.5：1.5 屏 = 整片时长
      * - 2.0：2 屏 = 整片时长（最不灵敏，适合长视频精细定位）
      *
-     * 默认 1.5。
+     * 注意：实际步进按**手指速度**自适应（见 PlayerScreen.SeekScrubState）—— 慢速微调时步进极小，
+     * 便于在目标附近精确落点；该设置只决定"快速滑动"这一端的增益大小。默认 1.5。
      */
     var seekSensitivity: Float
         get() = mmkv.decodeFloat(KEY_SEEK_SENSITIVITY, 1.5f)

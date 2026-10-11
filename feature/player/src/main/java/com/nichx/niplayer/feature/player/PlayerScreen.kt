@@ -160,6 +160,87 @@ import kotlin.math.abs
 /** 双指缩放画面的最大倍率。 */
 private const val MAX_ZOOM = 4f
 
+// ---- 横滑快进/快退：速度自适应增益 ----
+
+/** 最慢（精细微调）时的增益。越小越能"贴着目标慢慢磨"。 */
+private const val SEEK_GAIN_FINE = 0.06f
+
+/** 最快（快速滑动）时的增益。1.0 表示「满速滑满一屏 ≈ 走完整片时长」（再除以灵敏度设置）。 */
+private const val SEEK_GAIN_COARSE = 1.0f
+
+/** 归一化手指速度下限（屏宽 / ms）：低于此值视为精细微调，用 [SEEK_GAIN_FINE]。 */
+private const val SEEK_SPEED_FINE = 0.0001f
+
+/** 归一化手指速度上限（屏宽 / ms）：高于此值视为快速滑动，用 [SEEK_GAIN_COARSE]。 */
+private const val SEEK_SPEED_COARSE = 0.0015f
+
+/** 速度 EMA 平滑系数：抹平单帧的指针抖动，避免"手抖一下"被当成快速滑动。 */
+private const val SEEK_SPEED_EMA_ALPHA = 0.3f
+
+/**
+ * 横滑快进/快退的位移积分器（速度自适应）。
+ *
+ * 为什么不是「位移越大步进越大」的加速度曲线（2026-10-11 修正）：
+ * 那样的映射在位移大处增益极高 —— 长视频滑到后半程时 1px 能跳十余秒，
+ * 手指稍稍一动时间就飞了，根本没法在目标附近微调。
+ *
+ * 现改为**按手指速度**决定增益，增量累加：
+ * - 快速滑动（flick） → 大增益 → 一小段手势就能跨越很长时间；
+ * - 缓慢移动（微调）   → 小增益 → 每像素只走一点点，可精确落在目标上。
+ *
+ * 增益按 [seekSensitivity] 设置缩放，保留「越不灵敏 → 需要滑得越远」的语义。
+ * 速度用 `屏宽/ms` 归一化，因此不受屏幕像素密度影响。
+ */
+private class SeekScrubState {
+    /** 用 Double 累加：长时间微调时增量为亚毫秒级，Long 会被逐步截断形成死区。 */
+    private var targetMs = 0.0
+    private var lastX = 0f
+    private var lastEventMs = 0L
+    private var speedEma = 0f
+
+    /** 手势锁定（进入快进/快退）时调用：以当前位置为基准重新开始积分。 */
+    fun reset(anchorX: Float, positionMs: Long, nowMs: Long) {
+        targetMs = positionMs.toDouble()
+        lastX = anchorX
+        lastEventMs = nowMs
+        speedEma = 0f
+    }
+
+    /**
+     * 推进一步并返回新的目标位置。
+     *
+     * @param x 当前指针 x（与 [reset] 的 anchorX 同一坐标系）
+     * @param nowMs 当前时刻（ms）
+     * @param widthPx 画面宽度（px，用于把位移归一化为"屏宽"）
+     * @param durationMs 总时长（ms）
+     * @param sensitivity 滑动灵敏度设置（>0）
+     */
+    fun advance(
+        x: Float,
+        nowMs: Long,
+        widthPx: Int,
+        durationMs: Long,
+        sensitivity: Float,
+    ): Long {
+        val dx = x - lastX
+        lastX = x
+        val dt = (nowMs - lastEventMs).coerceAtLeast(1L)
+        lastEventMs = nowMs
+        if (widthPx <= 0 || durationMs <= 0L || dx == 0f) return targetMs.toLong()
+
+        val dxNorm = dx / widthPx
+        val speedNorm = abs(dxNorm) / dt
+        speedEma += (speedNorm - speedEma) * SEEK_SPEED_EMA_ALPHA
+        val t = ((speedEma - SEEK_SPEED_FINE) / (SEEK_SPEED_COARSE - SEEK_SPEED_FINE))
+            .coerceIn(0f, 1f)
+        val s = if (sensitivity > 0f) sensitivity else 1f
+        val gain = (SEEK_GAIN_FINE + (SEEK_GAIN_COARSE - SEEK_GAIN_FINE) * t) / s
+        targetMs = (targetMs + durationMs.toDouble() * gain * dxNorm)
+            .coerceIn(0.0, durationMs.toDouble())
+        return targetMs.toLong()
+    }
+}
+
 @Composable
 @SuppressLint("LocalContextGetResourceValueCall")
 @OptIn(UnstableApi::class)
@@ -180,9 +261,7 @@ fun PlayerScreen(
     // - 展示层（进度条、网速文字）由 PlayerControllerLayer 内部自行 collect 对应 StateFlow，
     //   使重组范围收敛到那几个叶子组件。
     //
-    // ⚠️ 事件处理必须读 nxPlayer.positionMs（原始 MutableStateFlow），**不能**读
-    //    viewModel.positionMs —— 后者是 stateIn(WhileSubscribed(5000))，无人订阅时上游会停，
-    //    `.value` 将冻结在最后一次发射值，导致 seek 基准错误。
+    // 事件处理按需读 nxPlayer.positionMs（原始 MutableStateFlow）即可取到事件发生时的实时值。
     val videoSize by viewModel.videoSize.collectAsStateWithLifecycle()
     val contentAspect by viewModel.contentAspect.collectAsStateWithLifecycle()
     val preReadAspectRatio by viewModel.preReadAspectRatio.collectAsStateWithLifecycle()
@@ -306,6 +385,10 @@ fun PlayerScreen(
     // 横滑快进的居中 OSD：文本为「目标时间\n±偏移」，forward 决定箭头图标方向
     var seekOsdText by remember { mutableStateOf<String?>(null) }
     var seekOsdForward by remember { mutableStateOf(true) }
+    // 横滑快进拖动期间的目标进度（0..1）；非空时进度条跟随手指预览，而不是真实播放位置
+    var seekPreviewFraction by remember { mutableStateOf<Float?>(null) }
+    // 横滑快进/快退手势进行中（手指未抬起）：期间 OSD 不自动隐藏（停住不动时也要保持显示）
+    var seekDragging by remember { mutableStateOf(false) }
     // 双指缩放画面：[zoomScale] > 1 时可用双指按住拖拽平移；单指手势保持不变。
     var zoomScale by remember { mutableFloatStateOf(1f) }
     var zoomOffsetX by remember { mutableFloatStateOf(0f) }
@@ -812,11 +895,14 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(seekOsdText) {
-        // 拖动过程中 seekOsdText 每次变化都会重启该 effect，松手后才会真正倒计时隐藏
-        if (seekOsdText != null) {
+    LaunchedEffect(seekOsdText, seekDragging) {
+        // 拖动中 seekOsdText 每次变化都会重启该 effect；手指未抬起（seekDragging）时不倒计时，
+        // 只有松手后才开始 1.2s 倒计时隐藏（否则停在目标上不动时 OSD 会自己消失）
+        if (seekOsdText != null && !seekDragging) {
             delay(1200)
             seekOsdText = null
+            // OSD 收起时一并清掉预览帧（松手后仍保留 1.2s，与 OSD 同步消失）
+            viewModel.clearSeekPreview()
         }
     }
 
@@ -1204,18 +1290,17 @@ fun PlayerScreen(
                         // 使起手「死区」不产生任何数值跳变（进一步降低灵敏度）。
                         var anchorX = startX
                         var anchorY = startY
-                        // 横滑快进：以手势起点进度为基准累加“总位移”，避免在 500ms 轮询的
-                        // positionMs 上逐帧叠加 dx 造成抖动/漂移；并用阈值节流 seekTo。
+                        // 横滑快进：拖动期间**只做预览**、不下发 seekTo（避免网络源被反复 flush 进
+                        // Buffering 而"卡成暂停"），松手再落点一次；位移由速度自适应积分器给出。
                         var seekStartPositionMs = 0L
                         var seekTargetMs = 0L
-                        var lastAppliedSeekMs = 0L
+                        val seekScrub = SeekScrubState()
                         // 长按期间横滑快进（轴向分离）：长按倍速激活后，横滑进入快进/快退，
                         // 纵向滑到底部仍是「松手锁定倍速」。二者互斥，避免互相干扰。
                         var lpSeekActive = false
                         var lpSeekStartMs = 0L
                         var lpSeekTargetMs = 0L
-                        var lpSeekLastAppliedMs = 0L
-                        var lpAnchorX = 0f
+                        val lpSeekScrub = SeekScrubState()
                         // 双指缩放期间置位：期间吞掉所有事件，避免与单指手势互相干扰
                         var pinchActive = false
                         // 长按倍速计时器：与指针事件解耦。手指静止时不产生 move 事件，
@@ -1306,8 +1391,14 @@ fun PlayerScreen(
                                     lpSeekActive = false
                                 }
                                 if (gestureMode == GestureMode.Seek) {
-                                    // 松手时精确落点一次，弥补拖动过程中的节流误差
+                                    // 松手时精确落点一次（拖动期间只做预览，未下发 seek）
                                     viewModel.seekTo(seekTargetMs)
+                                }
+                                // 结束预览：停止取帧（保留最后一帧，OSD 收起时再清），进度条回到真实播放位置
+                                seekDragging = false
+                                if (seekPreviewFraction != null) {
+                                    viewModel.stopSeekPreview()
+                                    seekPreviewFraction = null
                                 }
                                 if (!pointerMoved && duration < longPressTimeout) {
                                     if (locked) {
@@ -1377,24 +1468,31 @@ fun PlayerScreen(
                                     lpSeekStartMs = viewModel.nxPlayer.positionMs.value
                                         .coerceIn(0L, maxPos.coerceAtLeast(1L))
                                     lpSeekTargetMs = lpSeekStartMs
-                                    lpSeekLastAppliedMs = lpSeekStartMs
-                                    lpAnchorX = change.position.x
+                                    lpSeekScrub.reset(
+                                        anchorX = change.position.x,
+                                        positionMs = lpSeekStartMs,
+                                        nowMs = System.currentTimeMillis(),
+                                    )
+                                    seekDragging = true
                                     // 进入横滑即脱离锁定区，避免松手被误判为锁定倍速
                                     viewModel.setInLockZone(false)
                                 }
                                 if (lpSeekActive) {
-                                    // 保持倍速的同时快进/快退：节流 + 松手精确落点
+                                    // 保持倍速的同时快进/快退：拖动期间只做预览，松手才落点
                                     val durationMsValue = durationMs.takeIf { it > 0 } ?: 0L
-                                    val deltaX = change.position.x - lpAnchorX
-                                    val pxToMs = if (size.width > 0) {
-                                        durationMsValue.toFloat() / (size.width * seekSensitivity)
-                                    } else 0f
-                                    lpSeekTargetMs = (lpSeekStartMs + (deltaX * pxToMs).toLong())
-                                        .coerceIn(0L, durationMsValue.coerceAtLeast(1L))
-                                    if (abs(lpSeekTargetMs - lpSeekLastAppliedMs) >= 150L) {
-                                        viewModel.seekTo(lpSeekTargetMs)
-                                        lpSeekLastAppliedMs = lpSeekTargetMs
+                                    // 与单指横滑同一套速度自适应积分，保持一致手感
+                                    lpSeekTargetMs = lpSeekScrub.advance(
+                                        x = change.position.x,
+                                        nowMs = System.currentTimeMillis(),
+                                        widthPx = size.width,
+                                        durationMs = durationMsValue,
+                                        sensitivity = seekSensitivity,
+                                    )
+                                    // 只更新预览（进度条 + 取帧），不下发 seek，避免网络源反复缓冲
+                                    if (durationMsValue > 0) {
+                                        seekPreviewFraction = lpSeekTargetMs.toFloat() / durationMsValue
                                     }
+                                    viewModel.requestSeekPreview(lpSeekTargetMs)
                                     val deltaMs = lpSeekTargetMs - lpSeekStartMs
                                     seekOsdForward = deltaMs >= 0
                                     seekOsdText = buildString {
@@ -1434,7 +1532,12 @@ fun PlayerScreen(
                                                 seekStartPositionMs = viewModel.nxPlayer.positionMs.value
                                                     .coerceIn(0L, maxPos.coerceAtLeast(1L))
                                                 seekTargetMs = seekStartPositionMs
-                                                lastAppliedSeekMs = seekStartPositionMs
+                                                seekScrub.reset(
+                                                    anchorX = change.position.x,
+                                                    positionMs = seekStartPositionMs,
+                                                    nowMs = System.currentTimeMillis(),
+                                                )
+                                                seekDragging = true
                                                 dragged = true
                                             }
                                             ady > adx * axisDominance -> {
@@ -1465,18 +1568,20 @@ fun PlayerScreen(
                                 when (gestureMode) {
                                     GestureMode.Seek -> {
                                         val durationMsValue = durationMs.takeIf { it > 0 } ?: 0L
-                                        // 相对“锁定时刻”的位移，起手死区不计入，避免滑一点点就跳一大段
-                                        val deltaX = change.position.x - anchorX
-                                        val pxToMs = if (size.width > 0) {
-                                            durationMsValue.toFloat() / (size.width * seekSensitivity)
-                                        } else 0f
-                                        seekTargetMs = (seekStartPositionMs + (deltaX * pxToMs).toLong())
-                                            .coerceIn(0L, durationMsValue.coerceAtLeast(1L))
-                                        // 节流：位移累计超过阈值才真正 seekTo，降低抖动与内核 seek 频次
-                                        if (abs(seekTargetMs - lastAppliedSeekMs) >= 150L) {
-                                            viewModel.seekTo(seekTargetMs)
-                                            lastAppliedSeekMs = seekTargetMs
+                                        // 速度自适应增量：慢 → 精细微调（可落在目标上），快 → 快速跨越（详见 SeekScrubState）
+                                        seekTargetMs = seekScrub.advance(
+                                            x = change.position.x,
+                                            nowMs = System.currentTimeMillis(),
+                                            widthPx = size.width,
+                                            durationMs = durationMsValue,
+                                            sensitivity = seekSensitivity,
+                                        )
+                                        // 拖动期间只更新预览（进度条 + 取帧），不下发 seek：
+                                        // 反复 seek 会让网络源不断 flush 进 Buffering，画面冻住、播放键跳成▶（"卡成暂停"）。
+                                        if (durationMsValue > 0) {
+                                            seekPreviewFraction = seekTargetMs.toFloat() / durationMsValue
                                         }
+                                        viewModel.requestSeekPreview(seekTargetMs)
                                         val deltaMs = seekTargetMs - seekStartPositionMs
                                         seekOsdForward = deltaMs >= 0
                                         seekOsdText = buildString {
@@ -1942,6 +2047,7 @@ fun PlayerScreen(
                     onResetZoom = resetZoom,
                     bottomEntryIds = bottomEntryIds,
                     ctrlButton = { id -> ctrlButtonUnit(id) },
+                    previewFraction = seekPreviewFraction,
                 )
             }
         }
@@ -2134,9 +2240,12 @@ fun PlayerScreen(
         }
 
         if (!isInPip) seekOsdText?.let { text ->
-            GestureOsd(
+            SeekGestureOsd(
                 icon = if (seekOsdForward) Icons.Rounded.FastForward else Icons.Rounded.FastRewind,
-                text = text,
+                // OSD 文本约定为「目标时间\n±偏移」，这里拆成主/次两段做层级
+                timeText = text.substringBefore('\n'),
+                deltaText = text.substringAfter('\n', ""),
+                previewFlow = viewModel.seekPreview,
                 modifier = Modifier.align(Alignment.Center),
             )
         }
