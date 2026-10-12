@@ -209,18 +209,30 @@ class VideoScanner @Inject constructor(
         return mediaStoreVideos + filteredExtend
     }
 
-    /** 增量同步：删除 DB 中已不存在的记录，插入新发现的记录。 */
+    /**
+     * 增量同步：删除 DB 中已不存在的记录，插入新发现的记录。
+     *
+     * 物理文件校验（修复"删除成功但列表仍显示、点开无法播放"的幽灵条目）：
+     * MediaStore 的索引会滞后——应用内删除（尤其是直接 File API 删除）或外部删除后，
+     * `queryMediaStore()` 仍可能返回指向已消失文件的旧行。若不校验就直接入库/保留，
+     * 已删文件会在下次增量刷新时被"复活"成无法播放的幽灵条目。
+     *
+     * 仅对 **MediaStore 来源**（`isExtend == false`）的行做存在性校验：
+     * 扩展目录行由用户登记，且 [refreshMediaStore] 只复用既有行、不重新遍历，
+     * 一旦因卷临时不可达（如 SD 卡卸载）被剔除将无法自行恢复，故不做校验。
+     */
     private suspend fun syncToDatabase(scanned: List<VideoEntity>) {
+        val alive = scanned.filter { it.isExtend || File(it.filePath).exists() }
         val existing = videoDao.getAll()
         val existingPaths = existing.map { it.filePath }.toSet()
-        val scannedPaths = scanned.map { it.filePath }.toSet()
+        val scannedPaths = alive.map { it.filePath }.toSet()
 
         val toDelete = existing.mapNotNull { v ->
             v.filePath.takeIf { it !in scannedPaths }
         }
         if (toDelete.isNotEmpty()) videoDao.deleteByPaths(toDelete)
 
-        val toInsert = scanned.filter { it.filePath !in existingPaths }
+        val toInsert = alive.filter { it.filePath !in existingPaths }
         if (toInsert.isNotEmpty()) videoDao.insert(*toInsert.toTypedArray())
     }
 }

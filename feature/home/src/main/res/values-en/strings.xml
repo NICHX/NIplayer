@@ -313,6 +313,12 @@
     <string name="settings_entry_experimental_waterfall_sub">Staggered gallery layout using original image ratios (may be unstable)</string>
     <string name="settings_entry_experimental_viewer_video">Play videos while browsing images</string>
     <string name="settings_entry_experimental_viewer_video_sub">Mix videos from the same folder into the image viewer ordered by name; swipe to a video to auto-play it muted with play/pause, progress and mute controls (swipe left/right to switch)</string>
+    <string name="settings_entry_experimental_file_management">File management</string>
+    <string name="settings_entry_experimental_file_management_sub">Rename / move / copy / new folder / delete in the file browser (not a primary feature; not verified on real devices)</string>
+    <string name="experimental_file_management_warning_title">Enable file management?</string>
+    <string name="experimental_file_management_warning_message">File management (rename / move / copy / new folder / delete) is an experimental feature. It is not a primary feature of this app and has not been thoroughly verified on real devices or across storage backends, so it may behave unreliably. In the worst case it could modify or delete files by mistake. Please enable it only if you understand the risk and have backed up important data.</string>
+    <string name="experimental_file_management_warning_confirm">Enable anyway</string>
+    <string name="experimental_file_management_warning_cancel">Not now</string>
     <string name="settings_glass_title">Glass opacity</string>
     <string name="settings_glass_overlay_opacity">Nav bar</string>
     <string name="settings_glass_top_bar_opacity">Top bar</string>
@@ -364,6 +370,7 @@
     <string name="storage_file_op_deleting">Deleting</string>
     <string name="storage_file_op_progress">%1$d/%2$d</string>
     <string name="storage_file_op_busy">A file operation is in progress. Please try again later.</string>
+    <string name="storage_file_transfer_into_self">Cannot move or copy a folder into itself or one of its subfolders</string>
     <string name="storage_file_batch_move_title">Move %1$d items to</string>
     <string name="storage_file_batch_copy_title">Copy %1$d items to</string>
     <string name="storage_file_sort">Sort</string>
@@ -622,7 +629,6 @@
     <string name="theme_scheme_lotus_pink_desc">Muted mauve pink, low-key sophistication</string>
     <string name="theme_scheme_mauve_desc">Mauve, soft and elegant</string>
     <string name="theme_scheme_sage_desc">Sage, quiet and refined</string>
-    <string name="theme_preview">Theme preview</string>
     <string name="theme_custom_background">Custom background</string>
     <string name="theme_custom_background_change">Change image</string>
     <string name="theme_custom_background_remove">Remove background</string>
@@ -866,6 +872,8 @@
     <string name="download_dir_permission_title">Storage permission required</string>
     <string name="download_dir_permission_message">The download directory needs to write to shared storage. Enable "All files access" for native read/write speed</string>
     <string name="download_dir_permission_grant">Go enable</string>
+    <string name="storage_file_delete_permission_title">Storage permission required</string>
+    <string name="storage_file_delete_permission_message">Deleting local files requires "All files access". Please enable it and try again.</string>
     <string name="download_unsupported_title">Cannot download to local storage</string>
     <string name="download_unsupported_message">Android 10 and below cannot write to shared storage directly. Use a system browser or another device instead.</string>
     <string name="download_unsupported_confirm">Got it</string>

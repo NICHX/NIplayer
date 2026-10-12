@@ -21,7 +21,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
@@ -108,14 +107,7 @@ fun ThemeScreen(
     // A1 修复：datastore 只存配色方案的原始值（数据层不依赖 UI 层的 NiScheme 类型），
     // 在此边界还原为枚举。2026-09-22 起原始值由 ordinal 改为稳定 key
     val currentScheme = NiScheme.fromKey(themeConfig.schemeKey)
-    // 生效深浅色：跟随系统模式下用 isSystemInDarkTheme 实时判断，使预览正确随系统切换
-    val systemDark = isSystemInDarkTheme()
-    val effectiveDark = when (themeConfig.mode) {
-        ThemeSettings.Mode.LIGHT -> false
-        ThemeSettings.Mode.DARK -> true
-        ThemeSettings.Mode.SYSTEM -> systemDark
-    }
-    // 玻璃不透明度并入主题设置，实时驱动组合预览
+    // 玻璃不透明度：顶栏 / 面板 / 导航胶囊，设置页滑块直接驱动
     val glassOpacity by GlassSettings.opacityFlow.collectAsStateWithLifecycle()
     val glassTopBarOpacity by GlassSettings.topBarOpacityFlow.collectAsStateWithLifecycle()
     val glassPanelOpacity by GlassSettings.panelOpacityFlow.collectAsStateWithLifecycle()
@@ -314,17 +306,6 @@ fun ThemeScreen(
                 description = stringResource(R.string.settings_reduce_motion_desc),
                 checked = reduceMotion,
                 onCheckedChange = { GlassSettings.reduceMotion = it },
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            // ── 组合预览：主题配色 + 玻璃不透明度（置于底部，紧跟滑条便于实时查看） ──
-            ThemePreviewCard(
-                scheme = currentScheme,
-                dark = effectiveDark,
-                opacity = glassOpacity,
-                topBarOpacity = glassTopBarOpacity,
-                panelOpacity = glassPanelOpacity,
             )
 
             Spacer(Modifier.height(padding.calculateBottomPadding()))
@@ -915,87 +896,6 @@ private fun SchemeCard(
                     Box(modifier = Modifier.weight(1f).fillMaxHeight().background(c.copy(alpha = 0.75f)))
                 }
             }
-        }
-    }
-}
-
-/**
- * 组合预览：用所选方案的配色绘制实际骨架，并按顶栏/面板/导航栏不透明度渲染玻璃层
- * （顶栏模糊、中央对话框、底部导航胶囊），随下方滑条实时联动。
- */
-@Composable
-private fun ThemePreviewCard(
-    scheme: NiScheme,
-    dark: Boolean,
-    opacity: Float,
-    topBarOpacity: Float,
-    panelOpacity: Float,
-    modifier: Modifier = Modifier,
-) {
-    val cs = remember(scheme, dark) {
-        if (dark) NiSchemes.buildDark(scheme) else NiSchemes.buildLight(scheme)
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(NiExtraColors.current.surfaceLevel2)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = stringResource(R.string.theme_preview),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = stringResource(scheme.labelRes),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-            )
-        }
-
-        // ── 软件实际骨架（主题配色 + 玻璃不透明度） ──
-        AppSkeletonPreview(
-            cs = cs,
-            glassTopBarOpacity = topBarOpacity,
-            glassPanelOpacity = panelOpacity,
-            glassNavOpacity = opacity,
-        )
-
-        // 调色条：主 / 次 / 三 / 容器
-        PreviewStrip(listOf(cs.primary, cs.secondary, cs.tertiary, cs.primaryContainer))
-    }
-}
-
-/** 四段渐变色调条：从左到右 主→次→三→容器。 */
-@Composable
-private fun PreviewStrip(colors: List<Color>) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(22.dp)
-            .clip(RoundedCornerShape(7.dp))
-            .background(Brush.horizontalGradient(colors)),
-    ) {
-        colors.forEachIndexed { index, _ ->
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                colors[index].copy(alpha = 0.55f),
-                                colors[index],
-                            ),
-                        ),
-                    ),
-            )
         }
     }
 }

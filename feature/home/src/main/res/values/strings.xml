@@ -313,6 +313,12 @@
     <string name="settings_entry_experimental_waterfall_sub">画廊视图按图片原始比例错落排布（效果尚不稳定）</string>
     <string name="settings_entry_experimental_viewer_video">图片浏览联播视频</string>
     <string name="settings_entry_experimental_viewer_video_sub">图片查看器按名称混排同目录视频，滑到视频即自动静音播放（含播放/暂停、进度、静音控件；左右滑动切换上一个/下一个）</string>
+    <string name="settings_entry_experimental_file_management">文件管理</string>
+    <string name="settings_entry_experimental_file_management_sub">文件浏览页的重命名 / 移动 / 复制 / 新建文件夹 / 删除（非主要功能，未做实机验证）</string>
+    <string name="experimental_file_management_warning_title">开启文件管理？</string>
+    <string name="experimental_file_management_warning_message">文件管理（重命名 / 移动 / 复制 / 新建文件夹 / 删除）为实验性功能，并非本项目的主要功能，也尚未在多种机型与存储服务上做充分的实机验证，行为可能不稳定。极端情况下存在误改或误删文件的风险。请确认你已了解并自行备份重要数据后再开启。</string>
+    <string name="experimental_file_management_warning_confirm">仍要开启</string>
+    <string name="experimental_file_management_warning_cancel">暂不开启</string>
     <string name="settings_glass_title">玻璃不透明度</string>
     <string name="settings_glass_overlay_opacity">导航栏</string>
     <string name="settings_glass_top_bar_opacity">顶栏</string>
@@ -364,6 +370,7 @@
     <string name="storage_file_op_deleting">正在删除</string>
     <string name="storage_file_op_progress">%1$d/%2$d</string>
     <string name="storage_file_op_busy">当前有文件操作进行中，请稍后再试</string>
+    <string name="storage_file_transfer_into_self">不能将文件夹移动或复制到它自身或其子目录中</string>
     <string name="storage_file_batch_move_title">移动 %1$d 项到</string>
     <string name="storage_file_batch_copy_title">复制 %1$d 项到</string>
     <string name="storage_file_sort">排序</string>
@@ -622,7 +629,6 @@
     <string name="theme_scheme_lotus_pink_desc">藕荷 · 灰粉紫配烟粉，低饱和高级</string>
     <string name="theme_scheme_mauve_desc">灰紫 · 灰紫伴粉灰青灰，知性柔和</string>
     <string name="theme_scheme_sage_desc">苔绿 · 灰绿配沙灰，静谧雅致</string>
-    <string name="theme_preview">主题预览</string>
     <string name="theme_custom_background">自定义背景</string>
     <string name="theme_custom_background_change">更换图片</string>
     <string name="theme_custom_background_remove">移除背景</string>
@@ -866,6 +872,8 @@
     <string name="download_dir_permission_title">需要存储权限</string>
     <string name="download_dir_permission_message">下载目录需写入共享存储，请开启「所有文件访问权限」以获得原生读写速度</string>
     <string name="download_dir_permission_grant">前往开启</string>
+    <string name="storage_file_delete_permission_title">需要存储权限</string>
+    <string name="storage_file_delete_permission_message">删除本地文件需要「所有文件访问权限」，请开启后重试</string>
     <string name="download_unsupported_title">无法下载到本地</string>
     <string name="download_unsupported_message">Android 10 及以下系统不支持直接写入共享存储。可改用系统浏览器或其他设备下载。</string>
     <string name="download_unsupported_confirm">知道了</string>

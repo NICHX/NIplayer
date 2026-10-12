@@ -521,11 +521,14 @@ class SmbStorage(
             val destPath = if (parentPath.isEmpty()) newName else "$parentPath/$newName"
             val src = resolveSmbFile(file.path)
             val dest = resolveSmbFile(destPath)
+            // jcifs 的 renameTo 返回 void，失败时抛 SmbException（由下方 catch 转为 false），
+            // 故此处到达即表示成功。
             src.renameTo(dest)
             true
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "SMB rename 异常：${file.path}: ${e.message}")
             false
         }
     }
@@ -542,11 +545,13 @@ class SmbStorage(
             else "${targetDirectory.path}/${file.name}"
             val src = resolveSmbFile(file.path)
             val dest = resolveSmbFile(destPath)
+            // 同 rename：jcifs renameTo 返回 void，失败抛 SmbException
             src.renameTo(dest)
             true
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "SMB move 异常：${file.path}: ${e.message}")
             false
         }
     }

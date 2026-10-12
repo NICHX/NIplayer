@@ -291,6 +291,7 @@ internal fun MultiSelectActionBar(
     allSelected: Boolean,
     downloadEnabled: Boolean,
     fileManagementEnabled: Boolean,
+    deleteEnabled: Boolean,
     moreMenuExpanded: Boolean,
     onMoreMenuOpenChange: (Boolean) -> Unit,
     onSelectAll: () -> Unit,
@@ -415,7 +416,7 @@ internal fun MultiSelectActionBar(
             BatchActionMenuItem(
                 icon = Icons.Rounded.Delete,
                 text = stringResource(R.string.delete),
-                enabled = hasSelection,
+                enabled = deleteEnabled && hasSelection,
                 onClick = onDelete,
                 isDanger = true,
             )

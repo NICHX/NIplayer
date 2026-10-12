@@ -14,6 +14,8 @@ import com.tencent.mmkv.MMKV
  *   默认 false。
  * - [viewerVideoEnabled]：图片浏览联播视频。图片查看器把同目录视频与图片按名称混排，
  *   滑到视频页即用简易控件自动静音播放。默认 false。
+ * - [fileManagementEnabled]：文件管理。文件浏览页的重命名 / 移动 / 复制 / 新建文件夹 / 删除。
+ *   非主要功能且未做多机型实机验证，默认 false，开启前需用户确认风险。
  *
  * 关闭时，对应功能的入口在 UI 中被隐藏或禁用。
  */
@@ -25,6 +27,7 @@ object ExperimentalSettings {
     private const val KEY_FLAT_LIST = "experimental_flat_list"
     private const val KEY_WATERFALL_GALLERY = "experimental_waterfall_gallery"
     private const val KEY_VIEWER_VIDEO = "experimental_viewer_video"
+    private const val KEY_FILE_MANAGEMENT = "experimental_file_management"
 
     /** VR 播放实验性开关。 */
     var vrPlaybackEnabled: Boolean
@@ -45,4 +48,9 @@ object ExperimentalSettings {
     var viewerVideoEnabled: Boolean
         get() = mmkv.decodeBool(KEY_VIEWER_VIDEO, false)
         set(value) { mmkv.encode(KEY_VIEWER_VIDEO, value) }
+
+    /** 文件管理（重命名/移动/复制/新建文件夹/删除）实验性开关。 */
+    var fileManagementEnabled: Boolean
+        get() = mmkv.decodeBool(KEY_FILE_MANAGEMENT, false)
+        set(value) { mmkv.encode(KEY_FILE_MANAGEMENT, value) }
 }

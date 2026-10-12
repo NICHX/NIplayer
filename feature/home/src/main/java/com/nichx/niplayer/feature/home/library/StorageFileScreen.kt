@@ -6,6 +6,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.os.Build
 import android.provider.MediaStore
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -135,6 +136,8 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.Shadow
+
+private const val TAG = "StorageFileScreen"
 
 /** 顶栏按钮的液态玻璃模糊/折射参数（AndroidLiquidGlass backdrop 配方）。 */
 private object TopBarGlassDefaults {
@@ -491,6 +494,8 @@ fun FileBrowserScreen(
     var pendingDownloadFiles by remember { mutableStateOf<List<StorageFile>>(emptyList()) }
     var showTargetChooser by remember { mutableStateOf(false) }
     var showPermissionDialog by remember { mutableStateOf(false) }
+    // 复用的「所有文件访问权限」引导弹窗：区分下载/删除来源，展示对应文案
+    var permissionDialogForDelete by remember { mutableStateOf(false) }
     // API 29- 没有「所有文件访问权限」可授，下载不可用 → 弹说明框，而不是弹一个点了没反应的授权框
     var showDownloadUnsupported by remember { mutableStateOf(false) }
 
@@ -539,6 +544,7 @@ fun FileBrowserScreen(
         }
         pendingDownloadFiles = files
         if (!StorageAccess.canWriteSharedStorage(context)) {
+            permissionDialogForDelete = false
             showPermissionDialog = true
         } else {
             showTargetChooser = true
@@ -555,22 +561,41 @@ fun FileBrowserScreen(
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
-            when (event) {
-                is StorageFileEvent.NavigateToPlayer -> onPlayVideo(event.isAudio)
-                is StorageFileEvent.NavigateToImageViewer -> onNavigateToImageViewer()
-                is StorageFileEvent.ShowError -> messageController.post(NiMessage.error(event.message))
-                is StorageFileEvent.ShowToast -> messageController.post(NiMessage.info(event.message))
-                is StorageFileEvent.OpenFileActions ->
-                    fileMenu = event.file to event.isFavorited
-                is StorageFileEvent.RequestMediaStoreDelete -> {
-                    // createDeleteRequest 仅 API 30+ 可用；事件由 ViewModel 在 API 30 以上才触发，
-                    // 此处仍显式做版本守卫以满足 lint 的 NewApi 检查
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        val request = MediaStore.createDeleteRequest(context.contentResolver, event.uris)
-                        mediaDeleteLauncher.launch(IntentSenderRequest.Builder(request).build())
+            // 单个事件处理抛异常（如 createDeleteRequest 抛 IllegalArgumentException）绝不能
+            // 让整个事件管道崩溃/中断——否则后续所有事件（提示、导航、删除授权）都会失效，
+            // 用户表现为"点了没反应"且无从恢复。故每个事件独立兜底。
+            runCatching {
+                when (event) {
+                    is StorageFileEvent.NavigateToPlayer -> onPlayVideo(event.isAudio)
+                    is StorageFileEvent.NavigateToImageViewer -> onNavigateToImageViewer()
+                    is StorageFileEvent.ShowError -> messageController.post(NiMessage.error(event.message))
+                    is StorageFileEvent.ShowToast -> messageController.post(NiMessage.info(event.message))
+                    is StorageFileEvent.OpenFileActions ->
+                        fileMenu = event.file to event.isFavorited
+                    is StorageFileEvent.RequestMediaStoreDelete -> {
+                        // createDeleteRequest 仅 API 30+ 可用；事件由 ViewModel 在 API 30 以上才触发，
+                        // 此处仍显式做版本守卫以满足 lint 的 NewApi 检查
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            val request = runCatching {
+                                MediaStore.createDeleteRequest(context.contentResolver, event.uris)
+                            }.getOrNull()
+                            if (request != null) {
+                                mediaDeleteLauncher.launch(IntentSenderRequest.Builder(request).build())
+                            } else {
+                                // 系统拒绝构造删除请求：清掉挂起态并如实提示，避免"点了没反应"
+                                viewModel.finalizePendingConsentDelete(false)
+                                messageController.post(
+                                    NiMessage.error(context.getString(R.string.storage_file_delete_failed)),
+                                )
+                            }
+                        }
+                    }
+                    StorageFileEvent.RequestAllFilesAccess -> {
+                        permissionDialogForDelete = true
+                        showPermissionDialog = true
                     }
                 }
-            }
+            }.onFailure { Log.w(TAG, "文件浏览事件处理失败: $event", it) }
         }
     }
 
@@ -1030,14 +1055,17 @@ fun FileBrowserScreen(
                                                 uploadLauncher.launch(arrayOf("*/*"))
                                             },
                                         )
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.storage_file_new_folder)) },
-                                            leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, contentDescription = null) },
-                                            onClick = {
-                                                showActionMenu = false
-                                                showCreateFolder = true
-                                            },
-                                        )
+                                        // 新建文件夹属实验性文件管理功能，未开启时隐藏（上传保持可见）
+                                        if (viewModel.supportsFileManagement) {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.storage_file_new_folder)) },
+                                                leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, contentDescription = null) },
+                                                onClick = {
+                                                    showActionMenu = false
+                                                    showCreateFolder = true
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                                 // 传输管理：合并下载/上传任务入口，有活动任务时带徽标
@@ -1284,6 +1312,7 @@ fun FileBrowserScreen(
                     allSelected = selectedPaths.size >= selectableFiles.count { !it.isDirectory } && selectableFiles.any { !it.isDirectory },
                     downloadEnabled = selectedFiles.isNotEmpty(),
                     fileManagementEnabled = viewModel.supportsFileManagement,
+                    deleteEnabled = viewModel.supportsDelete,
                     moreMenuExpanded = showMultiMoreMenu,
                     onMoreMenuOpenChange = { showMultiMoreMenu = it },
                     onSelectAll = viewModel::selectAllFiles,
@@ -1315,7 +1344,8 @@ fun FileBrowserScreen(
         }
     }
 
-    if (showBatchDeleteConfirm) {
+    // 删除属实验性文件管理功能：未开启时不弹确认框（入口已禁用，此处为兜底）
+    if (showBatchDeleteConfirm && viewModel.supportsDelete) {
         val selectedForDelete = selectableFiles.filter { it.path in selectedPaths }
         val deleteFileCount = selectedForDelete.count { !it.isDirectory }
         val deleteDirCount = selectedForDelete.count { it.isDirectory }
@@ -1387,8 +1417,14 @@ fun FileBrowserScreen(
 
     if (showPermissionDialog) {
         NiConfirmDialog(
-            title = stringResource(R.string.download_dir_permission_title),
-            text = stringResource(R.string.download_dir_permission_message),
+            title = stringResource(
+                if (permissionDialogForDelete) R.string.storage_file_delete_permission_title
+                else R.string.download_dir_permission_title,
+            ),
+            text = stringResource(
+                if (permissionDialogForDelete) R.string.storage_file_delete_permission_message
+                else R.string.download_dir_permission_message,
+            ),
             confirmText = stringResource(R.string.download_dir_permission_grant),
             onConfirm = {
                 showPermissionDialog = false
@@ -1416,7 +1452,7 @@ fun FileBrowserScreen(
             isFavorited = favorited,
             canDownload = !file.isDirectory,
             showFileManagement = viewModel.supportsFileManagement,
-            showDelete = viewModel.supportsDelete,
+            showDelete = viewModel.canDelete(file),
             isEncrypted = file.isDirectory && encryptedPaths.contains(file.path.trimEnd('/')),
             isRemoteStorage = uiState.isRemoteStorage,
             // 仅本地、非加密文件支持「用其他应用打开 / 分享」

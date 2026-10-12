@@ -132,6 +132,14 @@ interface Storage {
      */
     val trustAllCertificates: Boolean get() = false
 
+    /**
+     * 使目录列表缓存失效（若底层有缓存）。
+     *
+     * 下拉刷新 / 强制刷新时调用，确保拿到服务端最新目录内容，而不是短 TTL 内的陈旧快照
+     * （如 [WebDavStorage] 的 10s listCache）。无缓存的协议无需处理，默认空实现。
+     */
+    suspend fun invalidateListCache() {}
+
     /** 文件/目录是否存在。 */
     suspend fun fileExists(path: String): Boolean
 

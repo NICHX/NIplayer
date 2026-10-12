@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.nichx.niplayer.datastore.ExperimentalSettings
+import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiScaffold
 import com.nichx.niplayer.designsystem.components.NiTopBar
 import com.nichx.niplayer.designsystem.theme.NiExtraColors
@@ -35,7 +36,10 @@ import com.nichx.niplayer.feature.home.R
 /**
  * “实验性功能”二级设置页：以开关启用/停用各实验性功能（默认关闭）。
  *
- * - VR 播放 / 平铺列表视图 / 瀑布流画廊 / 图片浏览联播视频
+ * - VR 播放 / 平铺列表视图 / 瀑布流画廊 / 图片浏览联播视频 / 文件管理
+ *
+ * 其中「文件管理」涉及对用户文件的增删改（重命名/移动/复制/新建文件夹/删除），
+ * 非主要功能且未做多机型实机验证，故开启前弹窗让用户确认风险。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,6 +50,9 @@ fun ExperimentalScreen(
     var flatListEnabled by remember { mutableStateOf(ExperimentalSettings.flatListViewEnabled) }
     var waterfallEnabled by remember { mutableStateOf(ExperimentalSettings.waterfallGalleryEnabled) }
     var viewerVideoEnabled by remember { mutableStateOf(ExperimentalSettings.viewerVideoEnabled) }
+    var fileManagementEnabled by remember { mutableStateOf(ExperimentalSettings.fileManagementEnabled) }
+    // 开启「文件管理」前的风险确认弹窗
+    var showFileManagementWarning by remember { mutableStateOf(false) }
 
     NiScaffold(
         topBar = {
@@ -114,10 +121,40 @@ fun ExperimentalScreen(
                             ExperimentalSettings.viewerVideoEnabled = it
                         },
                     )
+                    SettingSwitchRow(
+                        label = stringResource(R.string.settings_entry_experimental_file_management),
+                        description = stringResource(R.string.settings_entry_experimental_file_management_sub),
+                        checked = fileManagementEnabled,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                // 开启前先弹风险确认，确认后才真正写入
+                                showFileManagementWarning = true
+                            } else {
+                                fileManagementEnabled = false
+                                ExperimentalSettings.fileManagementEnabled = false
+                            }
+                        },
+                    )
                 }
             }
 
             Spacer(Modifier.height(padding.calculateBottomPadding()))
         }
+    }
+
+    if (showFileManagementWarning) {
+        NiConfirmDialog(
+            title = stringResource(R.string.experimental_file_management_warning_title),
+            text = stringResource(R.string.experimental_file_management_warning_message),
+            confirmText = stringResource(R.string.experimental_file_management_warning_confirm),
+            dismissText = stringResource(R.string.experimental_file_management_warning_cancel),
+            confirmDanger = true,
+            onConfirm = {
+                showFileManagementWarning = false
+                fileManagementEnabled = true
+                ExperimentalSettings.fileManagementEnabled = true
+            },
+            onDismiss = { showFileManagementWarning = false },
+        )
     }
 }

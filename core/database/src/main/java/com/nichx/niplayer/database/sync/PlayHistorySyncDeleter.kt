@@ -67,6 +67,18 @@ class PlayHistorySyncDeleter @Inject constructor(
         playHistoryDao.deleteByStorageId(storageId)
     }
 
+    /**
+     * 删除单个文件的播放历史（文件被删除时清理）。
+     *
+     * 文件删除后其历史记录已无法续播，留着会在"最近播放/播放历史"里形成点击无响应的
+     * 幽灵条目，故随文件删除一并清理。墓碑写入与其他删除路径一致（仅可同步远端存储）。
+     */
+    suspend fun deleteByPath(storageId: Int, storagePath: String) {
+        val entity = playHistoryDao.getPlayHistoryByPath(storagePath, storageId) ?: return
+        tombstoneFor(entity)
+        playHistoryDao.delete(entity.id)
+    }
+
     /** 删除目录前缀匹配的播放历史（屏蔽目录）。 */
     suspend fun deleteByStoragePathPrefix(prefix: String) {
         val baseUrlByLibrary = mediaLibraryDao.getAllSuspend()

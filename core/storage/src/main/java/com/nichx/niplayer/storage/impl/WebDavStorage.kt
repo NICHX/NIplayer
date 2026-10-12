@@ -260,15 +260,15 @@ class WebDavStorage(
             .apply { if (file.isDirectory) header("Depth", "infinity") }
             .build()
         return client.newCall(request).execute().use { response ->
-            when (response.code) {
-                200, 204 -> {
-                    // 失效父目录缓存，确保下次 listFiles 不返回已删除的文件
-                    invalidateParentCache(file.path)
-                    true
-                }
+            val ok = when (response.code) {
+                200, 204 -> true
                 404 -> true  // 文件本就不存在，视为删除成功
                 else -> throw WebDavHttpException(response.code, "DELETE ${url} -> ${response.code} ${response.message}")
             }
+            // 2xx 与 404 都必须失效父目录缓存：404 分支原先未失效，10s TTL 内的旧快照
+            // 仍会把这条已不存在的条目列出来，表现为"删除成功但列表里还在、点开无法播放"。
+            invalidateParentCache(file.path)
+            ok
         }
     }
 
@@ -775,6 +775,12 @@ class WebDavStorage(
 
     override suspend fun close() {
         // OkHttpClient managed by Hilt
+    }
+
+    /** 清空目录列表内存缓存（下拉刷新时调用，绕过 10s TTL 拿最新内容）。 */
+    override suspend fun invalidateListCache() {
+        listCache.clear()
+        listCacheTimestamps.clear()
     }
 
     private fun propfind(directory: StorageFile): List<StorageFile> {

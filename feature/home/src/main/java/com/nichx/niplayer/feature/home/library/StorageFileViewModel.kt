@@ -13,7 +13,9 @@ import com.nichx.niplayer.database.entity.QuickAccessEntity
 import com.nichx.niplayer.database.entity.resumeStartPositionMs
 import com.nichx.niplayer.database.enums.MediaType
 import com.nichx.niplayer.database.security.EncryptedFolderManager
+import com.nichx.niplayer.database.sync.PlayHistorySyncDeleter
 import com.nichx.niplayer.datastore.DownloadSettings
+import com.nichx.niplayer.datastore.ExperimentalSettings
 import com.nichx.niplayer.datastore.FileBrowserSettings
 import com.nichx.niplayer.datastore.PlayerSettings
 import com.nichx.niplayer.datastore.SortConfig
@@ -34,6 +36,7 @@ import com.nichx.niplayer.player.kernel.PlaylistItem
 import com.nichx.niplayer.player.kernel.isAudioFile
 import com.nichx.niplayer.storage.AbstractStorageFile
 import com.nichx.niplayer.storage.Storage
+import com.nichx.niplayer.storage.StorageAccess
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.storage.StorageFile
 import com.nichx.niplayer.storage.download.DownloadManager
@@ -131,6 +134,7 @@ class StorageFileViewModel @Inject constructor(
     private val downloadManager: DownloadManager,
     private val uploadManager: UploadManager,
     private val encryptedFolderManager: EncryptedFolderManager,
+    private val syncDeleter: PlayHistorySyncDeleter,
 ) : ViewModel() {
 
     private var storageId: Int = savedStateHandle.get<Int>("storageId") ?: 0
@@ -654,6 +658,7 @@ class StorageFileViewModel @Inject constructor(
         viewModelScope.launch {
             var okCount = 0
             var done = 0
+            val deletedPaths = mutableListOf<String>()
             val type = FileOpType.DELETE
             try {
                 withContext(Dispatchers.IO) {
@@ -661,38 +666,37 @@ class StorageFileViewModel @Inject constructor(
                         _fileOpProgress.value = FileOpProgress(selected.size, done, file.name, type)
                         if (runCatchingSuspending { s.deleteFile(file) }.getOrDefault(false)) {
                             okCount++
-                            if (file.isDirectory) {
-                                encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
-                            } else {
-                                // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
-                                runCatchingSuspending {
-                                    thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
-                                }
-                            }
+                            deletedPaths.add(file.path)
+                            cleanupAfterDelete(s, file)
                         }
                         done++
                         _fileOpProgress.value = FileOpProgress(selected.size, done, "", type)
                     }
                 }
             } finally {
-                if (!consentPending) {
-                    endExclusiveFileOp()
-                    // 无论成功/失败/协程取消，都清理进度浮层，保证它能自动消失
-                    _fileOpProgress.value = null
-                }
+                // 无论成功/失败/协程取消，都释放独占锁并清理进度浮层，保证不卡在"文件操作进行中"
+                endExclusiveFileOp()
+                _fileOpProgress.value = null
             }
+            // 乐观移除已删除项，避免刷新失败/被节流时列表仍显示已删文件
+            removeDeletedFromCurrentList(deletedPaths)
             if (consentPending) {
                 pendingConsentPaths = consentFiles.map { it.path }
                 pendingConsentFiles = consentFiles
-                // 授权结果由 finalizePendingConsentDelete 统一收尾（含锁释放/刷新）
+                // 独占锁已在上方 finally 释放：系统授权弹窗期间不占锁（与冲突弹窗一致），
+                // 即使事件或授权结果未回传，也不会把应用永久卡在"文件操作进行中"。
                 _events.tryEmit(StorageFileEvent.RequestMediaStoreDelete(consentUris))
                 return@launch
             }
             exitMultiSelect()
-            if (okCount == selected.size) {
-                _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_deleted_count, okCount)))
-            } else {
-                _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_delete_partial, okCount, selected.size)))
+            when {
+                okCount == selected.size ->
+                    _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_deleted_count, okCount)))
+                // 一个都没删掉，且都是本地文件库的普通文件 → 多半是缺少「所有文件访问权限」
+                okCount == 0 && directFiles.any { !it.isDirectory } && isLocalDeleteBlockedByPermission() ->
+                    _events.tryEmit(StorageFileEvent.RequestAllFilesAccess)
+                else ->
+                    _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_delete_partial, okCount, selected.size)))
             }
             refreshCurrentDirectory()
         }
@@ -786,6 +790,15 @@ class StorageFileViewModel @Inject constructor(
                     dest != it.path
                 }
                 if (effective.isEmpty()) return@launch
+                // 自包含拦截：目标位于某个待操作目录自身或其子树内（如把 A 移入 A/B）。
+                // 复制时会导致 copyRecursive 无限递归（每层新建目标后又发现新子目录），
+                // 移动则必然失败；均在发起前拦截并提示。
+                if (isTargetWithinSources(effective, targetDirectory)) {
+                    _events.tryEmit(
+                        StorageFileEvent.ShowError(context.getString(R.string.storage_file_transfer_into_self)),
+                    )
+                    return@launch
+                }
                 val duplicates = withContext(Dispatchers.IO) {
                     detectNameConflicts(s, effective, targetDirectory)
                 }
@@ -806,6 +819,21 @@ class StorageFileViewModel @Inject constructor(
             } finally {
                 endExclusiveFileOp()
             }
+        }
+    }
+
+    /**
+     * 目标目录是否位于任一待操作目录**自身或其子树**内。
+     *
+     * 自包含传输无意义且危险：复制会因源目录持续被扩充而无限递归，移动则会失败。
+     * 仅对目录源判定（文件不可能包含目标目录）。根目录（空路径）永不命中。
+     */
+    private fun isTargetWithinSources(files: List<StorageFile>, targetDirectory: StorageFile): Boolean {
+        val target = targetDirectory.path.trimEnd('/')
+        if (target.isEmpty()) return false
+        return files.any { file ->
+            val source = file.path.trimEnd('/')
+            file.isDirectory && source.isNotEmpty() && (target == source || target.startsWith("$source/"))
         }
     }
 
@@ -856,8 +884,15 @@ class StorageFileViewModel @Inject constructor(
                 if (file.path in skipPaths) continue
                 _fileOpProgress.value = FileOpProgress(total, done, file.name, type)
                 val needOverwrite = file.path in overwritePaths
-                // 安全覆盖：先备份目标（重命名），失败则跳过该项以避免数据丢失
-                val backupName = if (needOverwrite) backupTarget(s, file, target) ?: continue else null
+                // 安全覆盖：先备份目标（重命名），备份失败则跳过该项以避免数据丢失。
+                // 注意区分两种 null 语义：目标在冲突检测后已消失（无需备份，继续传输）
+                // 与备份重命名失败（必须跳过，否则可能覆盖掉用户原文件）。
+                val targetPath = if (target.path.isEmpty()) file.name else "${target.path}/${file.name}"
+                val backupName = if (needOverwrite && s.fileExists(targetPath)) {
+                    backupTarget(s, file, target) ?: continue
+                } else {
+                    null
+                }
                 val success = runCatchingSuspending {
                     if (isCopy) s.copy(file, target) else s.move(file, target)
                 }.getOrDefault(false)
@@ -901,13 +936,11 @@ class StorageFileViewModel @Inject constructor(
         return okCount
     }
 
-    /** 安全覆盖第一步：把目标同名项重命名为临时备份名，返回备份名；不支持重命名/失败时返回 null。 */
+    /** 安全覆盖第一步：把目标同名项重命名为临时备份名，返回备份名；不支持重命名/失败时返回 null（调用方据此跳过该项）。 */
     private suspend fun backupTarget(s: Storage, file: StorageFile, target: StorageFile): String? {
         return try {
             val targetPath = if (target.path.isEmpty()) file.name
             else "${target.path}/${file.name}"
-            // 目标已不存在（可能刚被删）则无需备份，返回 null 表示直接覆盖式传输、无备份可清理
-            if (!s.fileExists(targetPath)) return null
             val backupName = uniqueBackupName(s, target, file)
             val targetFile = object : AbstractStorageFile(targetPath, file.name, file.isDirectory) {}
             if (s.rename(targetFile, backupName)) backupName else null
@@ -1323,9 +1356,15 @@ class StorageFileViewModel @Inject constructor(
     fun goUp() {
         if (directoryStack.size <= 1) return
         val parent = directoryStack[directoryStack.size - 2]
-        val targetPath = if (entryPathStack.isNotEmpty()) entryPathStack.removeLast() else null
+        // 只读取、不在此处弹出：入口栈与目录栈必须同进同退。若在此提前弹出，而
+        // 下面 listDirectory 加载失败（stackOp 不执行），两个栈就会失步，后续
+        // 返回上级的滚动定位将指向错误层级。
+        val targetPath = entryPathStack.lastOrNull()
         viewModelScope.launch {
-            listDirectory(parent) { if (directoryStack.size > 1) directoryStack.removeLast() }
+            listDirectory(parent) {
+                if (directoryStack.size > 1) directoryStack.removeLast()
+                if (entryPathStack.isNotEmpty()) entryPathStack.removeLast()
+            }
             if (targetPath != null) {
                 val targetIndex = _uiState.value.files.indexOfFirst { it.path == targetPath }
                 if (targetIndex >= 0) {
@@ -1500,6 +1539,9 @@ class StorageFileViewModel @Inject constructor(
             try {
                 // 内容可能已被外部修改，清空文件夹媒体判定缓存，列表重载后重新扫描
                 folderMediaVerdicts.clear()
+                // 远程存储（如 WebDAV）目录列表有短 TTL 内存缓存，刷新时先失效，
+                // 否则下拉刷新会在 TTL 内返回陈旧快照，用户看不到外部改动
+                runCatchingSuspending { storage?.invalidateListCache() }
                 // 本地视频库下拉刷新：强制触发一次增量重扫，使新下载视频立即可见
                 if (currentLibrary?.mediaType == MediaType.LOCAL_STORAGE) {
                     withContext(Dispatchers.IO) {
@@ -2312,25 +2354,42 @@ class StorageFileViewModel @Inject constructor(
      * 是否支持文件管理操作（重命名/移动/新建文件夹/删除）。
      *
      * 仅远程存储（SMB/WebDAV）支持；本地存储通过系统文件管理器操作。
+     * 整个文件管理为**实验性功能**（[ExperimentalSettings.fileManagementEnabled]，默认关闭）：
+     * 未开启时一并返回 false，UI 隐藏所有文件管理入口。
      */
     val supportsFileManagement: Boolean
-        get() = currentLibrary?.mediaType == MediaType.SMB_SERVER ||
-            currentLibrary?.mediaType == MediaType.WEBDAV_SERVER
+        get() = ExperimentalSettings.fileManagementEnabled && (
+            currentLibrary?.mediaType == MediaType.SMB_SERVER ||
+                currentLibrary?.mediaType == MediaType.WEBDAV_SERVER
+            )
 
     /**
      * 是否支持删除文件。
      *
      * 覆盖本地视频库（LOCAL_STORAGE）、SAF（EXTERNAL_STORAGE）及远程 SMB/WebDAV。
      * 与 [supportsFileManagement]（重命名/移动，仅远程）解耦，使本地存储也能删除。
+     * 删除同属**实验性文件管理**功能：未开启文件管理开关时一并返回 false（默认关闭）。
      */
     val supportsDelete: Boolean
-        get() = currentLibrary?.mediaType?.let {
-            when (it) {
-                MediaType.LOCAL_STORAGE, MediaType.EXTERNAL_STORAGE,
-                MediaType.SMB_SERVER, MediaType.WEBDAV_SERVER -> true
-                MediaType.OTHER_STORAGE, MediaType.QUICK_ACCESS -> false
-            }
-        } ?: false
+        get() = ExperimentalSettings.fileManagementEnabled && (
+            currentLibrary?.mediaType?.let {
+                when (it) {
+                    MediaType.LOCAL_STORAGE, MediaType.EXTERNAL_STORAGE,
+                    MediaType.SMB_SERVER, MediaType.WEBDAV_SERVER -> true
+                    MediaType.OTHER_STORAGE, MediaType.QUICK_ACCESS -> false
+                }
+            } ?: false
+            )
+
+    /**
+     * 指定项是否可删除。
+     *
+     * 在 [supportsDelete] 基础上排除「本地视频库的目录」：本地视频库的目录对应真实的
+     * 文件系统目录，[VideoStorage.deleteFile] 对目录一律返回 false（避免误删整目录），
+     * 若仍展示删除入口，用户点击只会得到"删除失败"，故此处直接隐藏。
+     */
+    fun canDelete(file: StorageFile): Boolean =
+        supportsDelete && !(currentLibrary?.mediaType == MediaType.LOCAL_STORAGE && file.isDirectory)
 
     /**
      * 重命名当前目录下的文件/目录。
@@ -2489,6 +2548,8 @@ class StorageFileViewModel @Inject constructor(
     /**
      * 系统授权删除结果回调（由 [StorageFileScreen] 的 MediaStore launcher 调用）。
      *
+     * 独占锁已在发起授权时释放，此处无需也不应再操作锁（避免误释放别处持有的锁）。
+     *
      * @param granted 用户是否允许删除（RESULT_OK）。
      */
     fun finalizePendingConsentDelete(granted: Boolean) {
@@ -2497,10 +2558,7 @@ class StorageFileViewModel @Inject constructor(
         pendingConsentPaths = emptyList()
         pendingConsentFiles = emptyList()
         _fileOpProgress.value = null
-        if (paths.isEmpty()) {
-            endExclusiveFileOp()
-            return
-        }
+        if (paths.isEmpty()) return
         viewModelScope.launch {
             if (granted) {
                 val s = storage
@@ -2511,16 +2569,23 @@ class StorageFileViewModel @Inject constructor(
                             runCatchingSuspending { thumbnailManager.deleteThumbnailsForVideo(s, storageId, file) }
                         }
                     }
+                    // 文件被删除后其播放历史无法续播，一并清理避免幽灵条目
+                    paths.forEach { path ->
+                        runCatchingSuspending { syncDeleter.deleteByPath(storageId, path) }
+                        // 快速访问书签同样清理，避免指向已消失的文件
+                        runCatchingSuspending { quickAccessDao.delete(storageId, path) }
+                    }
                 }
                 _events.tryEmit(StorageFileEvent.ShowToast(
                     context.getString(R.string.storage_file_deleted_count, paths.size),
                 ))
+                // 乐观移除，避免刷新失败时列表仍显示已删文件（点开无法播放）
+                removeDeletedFromCurrentList(paths)
             } else {
                 _events.tryEmit(StorageFileEvent.ShowToast(
                     context.getString(R.string.storage_file_delete_cancelled),
                 ))
             }
-            endExclusiveFileOp()
             refreshCurrentDirectory()
         }
     }
@@ -2539,6 +2604,8 @@ class StorageFileViewModel @Inject constructor(
         if (consentUris.isNotEmpty()) {
             pendingConsentPaths = listOf(file.path)
             pendingConsentFiles = listOf(file)
+            // 系统授权弹窗期间释放独占锁（与冲突弹窗一致），避免结果未回传时锁被永久占用
+            endExclusiveFileOp()
             _events.tryEmit(StorageFileEvent.RequestMediaStoreDelete(consentUris))
             return
         }
@@ -2549,16 +2616,13 @@ class StorageFileViewModel @Inject constructor(
                 }
                 if (ok) {
                     _events.tryEmit(StorageFileEvent.ShowToast(context.getString(R.string.storage_file_deleted, file.name)))
-                    // 文件夹访问加密联动：目录删除时清理其前缀下的加密配置
-                    if (file.isDirectory) {
-                        encryptedFolderManager.deleteFolderPrefix(storageId, file.path)
-                    } else {
-                        // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
-                        runCatchingSuspending {
-                            thumbnailManager.deleteThumbnailsForVideo(s, storageId, file)
-                        }
-                    }
+                    // 乐观移除，避免刷新失败时列表仍显示已删文件（点开无法播放）
+                    removeDeletedFromCurrentList(listOf(file.path))
+                    withContext(Dispatchers.IO) { cleanupAfterDelete(s, file) }
                     refreshCurrentDirectory()
+                } else if (!file.isDirectory && isLocalDeleteBlockedByPermission()) {
+                    // 本地文件库缺「所有文件访问权限」：给出去授权页的引导而非干巴巴的"删除失败"
+                    _events.tryEmit(StorageFileEvent.RequestAllFilesAccess)
                 } else {
                     _events.tryEmit(StorageFileEvent.ShowError(context.getString(R.string.storage_file_delete_failed)))
                 }
@@ -2568,12 +2632,72 @@ class StorageFileViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 删除成功后的联动清理（缩略图 / 加密配置 / 播放历史 / 快速访问）。
+     *
+     * 每步独立兜底：任一清理失败都不改变"文件已删除"的事实，也不会让异常穿出协程
+     * 导致崩溃或把后续流程（刷新目录）一起带崩。
+     */
+    private suspend fun cleanupAfterDelete(s: Storage, file: StorageFile) {
+        // 快速访问书签指向已消失的文件后，点击无法播放，随删除一并移除
+        runCatchingSuspending { quickAccessDao.delete(storageId, file.path) }
+        if (file.isDirectory) {
+            runCatchingSuspending { encryptedFolderManager.deleteFolderPrefix(storageId, file.path) }
+            // 目录内文件的播放历史随目录删除一并清理
+            runCatchingSuspending { syncDeleter.deleteByStoragePathPrefixAndStorageId(storageId, file.path) }
+        } else {
+            // 删除视频时同步清理软件生成缩略图（本地缓存 + 服务端 .thumb/），保留用户原有图
+            runCatchingSuspending { thumbnailManager.deleteThumbnailsForVideo(s, storageId, file) }
+            // 文件被删除后其播放历史无法续播，一并清理避免幽灵条目
+            runCatchingSuspending { syncDeleter.deleteByPath(storageId, file.path) }
+        }
+    }
+
+    /**
+     * 本地视频库删除是否被「所有文件访问权限」挡住。
+     *
+     * 扩展目录内的文件不在 MediaStore 授权删除范围内，只能走 File API；缺少
+     * MANAGE_EXTERNAL_STORAGE 时对共享存储的 File 删除必然失败（API 30+ 且未授权）。
+     */
+    private fun isLocalDeleteBlockedByPermission(): Boolean =
+        currentLibrary?.mediaType == MediaType.LOCAL_STORAGE &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            !StorageAccess.canWriteSharedStorage(context)
+
+    /**
+     * 删除成功后立即从当前列表移除这些路径（乐观更新）。
+     *
+     * 原因：删除已落盘但随后的目录刷新可能失败（远程网络抖动）或被存储节流跳过，
+     * 此时若只依赖 [refreshCurrentDirectory]，已删文件仍会留在列表里，用户点开却无法播放。
+     * 先在内存中剔除，保证"删掉就立刻不可见"，随后的刷新只做最终校准。
+     */
+    private fun removeDeletedFromCurrentList(paths: Collection<String>) {
+        if (paths.isEmpty()) return
+        val gone = paths.toSet()
+        _uiState.update { st ->
+            st.copy(
+                rawFiles = st.rawFiles.filterNot { it.path in gone },
+                files = st.files.filterNot { it.path in gone },
+            )
+        }
+        _treeChildren.update { tree ->
+            if (tree.isEmpty()) tree
+            else tree.mapValues { (_, children) -> children.filterNot { it.path in gone } }
+        }
+    }
+
     /** 刷新当前目录文件列表（重命名/移动/删除/新建后调用）。 */
     private fun refreshCurrentDirectory() {
         val current = directoryStack.lastOrNull() ?: return
         // 内容可能已变更，清空文件夹媒体判定缓存，列表重载后重新扫描
         folderMediaVerdicts.clear()
-        viewModelScope.launch { listDirectory(current) { } }
+        val s = storage
+        viewModelScope.launch {
+            // 先失效存储层目录列表缓存（如 WebDAV 的 10s listCache）：文件操作后必须拿到
+            // 服务端最新结果，否则旧快照仍会把已删除的条目列出来（幽灵条目）。
+            if (s != null) runCatchingSuspending { s.invalidateListCache() }
+            listDirectory(current) { }
+        }
     }
 
     // ---- 排序 ----
@@ -2795,6 +2919,14 @@ sealed class StorageFileEvent {
 
     /** 拉起系统 [android.provider.MediaStore.createDeleteRequest] 授权删除系统索引媒体。 */
     data class RequestMediaStoreDelete(val uris: List<Uri>) : StorageFileEvent()
+
+    /**
+     * 本地文件删除因缺少「所有文件访问权限」而失败，请求宿主引导用户前往授权页。
+     *
+     * 仅 API 30+ 的本地视频库会触发（扩展目录内的文件不在 MediaStore 授权删除范围，
+     * 只能走 File API，未授予 MANAGE_EXTERNAL_STORAGE 时必然失败）。
+     */
+    object RequestAllFilesAccess : StorageFileEvent()
 
     /** 简短提示（添加/移除成功）。 */
     data class ShowToast(val message: String) : StorageFileEvent()
