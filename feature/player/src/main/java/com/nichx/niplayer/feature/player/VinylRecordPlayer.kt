@@ -233,7 +233,8 @@ fun VinylRecordPlayer(
                 val request = remember(coverData) {
                     when (coverData) {
                         is String -> ImageRequest.Builder(ctx)
-                            .data(coverData)
+                            .data(coverData.stripCoverCacheBuster())
+                            .memoryCacheKey(coverData)
                             .diskCachePolicy(CachePolicy.DISABLED)
                             .build()
                         is ImageRequest -> coverData.newBuilder()

@@ -197,7 +197,7 @@ class AudioPlaybackService : MediaSessionService() {
         if (path.isNullOrBlank()) return null
         // 优先使用缓存的封面 Bitmap（由 AudioPlaybackManager 在切歌时预解码设置）
         playbackManager.getCoverBitmap()?.let { return it }
-        return runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
+        return runCatching { BitmapFactory.decodeFile(path.stripCoverCacheBuster()) }.getOrNull()
     }
 
     private fun buildActionIntent(action: String): PendingIntent {

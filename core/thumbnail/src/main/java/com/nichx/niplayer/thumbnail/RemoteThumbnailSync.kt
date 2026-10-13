@@ -326,9 +326,18 @@ internal class RemoteThumbnailSync(private val store: ThumbnailStore) {
         if (audioFiles.isEmpty()) return@withContext
 
         val pending = mutableListOf<StorageFile>()
+        // 本地缓存存在但源文件已更新过的项：不信任服务端 .cover 侧车（可能仍是旧图），
+        // 而是留给调用方从源文件重新提取
+        val stalePaths = mutableSetOf<String>()
         for (file in audioFiles) {
             val cached = store.cachedPath(store.audioDir, storageId, file.path)
-            if (cached != null) onLoaded(file.path, cached) else pending.add(file)
+            when {
+                cached == null -> pending.add(file)
+                !store.isAudioCoverStale(storageId, file.path, file.length, file.lastModified) ->
+                    onLoaded(file.path, cached)
+
+                else -> stalePaths.add(file.path)
+            }
         }
         if (pending.isEmpty()) return@withContext
 
@@ -361,11 +370,13 @@ internal class RemoteThumbnailSync(private val store: ThumbnailStore) {
             } ?: continue
 
             for (file in filesInDir) {
+                if (file.path in stalePaths) continue
                 val cacheFile = store.fileFor(store.audioDir, storageId, file.path)
                 cacheFile.parentFile?.mkdirs()
                 try {
                     BufferedOutputStream(FileOutputStream(cacheFile), BUFFER_SIZE).use { it.write(coverBytes) }
                     if (cacheFile.exists() && cacheFile.length() > 0) {
+                        store.writeAudioCoverVersion(storageId, file.path, file.length)
                         onLoaded(file.path, cacheFile.absolutePath)
                         loadedFromDirCover.add(file.path)
                     }
@@ -380,7 +391,7 @@ internal class RemoteThumbnailSync(private val store: ThumbnailStore) {
         val semaphore = Semaphore(concurrency)
         coroutineScope {
             for ((dirPath, filesInDir) in byDir) {
-                if (filesInDir.all { it.path in loadedFromDirCover }) continue
+                if (filesInDir.all { it.path in loadedFromDirCover || it.path in stalePaths }) continue
                 val coverDirPath = if (dirPath.isEmpty()) ".cover" else "$dirPath/.cover"
                 val coverFiles = try {
                     storage.listFiles(CoverDirFile(coverDirPath))
@@ -397,6 +408,7 @@ internal class RemoteThumbnailSync(private val store: ThumbnailStore) {
                 }
 
                 for (file in filesInDir) {
+                    if (file.path in stalePaths) continue
                     val coverFile = coverMap[file.name] ?: continue
                     launch {
                         semaphore.withPermit {
@@ -429,6 +441,7 @@ internal class RemoteThumbnailSync(private val store: ThumbnailStore) {
                 input.use { it.copyTo(out) }
             }
             written = true
+            store.writeAudioCoverVersion(storageId, audioFile.path, audioFile.length)
             cacheFile.absolutePath
         } catch (e: CancellationException) {
             throw e

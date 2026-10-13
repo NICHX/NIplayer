@@ -95,6 +95,20 @@ enum class LyricSource(@StringRes val labelRes: Int) {
     EMBEDDED(R.string.player_lyric_source_embedded),
 }
 
+/**
+ * 本地音频（file://）封面缓存的过期判定容差：源文件修改时间需比缓存写入时间晚这么多才重算，
+ * 避免文件时间戳与缓存时间戳的细微差异导致反复重算。
+ */
+private const val LOCAL_COVER_MTIME_SLACK_MS = 5 * 60 * 1000L
+
+/**
+ * 剥掉封面路径上的 `?t=` cache-buster，得到可直接读文件 / 解码的路径。
+ *
+ * 见 [AudioPlaybackManager.updateCoverPath]：对 UI 暴露的封面路径带 `?t=` 时间戳，
+ * 用于绕过 Coil 的内存缓存；真正读文件时必须先剥掉。
+ */
+internal fun String.stripCoverCacheBuster(): String = substringBefore("?t=")
+
 @OptIn(UnstableApi::class)
 @Singleton
 class AudioPlaybackManager @Inject constructor(
@@ -1226,14 +1240,18 @@ class AudioPlaybackManager @Inject constructor(
     private fun loadStorageAudioCover(history: HistoryDescriptor, sid: Int) {
         val filePath = history.storagePath ?: return
         val fileName = history.url.substringAfterLast('/')
+        val fileSize = history.fileSize
 
-        // 先检查本地缓存，命中则直接返回，避免创建不必要的 Storage 连接
-        val cachedPath = thumbnailManager.getCachedAudioCoverPath(sid, filePath)
+        // 先检查本地缓存：源文件未被外部更新过才命中，避免创建不必要的 Storage 连接
+        val cachedPath = thumbnailManager.getCachedAudioCoverPath(sid, filePath, fileSize, 0L)
         if (cachedPath != null) {
             _audioCoverPath.value = cachedPath
             updateCoverPath(cachedPath)
             return
         }
+        // 有本地缓存但已过期（用户用外部工具就地换过内嵌封面）：跳过服务端 .cover 侧车预取
+        // （那是旧图），直接从源文件重新提取
+        val staleLocalCache = thumbnailManager.getCachedAudioCoverPath(sid, filePath) != null
 
         // 缩略图总开关 / 音频封面开关关闭时不生成、不上传（仍可使用上面命中的本地缓存）
         if (!ThumbnailSettings.generateThumbnail || !ThumbnailSettings.generateForAudio) return
@@ -1245,16 +1263,20 @@ class AudioPlaybackManager @Inject constructor(
                 val library = mediaLibraryDao.getById(sid) ?: return@launch
                 val storage = storageFactory.create(library) ?: return@launch
                 try {
-                    val file = MediaSourceBuilder.createVirtualFile(filePath, fileName)
+                    val file = MediaSourceBuilder.createVirtualFile(filePath, fileName, fileSize)
                     var loaded = false
-                    thumbnailManager.preloadAudioCovers(storage, sid, listOf(file)) { _, coverPath ->
-                        _audioCoverPath.value = coverPath
-                        updateCoverPath(coverPath)
-                        loaded = true
+                    if (!staleLocalCache) {
+                        thumbnailManager.preloadAudioCovers(storage, sid, listOf(file)) { _, coverPath ->
+                            _audioCoverPath.value = coverPath
+                            updateCoverPath(coverPath)
+                            loaded = true
+                        }
                     }
                     if (!loaded) {
                         val path = thumbnailManager.generateAudioCover(storage, sid, file)
                         if (path != null) {
+                            // 源文件更新过：服务端 .cover 侧车可能还是旧图，先删旧的再传新的
+                            if (staleLocalCache) thumbnailManager.deleteServerAudioCover(storage, file)
                             thumbnailManager.uploadAudioCover(storage, file)
                         }
                         if (path != null) {
@@ -1288,6 +1310,14 @@ class AudioPlaybackManager @Inject constructor(
                 val uri = source.uri
                 val cacheKey = "local_audio_${md5(uri.toString())}"
                 val cacheFile = File(context.cacheDir, "audio_covers/$cacheKey.jpg")
+                // 本地 file:// 源被就地更新过（换过内嵌封面）时丢弃旧缓存；content:// 无法廉价取
+                // 时间戳，不做判断（沿用旧行为）
+                if (cacheFile.exists() && uri.scheme == "file") {
+                    val sourceTime = runCatching { File(uri.path.orEmpty()).lastModified() }.getOrDefault(0L)
+                    if (sourceTime > 0L && sourceTime > cacheFile.lastModified() + LOCAL_COVER_MTIME_SLACK_MS) {
+                        cacheFile.delete()
+                    }
+                }
                 if (cacheFile.exists() && cacheFile.length() > 0) {
                     val path = cacheFile.absolutePath
                     _audioCoverPath.value = path
@@ -1420,10 +1450,12 @@ class AudioPlaybackManager @Inject constructor(
     fun getCoverBitmap(): Bitmap? = lastCoverBitmap
 
     fun updateCoverPath(path: String?) {
-        val valid = path.asValidCoverPath()
-        _audioCoverPath.value = valid
+        val clean = path.asValidCoverPath()
+        // 追加 `?t=` cache-buster：同一缓存文件被**就地重算**（源文件更新后）时，路径串仍会变化，
+        // Coil 才会重新加载而不是命中旧的内存缓存。文件操作（校验 / 解码 / 通知栏）先剥掉查询串。
+        _audioCoverPath.value = clean?.let { "$it?t=${System.currentTimeMillis()}" }
         // 封面路径变化时在 IO 线程预解码并缓存，避免通知刷新在主线程解码
-        decodeCoverAsync(valid)
+        decodeCoverAsync(clean)
     }
 
     /**
@@ -1433,7 +1465,7 @@ class AudioPlaybackManager @Inject constructor(
      * 下游拿着失效路径去加载，图片库什么都不画，界面就只剩一块空底。
      * 在入口处收敛成 null，所有消费方自然落到「无封面」的兜底外观上。
      */
-    private fun String?.asValidCoverPath(): String? = this?.takeIf { path ->
+    private fun String?.asValidCoverPath(): String? = this?.stripCoverCacheBuster()?.takeIf { path ->
         path.isNotBlank() && java.io.File(path).let { it.isFile && it.length() > 0L }
     }
 

@@ -38,6 +38,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Locale
 
@@ -67,6 +70,19 @@ fun AudioPlayerScreen(
         audioPlaybackManager?.lyricEvents?.collect { msg ->
             messageController.post(NiMessage.info(msg))
         }
+    }
+
+    // 重新回到前台时重读一次当前曲目的歌词：歌词只在切歌时加载，用户用外部工具就地更新了
+    // .lrc / .nilyric（或内嵌歌词）后，回到播放器即可看到最新内容，而不必切歌
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, audioPlaybackManager) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                audioPlaybackManager?.loadLrcForCurrentSong()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // 所有播放状态直接从 AudioPlaybackManager 读取

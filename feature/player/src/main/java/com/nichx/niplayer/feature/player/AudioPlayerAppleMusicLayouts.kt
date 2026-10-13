@@ -105,6 +105,9 @@ private fun appleCoverRequest(
 ): ImageRequest {
     val builder = when (coverData) {
         is ImageRequest -> coverData.newBuilder()
+        is String -> ImageRequest.Builder(context)
+            .data(coverData.stripCoverCacheBuster())
+            .memoryCacheKey(coverData)
         else -> ImageRequest.Builder(context).data(coverData)
     }
     builder.diskCachePolicy(CachePolicy.DISABLED)

@@ -40,6 +40,36 @@ internal class ThumbnailStore(context: Context) {
     private fun noCoverMarker(storageId: Int, filePath: String): File =
         File(audioDir, "${md5("$storageId-$filePath")}.no_cover")
 
+    /**
+     * 音频封面「源版本」记录：`MD5(...).ver`，内容为源文件的**大小**。
+     *
+     * 生成封面（或确认无封面）时写入，用于判断本地缓存是否仍对应当前音频文件 ——
+     * 只按路径命名的缓存无法感知「就地更新了内嵌封面 / 换掉了目录封面」这类外部改动。
+     *
+     * 用「大小」而非修改时间作版本：各调用方都能拿到 size（文件列表 / 播放列表 / 虚拟文件），
+     * 比较口径一致；若混用「有时间/没时间」两种口径会互相判为过期而反复重算。
+     */
+    private fun audioVersionMarker(storageId: Int, filePath: String): File =
+        File(audioDir, "${md5("$storageId-$filePath")}.ver")
+
+    /** 记录本次生成封面时源音频的大小；未知（<=0）时不写。 */
+    fun writeAudioCoverVersion(storageId: Int, filePath: String, length: Long) {
+        if (length <= 0L) return
+        try {
+            val file = audioVersionMarker(storageId, filePath)
+            file.parentFile?.mkdirs()
+            file.writeText("$length")
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun readAudioCoverVersion(storageId: Int, filePath: String): Long? = try {
+        audioVersionMarker(storageId, filePath).takeIf { it.isFile }
+            ?.readText()?.trim()?.toLongOrNull()
+    } catch (_: Exception) {
+        null
+    }
+
     /** 该音频是否已确认无内嵌封面（避免反复扫描）。 */
     fun hasNoCover(storageId: Int, filePath: String): Boolean = noCoverMarker(storageId, filePath).exists()
 
@@ -49,6 +79,41 @@ internal class ThumbnailStore(context: Context) {
             noCoverMarker(storageId, filePath).createNewFile()
         } catch (_: Exception) {
         }
+    }
+
+    /**
+     * 本地音频封面是否已过期（源文件在生成之后被改过）。
+     *
+     * 判据优先级：
+     * 1. 有版本记录 → 比源文件大小（与时钟无关）；
+     * 2. 无记录（本功能上线前的旧缓存）→ 退化为「源文件修改时间 vs 缓存写入时间」，带
+     *    [MTIME_SLACK_MS] 容差（写入版本记录后即不再走这条）；
+     * 3. 源版本未知（size <= 0）且无修改时间 → 视为新鲜（沿用旧行为）。
+     */
+    fun isAudioCoverStale(storageId: Int, filePath: String, length: Long, lastModified: Long): Boolean {
+        if (length > 0L) {
+            val recorded = readAudioCoverVersion(storageId, filePath)
+            if (recorded != null) return recorded != length
+        }
+        return legacyStaleByMtime(storageId, filePath, lastModified)
+    }
+
+    /** 无版本记录时的兜底：源文件修改时间明显晚于缓存写入时间即视为过期。 */
+    private fun legacyStaleByMtime(storageId: Int, filePath: String, lastModified: Long): Boolean {
+        if (lastModified <= 0L) return false
+        val cacheTime = maxOf(
+            fileFor(audioDir, storageId, filePath).takeIf { it.isFile }?.lastModified() ?: 0L,
+            noCoverMarker(storageId, filePath).takeIf { it.isFile }?.lastModified() ?: 0L,
+        )
+        if (cacheTime <= 0L) return false
+        return lastModified > cacheTime + MTIME_SLACK_MS
+    }
+
+    /** 丢弃某音频的本地封面缓存（封面文件 + no_cover 标记 + 版本记录），用于源文件更新后重算。 */
+    fun clearAudioCover(storageId: Int, filePath: String) {
+        fileFor(audioDir, storageId, filePath).delete()
+        noCoverMarker(storageId, filePath).delete()
+        audioVersionMarker(storageId, filePath).delete()
     }
 
     /** 把 [bitmap] 以 JPEG 写入 [target]（自动建父目录 + 缓冲写），返回落盘后的绝对路径。 */
@@ -109,10 +174,14 @@ internal class ThumbnailStore(context: Context) {
             File(imageDir, key).delete()
             val baseKey = md5("$storageId-${file.path}")
             File(audioDir, "$baseKey.no_cover").delete()
+            File(audioDir, "$baseKey.ver").delete()
         }
     }
 
     private companion object {
         const val BUFFER_SIZE = 64 * 1024
+
+        /** 无版本记录时，「源文件修改时间 vs 缓存写入时间」判定所留的容差（防时钟偏差误判）。 */
+        const val MTIME_SLACK_MS = 5 * 60 * 1000L
     }
 }

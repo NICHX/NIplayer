@@ -1833,7 +1833,9 @@ class StorageFileViewModel @Inject constructor(
                 // ---- 音频封面：命中缓存 / preload 即刻可用，其余入待生成队列 ----
                 if (audioFiles.isNotEmpty()) {
                     val cached = audioFiles.mapNotNull { file ->
-                        val path = thumbnailManager.getCachedAudioCoverPath(libId, file.path)
+                        val path = thumbnailManager.getCachedAudioCoverPath(
+                            libId, file.path, file.length, file.lastModified,
+                        )
                         if (path != null) file.path to path else null
                     }.toMap()
                     if (cached.isNotEmpty()) {
@@ -1864,7 +1866,7 @@ class StorageFileViewModel @Inject constructor(
                         audioFiles.filter { file ->
                             _thumbnailUrls.value[file.path] == null &&
                                 batchAccumulator[file.path] == null &&
-                                !thumbnailManager.hasNoCover(libId, file.path)
+                                !thumbnailManager.hasNoCover(libId, file.path, file.length, file.lastModified)
                         }.forEach { pendingThumbs.addLast(PendingThumb(it, ThumbType.AUDIO)) }
                     }
                 }
@@ -1939,7 +1941,10 @@ class StorageFileViewModel @Inject constructor(
                                         ThumbType.AUDIO -> {
                                             val path = thumbnailManager.generateAudioCover(s, libId, item.file)
                                             if (path != null) {
-                                                synchronized(batchLock) { batchAccumulator[item.file.path] = path }
+                                                // 追加 `?t=` 作 cache-buster：封面被就地重算（源文件更新）时
+                                                // 路径串要变化，Coil 才会重新加载而不是命中旧的内存缓存
+                                                val stamped = "$path?t=${System.currentTimeMillis()}"
+                                                synchronized(batchLock) { batchAccumulator[item.file.path] = stamped }
                                                 if (!isLocal && ThumbnailSettings.effectiveWriteBack(libId)) audioSuccess.add(item.file)
                                             }
                                         }

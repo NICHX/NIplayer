@@ -269,7 +269,12 @@ class ThumbnailManager @Inject constructor(
 
     // ---------- 音频封面 ----------
 
-    /** 生成音频封面（内嵌 / 目录 / 头部扫描）；无封面返回 null 并标记 no_cover。 */
+    /**
+     * 生成音频封面（内嵌 / 目录 / 头部扫描）；无封面返回 null 并标记 no_cover。
+     *
+     * 缓存按「源版本（文件大小）」失效：源音频大小与生成时记录的不一致
+     * （用户用外部工具就地换过封面）时，丢弃旧封面与 no_cover 标记后重算。
+     */
     suspend fun generateAudioCover(
         storage: Storage,
         storageId: Int,
@@ -279,13 +284,24 @@ class ThumbnailManager @Inject constructor(
             "generateAudioCover 要求音频文件，收到 ${file.name}"
         }
         val cacheFile = store.fileFor(store.audioDir, storageId, file.path)
-        if (cacheFile.exists()) return@withContext cacheFile.absolutePath
+        if (cacheFile.exists() && !store.isAudioCoverStale(storageId, file.path, file.length, file.lastModified)) {
+            return@withContext cacheFile.absolutePath
+        }
 
         val result = lockFor(cacheFile.name).withLock {
-            if (cacheFile.exists()) return@withLock cacheFile.absolutePath
+            if (cacheFile.exists()) {
+                if (!store.isAudioCoverStale(storageId, file.path, file.length, file.lastModified)) {
+                    return@withLock cacheFile.absolutePath
+                }
+                // 源文件已更新：丢弃旧封面与 no_cover 标记后重算
+                store.clearAudioCover(storageId, file.path)
+            }
             extractionGate(storageId, storage.thumbnailConcurrency).withPermit {
                 decodeGate.withPermit {
-                    if (audioExtractor.extract(storage, storageId, file, cacheFile)) cacheFile.absolutePath else null
+                    val ok = audioExtractor.extract(storage, storageId, file, cacheFile)
+                    // 命中封面 / 确认无封面都记录本次源大小，供后续失效判定
+                    store.writeAudioCoverVersion(storageId, file.path, file.length)
+                    if (ok) cacheFile.absolutePath else null
                 }
             }
         }
@@ -543,12 +559,27 @@ class ThumbnailManager @Inject constructor(
     fun getCachedAudioCoverPath(storageId: Int, filePath: String): String? =
         store.cachedPath(store.audioDir, storageId, filePath)
 
+    /**
+     * 版本感知的本地音频封面查询：源文件在生成之后被改过时返回 null，促使调用方重新生成。
+     *
+     * `length` 未知（<= 0）时退化为「有缓存即命中」的旧行为。
+     */
+    fun getCachedAudioCoverPath(storageId: Int, filePath: String, length: Long, lastModified: Long): String? {
+        val path = store.cachedPath(store.audioDir, storageId, filePath) ?: return null
+        return path.takeUnless { store.isAudioCoverStale(storageId, filePath, length, lastModified) }
+    }
+
     /** 本地图片缩略图缓存路径（存在则返回，否则 null）。 */
     fun getCachedImageThumbnailPath(storageId: Int, filePath: String): String? =
         store.cachedPath(store.imageDir, storageId, filePath)
 
     /** 该音频是否已确认无内嵌封面。 */
     fun hasNoCover(storageId: Int, filePath: String): Boolean = store.hasNoCover(storageId, filePath)
+
+    /** 版本感知的「已确认无封面」：源文件更新过则视为失效（应当重新探测）。 */
+    fun hasNoCover(storageId: Int, filePath: String, length: Long, lastModified: Long): Boolean =
+        store.hasNoCover(storageId, filePath) &&
+            !store.isAudioCoverStale(storageId, filePath, length, lastModified)
 
     /** 清空全部缩略图缓存。 */
     fun clearCache() {

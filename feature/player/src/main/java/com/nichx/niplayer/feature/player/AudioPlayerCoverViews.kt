@@ -57,7 +57,8 @@ internal fun BackgroundLayer(coverData: Any?) {
                 val request = remember(cover) {
                     when (cover) {
                         is String -> ImageRequest.Builder(context)
-                            .data(cover)
+                            .data(cover.stripCoverCacheBuster())
+                            .memoryCacheKey(cover)
                             .size(CoverBackdropSampleSize, CoverBackdropSampleSize)
                             .diskCachePolicy(CachePolicy.DISABLED)
                             .build()
@@ -178,7 +179,7 @@ internal fun CoverBlurBackground(coverData: Any?) {
             val request = remember(coverData) {
                 when (coverData) {
                     is String -> ImageRequest.Builder(context)
-                        .data(coverData)
+                        .data(coverData.stripCoverCacheBuster())
                         .size(CoverBackdropSampleSize, CoverBackdropSampleSize)
                         .memoryCachePolicy(CachePolicy.DISABLED)
                         .diskCachePolicy(CachePolicy.DISABLED)
@@ -259,7 +260,7 @@ internal fun CoverCard(
             val request = remember(coverData) {
                 when (coverData) {
                     is String -> ImageRequest.Builder(context)
-                        .data(coverData)
+                        .data(coverData.stripCoverCacheBuster())
                         .memoryCachePolicy(CachePolicy.DISABLED)
                         .diskCachePolicy(CachePolicy.DISABLED)
                         .build()

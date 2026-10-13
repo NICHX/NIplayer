@@ -223,11 +223,13 @@ private fun FloatingMiniPlayerCard(
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxSize(),
             )
-            if (coverPath != null) {
+            val path = coverPath
+            if (path != null) {
                 val context = LocalContext.current
-                val request = remember(coverPath) {
+                val request = remember(path) {
                     ImageRequest.Builder(context)
-                        .data(coverPath)
+                        .data(path.stripCoverCacheBuster())
+                        .memoryCacheKey(path)
                         .diskCachePolicy(CachePolicy.DISABLED)
                         .crossfade(true)
                         .build()
