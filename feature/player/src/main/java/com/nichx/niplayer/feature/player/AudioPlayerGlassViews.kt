@@ -275,7 +275,7 @@ internal fun GlassTrackCredits(
 /**
  * 当前歌词行：已唱的字用强调色、未唱的字用正文色。
  *
- * 两层同款文本叠在一起、上层按进度裁切并**逐字抬升**（见 [perCharSung]），落点由
+ * 两层同款文本叠在一起、上层按进度裁切（见 [perCharSung]），落点由
  * [rememberLiveSungFraction] 给出 —— 播放位置 1Hz 上报的台阶被帧时钟抹平，
  * 逐字歌词才不会落后一整秒。
  */
@@ -306,7 +306,6 @@ private fun GlassCurrentLyricLine(
     )
     var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     // 三段几何（已唱完 / 正在唱 / 未唱）只算一次，两层共用
-    // 抬升是 Apple Music 主题的效果，这里（简约封面）只做逐字铺色；glow 区域给荧光层用
     // 荧光强度与半径：深色 / 浅色各一档（浅色下强调色偏暗，「发光」会读成脏影子）
     val glowIsDark = NiExtraColors.current.isDark
     val glowAlpha = if (glowIsDark) GlassGlowAlphaDark else GlassGlowAlphaLight
@@ -323,12 +322,10 @@ private fun GlassCurrentLyricLine(
     val sungSplit = remember(layoutResult, fraction, glowPx) {
         derivedStateOf {
             layoutResult?.let {
-                buildSungSplit(it, fraction.value, lift = false, glowRadiusPx = glowPx)
+                buildSungSplit(it, fraction.value, glowRadiusPx = glowPx)
             }
         }
     }
-    // 逐字抬升是 Apple Music 主题的效果，简约封面不做 —— 这里恒为 0
-    val lyricRisePx = 0f
 
     val style = MaterialTheme.typography.titleLarge.copy(
         fontSize = GlassLyricFontSize,
@@ -385,10 +382,7 @@ private fun GlassCurrentLyricLine(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.perCharSung(
-                    splitProvider = { sungSplit.value },
-                    risePx = lyricRisePx,
-                ),
+                modifier = Modifier.perCharSung { sungSplit.value },
             )
         }
     }

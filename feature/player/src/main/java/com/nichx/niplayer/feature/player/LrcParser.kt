@@ -87,22 +87,25 @@ object LrcParser {
             val lineTags = LINE_TAG_REGEX.findAll(head).toList()
             if (lineTags.isEmpty()) return@forEach
 
-            // 逐字时间戳：每个标记之后、下一个标记之前为该词的文本
+            // 逐字时间戳：每个标记之后、下一个标记之前为该词的文本。
+            // **不 trim、拼接不加分隔符**：这是歌词源（musictag-lite 的 `to_word_lrc` 用
+            // `"".join(parts)`）的既定格式 —— CJK 逐字切词、拉丁词之间显式插入一个「空格词」。
+            // 旧实现 trim 后又用空格 join，会让中文每个字后面都多出一个空格。
             val wordTimes = mutableListOf<Pair<String, Long>>()
             wordTags.forEachIndexed { index, tag ->
                 val timeMs = parseTime(tag)
                 if (timeMs != null) {
                     val textEnd = wordTags.getOrNull(index + 1)?.range?.first ?: trimmed.length
-                    val word = trimmed.substring(tag.range.last + 1, textEnd).trim()
+                    val word = trimmed.substring(tag.range.last + 1, textEnd)
                     if (word.isNotEmpty()) wordTimes.add(word to timeMs)
                 }
             }
 
-            // 有逐字时间戳时文本 = 各词拼接；否则为行级时间标签之后的整段文本
+            // 有逐字时间戳时文本 = 各词原样拼接；否则为行级时间标签之后的整段文本
             val lyricText = if (wordTimes.isEmpty()) {
                 head.substring(lineTags.last().range.last + 1).trim()
             } else {
-                wordTimes.joinToString(" ") { it.first }
+                wordTimes.joinToString("") { it.first }
             }
             if (lyricText.isBlank()) return@forEach
 

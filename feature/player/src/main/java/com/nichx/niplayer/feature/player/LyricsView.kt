@@ -194,9 +194,9 @@ internal fun LyricsView(
     theme: LyricsTheme = VinylLyrics,
     /** 当前句 / 逐字高亮的颜色。默认主题色；简约封面主题传入从封面取到的强调色。 */
     accentColor: Color = MaterialTheme.colorScheme.primary,
-    /** 是否正在播放：逐字铺色与光带的动画只在播放时推进（暂停即停、不请求帧）。 */
+    /** 是否正在播放：逐字铺色与荧光的动画只在播放时推进（暂停即停、不请求帧）。 */
     isPlaying: Boolean = false,
-    /** 「逐字歌词」开关：关掉后当前句整句同色，不做逐字铺色。 */
+    /** 「逐字歌词高亮」开关：关掉后当前句整句同色，既不逐字铺色也不发光。 */
     perChar: Boolean = true,
     /** 「显示翻译」开关：关掉后带译文的歌词也只显示原文。 */
     showTranslation: Boolean = true,
@@ -524,7 +524,6 @@ private fun LyricRowItem(
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val density = LocalDensity.current
-    val reduceMotion = LocalNiReduceMotion.current
 
     // 焦点进度：当前句 → 1，其它 → 0；平滑过渡，交接时不闪断
     val focus by animateFloatAsState(
@@ -563,7 +562,7 @@ private fun LyricRowItem(
     val highlightColor = if (theme.whiteText) Color.White else accentColor
     val normalColor = if (theme.whiteText) Color.White else onSurface
 
-    // 逐字铺色：当前句按「已唱到多少」的比例，把上层文字裁切出已唱的部分并逐字抬升（见 perCharSung）。
+    // 逐字铺色：当前句按「已唱到多少」的比例，把上层文字裁切出已唱的部分（见 perCharSung）。
     // 所有主题、所有歌词格式共用这一套 —— 有逐字时间戳的精确到词，普通 LRC 按行时长估算。
     // 比例只在绘制阶段被读，因此逐帧变化只重画这一层、不触发重组。
     val perCharFraction = rememberSungFraction(
@@ -595,11 +594,11 @@ private fun LyricRowItem(
             (perCharFraction.value * length).toInt().coerceIn(0, length)
         }
     }
-    // 抬升只在 Apple Music 主题做（另两套只做逐字铺色）；glow 区域给荧光层用
-    val sungSplit = remember(layoutResult, perCharFraction, theme.liftSung, glowPx) {
+    // glow 区域给荧光层用
+    val sungSplit = remember(layoutResult, perCharFraction, glowPx) {
         derivedStateOf {
             layoutResult?.let {
-                buildSungSplit(it, perCharFraction.value, lift = theme.liftSung, glowRadiusPx = glowPx)
+                buildSungSplit(it, perCharFraction.value, glowRadiusPx = glowPx)
             }
         }
     }
@@ -676,18 +675,6 @@ private fun LyricRowItem(
                 letterSpacing = letterSpacing,
             )
         }
-        // 逐字抬升量：字号的 10%，夹在 1.5~6dp。
-        // **只在 Apple Music 主题做**，且「减少动态效果」时不做。
-        val lyricRisePx = if (reduceMotion || !theme.liftSung) {
-            0f
-        } else {
-            with(density) {
-                (textStyle.fontSize.value * LYRIC_LIFT_FONT_RATIO)
-                    .coerceIn(LYRIC_LIFT_MIN_DP, LYRIC_LIFT_MAX_DP)
-                    .dp
-                    .toPx()
-            }
-        }
         val textModifier = if (theme.tapTargetOnText) {
             Modifier
                 // padding 在外、clickable 在内：点击范围就是文字本身（左右各让出
@@ -725,12 +712,14 @@ private fun LyricRowItem(
         // 荧光层**垫在最下面**：它的裁切范围比已唱区外扩了一圈，扩出来的那点会落到未唱区，
         // 正好被下面的底层文字盖住 —— 既让首尾两个字的晕完整，又不会露出半个字。
         if (highlightActive && theme.glow != null) {
+            // 荧光颜色：白色主题（Apple）用纯白晕（它没有主题色层级）；其余用强调色
+            val glowShadowColor = if (theme.whiteText) Color.White else accentColor
             // 已唱段不透明（发光）、未唱段透明（不发光）：扩出去的那圈里紧邻的未唱字就不会跟着亮
             Text(
                 text = remember(text, glowBoundary) { lyricGlowText(text, glowBoundary) },
                 style = textStyle.copy(
                     shadow = Shadow(
-                        color = accentColor.copy(alpha = glassGlowAlpha),
+                        color = glowShadowColor.copy(alpha = glassGlowAlpha),
                         blurRadius = glowPx,
                     ),
                 ),
@@ -764,7 +753,7 @@ private fun LyricRowItem(
             } else {
                 null
             },
-            // 底层只画未唱区：已唱的字被抬起后原位会空出来，照常画整句会留下影子
+            // 底层只画未唱区：与上层「已唱区」互补，两层不重叠 —— 半透明色才不会被叠两次
             modifier = textModifier.then(
                 if (highlightActive) {
                     Modifier.perCharUnsung { sungSplit.value }
@@ -781,10 +770,7 @@ private fun LyricRowItem(
                 textAlign = theme.textAlign,
                 maxLines = Int.MAX_VALUE,
                 overflow = TextOverflow.Clip,
-                modifier = textModifier.perCharSung(
-                    splitProvider = { sungSplit.value },
-                    risePx = lyricRisePx,
-                ),
+                modifier = textModifier.perCharSung { sungSplit.value },
             )
         }
 

@@ -99,12 +99,12 @@ class LrcParserTest {
 
         assertEquals(1, lines.size)
         assertEquals(14_200L, lines[0].timeMs)
-        // 纯文本 = 各词拼接（去除时间戳）
+        // 纯文本 = 各词**原样**拼接（词之间不另加分隔符；英文的间隔来自原文里的空格）
         assertEquals("When the night", lines[0].text)
-        // 逐字时间戳被正确解析
+        // 逐字时间戳被正确解析（词文本保留其自身的尾随空格，故 "When " / "the "）
         assertEquals(3, lines[0].wordTimes.size)
-        assertEquals("When" to 14_250L, lines[0].wordTimes[0])
-        assertEquals("the" to 14_670L, lines[0].wordTimes[1])
+        assertEquals("When " to 14_250L, lines[0].wordTimes[0])
+        assertEquals("the " to 14_670L, lines[0].wordTimes[1])
         assertEquals("night" to 15_120L, lines[0].wordTimes[2])
     }
 
@@ -129,7 +129,8 @@ class LrcParserTest {
 
         assertEquals(2, lines.size)
         assertEquals(12_340L, lines[0].timeMs)
-        assertEquals("你 好 世界", lines[0].text)
+        // 逐字来源不带分隔符，各词直接拼接（旧实现会变成「你 好 世界」）
+        assertEquals("你好世界", lines[0].text)
         assertEquals(3, lines[0].wordTimes.size)
         assertEquals("你" to 12_340L, lines[0].wordTimes[0])
         assertEquals("好" to 12_800L, lines[0].wordTimes[1])
@@ -173,7 +174,7 @@ class LrcParserTest {
         val lines = LrcParser.parse(plain, word)
 
         assertEquals(1, lines.size)
-        assertEquals("Hel lo", lines[0].text)
+        assertEquals("Hello", lines[0].text)
         assertEquals("你好", lines[0].translation)
         assertEquals(2, lines[0].wordTimes.size)
         assertEquals("Hel" to 1_000L, lines[0].wordTimes[0])

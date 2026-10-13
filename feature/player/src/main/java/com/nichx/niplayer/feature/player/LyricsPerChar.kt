@@ -17,8 +17,8 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -34,7 +34,7 @@ import kotlinx.coroutines.flow.collectLatest
  *    普通 LRC 按行时长估算；
  * 2. [rememberLivePosition] 把 1Hz 的播放位置补成连续值（换句、滚动、逐字都吃它）；
  * 3. [perCharSung] / [perCharUnsung] 按比例把文字裁成「已唱 / 未唱」两层，
- *    并让已唱的字**逐字抬升**一点（见 [buildSungSplit]）。
+ *    裁切边界取「边界字左缘 + 字宽 × 字内进度」——**连续推进**，不会一个字一个字地跳。
  *
  * 为什么用「两层同款文本 + 上层裁切」而不是给每个字上色：逐字上色只能一个字一个字地跳，
  * 而裁切能连续推进；裁切又要按行算矩形，因为整句允许折行。
@@ -53,12 +53,11 @@ private const val MaxLyricExtrapolationMs = 1_500L
  *
  * 底部余量夹在两条互相挤压的线之间（按本项目「行高 ≈ 1.18 × 字号」的样式实机量过）：
  * - **不能小**：p / q / g / y 的墨迹会伸出行盒底约 0.07 行高，小于它就把降部切掉；
- * - **不能大**：下一行的**字头**在行盒底下方约 0.12 行高处，大于它就会把下一行的字也裁进「已唱层」——
- *   已唱层是**整段上移**的（逐字抬升），于是那一小条会在下一行字头上方叠出一条被抬起、
- *   又被硬切一刀的亮边（就是「折行时底下一行渲染有 bug」）。
+ * - **不能大**：下一行的**字头**在行盒底下方约 0.12 行高处，大于它就会把下一行的字也裁进「已唱层」，
+ *   在下一行字头上方叠出一条被硬切一刀的亮边（就是「折行时底下一行渲染有 bug」）。
  *
  * 0.09 落在两者之间。⚠️ 以前给到 0.20 是照「下一行字头在行顶下 0.20 行高」估的，实测只有 0.12 ——
- * 于是窗口一路漏进下一行约 0.08 行高，刚好是抬升量那一档，看起来就像「下一行被整体抬起来一截」。
+ * 于是窗口一路漏进下一行约 0.08 行高，看起来就像下一行被点亮了一截。
  */
 private const val LYRIC_CLIP_TOP_PAD = 0.06f
 private const val LYRIC_CLIP_BOTTOM_PAD = 0.09f
@@ -136,63 +135,35 @@ internal fun rememberSungFraction(
     }
 }
 
-/** 逐字抬升：抬升量 = 字号的 10%，夹在 1.5~6dp（与参考实现 MeloX-Android 同口径）。 */
-internal const val LYRIC_LIFT_FONT_RATIO = 0.1f
-internal const val LYRIC_LIFT_MIN_DP = 1.5f
-internal const val LYRIC_LIFT_MAX_DP = 6f
-
 /**
- * 一个字抬到顶需要「唱过去多少个字」。
+ * 逐字铺色的几何。
  *
- * 取 1.4：大多数时候只有 1~2 个字处在抬起中，读起来是「一个字接一个字地抬起来」；
- * 取值越小越像「一个一个跳」，越大越像「整段一起抬」。
- */
-private const val LYRIC_LIFT_SPAN_CHARS = 1.4f
-
-/** 五次平滑（smootherstep）：两端的一阶、二阶导数都为 0，抬升起步与收尾都不「顿」。 */
-private fun smootherStep(value: Float): Float {
-    val p = value.coerceIn(0f, 1f)
-    return p * p * p * (p * (p * 6f - 15f) + 10f)
-}
-
-/** 一段「抬升量相同」的已唱区域：一个矩形集合 + 抬升系数（0..1，乘上 risePx）。 */
-internal class SungBand(val rects: Path, val lift: Float)
-
-/**
- * 逐字铺色的几何 + 抬升分段。
+ * - [sung]：已唱区；
+ * - [unsung]：未唱部分；
+ * - [glow]：已唱区**向外扩一圈**的区域，专给荧光层用。
  *
- * - [bands]：已唱区，按抬升量分段（不抬升时只有一段）；
- * - [unsung]：未唱部分。
+ * 为什么要单独给出 [unsung]：已唱 / 未唱是两层同款文本按**同一擦除边界**裁出来的，
+ * 两层拼接处要严丝合缝才不会出现缺口或叠色。
  *
- * 为什么要单独给出 [unsung]：已唱的字被抬起后，原位会空出来 —— 底层若照常画整句，
- * 抬起的字下方就会留一个「影子」（参考实现里专门注明过这个坑）。
+ * 为什么 [glow] 要外扩：荧光是「字的晕」，会伸到字外；直接拿已唱区去裁荧光，
+ * 最左和最右那个字的晕就会被切出一道竖直的边（用户反馈「像被切断了」）。
+ * 向外扩一个晕半径即可，多出来的部分被底层文字盖住，不会露出半个字。
  */
 internal class SungSplit(
-    val bands: List<SungBand>,
+    val sung: Path,
     val unsung: Path,
-    /**
-     * 已唱区**向外扩一圈**的区域，专给荧光层用。
-     *
-     * 为什么需要它：荧光是「字的晕」，会伸到字外；而已唱区是按擦除边界裁的 —— 直接拿它去裁荧光，
-     * 最左和最右那个字的晕就会被切出一道竖直的边（用户反馈「像被切断了」）。
-     * 向外扩一个晕半径即可，多出来的部分被底层文字盖住，不会露出半个字。
-     */
     val glow: Path,
 )
 
 /**
- * 由排版结果与已唱比例算出几何与抬升分段。
+ * 由排版结果与已唱比例算出几何：已唱区 / 未唱区 / 荧光区。
  *
- * [lift] 为 true 时（**只有 Apple Music 主题**）把已唱区按「**一个字一个平移量**」切开：
- * 每个字都是**整字同步**往上平移，不会变形；抬升量由「这个字唱过去多久」决定，
- * 所以读起来是一个字接一个字地从左到右抬起来。
- *
- * [lift] 为 false 时整段一个 band、位移为 0 —— 即只做逐字铺色，不做抬升。
+ * 擦除边界取「边界字左缘 + 字宽 × 字内进度」（[revealed]），因此是**连续推进**的 ——
+ * 不会出现「一个字一个字地跳」的观感；两层的裁切都吃同一个 [revealed]，接缝一致。
  */
 internal fun buildSungSplit(
     layout: TextLayoutResult,
     fraction: Float,
-    lift: Boolean,
     glowRadiusPx: Float = 0f,
 ): SungSplit? {
     val textLength = layout.layoutInput.text.length
@@ -236,75 +207,16 @@ internal fun buildSungSplit(
     }
     val revealed = charLeft + (charRight - charLeft) * inChar
 
-    val bands = ArrayList<SungBand>(LYRIC_LIFT_SPAN_CHARS.toInt() + 2)
+    val sung = Path()
     val glow = Path()
-
-    if (!lift) {
-        // 系数取 0（而不是 1）：`lift = false` 的语义就是「不做抬升」，
-        // 不该依赖调用方把 risePx 也传成 0 —— 漏一处就会整段被抬起来。
-        val all = Path()
-        for (line in 0 until boundaryLine) {
-            val rect = rectOf(line, layout.getLineLeft(line), layout.getLineRight(line))
-            all.addRect(rect)
-            glow.addRect(rect.inflate(glowRadiusPx))
-        }
-        val last = rectOf(boundaryLine, lineLeft, revealed)
-        all.addRect(last)
-        glow.addRect(last.inflate(glowRadiusPx))
-        bands += SungBand(all, 0f)
-    } else {
-        // 抬升量：这个字「唱过去多少个字」—— 0 表示刚开始唱，≥ LYRIC_LIFT_SPAN_CHARS 表示已抬到顶。
-        fun liftOf(charIndex: Int): Float =
-            smootherStep((exact - charIndex) / LYRIC_LIFT_SPAN_CHARS)
-
-        // 边界行上「已经抬到顶」的字：从行首往右找到第一个还没抬到顶的。
-        // （行首之前的字都在别的行，整行抬到顶，见下面的循环。）
-        val lineFirstChar = layout.getLineStart(boundaryLine)
-        var fullEnd = lineFirstChar
-        while (fullEnd < boundary && liftOf(fullEnd) >= 1f) {
-            fullEnd++
-        }
-
-        val lifted = Path()
-        for (line in 0 until boundaryLine) {
-            val rect = rectOf(line, layout.getLineLeft(line), layout.getLineRight(line))
-            lifted.addRect(rect)
-            glow.addRect(rect.inflate(glowRadiusPx))
-        }
-        if (fullEnd > lineFirstChar) {
-            val rect = rectOf(
-                boundaryLine,
-                lineLeft,
-                layout.getHorizontalPosition(fullEnd, usePrimaryDirection = true),
-            )
-            lifted.addRect(rect)
-            glow.addRect(rect.inflate(glowRadiusPx))
-        }
-        bands += SungBand(lifted, 1f)
-
-        // 正在抬起的那些字：一个字一个 band、整字同步平移（不做字内渐变，否则字会变斜）
-        for (index in fullEnd..boundary) {
-            val left = if (index == boundary) charLeft else {
-                layout.getHorizontalPosition(index, usePrimaryDirection = true)
-            }
-            val right = if (index == boundary) {
-                revealed
-            } else {
-                val after = index + 1
-                if (after <= textLength && layout.getLineForOffset(after) == boundaryLine) {
-                    layout.getHorizontalPosition(after, usePrimaryDirection = true)
-                } else {
-                    lineRight
-                }
-            }
-            if (right <= left) continue
-            val rect = rectOf(boundaryLine, left, right)
-            val band = Path()
-            band.addRect(rect)
-            bands += SungBand(band, liftOf(index))
-            glow.addRect(rect.inflate(glowRadiusPx))
-        }
+    for (line in 0 until boundaryLine) {
+        val rect = rectOf(line, layout.getLineLeft(line), layout.getLineRight(line))
+        sung.addRect(rect)
+        glow.addRect(rect.inflate(glowRadiusPx))
     }
+    val last = rectOf(boundaryLine, lineLeft, revealed)
+    sung.addRect(last)
+    glow.addRect(last.inflate(glowRadiusPx))
 
     val unsung = Path()
     unsung.addRect(rectOf(boundaryLine, revealed.coerceAtLeast(lineLeft), lineRight))
@@ -312,40 +224,43 @@ internal fun buildSungSplit(
         unsung.addRect(rectOf(line, layout.getLineLeft(line), layout.getLineRight(line)))
     }
 
-    return SungSplit(bands = bands, unsung = unsung, glow = glow)
+    return SungSplit(sung = sung, unsung = unsung, glow = glow)
 }
 
-/**
- * 逐字铺色的「**已唱**」层：按 [splitProvider] 给出的分段几何把本层文字裁出来，
- * 每段按自己的抬升系数平移 —— 于是抬升是一个字接一个字地发生，每个字整体同步抬起。
- *
- * 每段各画一次 `drawContent()`（同一个 Modifier 里可以画多次），
- * 因此不需要为「正在抬起的那些字」单独再排一层文字。
- */
+/** 逐字铺色的「**已唱**」层：按 [splitProvider] 给出的几何把本层文字裁出来。 */
 internal fun Modifier.perCharSung(
     splitProvider: () -> SungSplit?,
-    risePx: Float,
 ): Modifier = drawWithContent {
     val split = splitProvider() ?: return@drawWithContent
-    split.bands.forEach { band ->
-        translate(top = -risePx * band.lift) {
-            clipPath(band.rects) { this@drawWithContent.drawContent() }
-        }
-    }
+    clipPath(split.sung) { this@drawWithContent.drawContent() }
 }
 
 /**
- * 荧光层用的文本：**已唱部分不透明**（于是它的 shadow 会画出来）、**未唱部分透明**
- * （shadow 随之消失）—— 两段共用同一份排版，所以位置和主文字完全一致。
+ * 荧光层用的文本：**已唱部分不透明**（于是它的 shadow 会画出来）、**未唱部分既透明、
+ * shadow 也置为透明**（于是既不显示字、也不发光）—— 两段共用同一份排版，
+ * 所以位置和主文字完全一致。
  *
  * 为什么需要它：荧光层的裁切范围要往外扩一圈（否则首尾两个字的晕会被裁出竖直的边），
- * 而扩出去的那一圈里正好有**紧邻的未唱字**；不把它涂透明，那个字也会跟着发光。
+ * 而扩出去的那一圈里正好有**紧邻的未唱字**；不处理它，那个字（的晕）也会跟着发光 ——
+ * 只涂透明不够，必须连 shadow 一起置透明（见下方说明）。
  */
 internal fun lyricGlowText(text: String, boundary: Int): AnnotatedString = buildAnnotatedString {
     val cut = boundary.coerceIn(0, text.length)
     append(text.substring(0, cut))
     if (cut < text.length) {
-        withStyle(SpanStyle(color = Color.Transparent)) { append(text.substring(cut)) }
+        // 未唱部分：字透明，**并且把 shadow 显式置为透明**。
+        //
+        // 只把字设成透明是不够的：文字渲染里 shadow 用 Shadow 自己的颜色画，与字的填充色无关
+        // （Compose 的 SpanStyle.shadow → ShadowSpan → TextPaint.setShadowLayer），
+        // 所以未唱的字虽然看不见，它的**晕**仍会被画出来。而荧光的裁切范围向右多扩了一个晕半径，
+        // 擦除边界那个字的晕（没有字、只剩一圈影）正好落在已唱区右侧 ——
+        // 表现就是「边界字多了一层影子」。置一个透明 shadow 可覆盖段落级 shadow，让未唱段彻底不发光。
+        withStyle(
+            SpanStyle(
+                color = Color.Transparent,
+                shadow = Shadow(color = Color.Transparent, blurRadius = 0f),
+            ),
+        ) { append(text.substring(cut)) }
     }
 }
 

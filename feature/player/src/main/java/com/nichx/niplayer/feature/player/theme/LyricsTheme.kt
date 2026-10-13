@@ -94,12 +94,12 @@ internal interface LyricsDistanceCurve {
 }
 
 /**
- * 已唱字符的**荧光**（字自己发光），只有简约封面用；`null` 表示该主题不发光。
+ * 已唱字符的**荧光**（字自己发光）；`null` 表示该主题不发光（黑胶就是）。
  *
  * 这是「光带」的替代方案 —— 光带那套（切薄条做竖向柔化、把擦除位置从文本坐标换算到行坐标、
  * 离屏图层 + DstIn）又重又难调，而荧光只要给「已唱」那一层的文字样式加一个 shadow：
  * 它天然**只作用于已唱的部分**（那一层本来就按擦除裁切），于是荧光跟着唱词走，
- * 关掉「逐字歌词」时那一层不排，荧光也就没有了。
+ * 关掉「逐字歌词高亮」时那一层不排，荧光也就没有了。
  *
  * 强度与半径要分深色 / 浅色两档：
  *
@@ -174,8 +174,6 @@ internal data class LyricsTheme(
     val vignette: Boolean,
     /** 「逐行追赶」：换句时焦点下方的行先抵消列表滚动、再依次抬升归位。只有 Apple 做。 */
     val cascadeChase: Boolean,
-    /** 逐字铺色时是否把已唱的字**抬起**（字号的 10%，夹在 1.5~6dp）。只有 Apple 做。 */
-    val liftSung: Boolean,
     /** 是否在长间隔处插入间奏点缀（「点 · 点 · 点」）。只有 Apple 做。 */
     val interlude: Boolean,
     /** 点击歌词是否**一次即跳**。Apple 是；另两套保留「先预览再确认」的两次点击。 */
@@ -201,12 +199,17 @@ internal val AppleLyrics = LyricsTheme(
     whiteText = true,
     glowAlphaPerFocus = 0.62f,
     glowBlurRadiusPx = 14f,
-    glow = null,
+    // 逐字铺色的「荧光」：晕跟着唱词走（替代原先的「逐字抬升」——整字刚性上浮会露出台阶）
+    glow = LyricsGlow(
+        alphaDark = 0.80f,
+        alphaLight = 0.45f,
+        blurDark = 9.dp,
+        blurLight = 7.dp,
+    ),
     distanceCurve = LyricsDistanceCurve.Apple,
     focusScaleAmount = 0f,
     vignette = false,
     cascadeChase = true,
-    liftSung = true,
     interlude = true,
     seekOnFirstTap = true,
     tapTargetOnText = true,
@@ -228,7 +231,6 @@ internal val VinylLyrics = LyricsTheme(
     focusScaleAmount = 0.05f,
     vignette = true,
     cascadeChase = false,
-    liftSung = false,
     interlude = false,
     seekOnFirstTap = false,
     tapTargetOnText = false,
@@ -256,7 +258,6 @@ internal val GlassLyrics = LyricsTheme(
     focusScaleAmount = 0f,
     vignette = false,
     cascadeChase = false,
-    liftSung = false,
     interlude = false,
     seekOnFirstTap = false,
     tapTargetOnText = false,
