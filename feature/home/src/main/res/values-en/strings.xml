@@ -758,9 +758,9 @@
     <string name="player_current_kernel">Current kernel</string>
     <string name="player_pitch_preserve">Keep pitch when speeding up</string>
     <string name="player_pitch_preserve_desc">Keep the original pitch at faster speeds; turn off to change pitch with speed (for quick browsing)</string>
-    <!-- 歌词逐字铺色开关（三套主题、两种歌词格式都生效） -->
-    <string name="player_lyric_per_char">Word-by-word lyrics</string>
-    <string name="player_lyric_per_char_desc">Light up the current line word by word as it plays (lyrics without word timestamps are estimated from the line duration, not exact). Works in all three themes; turn off to keep the line a single color</string>
+    <!-- Lyric word-by-word highlight toggle (all three themes, both lyric formats) -->
+    <string name="player_lyric_per_char">Word-by-word highlight</string>
+    <string name="player_lyric_per_char_desc">Highlight the current line character by character as it plays: lyrics with per-character timestamps (.nilyric / enhanced LRC) are exact, plain LRC is estimated from the line duration</string>
     <!-- Lyric translation toggle (original + translation at the same timestamp) -->
     <string name="player_lyric_translation">Show translation</string>
     <string name="player_lyric_translation_desc">Show the translation line under the original when lyrics include one (original + translation at the same timestamp); turn off to show only the original</string>

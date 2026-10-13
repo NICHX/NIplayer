@@ -65,11 +65,15 @@ object PlayerSettings {
         set(value) { mmkv.encode(KEY_AUTO_DETECT_BLACK_BARS, value) }
 
     /**
-     * 歌词「逐字铺色」开关。默认 **true**。
+     * 歌词「逐字高亮」开关。默认 **true**。
      *
-     * 开启后当前句按播放进度逐字点亮，**三套主题、两种歌词格式都生效**：
-     * 带逐字时间戳的（Enhanced LRC）精确到词，普通 LRC 按「本行 → 下一行」的时长估算推进。
-     * 关掉后当前句整句同色（不再逐字），适合不喜欢歌词「动」的用户。
+     * 开启后当前句按**唱到的位置逐字铺色**（已唱部分高亮、未唱部分保持暗色），
+     * 三套主题、两种歌词格式都生效：带字级时间戳的（`.nilyric` / Enhanced LRC）精确到字，
+     * 普通 LRC 按「本行 → 下一行」的时长估算推进（仅近似）。此外在 Apple / 简约封面主题下，
+     * 已唱的字还会带一层**跟随唱词的荧光**（见 `LyricsTheme.glow`）。
+     *
+     * 关掉后当前句整句同色：不再逐字铺色、也不再发光，适合不喜欢歌词「动」的用户。
+     * 注意它只影响**渲染**，不影响歌词来源（`.nilyric` 仍优先于 `.lrc`）。
      */
     var lyricPerCharEnabled: Boolean
         get() = mmkv.decodeBool(KEY_LYRIC_PER_CHAR, true)
