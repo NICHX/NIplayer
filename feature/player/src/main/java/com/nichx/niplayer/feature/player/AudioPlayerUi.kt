@@ -50,6 +50,13 @@ internal data class AudioPlayerUiState(
     val sleepTimerText: String,
     val showDownload: Boolean,
     val showExternalActions: Boolean,
+    /** 播放器内「显示翻译」开关状态（与设置项同步）。 */
+    val showTranslation: Boolean,
+    /** 当前歌词是否含译文（为 true 才在菜单里提供「显示翻译」）。 */
+    val hasTranslation: Boolean,
+    /** 当前曲目可用的歌词来源（多于一个时才提供来源切换）。 */
+    val lyricSources: List<LyricSource>,
+    val selectedLyricSource: LyricSource?,
 )
 
 /** 音频播放器两个布局共用的**回调**。 */
@@ -71,4 +78,26 @@ internal data class AudioPlayerActions(
     val onOpenWith: () -> Unit,
     val onShare: () -> Unit,
     val onStyleSelect: (AudioPlayerStyle) -> Unit,
+    /** 播放器内切换「显示翻译」。 */
+    val onToggleTranslation: () -> Unit,
+    /** 播放器内切换歌词来源。 */
+    val onLyricSourceSelect: (LyricSource) -> Unit,
 )
+
+/**
+ * 「更多 → 歌词」子菜单的入参打包（状态 + 回调）。
+ *
+ * 这套菜单要在竖/横屏、三种主题骨架的多个顶栏调用点渲染，逐个透传 6 个参数太啰嗦；
+ * 打包后调用点只多一个实参，且「歌词入口该不该出现」有一个统一判据（[isPresentable]）。
+ */
+internal data class LyricMenuControls(
+    val showTranslation: Boolean,
+    val hasTranslation: Boolean,
+    val sources: List<LyricSource>,
+    val selectedSource: LyricSource?,
+    val onToggleTranslation: () -> Unit,
+    val onSourceSelect: (LyricSource) -> Unit,
+) {
+    /** 是否值得提供歌词入口：有译文可开关，或来源可切换。都没有时整个入口隐藏。 */
+    val isPresentable: Boolean get() = hasTranslation || sources.size > 1
+}

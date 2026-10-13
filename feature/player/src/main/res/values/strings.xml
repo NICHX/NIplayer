@@ -267,6 +267,15 @@
     <string name="lyrics_back_to_record">回到唱片</string>
     <!-- 简约封面主题：封面不是唱片，用「收起歌词」表达同一件事 -->
     <string name="lyrics_collapse">收起歌词</string>
+    <!-- 「更多」菜单里的歌词子菜单 -->
+    <string name="player_lyrics_menu">歌词</string>
+    <!-- 注意：与 feature:home 的设置项同名文案，但资源名刻意不同，避免跨库同名资源合并冲突 -->
+    <string name="player_lyric_show_translation">显示翻译</string>
+    <string name="player_lyric_source">歌词来源</string>
+    <string name="player_lyric_source_nilyric">逐字歌词 (.nilyric)</string>
+    <string name="player_lyric_source_lrc">歌词 (.lrc)</string>
+    <string name="player_lyric_source_embedded">内嵌歌词</string>
+    <string name="player_lyric_embedded_not_found">该文件没有内嵌歌词</string>
 
     <!-- VR 环视 -->
     <string name="player_vr">VR 环视</string>

@@ -40,6 +40,7 @@ object PlayerSettings {
     private const val KEY_COVER_LABEL_FONT_PATH = "player_cover_label_font_path"
     private const val KEY_COVER_LABEL_FONT_NAME = "player_cover_label_font_name"
     private const val KEY_LYRIC_PER_CHAR = "player_lyric_per_char"
+    private const val KEY_LYRIC_TRANSLATION = "player_lyric_translation"
 
     /** 缩放模式索引：适应（Contain）。 */
     const val SCALE_MODE_CONTAIN = 0
@@ -73,6 +74,16 @@ object PlayerSettings {
     var lyricPerCharEnabled: Boolean
         get() = mmkv.decodeBool(KEY_LYRIC_PER_CHAR, true)
         set(value) { mmkv.encode(KEY_LYRIC_PER_CHAR, value) }
+
+    /**
+     * 歌词「显示翻译」开关。默认 **false**。
+     *
+     * 开启后，带译文/对照的歌词（同一时间戳的原文 + 译文两行）会在主歌词下方显示译文行；
+     * 默认关闭，只显示原文。无译文的歌词不受影响。
+     */
+    var lyricTranslationEnabled: Boolean
+        get() = mmkv.decodeBool(KEY_LYRIC_TRANSLATION, false)
+        set(value) { mmkv.encode(KEY_LYRIC_TRANSLATION, value) }
 
     /** 缩放模式索引（[SCALE_MODE_CONTAIN] / [SCALE_MODE_COVER] / [SCALE_MODE_FILL]）。默认适应。 */
     var scaleModeIndex: Int

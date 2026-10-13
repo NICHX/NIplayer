@@ -62,6 +62,13 @@ fun AudioPlayerScreen(
         }
     }
 
+    // 歌词相关的一次性提示（如手动切到「内嵌歌词」但该文件没有内嵌歌词）
+    LaunchedEffect(audioPlaybackManager) {
+        audioPlaybackManager?.lyricEvents?.collect { msg ->
+            messageController.post(NiMessage.info(msg))
+        }
+    }
+
     // 所有播放状态直接从 AudioPlaybackManager 读取
     val isPlaying by audioPlaybackManager?.isPlaying?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(false) }
     val title by audioPlaybackManager?.currentTitle?.collectAsStateWithLifecycle() ?: remember { mutableStateOf("") }
@@ -78,6 +85,14 @@ fun AudioPlayerScreen(
     // 未命中项在后台补取（随机模式下"下一首"由播放器预定，因此预览与实际一致）。
     val neighborCovers by viewModel.neighborCovers.collectAsStateWithLifecycle()
     val lrcText by audioPlaybackManager?.lrcText?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
+    // 同目录同名 .nilyric（逐字歌词），与 .lrc 合并解析：逐字来源提供字级时间轴，.lrc 提供译文对照
+    val wordLrcText by audioPlaybackManager?.wordLrcText?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
+    // 歌词来源清单（切歌刷新）与当前选择；「显示翻译」开关在播放器内可改，并写回设置持久化
+    val lyricSources by audioPlaybackManager?.availableLyricSources?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf(emptyList<LyricSource>()) }
+    val selectedLyricSource by audioPlaybackManager?.selectedLyricSource?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf<LyricSource?>(null) }
+    var showTranslation by remember { mutableStateOf(PlayerSettings.lyricTranslationEnabled) }
     val playbackError by audioPlaybackManager?.playbackError?.collectAsStateWithLifecycle() ?: remember { mutableStateOf<String?>(null) }
     val showDownloadDialog by viewModel.showDownloadDialog.collectAsStateWithLifecycle()
     // 音频续播提示位置：用户主动打开长音频（有声书等）且已存进度时非 null，弹「继续 / 从头」
@@ -116,9 +131,15 @@ fun AudioPlayerScreen(
         PlayMode.Single -> Icons.Rounded.RepeatOne
     }
 
-    val lrcLines = remember(lrcText) {
-        if (lrcText != null) LrcParser.parse(lrcText!!) else emptyList()
+    val lrcLines = remember(lrcText, wordLrcText) {
+        if (lrcText != null || wordLrcText != null) {
+            LrcParser.parse(lrcText, wordLrcText)
+        } else {
+            emptyList()
+        }
     }
+    // 当前歌词是否含译文：决定「更多 → 歌词」里是否提供「显示翻译」开关
+    val hasTranslation = remember(lrcLines) { lrcLines.any { it.translation != null } }
 
     // 音频播放器外观：默认读设置，主题切换走「更多 → 外观」二级菜单
     var playerStyle by remember { mutableStateOf(PlayerSettings.audioPlayerStyle) }
@@ -249,6 +270,10 @@ fun AudioPlayerScreen(
             sleepTimerText = sleepTimerText,
             showDownload = !isLocalSource,
             showExternalActions = isLocalSource,
+            showTranslation = showTranslation,
+            hasTranslation = hasTranslation,
+            lyricSources = lyricSources,
+            selectedLyricSource = selectedLyricSource,
         )
         val uiActions = AudioPlayerActions(
             onRetry = { audioPlaybackManager?.retry() },
@@ -267,6 +292,11 @@ fun AudioPlayerScreen(
             onOpenWith = onOpenWith,
             onShare = onShareExternal,
             onStyleSelect = onStyleSelect,
+            onToggleTranslation = {
+                showTranslation = !showTranslation
+                PlayerSettings.lyricTranslationEnabled = showTranslation
+            },
+            onLyricSourceSelect = { source -> audioPlaybackManager?.selectLyricSource(source) },
         )
 
         if (isLandscape) {

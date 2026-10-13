@@ -311,6 +311,17 @@ internal fun PortraitLayout(
     // 「逐字歌词」开关（设置 → 音频播放器设置 → 外观）。进入播放器时读一次即可 ——
     // 设置页是另一个页面，改完回来会重新组合。
     val perCharLyrics = remember { PlayerSettings.lyricPerCharEnabled }
+    // 「显示翻译」改为播放器内可实时切换：状态由 AudioPlayerScreen 持有（并同步写回设置）。
+    val showLyricTranslation = state.showTranslation
+    // 「更多 → 歌词」子菜单的入参（三处顶栏 + 横屏共用一个打包对象）
+    val lyricMenu = LyricMenuControls(
+        showTranslation = state.showTranslation,
+        hasTranslation = state.hasTranslation,
+        sources = state.lyricSources,
+        selectedSource = state.selectedLyricSource,
+        onToggleTranslation = actions.onToggleTranslation,
+        onSourceSelect = actions.onLyricSourceSelect,
+    )
 
     // 简约封面：让封面「浮」起来。两个不同周期的正弦叠加，避免周期性重复感。
     // **暂停即停**：相位循环退出、不再请求帧；同时幅度系数平滑落到 0，
@@ -571,6 +582,7 @@ internal fun PortraitLayout(
                             chrome = theme.chrome,
                             audioStyle = style,
                             onStyleSelect = onStyleSelect,
+                            lyricMenu = lyricMenu,
                         )
                     }
                     Box(
@@ -588,6 +600,7 @@ internal fun PortraitLayout(
                             theme = theme.lyrics,
                             isPlaying = isPlaying,
                             perChar = perCharLyrics,
+                            showTranslation = showLyricTranslation,
                             // 任何滚动交互都把控件呼出并把自动收起计时器重新计时
                             onUserScroll = {
                                 lyricsControlsVisible = true
@@ -624,6 +637,7 @@ internal fun PortraitLayout(
                 onShare = onShare,
                 audioStyle = style,
                 onStyleSelect = onStyleSelect,
+                lyricMenu = lyricMenu,
             )
         } else {
         TopBar(
@@ -644,6 +658,7 @@ internal fun PortraitLayout(
             chrome = theme.chrome,
             audioStyle = style,
             onStyleSelect = onStyleSelect,
+            lyricMenu = lyricMenu,
         )
         }
         }
@@ -708,6 +723,7 @@ internal fun PortraitLayout(
                             chrome = theme.chrome,
                             audioStyle = style,
                             onStyleSelect = onStyleSelect,
+                            lyricMenu = lyricMenu,
                         )
                     }
                 }
@@ -859,6 +875,7 @@ internal fun PortraitLayout(
                                     chrome = theme.chrome,
                                     audioStyle = style,
                                     onStyleSelect = onStyleSelect,
+                                    lyricMenu = lyricMenu,
                                 )
                             }
                         }
@@ -881,6 +898,7 @@ internal fun PortraitLayout(
                                 accentColor = accent,
                                 isPlaying = isPlaying,
                                 perChar = perCharLyrics,
+                                showTranslation = showLyricTranslation,
                             )
                         }
                         // 非 Apple 主题：底部常驻「回到唱片」触发条。
@@ -1444,6 +1462,16 @@ internal fun LandscapeLayout(
     val landscapeAccent = landscapeCoverAccent?.color ?: MaterialTheme.colorScheme.primary
     val landscapeOnAccent = landscapeCoverAccent?.onColor ?: MaterialTheme.colorScheme.onPrimary
     val landscapePerCharLyrics = remember { PlayerSettings.lyricPerCharEnabled }
+    // 「显示翻译」改为播放器内可实时切换：状态由 AudioPlayerScreen 持有（并同步写回设置）
+    val landscapeShowLyricTranslation = state.showTranslation
+    val lyricMenu = LyricMenuControls(
+        showTranslation = state.showTranslation,
+        hasTranslation = state.hasTranslation,
+        sources = state.lyricSources,
+        selectedSource = state.selectedLyricSource,
+        onToggleTranslation = actions.onToggleTranslation,
+        onSourceSelect = actions.onLyricSourceSelect,
+    )
     // 大屏（平板/大屏手机横屏）下歌词行数更多，配合 LyricsView 内部字号/行高自适应放大
     val isLargeScreen = LocalConfiguration.current.screenWidthDp >= 800
 
@@ -1615,6 +1643,7 @@ internal fun LandscapeLayout(
                             chrome = theme.chrome,
                             audioStyle = style,
                             onStyleSelect = onStyleSelect,
+                            lyricMenu = lyricMenu,
                         )
                     }
 
@@ -1646,6 +1675,7 @@ internal fun LandscapeLayout(
                         accentColor = landscapeAccent,
                         isPlaying = isPlaying,
                         perChar = landscapePerCharLyrics,
+                        showTranslation = landscapeShowLyricTranslation,
                     )
                 }
 

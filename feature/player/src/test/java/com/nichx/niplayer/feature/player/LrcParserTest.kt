@@ -117,4 +117,74 @@ class LrcParserTest {
         assertEquals("Plain line", lines[0].text)
         assertTrue(lines[0].wordTimes.isEmpty())
     }
+
+    @Test
+    fun `解析逐字标记 LRC（nilyric）字级时间轴`() {
+        val nil = """
+            [00:12.34][[00:12.34]]你[[00:12.80]]好[[00:13.20]]世界
+            [00:15.00]副歌
+        """.trimIndent()
+
+        val lines = LrcParser.parse(nil)
+
+        assertEquals(2, lines.size)
+        assertEquals(12_340L, lines[0].timeMs)
+        assertEquals("你 好 世界", lines[0].text)
+        assertEquals(3, lines[0].wordTimes.size)
+        assertEquals("你" to 12_340L, lines[0].wordTimes[0])
+        assertEquals("好" to 12_800L, lines[0].wordTimes[1])
+        assertEquals("世界" to 13_200L, lines[0].wordTimes[2])
+        // 单字行不带逐字标记
+        assertEquals("副歌", lines[1].text)
+        assertTrue(lines[1].wordTimes.isEmpty())
+    }
+
+    @Test
+    fun `相同时间戳的相邻行合并为原文与译文`() {
+        val lrc = """
+            [00:01.00]Hello
+            [00:01.00]你好
+            [00:03.00]World
+            [00:03.00]世界
+        """.trimIndent()
+
+        val lines = LrcParser.parse(lrc)
+
+        assertEquals(2, lines.size)
+        assertEquals("Hello", lines[0].text)
+        assertEquals("你好", lines[0].translation)
+        assertEquals("World", lines[1].text)
+        assertEquals("世界", lines[1].translation)
+    }
+
+    @Test
+    fun `相同时间戳但文本相同不产生译文`() {
+        val lrc = "[00:01.00]Same\n[00:01.00]Same"
+        val lines = LrcParser.parse(lrc)
+        assertEquals(1, lines.size)
+        assertEquals(null, lines[0].translation)
+    }
+
+    @Test
+    fun `合并逐行来源的译文与逐字来源的时间轴`() {
+        val plain = "[00:01.00]Hello\n[00:01.00]你好"
+        val word = "[00:01.00][[00:01.00]]Hel[[00:01.50]]lo"
+
+        val lines = LrcParser.parse(plain, word)
+
+        assertEquals(1, lines.size)
+        assertEquals("Hel lo", lines[0].text)
+        assertEquals("你好", lines[0].translation)
+        assertEquals(2, lines[0].wordTimes.size)
+        assertEquals("Hel" to 1_000L, lines[0].wordTimes[0])
+        assertEquals("lo" to 1_500L, lines[0].wordTimes[1])
+    }
+
+    @Test
+    fun `只有逐行来源时直接返回其解析结果`() {
+        val plain = "[00:01.00]Hello\n[00:01.00]你好"
+        val lines = LrcParser.parse(plain, null)
+        assertEquals(1, lines.size)
+        assertEquals("你好", lines[0].translation)
+    }
 }

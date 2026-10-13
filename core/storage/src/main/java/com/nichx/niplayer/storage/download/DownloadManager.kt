@@ -386,8 +386,8 @@ class DownloadManager @Inject constructor(
                 // 下载目录已统一为 file:// 绝对路径（原生直写），遗留的 content:// 目标不受支持
                 else -> throw Exception(context.getString(R.string.download_error_target_unsupported))
             }
-            // 音频下载完成后，顺带下载同目录同名 .lrc 歌词（受开关控制，best-effort）
-            downloadSiblingLrc(task, storage)
+            // 音频下载完成后，顺带下载同目录同名歌词边车 .lrc / .nilyric（受开关控制，best-effort）
+            downloadSiblingLyrics(task, storage)
         } catch (e: CancellationException) {
             if (cancellingTasks.remove(task.id) != null) {
                 downloadTaskDao.updateState(task.id, DownloadState.CANCELLED)
@@ -473,49 +473,51 @@ class DownloadManager @Inject constructor(
     }
 
     /**
-     * 音频下载完成后，顺带下载远程同目录同名 `.lrc` 歌词到目标目录（best-effort）。
+     * 音频下载完成后，顺带下载远程同目录同名的歌词边车（`.lrc` 逐行 + `.nilyric` 逐字）到目标目录（best-effort）。
      *
-     * 受 [DownloadSettings.downloadLrcWithAudio] 开关控制；远程无 `.lrc`、非音频文件
+     * 受 [DownloadSettings.downloadLrcWithAudio] 开关控制；远程无对应文件、非音频文件
      * 或任意失败均静默忽略，不影响主文件下载结果。
      */
-    private suspend fun downloadSiblingLrc(task: DownloadTaskEntity, storage: Storage) {
+    private suspend fun downloadSiblingLyrics(task: DownloadTaskEntity, storage: Storage) {
         if (!DownloadSettings.downloadLrcWithAudio) return
         if (!isAudioFile(task.fileName)) return
         val baseName = task.fileName.substringBeforeLast('.')
         if (baseName.isBlank() || baseName == task.fileName) return
 
-        val dirPath = task.filePath.substringBeforeLast('/')
-        val remoteLrcPath = if (dirPath == task.filePath) "$baseName.lrc" else "$dirPath/$baseName.lrc"
-        val lrcName = "$baseName.lrc"
-        val remoteLrc = object : AbstractStorageFile(
-            path = remoteLrcPath,
-            name = lrcName,
-            isDirectory = false,
-            length = 0,
-        ) {}
+        val targetDir = when {
+            task.targetStorageUrl == null -> File(context.cacheDir, "download")
+            task.targetStorageUrl!!.startsWith("file://") -> File(task.targetStorageUrl!!.removePrefix("file://"))
+            else -> return
+        }
 
-        try {
-            if (!storage.fileExists(remoteLrcPath)) return
-            storage.openInputStream(remoteLrc)?.use { input ->
-                val targetDir = when {
-                    task.targetStorageUrl == null -> File(context.cacheDir, "download")
-                    task.targetStorageUrl!!.startsWith("file://") -> File(task.targetStorageUrl!!.removePrefix("file://"))
-                    else -> return
-                }
-                targetDir.mkdirs()
-                FileOutputStream(File(targetDir, lrcName)).use { fos ->
-                    val buffer = ByteArray(BUFFER_SIZE)
-                    while (true) {
-                        val len = input.read(buffer)
-                        if (len == -1) break
-                        fos.write(buffer, 0, len)
+        val dirPath = task.filePath.substringBeforeLast('/')
+        for (ext in arrayOf("lrc", "nilyric")) {
+            val lyricsName = "$baseName.$ext"
+            val remotePath = if (dirPath == task.filePath) lyricsName else "$dirPath/$lyricsName"
+            val remoteFile = object : AbstractStorageFile(
+                path = remotePath,
+                name = lyricsName,
+                isDirectory = false,
+                length = 0,
+            ) {}
+            try {
+                if (!storage.fileExists(remotePath)) continue
+                storage.openInputStream(remoteFile)?.use { input ->
+                    targetDir.mkdirs()
+                    FileOutputStream(File(targetDir, lyricsName)).use { fos ->
+                        val buffer = ByteArray(BUFFER_SIZE)
+                        while (true) {
+                            val len = input.read(buffer)
+                            if (len == -1) break
+                            fos.write(buffer, 0, len)
+                        }
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // 歌词下载失败不影响主文件结果
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            // 歌词下载失败不影响主文件结果
         }
     }
 

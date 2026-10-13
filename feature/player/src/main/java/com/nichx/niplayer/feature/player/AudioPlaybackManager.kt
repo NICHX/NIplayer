@@ -36,9 +36,11 @@ import com.nichx.niplayer.player.kernel.NxMediaSource
 import com.nichx.niplayer.player.kernel.PlaylistItem
 import com.nichx.niplayer.player.kernel.audio.EqualizerConfig
 import com.nichx.niplayer.player.kernel.audio.NiEqualizer
+import com.nichx.niplayer.storage.Storage
 import com.nichx.niplayer.storage.StorageFactory
 import com.nichx.niplayer.thumbnail.ThumbnailManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Date
@@ -49,8 +51,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
@@ -71,6 +76,23 @@ enum class PlayMode(@StringRes val labelRes: Int) {
     Loop(R.string.player_play_mode_order),
     Shuffle(R.string.player_play_mode_shuffle),
     Single(R.string.player_play_mode_single),
+}
+
+/**
+ * 歌词来源。
+ *
+ * 同一首歌可能同时存在多个来源：同名 `.nilyric`（逐字）、同名 `.lrc`（逐行 / 译文对照）、
+ * 音频文件内嵌歌词（ID3 `USLT` / FLAC `LYRICS`）。播放器内可在这些来源之间切换「加载哪一个」。
+ */
+enum class LyricSource(@StringRes val labelRes: Int) {
+    /** 同名 `.nilyric`（含字级时间轴）。 */
+    NILYRIC(R.string.player_lyric_source_nilyric),
+
+    /** 同名 `.lrc`（标准逐行，可能含「原文 + 译文」对照）。 */
+    LRC(R.string.player_lyric_source_lrc),
+
+    /** 音频文件内嵌歌词。 */
+    EMBEDDED(R.string.player_lyric_source_embedded),
 }
 
 @OptIn(UnstableApi::class)
@@ -177,12 +199,55 @@ class AudioPlaybackManager @Inject constructor(
     private val _lrcText = MutableStateFlow<String?>(null)
     val lrcText: StateFlow<String?> = _lrcText.asStateFlow()
 
+    /** 同目录同名 `.nilyric`（逐字歌词，含字级时间轴）内容；无则为 null。 */
+    private val _wordLrcText = MutableStateFlow<String?>(null)
+    val wordLrcText: StateFlow<String?> = _wordLrcText.asStateFlow()
+
+    /** 当前曲目各来源的原始内容（不随「选择哪一个」变化）。 */
+    private data class LyricBundle(val nilyric: String?, val lrc: String?, val embedded: String?)
+
+    private val _lyricBundle = MutableStateFlow(LyricBundle(null, null, null))
+
+    /** 是否已尝试读过内嵌歌词（兜底或手动切换触发）；未读时菜单仍给出「内嵌」入口做懒加载。 */
+    @Volatile
+    private var embeddedProbed = false
+
+    /** 手动切换触发的内嵌读取任务（IO），用于去重与切歌时作废。 */
+    @Volatile
+    private var embeddedLoadJob: Job? = null
+
     /**
-     * 为当前曲目异步加载 LRC 歌词，结果写入 [lrcText]。
+     * 当前曲目可选的歌词来源（按 NILYRIC → LRC → EMBEDDED 优先级排序）；无歌词时为空。
      *
-     * 只读取与音频同目录的 `.lrc` 文件：远程存储（SMB/WebDAV）走 `Storage.openInputStream`，
-     * 本地文件直接读 [File]。不做任何在线匹配 —— 刮削交由用户用外部工具完成，
-     * 应用只消费最终落在文件旁边的歌词与封面。
+     * 内嵌来源**懒加载**：未探测过就列出（供用户手动切换时按需读取），探测过则仅在确有内容时列出。
+     */
+    private val _availableLyricSources = MutableStateFlow<List<LyricSource>>(emptyList())
+    val availableLyricSources: StateFlow<List<LyricSource>> = _availableLyricSources.asStateFlow()
+
+    /** 当前选中的歌词来源；无歌词时为 null。切歌后重置为该曲目的默认来源。 */
+    private val _selectedLyricSource = MutableStateFlow<LyricSource?>(null)
+    val selectedLyricSource: StateFlow<LyricSource?> = _selectedLyricSource.asStateFlow()
+
+    /** 歌词相关的一次性提示（如「未找到内嵌歌词」），由 UI 弹 snackbar。 */
+    private val _lyricEvents = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val lyricEvents: SharedFlow<String> = _lyricEvents.asSharedFlow()
+
+    /** 歌词加载世代号：切歌后旧协程的分阶段写入据此丢弃（@Volatile 保证跨线程可见）。 */
+    @Volatile
+    private var lyricLoadGeneration = 0
+
+    /**
+     * 为当前曲目异步加载歌词，结果写入 [lrcText] 与 [wordLrcText]。
+     *
+     * 只主动读取与音频同目录同名的边车文件（`.nilyric` / `.lrc`，都是小文件）。
+     * **内嵌歌词不在此处无条件读取**（要读音频头部、远程代价高）：
+     * - 兜底：同名边车都不存在时，才顺带读一次内嵌；
+     * - 手动切换：用户在播放器里切到「内嵌歌词」时按需读取（见 [selectLyricSource]）。
+     *
+     * 各来源都会记录进 [availableLyricSources]，默认选中优先级最高者（`.nilyric` → `.lrc` → 内嵌）。
+     *
+     * 远程存储（SMB/WebDAV）走 `Storage` 流，本地文件直接读 [File]。
+     * 不做任何在线匹配 —— 刮削交由用户用外部工具完成，应用只消费最终落在文件旁边的歌词与封面。
      *
      * 与封面一致，挂在 Manager 常驻协程上，不依赖 UI 层存活，切歌即加载。
      */
@@ -190,58 +255,233 @@ class AudioPlaybackManager @Inject constructor(
         val history = currentHistory ?: return
         val storageId = history.storageId
         val filePath = history.storagePath ?: return
+        val generation = ++lyricLoadGeneration
         scope.launch(Dispatchers.IO) {
             try {
                 val fileName = filePath.substringAfterLast('/')
                 val nameWithoutExt = fileName.substringBeforeLast('.')
                 val dirPath = filePath.substringBeforeLast('/')
-                val lrcFilePath = if (dirPath == filePath) {
-                    "$nameWithoutExt.lrc"
-                } else {
-                    "$dirPath/$nameWithoutExt.lrc"
-                }
-
-                // 同目录 .lrc 文件（远程走 Storage 流，本地走 File）
-                if (nameWithoutExt.isNotEmpty() && nameWithoutExt != fileName) {
-                    if (storageId != null) {
-                        // Remote storage (SMB/WebDAV): read LRC via Storage.openInputStream
-                        val library = mediaLibraryDao.getById(storageId) ?: return@launch
-                        val storage = storageFactory.createOrNull(library) ?: return@launch
-                        try {
-                            val lrcFile = MediaSourceBuilder.createVirtualFile(lrcFilePath, "$nameWithoutExt.lrc")
-                            // 先判断存在再打开：SMB 下 jcifs 只读打开不存在的路径会带 O_CREAT，
-                            // 在服务器上生成 0 字节幽灵 .lrc（SmbRandomAccessFile 的 "r" 模式）。
-                            if (storage.fileExists(lrcFilePath)) {
-                                storage.openInputStream(lrcFile)?.use { input ->
-                                    val text = input.bufferedReader().readText()
-                                    if (text.isNotBlank()) {
-                                        _lrcText.value = text
-                                        return@launch
-                                    }
-                                }
-                            }
-                        } finally {
-                            // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
-                            withContext(NonCancellable) { storage.close() }
-                        }
+                fun sibling(ext: String): String =
+                    if (dirPath == filePath) {
+                        "$nameWithoutExt.$ext"
                     } else {
-                        // Local file: try direct File access
-                        val lrcFile = File(lrcFilePath)
-                        if (lrcFile.exists()) {
-                            val text = lrcFile.readText()
-                            _lrcText.value = text
-                            return@launch
-                        }
+                        "$dirPath/$nameWithoutExt.$ext"
                     }
-                }
+                val hasBaseName = nameWithoutExt.isNotEmpty() && nameWithoutExt != fileName
 
-                _lrcText.value = null
+                if (storageId != null) {
+                    // Remote storage (SMB/WebDAV): read lyrics via Storage streams
+                    val library = mediaLibraryDao.getById(storageId) ?: return@launch
+                    val storage = storageFactory.createOrNull(library) ?: return@launch
+                    try {
+                        val word = if (hasBaseName) readRemoteLyrics(storage, sibling("nilyric")) else null
+                        val lrc = if (hasBaseName) readRemoteLyrics(storage, sibling("lrc")) else null
+                        // 兜底：无同名边车时才读内嵌（复用同一连接）
+                        val fallbackEmbedded = if (word == null && lrc == null) {
+                            readRemoteEmbeddedLyrics(storage, filePath)
+                        } else {
+                            null
+                        }
+                        if (!isCurrentLoad(generation)) return@launch
+                        applyLoadedLyrics(word, lrc, fallbackEmbedded, probed = word == null && lrc == null)
+                    } finally {
+                        // 取消后普通 suspend 调用会立刻抛 CancellationException，清理必须在 NonCancellable 中执行
+                        withContext(NonCancellable) { storage.close() }
+                    }
+                } else {
+                    // Local file: try direct File access
+                    val word = if (hasBaseName) readLocalLyrics(sibling("nilyric")) else null
+                    val lrc = if (hasBaseName) readLocalLyrics(sibling("lrc")) else null
+                    val fallbackEmbedded = if (word == null && lrc == null) {
+                        readLocalEmbeddedLyrics(filePath)
+                    } else {
+                        null
+                    }
+                    if (!isCurrentLoad(generation)) return@launch
+                    applyLoadedLyrics(word, lrc, fallbackEmbedded, probed = word == null && lrc == null)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (isCurrentLoad(generation)) applyLoadedLyrics(null, null, null, probed = true)
+            }
+        }
+    }
+
+    /** 本次加载是否仍对应当前曲目（切歌后旧协程的写入据此丢弃）。 */
+    private fun isCurrentLoad(generation: Int): Boolean = generation == lyricLoadGeneration
+
+    /**
+     * 记录本次读到的各来源内容并刷新来源清单（选择重置为默认优先级最高者）。
+     *
+     * @param probed 本次是否已尝试读内嵌歌词（兜底路径为 true，仅边车路径为 false）
+     */
+    private fun applyLoadedLyrics(
+        nilyric: String?,
+        lrc: String?,
+        embedded: String?,
+        probed: Boolean,
+    ) {
+        embeddedLoadJob?.cancel()
+        embeddedProbed = probed
+        _lyricBundle.value = LyricBundle(nilyric, lrc, embedded)
+        _selectedLyricSource.value = null
+        refreshAvailableSources()
+    }
+
+    /** 依据 [LyricBundle] 与 [embeddedProbed] 重算可选来源，并在当前选择失效时回落到默认来源。 */
+    private fun refreshAvailableSources() {
+        val bundle = _lyricBundle.value
+        val sources = buildList {
+            if (bundle.nilyric != null) add(LyricSource.NILYRIC)
+            if (bundle.lrc != null) add(LyricSource.LRC)
+            // 未探测过也给出入口（首次选中时懒加载）；探测过则仅在确有内容时列出
+            if (!embeddedProbed || bundle.embedded != null) add(LyricSource.EMBEDDED)
+        }
+        _availableLyricSources.value = sources
+        val selected = _selectedLyricSource.value
+        if (selected == null || selected !in sources) {
+            _selectedLyricSource.value = sources.firstOrNull()
+        }
+        applyLyricSelection()
+    }
+
+    /** 按当前选择把内容投递到 [lrcText] / [wordLrcText]。 */
+    private fun applyLyricSelection() {
+        val bundle = _lyricBundle.value
+        when (_selectedLyricSource.value) {
+            LyricSource.NILYRIC -> {
+                // 逐字优先：字级时间轴取 `.nilyric`，译文仍取同名 `.lrc`（若有）做对照
+                _wordLrcText.value = bundle.nilyric
+                _lrcText.value = bundle.lrc
+            }
+            LyricSource.LRC -> {
+                _wordLrcText.value = null
+                _lrcText.value = bundle.lrc
+            }
+            LyricSource.EMBEDDED -> {
+                _wordLrcText.value = null
+                _lrcText.value = bundle.embedded
+            }
+            null -> {
+                _wordLrcText.value = null
                 _lrcText.value = null
             }
         }
+    }
+
+    /**
+     * 切换当前曲目使用的歌词来源。
+     *
+     * 切到尚未读取的「内嵌歌词」时**按需读取**（不预先无条件读），读完后自动切换；
+     * 读不到则保持原来源并提示。其余来源切换只改渲染所用内容，不重新读盘。
+     */
+    fun selectLyricSource(source: LyricSource) {
+        if (source == LyricSource.EMBEDDED && !embeddedProbed && _lyricBundle.value.embedded == null) {
+            loadEmbeddedLyricsAndSelect()
+            return
+        }
+        if (source !in _availableLyricSources.value) return
+        if (_selectedLyricSource.value == source) return
+        _selectedLyricSource.value = source
+        applyLyricSelection()
+    }
+
+    /** 手动切到内嵌歌词时的按需读取（读不到则提示并保持原来源）。 */
+    private fun loadEmbeddedLyricsAndSelect() {
+        if (embeddedLoadJob?.isActive == true) return
+        val filePath = currentHistory?.storagePath ?: return
+        val storageId = currentHistory?.storageId
+        val generation = lyricLoadGeneration
+        embeddedLoadJob = scope.launch(Dispatchers.IO) {
+            val embedded = readEmbeddedLyrics(filePath, storageId)
+            if (!isCurrentLoad(generation)) return@launch
+            embeddedProbed = true
+            if (embedded != null) {
+                _lyricBundle.value = _lyricBundle.value.copy(embedded = embedded)
+                refreshAvailableSources()
+                _selectedLyricSource.value = LyricSource.EMBEDDED
+                applyLyricSelection()
+            } else {
+                refreshAvailableSources()
+                _lyricEvents.tryEmit(context.getString(R.string.player_lyric_embedded_not_found))
+            }
+        }
+    }
+
+    /** 读取指定音频文件的内嵌歌词（本地/远程各自路径）。 */
+    private suspend fun readEmbeddedLyrics(filePath: String, storageId: Int?): String? {
+        if (storageId == null) return readLocalEmbeddedLyrics(filePath)
+        val library = mediaLibraryDao.getById(storageId) ?: return null
+        val storage = storageFactory.createOrNull(library) ?: return null
+        return try {
+            readRemoteEmbeddedLyrics(storage, filePath)
+        } finally {
+            withContext(NonCancellable) { storage.close() }
+        }
+    }
+
+    /**
+     * 读取远程存储上的同目录歌词边车。
+     *
+     * 先判断存在再打开：SMB 下 jcifs 只读打开不存在的路径会带 O_CREAT，
+     * 在服务器上生成 0 字节幽灵文件（SmbRandomAccessFile 的 "r" 模式）。
+     */
+    private suspend fun readRemoteLyrics(storage: Storage, path: String): String? {
+        if (!storage.fileExists(path)) return null
+        val file = MediaSourceBuilder.createVirtualFile(path, path.substringAfterLast('/'))
+        return storage.openInputStream(file)?.use { input ->
+            input.bufferedReader().readText().takeIf { it.isNotBlank() }
+        }
+    }
+
+    /** 读取本地同目录歌词边车；不存在或内容为空时返回 null。 */
+    private fun readLocalLyrics(path: String): String? {
+        val file = File(path)
+        return if (file.exists()) file.readText().takeIf { it.isNotBlank() } else null
+    }
+
+    /**
+     * 读取远程音频文件的内嵌歌词：先读一份头部；标签区被截断时按所需长度追读一次。
+     */
+    private suspend fun readRemoteEmbeddedLyrics(storage: Storage, audioPath: String): String? {
+        val file = MediaSourceBuilder.createVirtualFile(audioPath, audioPath.substringAfterLast('/'))
+        var head = storage.readFileBytes(file, EmbeddedLyricsReader.DEFAULT_HEAD_BYTES) ?: return null
+        EmbeddedLyricsReader.parse(head)?.let { return it }
+        val required = EmbeddedLyricsReader.requiredHeadBytes(head) ?: return null
+        head = storage.readFileBytes(file, required) ?: return null
+        return EmbeddedLyricsReader.parse(head)
+    }
+
+    /** 读取本地音频文件的内嵌歌词：先读一份头部；标签区被截断时按所需长度追读一次。 */
+    private fun readLocalEmbeddedLyrics(audioPath: String): String? {
+        val file = File(audioPath)
+        if (!file.exists()) return null
+        var head = file.readHead(EmbeddedLyricsReader.DEFAULT_HEAD_BYTES) ?: return null
+        EmbeddedLyricsReader.parse(head)?.let { return it }
+        val required = EmbeddedLyricsReader.requiredHeadBytes(head) ?: return null
+        head = file.readHead(required) ?: return null
+        return EmbeddedLyricsReader.parse(head)
+    }
+
+    /** 读取文件开头的至多 [maxBytes] 字节；读取失败返回 null。 */
+    private fun File.readHead(maxBytes: Int): ByteArray? = try {
+        inputStream().use { input ->
+            val out = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+            val buffer = ByteArray(8 * 1024)
+            var total = 0
+            while (total < maxBytes) {
+                val read = input.read(buffer, 0, minOf(buffer.size, maxBytes - total))
+                if (read == -1) break
+                out.write(buffer, 0, read)
+                total += read
+            }
+            out.toByteArray()
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
     }
 
     private var _currentSource: NxMediaSource? = null
@@ -1152,7 +1392,7 @@ class AudioPlaybackManager @Inject constructor(
         _currentIndex.value = -1
         refreshUpcomingIndices()
         currentHistory = null
-        _lrcText.value = null
+        applyLoadedLyrics(null, null, null, probed = true)
         _playbackError.value = null
         // 播放停止后睡眠定时失去意义，一并清除，避免残留定时暂停后续会话
         sleepTimerJob?.cancel()

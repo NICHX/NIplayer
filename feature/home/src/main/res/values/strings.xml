@@ -761,6 +761,9 @@
     <!-- 歌词逐字铺色开关（三套主题、两种歌词格式都生效） -->
     <string name="player_lyric_per_char">逐字歌词</string>
     <string name="player_lyric_per_char_desc">当前句按播放进度逐字点亮（没有逐字时间戳的歌词按行时长**估算**，不是精确对齐），三套主题都生效；关闭后当前句整句同色</string>
+    <!-- 歌词显示翻译开关（同一时间戳的原文 + 译文对照） -->
+    <string name="player_lyric_translation">显示翻译</string>
+    <string name="player_lyric_translation_desc">带译文的歌词在主歌词下方显示译文行（同一时间戳的原文 + 译文对照）；关闭后只显示原文</string>
     <string name="player_remember_audio_progress">记住音频播放进度</string>
     <string name="player_remember_audio_progress_desc">仅对达到下方门槛的长音频（有声书/播客）记录并断点续播，普通歌曲从头播放</string>
     <string name="player_orientation_mode">进入播放器方向</string>

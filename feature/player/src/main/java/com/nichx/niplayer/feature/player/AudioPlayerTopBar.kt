@@ -19,9 +19,11 @@ import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -54,7 +56,7 @@ import com.nichx.niplayer.feature.player.theme.ChromeTint
 
 
 /** 播放器顶栏"更多"下拉菜单的页面态（单一玻璃菜单原地切换，避免子菜单开合时闪烁）。 */
-internal enum class MoreMenuPage { Idle, Main, Speed, Appearance }
+internal enum class MoreMenuPage { Idle, Main, Speed, Appearance, Lyrics }
 
 /**
  * 顶栏操作按钮组：更多（内含倍速二级菜单 / 均衡器 / 睡眠定时 / 下载）。
@@ -85,6 +87,15 @@ internal fun TopBarActions(
     /** 非空时在菜单里提供「外观」二级菜单用于切换主题。 */
     audioStyle: AudioPlayerStyle? = null,
     onStyleSelect: (AudioPlayerStyle) -> Unit = {},
+    /** 歌词子菜单（显示翻译开关 / 歌词来源切换）。 */
+    lyricMenu: LyricMenuControls = LyricMenuControls(
+        showTranslation = false,
+        hasTranslation = false,
+        sources = emptyList(),
+        selectedSource = null,
+        onToggleTranslation = {},
+        onSourceSelect = {},
+    ),
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
@@ -259,6 +270,58 @@ internal fun TopBarActions(
                             thickness = 0.5.dp,
                             color = onSurface.copy(alpha = 0.08f),
                         )
+                        // 歌词：子菜单入口（显示翻译 / 歌词来源）。没有可关的译文、也没有多余来源时隐藏。
+                        if (lyricMenu.isPresentable) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.player_lyrics_menu),
+                                        fontSize = 14.sp,
+                                        color = onSurface,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Lyrics,
+                                        contentDescription = null,
+                                        tint = onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                },
+                                trailingIcon = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    ) {
+                                        // 有多个来源时把当前来源名摆在尾部，一眼可知正在用哪一个
+                                        if (lyricMenu.sources.size > 1) {
+                                            Text(
+                                                text = stringResource(
+                                                    lyricMenu.selectedSource?.labelRes
+                                                        ?: R.string.player_lyric_source,
+                                                ),
+                                                color = onSurfaceVariant,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium,
+                                            )
+                                        }
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                            contentDescription = null,
+                                            tint = onSurfaceVariant.copy(alpha = 0.7f),
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                },
+                                contentPadding = menuItemPadding,
+                                onClick = { menuPage = MoreMenuPage.Lyrics },
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                thickness = 0.5.dp,
+                                color = onSurface.copy(alpha = 0.08f),
+                            )
+                        }
                         DropdownMenuItem(
                             text = {
                                 Text(
@@ -470,6 +533,105 @@ internal fun TopBarActions(
                             )
                         }
                     }
+                    MoreMenuPage.Lyrics -> {
+                        Text(
+                            text = stringResource(R.string.player_lyrics_menu),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                            thickness = 0.5.dp,
+                            color = onSurface.copy(alpha = 0.08f),
+                        )
+                        if (lyricMenu.hasTranslation) {
+                            // 开关项：点一下就地切换、菜单不关，方便同时切换来源
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.player_lyric_show_translation),
+                                        fontSize = 14.sp,
+                                        color = onSurface,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Translate,
+                                        contentDescription = null,
+                                        tint = onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                },
+                                trailingIcon = if (lyricMenu.showTranslation) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = primary,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                } else null,
+                                contentPadding = menuItemPadding,
+                                onClick = { lyricMenu.onToggleTranslation() },
+                            )
+                        }
+                        if (lyricMenu.sources.size > 1) {
+                            if (lyricMenu.hasTranslation) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                    thickness = 0.5.dp,
+                                    color = onSurface.copy(alpha = 0.08f),
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.player_lyric_source),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                                thickness = 0.5.dp,
+                                color = onSurface.copy(alpha = 0.08f),
+                            )
+                            lyricMenu.sources.forEach { source ->
+                                val selected = source == lyricMenu.selectedSource
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = stringResource(source.labelRes),
+                                            fontSize = 14.sp,
+                                            color = if (selected) primary else onSurface,
+                                            fontWeight = if (selected) {
+                                                FontWeight.SemiBold
+                                            } else {
+                                                FontWeight.Normal
+                                            },
+                                        )
+                                    },
+                                    contentPadding = menuItemPadding,
+                                    onClick = {
+                                        menuPage = MoreMenuPage.Idle
+                                        lyricMenu.onSourceSelect(source)
+                                    },
+                                    trailingIcon = if (selected) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Check,
+                                                contentDescription = null,
+                                                tint = primary,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
+                                    } else null,
+                                )
+                            }
+                        }
+                    }
                     MoreMenuPage.Idle -> {}
                 }
             }
@@ -495,6 +657,14 @@ internal fun TopBar(
     chrome: ChromeSpec,
     audioStyle: AudioPlayerStyle? = null,
     onStyleSelect: (AudioPlayerStyle) -> Unit = {},
+    lyricMenu: LyricMenuControls = LyricMenuControls(
+        showTranslation = false,
+        hasTranslation = false,
+        sources = emptyList(),
+        selectedSource = null,
+        onToggleTranslation = {},
+        onSourceSelect = {},
+    ),
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val backContainerColor = when (chrome.tint) {
@@ -559,6 +729,7 @@ internal fun TopBar(
             chrome = chrome,
             audioStyle = audioStyle,
             onStyleSelect = onStyleSelect,
+            lyricMenu = lyricMenu,
         )
     }
 }

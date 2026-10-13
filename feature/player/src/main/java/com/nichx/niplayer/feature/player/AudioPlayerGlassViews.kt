@@ -126,6 +126,14 @@ internal fun GlassTopBar(
     onShare: () -> Unit,
     audioStyle: AudioPlayerStyle,
     onStyleSelect: (AudioPlayerStyle) -> Unit,
+    lyricMenu: LyricMenuControls = LyricMenuControls(
+        showTranslation = false,
+        hasTranslation = false,
+        sources = emptyList(),
+        selectedSource = null,
+        onToggleTranslation = {},
+        onSourceSelect = {},
+    ),
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     Row(
@@ -195,6 +203,7 @@ internal fun GlassTopBar(
             onStyleSelect = onStyleSelect,
             // 本组件就是简约封面的顶栏，直接用它自己的 chrome 规格（三横线图标）
             chrome = GlassChrome,
+            lyricMenu = lyricMenu,
         )
     }
 }

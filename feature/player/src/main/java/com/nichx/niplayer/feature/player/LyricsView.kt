@@ -65,6 +65,18 @@ import kotlinx.coroutines.delay
 /** 焦点交接（当前行 ↔ 非当前行）的过渡时长。 */
 private const val FOCUS_TRANSITION_MS = 320
 
+/** 译文行相对主歌词的字号比例（更小一档，作为对照）。 */
+private const val TRANSLATION_FONT_RATIO = 0.62f
+
+/** 译文行行高相对其自身字号的倍数。 */
+private const val TRANSLATION_LINE_HEIGHT_RATIO = 1.4f
+
+/** 译文行不透明度相对主歌词行 alpha 的比例（比主歌词更淡）。 */
+private const val TRANSLATION_ALPHA_RATIO = 0.72f
+
+/** 译文行与主歌词之间的竖向间距。 */
+private val TRANSLATION_TOP_GAP = 4.dp
+
 /** 点击预览（选中该句显示时间、待二次点击跳转）的自动超时，避免预览态长期滞留。 */
 private const val LyricPreviewTimeoutMs = 2500L
 
@@ -186,6 +198,8 @@ internal fun LyricsView(
     isPlaying: Boolean = false,
     /** 「逐字歌词」开关：关掉后当前句整句同色，不做逐字铺色。 */
     perChar: Boolean = true,
+    /** 「显示翻译」开关：关掉后带译文的歌词也只显示原文。 */
+    showTranslation: Boolean = true,
     onUserScroll: () -> Unit = {},
 ) {
     val listState = rememberLazyListState()
@@ -433,6 +447,8 @@ internal fun LyricsView(
                             ?: abs(index - focusedIndex).toFloat()
                         LyricRowItem(
                             text = item.text,
+                            translation = sentence.translation,
+                            showTranslation = showTranslation,
                             interludeBefore = item.interludeBefore,
                             // 传**实时**位置：行内的逐字比例与间奏点缀都按它算
                             positionMs = livePosition,
@@ -477,6 +493,10 @@ internal fun LyricsView(
 @Composable
 private fun LyricRowItem(
     text: String,
+    /** 该行译文/对照翻译；为 null 时不渲染译文行。 */
+    translation: String?,
+    /** 「显示翻译」开关：关闭时不渲染译文行。 */
+    showTranslation: Boolean,
     isCurrent: Boolean,
     isPending: Boolean,
     timeLabel: String?,
@@ -600,7 +620,7 @@ private fun LyricRowItem(
                 lineHeight = lineHeight,
             )
         }
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 // 只用位移/缩放的图层不会分配离屏缓冲；两个值都在绘制阶段读，不触发重组。
@@ -614,6 +634,8 @@ private fun LyricRowItem(
                     translationY = cascade.distance.value * (1f - chase.value)
                 },
         ) {
+        // 主歌词三层（荧光 / 未唱 / 已唱）叠在同一 Box 内；译文另起一行排在下方
+        Box(modifier = Modifier.fillMaxWidth()) {
         val textStyle = when {
             theme.whiteText -> MaterialTheme.typography.titleLarge.copy(
                 fontSize = MaterialTheme.typography.titleLarge.fontSize * scale * fontBoost,
@@ -782,6 +804,47 @@ private fun LyricRowItem(
                     color = accentColor,
                 )
             }
+        }
+        }
+        if (showTranslation && !translation.isNullOrBlank()) {
+            // 译文行：字号更小、颜色更淡；跟随主歌词的距离淡出与模糊，不参与逐字铺色
+            val translationBaseFont = if (theme.whiteText || isCurrent) {
+                MaterialTheme.typography.titleLarge.fontSize
+            } else {
+                MaterialTheme.typography.titleLarge.fontSize * idleFontRatio
+            }
+            val translationFontSize = translationBaseFont * scale * fontBoost * TRANSLATION_FONT_RATIO
+            Text(
+                text = translation,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = translationFontSize,
+                    lineHeight = translationFontSize * TRANSLATION_LINE_HEIGHT_RATIO,
+                    fontWeight = FontWeight.Normal,
+                    letterSpacing = letterSpacing,
+                ),
+                color = if (theme.whiteText) {
+                    Color.White.copy(alpha = alpha * TRANSLATION_ALPHA_RATIO)
+                } else {
+                    normalColor.copy(alpha = alpha * TRANSLATION_ALPHA_RATIO)
+                },
+                textAlign = theme.textAlign,
+                maxLines = Int.MAX_VALUE,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = if (theme.tapTargetOnText) 28.dp else 24.dp)
+                    .padding(top = TRANSLATION_TOP_GAP)
+                    .then(
+                        if (theme.tapTargetOnText) Modifier.clickable(onClick = onClick) else Modifier,
+                    )
+                    .then(
+                        if (blurAmount > 0.05.dp) {
+                            Modifier.blur(blurAmount, BlurredEdgeTreatment.Unbounded)
+                        } else {
+                            Modifier
+                        },
+                    ),
+            )
         }
         }
     }

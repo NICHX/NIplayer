@@ -267,6 +267,14 @@
     <string name="lyrics_back_to_record">Back to record</string>
     <!-- 简约封面主题：封面不是唱片，用「收起歌词」表达同一件事 -->
     <string name="lyrics_collapse">Collapse lyrics</string>
+    <!-- Lyrics submenu in the "more" menu -->
+    <string name="player_lyrics_menu">Lyrics</string>
+    <string name="player_lyric_show_translation">Show translation</string>
+    <string name="player_lyric_source">Lyrics source</string>
+    <string name="player_lyric_source_nilyric">Word-by-word (.nilyric)</string>
+    <string name="player_lyric_source_lrc">Lyrics (.lrc)</string>
+    <string name="player_lyric_source_embedded">Embedded lyrics</string>
+    <string name="player_lyric_embedded_not_found">No embedded lyrics in this file</string>
 
     <!-- VR look-around -->
     <string name="player_vr">VR Look-around</string>

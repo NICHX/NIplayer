@@ -4,97 +4,157 @@ package com.nichx.niplayer.feature.player
  * 歌词行。
  *
  * @param timeMs 行开始时间（毫秒）。
- * @param text 该行显示的纯文本（已去除时间标签）。
- * @param wordTimes 逐字时间戳列表（Enhanced LRC 格式）；为空时表示普通行级歌词。
+ * @param text 该行显示的纯文本（已去除时间标签与逐字标记）。
+ * @param wordTimes 逐字时间戳列表；为空时表示普通行级歌词。
  *                  [wordTimes] 中每个元素为「词文本, 开始时间(毫秒)」，
  *                  且 [wordTimes] 拼接后的文本与 [text] 一致（仅去除空格差异）。
+ * @param translation 该行的译文 / 对照翻译；为 null 表示该行无译文。
  */
 data class LrcLine(
     val timeMs: Long,
     val text: String,
     val wordTimes: List<Pair<String, Long>> = emptyList(),
+    val translation: String? = null,
 )
 
 object LrcParser {
 
-    /** 匹配 [mm:ss.xx] / [mm:ss.xxx] / [mm:ss:xx] 形式的时间标签。 */
-    private val TIME_TAG_REGEX = Regex("""\[(\d{2}):(\d{2})[\.:](\d{2,3})\]""")
+    /** 行级时间标签：[mm:ss.xx] / [mm:ss.xxx] / [mm:ss:xx]。 */
+    private val LINE_TAG_REGEX = Regex("""\[(\d{1,3}):(\d{2})[\.:](\d{2,3})\]""")
 
-    /** 匹配 Enhanced LRC 的逐字时间戳内部时间（mm:ss.xx，不含尖括号）。 */
-    private val WORD_TIME_REGEX = Regex("""(\d{1,2}):(\d{2})[\.:](\d{2,3})""")
+    /**
+     * 逐字时间标签，两种写法都支持：
+     * - Enhanced LRC：`<mm:ss.xx>`；
+     * - 逐字标记 LRC（`.nilyric`）：`[[mm:ss.xx]]`。
+     *
+     * 捕获组 1..3 对应 `<..>`，4..6 对应 `[[..]]`（[parseTime] 据此取时间）。
+     */
+    private val WORD_TAG_REGEX = Regex(
+        """<(\d{1,3}):(\d{2})[\.:](\d{2,3})>|\[\[(\d{1,3}):(\d{2})[\.:](\d{2,3})\]\]""",
+    )
 
-    fun parse(content: String): List<LrcLine> {
+    /**
+     * 解析歌词文本（`.lrc` / `.nilyric` 均可）。
+     *
+     * 支持三种时间轴：行级 `[mm:ss.xx]`、Enhanced LRC 逐字 `<mm:ss.xx>`、
+     * 以及逐字标记 LRC 的 `[[mm:ss.xx]]`。连续多行若时间戳相同，视为「原文 + 译文」对照，
+     * 合并为一条 [LrcLine]（首行为原文，其余作为译文）。
+     */
+    fun parse(content: String): List<LrcLine> = parse(content, null)
+
+    /**
+     * 合并「逐行歌词（`.lrc`，可含译文）」与「逐字歌词（`.nilyric`）」两个来源：
+     * 逐字来源提供精确的字级时间轴，逐行来源提供译文对照（按相同时间戳挂接）。
+     *
+     * 两个来源都为空/无效时返回空列表。译文来源（[plainContent]）通常是标准 `.lrc`，
+     * 逐字来源（[wordContent]）是同名 `.nilyric`。
+     */
+    fun parse(plainContent: String?, wordContent: String?): List<LrcLine> {
+        val plain = plainContent?.let(::parseSingle).orEmpty()
+        val word = wordContent?.let(::parseSingle).orEmpty()
+        return when {
+            word.isEmpty() -> plain
+            plain.isEmpty() -> word
+            else -> {
+                // 以逐字来源为骨架，按时间戳挂上逐行来源的译文
+                val translations = plain.mapNotNull { line ->
+                    line.translation?.let { line.timeMs to it }
+                }.toMap()
+                word.map { line ->
+                    when {
+                        line.translation != null -> line
+                        else -> translations[line.timeMs]?.let { line.copy(translation = it) } ?: line
+                    }
+                }
+            }
+        }
+    }
+
+    /** 解析单个歌词文件的原始内容。 */
+    private fun parseSingle(content: String): List<LrcLine> {
         val lines = mutableListOf<LrcLine>()
         content.lines().forEach { rawLine ->
             val trimmed = rawLine.trim()
             if (trimmed.isEmpty()) return@forEach
 
-            val tags = TIME_TAG_REGEX.findAll(trimmed).toList()
-            if (tags.isEmpty()) return@forEach
+            // 先摘出逐字标记，剩余部分（行首）才是行级时间标签与普通文本
+            val wordTags = WORD_TAG_REGEX.findAll(trimmed).toList()
+            val head = if (wordTags.isEmpty()) {
+                trimmed
+            } else {
+                trimmed.substring(0, wordTags.first().range.first)
+            }
+            val lineTags = LINE_TAG_REGEX.findAll(head).toList()
+            if (lineTags.isEmpty()) return@forEach
 
-            // 歌词文本：行级时间标签之后的全部内容
-            val lyricRaw = trimmed.substring(tags.last().range.last + 1).trim()
-            if (lyricRaw.isEmpty()) return@forEach
+            // 逐字时间戳：每个标记之后、下一个标记之前为该词的文本
+            val wordTimes = mutableListOf<Pair<String, Long>>()
+            wordTags.forEachIndexed { index, tag ->
+                val timeMs = parseTime(tag)
+                if (timeMs != null) {
+                    val textEnd = wordTags.getOrNull(index + 1)?.range?.first ?: trimmed.length
+                    val word = trimmed.substring(tag.range.last + 1, textEnd).trim()
+                    if (word.isNotEmpty()) wordTimes.add(word to timeMs)
+                }
+            }
 
-            // 提取逐字时间戳（Enhanced LRC：<mm:ss.xx>word <mm:ss.xx>word ...）
-            val wordTimes = parseWordTimes(lyricRaw)
-
-            // 若含逐字时间戳，则纯文本 = 各词拼接；否则整行文本
+            // 有逐字时间戳时文本 = 各词拼接；否则为行级时间标签之后的整段文本
             val lyricText = if (wordTimes.isEmpty()) {
-                lyricRaw
+                head.substring(lineTags.last().range.last + 1).trim()
             } else {
                 wordTimes.joinToString(" ") { it.first }
             }
             if (lyricText.isBlank()) return@forEach
 
-            tags.forEach { match ->
-                val timeMs = parseTime(match)
-                if (timeMs != null) {
-                    lines.add(LrcLine(timeMs, lyricText, wordTimes))
-                }
+            lineTags.forEach { tag ->
+                parseTime(tag)?.let { lines.add(LrcLine(it, lyricText, wordTimes)) }
             }
         }
 
-        // 稳定排序：相同 timeMs 保留原插入顺序
+        // 稳定排序：相同 timeMs 保留原插入顺序（译文紧随原文）
         lines.sortBy { it.timeMs }
-        return lines
+        return mergeTranslations(lines)
     }
 
-    /** 解析 Enhanced LRC 逐字时间戳，返回「词, 开始时间」列表；无逐字时间戳时返回空列表。 */
-    private fun parseWordTimes(raw: String): List<Pair<String, Long>> {
-        val result = mutableListOf<Pair<String, Long>>()
+    /**
+     * 把时间戳相同的连续多行合并为「原文 + 译文」：首行为原文，其余（去重）作为译文。
+     *
+     * 普通 LRC 的「一行多时间标签」产生的时间戳各不相同，不受影响；仅当两行
+     * （如原文与译文）落在同一时间戳时才发生合并。
+     */
+    private fun mergeTranslations(lines: List<LrcLine>): List<LrcLine> {
+        if (lines.size < 2) return lines
+        val merged = ArrayList<LrcLine>(lines.size)
         var index = 0
-        while (index < raw.length) {
-            val open = raw.indexOf('<', index)
-            if (open < 0) break
-            val close = raw.indexOf('>', open)
-            if (close < 0) break
-            val tagText = raw.substring(open + 1, close)
-            val match = WORD_TIME_REGEX.matchEntire(tagText)
-            if (match == null) {
-                index = close + 1
-                continue
+        while (index < lines.size) {
+            val first = lines[index]
+            val extras = mutableListOf<String>()
+            var next = index + 1
+            while (next < lines.size && lines[next].timeMs == first.timeMs) {
+                val candidate = lines[next].text
+                if (candidate != first.text && extras.none { it == candidate }) extras.add(candidate)
+                next++
             }
-            val timeMs = parseTime(match) ?: run {
-                index = close + 1
-                continue
-            }
-            // 词文本 = 时间戳闭合后、下一个 < 之前的内容（含中间空格）
-            val nextOpen = raw.indexOf('<', close + 1)
-            val wordEnd = if (nextOpen < 0) raw.length else nextOpen
-            val wordText = raw.substring(close + 1, wordEnd).trim()
-            if (wordText.isNotEmpty()) {
-                result.add(wordText to timeMs)
-            }
-            index = wordEnd
+            merged.add(
+                if (extras.isEmpty()) first else first.copy(translation = extras.joinToString("\n")),
+            )
+            index = next
         }
-        return result
+        return merged
     }
 
+    /**
+     * 从匹配结果中取时间（毫秒）。
+     *
+     * 行级标签与 `<..>` 逐字标签用捕获组 1..3；`[[..]]` 逐字标签用捕获组 4..6
+     * （此时组 1 为空串，据此切换偏移）。
+     */
     private fun parseTime(match: MatchResult): Long? {
-        val minutes = match.groupValues[1].toIntOrNull() ?: return null
-        val seconds = match.groupValues[2].toIntOrNull() ?: return null
-        val millisStr = match.groupValues[3].padEnd(3, '0').take(3)
+        val offset = if (match.groupValues.getOrNull(1).isNullOrEmpty()) 3 else 0
+        val minutes = match.groupValues.getOrNull(offset + 1)?.toIntOrNull() ?: return null
+        val seconds = match.groupValues.getOrNull(offset + 2)?.toIntOrNull() ?: return null
+        val millisStr = match.groupValues.getOrNull(offset + 3)?.padEnd(3, '0')?.take(3)
+            ?: return null
         val millis = millisStr.toIntOrNull() ?: return null
         return minutes * 60_000L + seconds * 1_000L + millis
     }
