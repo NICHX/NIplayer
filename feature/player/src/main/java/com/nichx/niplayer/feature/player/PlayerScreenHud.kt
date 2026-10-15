@@ -156,20 +156,21 @@ internal fun PlayerProgressBar(
                     isDragging.value = true
                     dragFraction = (down.position.x / size.width).coerceIn(0f, 1f)
                     onDragFractionChange(dragFraction)
-                    onSeek(dragFraction)
 
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Main)
                         val change = event.changes.firstOrNull() ?: break
                         if (!change.pressed) {
                             isDragging.value = false
+                            // 松手才落点（拖动期间只做预览：进度条跟随 + 取帧），
+                            // 与横滑快进同一策略 —— 反复 seek 会让网络源不停 flush 进 Buffering。
                             onDragFractionChange(null)
+                            onSeek(dragFraction)
                             onSeekFinished()
                             break
                         }
                         dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
                         onDragFractionChange(dragFraction)
-                        onSeek(dragFraction)
                         change.consume()
                     }
                 }
@@ -496,6 +497,10 @@ internal fun PlayerControllerLayer(
      * 而不是显示真实播放位置（拖动期间不下发 seek，位置本身不动）。
      */
     previewFraction: Float? = null,
+    /** 拖动进度条时的目标位置（ms）：取实时预览帧（与横滑快进共用同一预览通道）。 */
+    onSeekPreview: (Long) -> Unit = {},
+    /** 拖动进度条松手：停止取帧（保留最后一帧，OSD 收起时清理）。 */
+    onSeekPreviewEnd: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val audioManager = remember { context.getSystemService(AudioManager::class.java) }
@@ -705,6 +710,8 @@ internal fun PlayerControllerLayer(
                 onSeek = onSeek,
                 onSeekFinished = onSeekFinished,
                 previewFractionOverride = previewFraction,
+                onSeekPreview = onSeekPreview,
+                onSeekPreviewEnd = onSeekPreviewEnd,
             )
 
             Spacer(Modifier.height(6.dp))
@@ -900,6 +907,15 @@ private const val VideoPositionTickMs = 500
 private const val PositionJumpSnapFraction = 0.03f
 
 /**
+ * 拖动进度条松手后，进度条继续停留在目标位置的时长（ms）。
+ *
+ * seek 落点不是瞬时的（远程源尤其），若松手即把显示交还给实时位置，进度条会先弹回旧位置、
+ * 等 seek 落地后再跳过去。这里用略长于位置刷新周期（[VideoPositionTickMs]）的保持时间兜底，
+ * 既不出现回弹，也不会卡在预览位置。
+ */
+private const val SeekReleaseHoldMs = 600L
+
+/**
  * 单手布局用的进度行：时间显示在进度条两侧（当前时间在左、剩余时间在右），
  * 省去独立的时间行，从而降低底部控制栏高度。
  */
@@ -914,11 +930,24 @@ private fun PlayerProgressInline(
     onSeekFinished: () -> Unit,
     /** 外部（横滑快进手势）传入的目标进度预览；非空时优先于内部拖条预览与平滑位置。 */
     previewFractionOverride: Float? = null,
+    /** 拖动进度条时的目标位置（ms）：用于取预览帧（与横滑快进同一套实时画面预览）。 */
+    onSeekPreview: (Long) -> Unit = {},
+    /** 拖动进度条松手：停止取帧（保留最后一帧，由 OSD 收起时清理）。 */
+    onSeekPreviewEnd: () -> Unit = {},
 ) {
     val positionMs by positionMsFlow.collectAsStateWithLifecycle()
     val bufferedMs by bufferedMsFlow.collectAsStateWithLifecycle()
     // 拖动进度条时记录预览位置（fraction），两侧时间跟随显示目标时间
     var dragFractionPreview by remember { mutableStateOf<Float?>(null) }
+    // 松手后短暂保留拖动预览位置：seek 落点需要时间（网络源尤其），立刻清掉会让进度条
+    // 先弹回旧位置、等 seek 落地后再跳过去。计数作为"重新计时"的信号。
+    var releaseHold by remember { mutableIntStateOf(0) }
+    LaunchedEffect(releaseHold) {
+        if (releaseHold > 0) {
+            delay(SeekReleaseHoldMs)
+            dragFractionPreview = null
+        }
+    }
     val reducedMotion = LocalNiReduceMotion.current
 
     // 进度平滑 + seek 吸附（BUG 修复）。
@@ -971,7 +1000,17 @@ private fun PlayerProgressInline(
             abLoopB = abLoopB,
             onSeek = onSeek,
             onSeekFinished = onSeekFinished,
-            onDragFractionChange = { dragFractionPreview = it },
+            onDragFractionChange = { fraction ->
+                if (fraction != null) {
+                    dragFractionPreview = fraction
+                    releaseHold = 0
+                    // 与横滑快进一致：拖动中只取预览帧（不下发 seek，松手才落点）
+                    if (durationMs > 0) onSeekPreview((fraction * durationMs).toLong())
+                } else {
+                    onSeekPreviewEnd()
+                    releaseHold++
+                }
+            },
             modifier = Modifier
                 .weight(1f)
                 .padding(horizontal = 8.dp),

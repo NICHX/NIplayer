@@ -24,8 +24,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -225,13 +231,28 @@ internal fun GestureOsd(
     }
 }
 
+/** 预览卡宽度：固定宽度 + 按片源宽高比定高，拖动时卡片不会随帧尺寸变化而抖动。 */
+private val PreviewCardWidth = 240.dp
+
+/** 片源宽高比不可用时的兜底（16:9）。 */
+private const val DefaultPreviewAspectRatio = 16f / 9f
+
+/** 预览卡宽高比的合理区间：极端竖屏 / 超宽片源不把卡片拉得过高或过扁。 */
+private const val MinPreviewAspectRatio = 0.75f
+private const val MaxPreviewAspectRatio = 2.6f
+
+/** 预览帧之间的交叉淡入时长（ms）：太长会和下一帧的到达重叠，反而显糊。 */
+private const val PreviewCrossfadeMs = 120
+
 /**
- * 横滑快进/快退的居中 OSD，两段式：
- * 1) 目标位置的预览帧 —— 固定 16:9 圆角卡片，深色底 + 极细描边 + 投影，与视频层分离；
+ * 横滑快进/快退（以及拖动进度条）的居中 OSD，两段式：
+ * 1) 目标位置的预览帧 —— 圆角卡片，深色底 + 极细描边 + 投影，与视频层分离；
  * 2) 时间胶囊 —— 图标 + 目标时间（主）+ 位移（次），时间与位移做字号/透明度层级。
  *
  * 取帧是异步的：未就绪时只显示时间胶囊（优雅降级）。预览帧由 [previewFlow] 在本组件内
  * 单独订阅 —— Bitmap 是重值，若放到 PlayerScreen 顶层收集，拖动中每来一帧都会让整屏重组。
+ *
+ * @param aspectRatio 预览卡宽高比，按实际视频尺寸传入（竖屏/宽银幕片源不再套 16:9 留黑边）
  */
 @Composable
 internal fun SeekGestureOsd(
@@ -240,6 +261,7 @@ internal fun SeekGestureOsd(
     deltaText: String,
     previewFlow: StateFlow<Bitmap?>,
     modifier: Modifier = Modifier,
+    aspectRatio: Float = DefaultPreviewAspectRatio,
 ) {
     val preview by previewFlow.collectAsStateWithLifecycle()
     // 挂载时淡入 + 轻微放大，与 [GestureOsd] 保持同一进入动画；收敛到终态后不再挂图层
@@ -265,25 +287,44 @@ internal fun SeekGestureOsd(
         modifier = modifier.then(enterLayer),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        preview?.let { bitmap ->
-            Box(
-                modifier = Modifier
-                    .width(240.dp)
-                    .aspectRatio(16f / 9f)
-                    .shadow(14.dp, cardShape)
-                    .clip(cardShape)
-                    .background(Color.Black.copy(alpha = 0.45f))
-                    .border(0.5.dp, Color.White.copy(alpha = 0.14f), cardShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize(),
-                )
+        // 帧到达/消失时按高度平滑展开收起：直接插拔会让居中的 OSD 整块跳动
+        AnimatedVisibility(
+            visible = preview != null,
+            enter = fadeIn(tween(MotionTokens.QUICK)) + expandVertically(tween(MotionTokens.QUICK)),
+            exit = fadeOut(tween(MotionTokens.EXIT)) + shrinkVertically(tween(MotionTokens.EXIT)),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .width(PreviewCardWidth)
+                        .aspectRatio(aspectRatio.coerceIn(MinPreviewAspectRatio, MaxPreviewAspectRatio))
+                        .shadow(14.dp, cardShape)
+                        .clip(cardShape)
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.14f), cardShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    // 帧间交叉淡入淡出，避免拖动时画面"硬切"闪烁
+                    Crossfade(
+                        targetState = preview,
+                        animationSpec = tween(PreviewCrossfadeMs),
+                        label = "seekPreview",
+                    ) { frame ->
+                        if (frame != null) {
+                            // ImageBitmap 包装对象按帧 remember：本组件会随 timeText 高频重组，
+                            // 每次重组都新建包装会让 Image 认为 painter 变了而白白重绘。
+                            val image = remember(frame) { frame.asImageBitmap() }
+                            Image(
+                                bitmap = image,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
             }
-            Spacer(Modifier.height(10.dp))
         }
 
         Row(

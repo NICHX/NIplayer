@@ -107,6 +107,15 @@ class ThumbnailManager @Inject constructor(
      */
     private val decodeGate = Semaphore(DECODE_CONCURRENCY)
 
+    /**
+     * 拖动预览取帧的专属闸门（见 [extractPreviewFrame]）。
+     *
+     * 刻意**不**并入 [decodeGate]/[extractionGate]：那两者是「后台批量生成」的限流，
+     * 预览若跟着一起排队，会在刷缩略图时明显滞后于手指。预览侧本身是单飞（同一时刻只有一帧在解），
+     * 单开 1 路既保证「不被别人阻塞」，也不会突破「同存储源并发取帧」的总预算。
+     */
+    private val previewGate = Semaphore(PREVIEW_CONCURRENCY)
+
     // ---------- 视频缩略图 ----------
 
     /**
@@ -205,35 +214,44 @@ class ThumbnailManager @Inject constructor(
     /**
      * 拖动进度条 / 横滑快进时的实时预览取帧。
      *
-     * 与 [generateThumbnailAtMs] 的关键差异：**完全不碰缓存文件**，只在内存返回 Bitmap。
-     * 预览帧随手指高频变化，若走 [generateThumbnailAtMs] 会把库封面刷成拖动途中的随机帧。
+     * 与 [generateThumbnailAtMs] 的关键差异：
+     * 1. **完全不碰缓存文件**，只在内存返回 Bitmap。预览帧随手指高频变化，若走
+     *    [generateThumbnailAtMs] 会把库封面刷成拖动途中的随机帧。
+     * 2. 走**预览专属闸门** [previewGate]（1 路），不参与 [extractionGate] / [decodeGate] 排队：
+     *    批量生成缩略图时拖动预览不该被排在队尾（反之预览也不该把批量任务饿死）。
+     * 3. 远程源复用**常驻取帧会话**（见 [VideoFrameExtractor.extractPreview]），
+     *    整个拖动过程只 open/probe 一次，避免每帧重新建连 + 重读索引。
      *
-     * 取帧失败（含远程读取太慢/失败）返回 null，调用方静默保留上一帧即可。
-     * 解码并发由 [decodeGate] / [extractionGate] 统一收口，避免高频预览把解码器挤爆。
+     * 取帧失败（含远程读取太慢/被取消）返回 null，调用方静默保留上一帧即可。
      */
     suspend fun extractPreviewFrame(
         storage: Storage,
         file: StorageFile,
         positionMs: Long,
     ): Bitmap? = withContext(Dispatchers.IO) {
-        val skipDurationCheck = storage.library.mediaType == MediaType.LOCAL_STORAGE
-        extractionGate(storage.library.id, storage.thumbnailConcurrency).withPermit {
-            decodeGate.withPermit {
-                when (
-                    val extraction = videoExtractor.extractAt(
-                        storage,
-                        file,
-                        positionMs,
-                        skipDurationCheck,
-                        exactFrame = true,
-                    )
-                ) {
-                    is FrameExtraction.Ok -> extraction.bitmap
-                    FrameExtraction.Failed,
-                    FrameExtraction.PermanentFailure -> null
-                }
+        previewGate.withPermit {
+            when (val extraction = videoExtractor.extractPreview(storage, file, positionMs)) {
+                is FrameExtraction.Ok -> extraction.bitmap
+                FrameExtraction.Failed,
+                FrameExtraction.PermanentFailure -> null
             }
         }
+    }
+
+    /**
+     * 打断正在进行的预览取帧（非阻塞，可从主线程调用）。
+     *
+     * 用户在拖动中途松手时调用：正在解的那一帧立即收手，把解码资源让给真实播放。
+     */
+    fun cancelPreviewFrame() = videoExtractor.cancelPreviewFrame()
+
+    /**
+     * 关闭预览取帧会话（释放其持有的数据源与 ffmpeg 上下文）。
+     *
+     * 在 IO 线程执行：native 侧关闭需要等解码锁，不能阻塞调用方（可能是主线程）。
+     */
+    suspend fun closePreviewSession() = withContext(Dispatchers.IO) {
+        videoExtractor.closePreviewSession()
     }
 
     /**
@@ -585,6 +603,8 @@ class ThumbnailManager @Inject constructor(
     fun clearCache() {
         store.clearAll()
         audioExtractor.clearDirCoverCache()
+        // 预览会话持有远程数据源（SMB 连接等），清理缓存时一并释放
+        videoExtractor.closePreviewSession()
     }
 
     /** 按 storageId + 文件列表细粒度清理缓存（不影响其他文件）。 */
@@ -629,6 +649,9 @@ class ThumbnailManager @Inject constructor(
          * retriever 兜底另有更严的 [RetrieverGate]（2）单独约束。
          */
         private const val DECODE_CONCURRENCY = 4
+
+        /** 同时进行的预览取帧路数（单飞即可，见 [previewGate]）。 */
+        private const val PREVIEW_CONCURRENCY = 1
     }
 }
 

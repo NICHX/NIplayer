@@ -71,6 +71,24 @@ class SmbMediaDataSource(
         }
     }
 
+    /**
+     * 重置单次取帧的读取预算与统计。
+     *
+     * 预算是「单次取帧」语义：一个数据源只服务一帧时天然如此；而预览会话会**跨多帧复用
+     * 同一个数据源**，若按实例累计，长时间的拖动会在读到上限后中途失效（预览突然消失）。
+     * 每帧开始前调用本方法，即恢复成「每帧各自 64MB」的原始语义。
+     */
+    fun resetReadBudget() {
+        synchronized(lock) {
+            netBytesRead = 0L
+            budgetExceeded = false
+            readCalls = 0
+            fillCount = 0
+            minPos = Long.MAX_VALUE
+            maxPos = -1L
+        }
+    }
+
     override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
         if (position < 0 || offset < 0 || size < 0 || offset + size > buffer.size) {
             return -1

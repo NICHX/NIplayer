@@ -987,6 +987,26 @@ class PlayerViewModel @Inject constructor(
 
     // endregion
 
+    // ---------- 拖动预览取帧（状态必须在 init 之前声明） ----------
+    //
+    // init 里会消费首个播放请求（applyPlaybackRequest → resetSeekPreview → clearSeekPreview），
+    // 而 Kotlin 按声明顺序初始化属性：若这些字段声明在 init 之后，构造期它们仍为 null，
+    // 会在 clearSeekPreview 里 NPE（曾导致播放器 Activity 一启动就崩）。
+
+    /** 拖动进度条 / 横滑快进时的预览帧；null 表示无预览。 */
+    private val _seekPreview = MutableStateFlow<Bitmap?>(null)
+    val seekPreview: StateFlow<Bitmap?> = _seekPreview.asStateFlow()
+
+    private var seekPreviewJob: Job? = null
+
+    /**
+     * 待取帧位置；-1 表示当前无请求。
+     *
+     * [Volatile]：手势在主线程高频写入，取帧协程在 IO 线程读取。
+     */
+    @Volatile
+    private var pendingPreviewMs: Long = -1L
+
     init {
         // F-01：从持久化设置恢复音调保持开关
         player.setPitchPreservationEnabled(PlayerSettings.pitchPreservationEnabled)
@@ -1115,6 +1135,8 @@ class PlayerViewModel @Inject constructor(
         // 提前设置 currentHistory，让 loadAudioCover() 能正常获取 history
         request.history?.let { history ->
             currentHistory = history
+            // 换片：清掉上一部片子的预览帧与取帧会话（会话按 storageId+path 复用，不换会串片）
+            resetSeekPreview()
         }
 
         if (request.isAudio) {
@@ -1466,6 +1488,8 @@ class PlayerViewModel @Inject constructor(
                         fileSize = item.fileSize,
                         playlistId = currentHistory?.playlistId,
                     ).also {
+                        // 连播切集：清掉上一集的预览帧与取帧会话
+                        resetSeekPreview()
                     }
 
                     isAudioPlayback = false
@@ -1597,39 +1621,36 @@ class PlayerViewModel @Inject constructor(
 
     // region 拖动预览取帧
 
-    /** 拖动进度条 / 横滑快进时的预览帧；null 表示无预览。 */
-    private val _seekPreview = MutableStateFlow<Bitmap?>(null)
-    val seekPreview: StateFlow<Bitmap?> = _seekPreview.asStateFlow()
-
-    private var seekPreviewJob: Job? = null
-
-    /**
-     * 待取帧位置；-1 表示当前无请求。
-     *
-     * [Volatile]：手势在主线程高频写入，取帧协程在 IO 线程读取。
-     */
-    @Volatile
-    private var pendingPreviewMs: Long = -1L
-
     /**
      * 请求在 [positionMs] 处取一帧预览。仅存储库播放（[HistoryDescriptor.storageId] 非空）支持。
      *
      * 拖动中位置高频变化，这里做「单飞 + 防抖」：同一时刻只有一个取帧任务，新请求只更新
      * [pendingPreviewMs]（latest-wins），短时间内的连续请求合并成一次。
      * 不做位置去重 —— 任何阈值都会让预览画面与目标时间对不上，而单飞本身就限住了取帧并发。
+     *
+     * 首帧**不等待防抖窗口**（否则每次起手都白等 90ms）；失败允许一次短延时重试
+     * （远程读抖动、被取消等瞬时失败不该让预览一直是空白）。
      */
     fun requestSeekPreview(positionMs: Long) {
         if (currentHistory?.storageId == null) return
         pendingPreviewMs = positionMs
         if (seekPreviewJob?.isActive == true) return
         seekPreviewJob = viewModelScope.launch {
+            var first = true
             while (true) {
                 // 防抖：合并拖动中高频请求，只取最新一次
-                delay(SEEK_PREVIEW_DEBOUNCE_MS)
+                if (!first) delay(SEEK_PREVIEW_DEBOUNCE_MS)
+                first = false
                 val target = pendingPreviewMs
                 if (target < 0L) break
                 pendingPreviewMs = -1L
-                val bitmap = extractPreviewBitmap(target) ?: continue
+                val bitmap = extractPreviewBitmap(target)
+                if (bitmap == null) {
+                    // 失败：等一个短窗口；期间若用户又移动了手指就再试一次，否则收工
+                    delay(SEEK_PREVIEW_RETRY_MS)
+                    if (pendingPreviewMs < 0L) break
+                    continue
+                }
                 _seekPreview.value = bitmap
             }
         }
@@ -1638,19 +1659,34 @@ class PlayerViewModel @Inject constructor(
     /**
      * 拖动结束：停止取帧，但**保留最后一帧** —— 让 OSD 收起前仍能看到目标帧，
      * 与 OSD 同步消失（OSD 隐藏时由 [clearSeekPreview] 一并清掉）。
+     *
+     * 同时打断正在解码的那一帧：远程高码率文件解一帧可能要数百毫秒到数秒，
+     * 继续跑完只会占着解码资源、拖慢松手后的真实 seek。
      */
     fun stopSeekPreview() {
         pendingPreviewMs = -1L
         seekPreviewJob?.cancel()
         seekPreviewJob = null
+        thumbnailManager.cancelPreviewFrame()
     }
 
-    /** 清空预览帧并停止取帧（OSD 收起时调用）。 */
+    /** 清空预览帧并停止取帧（OSD 收起时调用）；同时释放预览会话持有的远程连接。 */
     fun clearSeekPreview() {
         pendingPreviewMs = -1L
         seekPreviewJob?.cancel()
         seekPreviewJob = null
         _seekPreview.value = null
+        thumbnailManager.cancelPreviewFrame()
+        closeScope.launch { thumbnailManager.closePreviewSession() }
+    }
+
+    /**
+     * 换片时重置预览状态：清帧 + 关会话。
+     *
+     * 否则上一集的最后一帧会留在 [_seekPreview] 里，OSD 尚在的窗口内可能显示成新一集的预览。
+     */
+    private fun resetSeekPreview() {
+        clearSeekPreview()
     }
 
     /**
@@ -1662,7 +1698,8 @@ class PlayerViewModel @Inject constructor(
         val storageId = history.storageId ?: return null
         val path = history.storagePath ?: return null
         val fileName = _title.value.ifEmpty { history.url.substringAfterLast('/') }
-        val file = MediaSourceBuilder.createVirtualFile(path, fileName)
+        // 带上 fileSize：SMB/WebDAV 数据源要靠它定位，缺省时每帧都要多打一次 stat 往返
+        val file = MediaSourceBuilder.createVirtualFile(path, fileName, history.fileSize)
         val live = currentStorage
         // 不用 runCatching：内含 suspend 调用，会吞掉 CancellationException（detekt 会拦）
         return try {
@@ -2825,6 +2862,22 @@ class PlayerViewModel @Inject constructor(
         audioPlaybackManager.onPlaybackError = null
         audioPlaybackManager.onTrackChanged = null
 
+        // 预览取帧：停掉在途任务、释放帧与远程会话（会话持有 SMB/WebDAV 数据源与 ffmpeg 上下文）
+        pendingPreviewMs = -1L
+        seekPreviewJob?.cancel()
+        seekPreviewJob = null
+        _seekPreview.value = null
+        thumbnailManager.cancelPreviewFrame()
+        // viewModelScope 此刻已取消，用独立 IO scope 关闭（close 需等 native 解码锁）
+        closeScope.launch(NonCancellable) {
+            try {
+                thumbnailManager.closePreviewSession()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
+
         // 快照 HDR 标志（player.release() 会清空 mediaInfo）。
         // 非 HDR 才用 PixelCopy bitmap，HDR（DV/HDR10/HLG）一律走
         // generateThumbnailAtMs（API 34+ 由系统自动 tone map HDR→SDR，颜色正确）。
@@ -3000,3 +3053,12 @@ private const val SYNC_DELAY_MS = 3_000L
  * （网络源尤其吃不住），太大则预览帧跟不上手指。
  */
 private const val SEEK_PREVIEW_DEBOUNCE_MS = 90L
+
+/**
+ * 预览取帧失败后的重试间隔（ms）。
+ *
+ * 远程读取抖动、解码瞬时失败、被取消都可能让某一帧取不到；直接收工会让预览长时间空白。
+ * 但也不能死循环重试（文件确实取不到帧时会一直烧流量），故只在「等待期间用户又移动了手指」
+ * 时才重试，且间隔明显大于防抖窗口。
+ */
+private const val SEEK_PREVIEW_RETRY_MS = 250L

@@ -47,11 +47,14 @@ internal sealed interface FrameExtraction {
 internal class VideoFrameExtractor(private val context: Context) {
 
     /**
-     * ffmpeg 取帧失败（解不出任何帧）的文件路径集合（LRU，容量有限）。
+     * ffmpeg 取帧失败（解不出任何帧）的「存储源 + 文件路径」集合（LRU，容量有限）。
      *
      * 拖动预览会高频请求取帧；对某些超高码率 / 超长时间的文件，ffmpeg 往往要**读满一次网络读取预算**
      * 才能判定失败（实测 8K、近 30GB 的 MP4 耗时约 4s、读取 65MB）。记住这类文件后，后续预览直接
      * 走 retriever 兜底，避免每次拖动都重复这趟重读取。
+     *
+     * key 含 storageId：同一路径可能存在于多个存储源，只按 path 记会互相污染
+     * （把 A 源的失败结论套到 B 源同一路径的文件上）。
      */
     private val ffmpegUnsupported: MutableSet<String> = Collections.synchronizedSet(
         Collections.newSetFromMap(
@@ -62,6 +65,19 @@ internal class VideoFrameExtractor(private val context: Context) {
             },
         ),
     )
+
+    /** 预览取帧会话：复用数据源 + ffmpeg 解封装上下文（详见 [extractPreview]）。 */
+    private class PreviewSession(
+        val key: String,
+        val source: MediaDataSource,
+        val ffmpeg: FfmpegFrameDecoder.Session,
+    )
+
+    /** 当前预览会话；[Volatile] 因为取消/关闭可能在其它线程发起。 */
+    @Volatile
+    private var previewSession: PreviewSession? = null
+
+    private fun unsupportedKey(storageId: Int, path: String): String = "$storageId|$path"
 
     /** 按用户配置的取帧位置策略 [position] 取帧。 */
     suspend fun extract(
@@ -93,7 +109,7 @@ internal class VideoFrameExtractor(private val context: Context) {
         // 远程视频走 ffmpeg 本地软解（不占用系统取帧资源池），避免多路并发时撞上
         // 「Acquire metadata retriever resource timeout!!」（实测 MP4 曾因此单集耗 24s 且失败）；
         // 实测覆盖 mp4/mkv/ts/rmvb 等常见容器，失败才回退 MediaMetadataRetriever。
-        if (isRemote) {
+        if (isRemote && unsupportedKey(storage.library.id, file.path) !in ffmpegUnsupported) {
             extractRemoteViaFfmpeg(storage, file, position)?.let { bitmap ->
                 val scaled = scaleToMaxWidth(bitmap, ThumbnailManager.MAX_WIDTH)
                 if (scaled !== bitmap) bitmap.recycle()
@@ -180,7 +196,11 @@ internal class VideoFrameExtractor(private val context: Context) {
         if (!FfmpegFrameDecoder.isAvailable) return null
         val source = openMediaDataSource(storage, file) ?: return null
         val (startMs, fraction) = decodePosition(position)
-        return decodeWithFfmpeg(source, startMs, fraction)
+        return try {
+            decodeWithFfmpeg(source, startMs, fraction).frame?.bitmap
+        } finally {
+            closeQuietly(source)
+        }
     }
 
     /** 取帧位置 → ffmpeg 入参（startMs 或 fraction，二选一）。 */
@@ -190,37 +210,40 @@ internal class VideoFrameExtractor(private val context: Context) {
         ThumbnailFramePosition.POS_5S -> DEFAULT_FRAME_MS to -1.0
     }
 
+    /**
+     * ffmpeg 软解一帧（一次性：内部再 open/probe 一次）。
+     *
+     * 需要连续多次取帧（拖动预览）时改用 [extractPreview] —— 那里的常驻会话可复用解封装上下文。
+     *
+     * @return 解出的帧（已做 HDR 色调映射）与失败原因；[FfmpegDecodeResult.isUnsupported]
+     *   为真才代表「这个文件 ffmpeg 确实吃不下」，可记入不支持名单。
+     */
     private fun decodeWithFfmpeg(
         source: MediaDataSource,
         startMs: Long,
         fraction: Double,
         pickNearest: Boolean = false,
-    ): Bitmap? {
-        return try {
-            val decoded = FfmpegFrameDecoder.decodeFirstFrame(
-                source,
-                ThumbnailManager.MAX_WIDTH,
-                startMs,
-                fraction,
-                pickNearest,
-            ) ?: return null
-            // ffmpeg 直解出的是原始码值、**没有系统 tone map**，HDR 帧必须自行色调映射，
-            // 否则 HDR 片源的预览/缩略图会发暗或过曝（retriever 路径同样做了补偿）。
-            if (decoded.hdrKind != HDR_KIND_NONE) {
-                val mapped = applyHdrToneMapCompensation(decoded.bitmap, decoded.hdrKind)
-                if (mapped !== decoded.bitmap) decoded.bitmap.recycle()
-                mapped
-            } else {
-                decoded.bitmap
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "ffmpeg decode failed: ${e.message}")
-            null
-        } finally {
-            try {
-                source.close()
-            } catch (_: Exception) {
-            }
+    ): FfmpegDecodeResult {
+        val result = FfmpegFrameDecoder.decodeFirstFrame(
+            source,
+            ThumbnailManager.MAX_WIDTH,
+            startMs,
+            fraction,
+            pickNearest,
+        )
+        val frame = result.frame ?: return result
+        // ffmpeg 直解出的是原始码值、**没有系统 tone map**，HDR 帧必须自行色调映射，
+        // 否则 HDR 片源的预览/缩略图会发暗或过曝（retriever 路径同样做了补偿）。
+        if (frame.hdrKind == HDR_KIND_NONE) return result
+        val mapped = applyHdrToneMapCompensation(frame.bitmap, frame.hdrKind)
+        if (mapped !== frame.bitmap) frame.bitmap.recycle()
+        return result.copy(frame = frame.copy(bitmap = mapped))
+    }
+
+    private fun closeQuietly(source: MediaDataSource) {
+        try {
+            source.close()
+        } catch (_: Exception) {
         }
     }
 
@@ -239,13 +262,13 @@ internal class VideoFrameExtractor(private val context: Context) {
     }
 
     /**
-     * 在精确位置 [positionMs] 取帧（退出播放覆盖缩略图 / 拖动预览共用）。
+     * 在精确位置 [positionMs] 取帧（退出播放覆盖缩略图；拖动预览用 [extractPreview]）。
      *
-     * [exactFrame] = true（拖动预览）：要"精确到帧"——
+     * [exactFrame] = true：要"精确到帧"——
      * - 远程源走 ffmpeg 的 nearest 模式（取第一个不早于目标时刻的帧）；
      * - 本地源用 `OPTION_CLOSEST` 就近解码，且不掺 10%/50% 兜底位置。
      * 若走缩略图那套（ffmpeg 取窗口内最亮帧 / retriever `CLOSEST_SYNC` 只到关键帧），
-     * 预览画面会与目标时间对不上（长 GOP 甚至差数秒、场景切换处会跳到下一场景）。
+     * 画面会与目标时间对不上（长 GOP 甚至差数秒、场景切换处会跳到下一场景）。
      *
      * [exactFrame] = false（库缩略图）：保持"跳黑帧/关键帧"取向，画面稳定好看即可。
      */
@@ -258,31 +281,148 @@ internal class VideoFrameExtractor(private val context: Context) {
     ): FrameExtraction {
         val startedAt = SystemClock.elapsedRealtime()
         val isRemote = storage.library.mediaType != MediaType.LOCAL_STORAGE
-        if (isRemote && FfmpegFrameDecoder.isAvailable && file.path !in ffmpegUnsupported) {
+        val key = unsupportedKey(storage.library.id, file.path)
+        if (isRemote && FfmpegFrameDecoder.isAvailable && key !in ffmpegUnsupported) {
             val source = openMediaDataSource(storage, file)
             if (source != null) {
-                val bitmap = decodeWithFfmpeg(
-                    source,
-                    startMs = positionMs,
-                    fraction = -1.0,
-                    pickNearest = exactFrame,
-                )
-                if (bitmap != null) {
+                val decode = try {
+                    decodeWithFfmpeg(source, startMs = positionMs, fraction = -1.0, pickNearest = exactFrame)
+                } finally {
+                    closeQuietly(source)
+                }
+                val frame = decode.frame
+                if (frame != null) {
                     Log.d(
                         TAG,
                         "extractAt ok(ffmpeg${if (exactFrame) ",exact" else ""}): " +
                             "${file.name} ${SystemClock.elapsedRealtime() - startedAt}ms",
                     )
-                    return FrameExtraction.Ok(bitmap)
+                    return FrameExtraction.Ok(frame.bitmap)
                 }
-                // 解不出任何帧：记住该文件，后续直接走 retriever，不再重复这趟重读取
-                ffmpegUnsupported.add(file.path)
-                Log.w(TAG, "ffmpeg unsupported, fall back to retriever: ${file.name}")
+                // 只有「确实吃不下这个流」才记入名单：取消/网络抖动不在此列，
+                // 否则一次抖动就会让该文件在本次进程内永久退化成关键帧兜底。
+                if (decode.isUnsupported) {
+                    ffmpegUnsupported.add(key)
+                    Log.w(TAG, "ffmpeg unsupported, fall back to retriever: ${file.name}")
+                }
             }
         }
-        // retriever 兜底：只有本地才用「就近解码」（精确、且本地读取便宜）；
-        // 远程兜底一律只用关键帧 —— 就近解码要自关键帧向前解码到目标帧，对高码率远程文件会
-        // 读穿单次读取预算（实测 8K 远程 MP4 直接取不到帧），用关键帧才能稳定出图。
+        return extractViaRetriever(storage, file, positionMs, exactFrame, skipDurationCheck, startedAt)
+    }
+
+    /**
+     * 拖动进度条 / 横滑快进的实时预览取帧。
+     *
+     * 与 [extractAt] 的关键差异：远程源使用**常驻取帧会话**（[previewSession]）——
+     * 整个拖动过程只 open/probe 一次，之后每帧只做 seek + decode。一次性取帧每帧都要重新
+     * `avformat_open_input` + `find_stream_info`（远程还要重建连接、重新读索引），
+     * 单帧成本远高于 seek 本身，拖动时预览会明显跟不上手指。
+     *
+     * 会话按「存储源 + 路径」复用；切换文件或调用 [closePreviewSession] 时释放。
+     */
+    suspend fun extractPreview(storage: Storage, file: StorageFile, positionMs: Long): FrameExtraction {
+        val startedAt = SystemClock.elapsedRealtime()
+        val isRemote = storage.library.mediaType != MediaType.LOCAL_STORAGE
+        val key = unsupportedKey(storage.library.id, file.path)
+        if (isRemote && FfmpegFrameDecoder.isAvailable && key !in ffmpegUnsupported) {
+            val session = ensurePreviewSession(storage, file, key)
+            if (session != null) {
+                // 会话跨帧复用同一数据源：读取预算按「单帧」语义重置，否则长时间拖动
+                // 会在累计读到上限后中途失效（预览突然消失）
+                (session.source as? SmbMediaDataSource)?.resetReadBudget()
+                val decode = session.ffmpeg.decode(positionMs, pickNearest = true)
+                val frame = decode.frame
+                if (frame != null) {
+                    // 会话解出的帧同样要过 HDR 补偿
+                    val mapped = if (frame.hdrKind == HDR_KIND_NONE) {
+                        frame.bitmap
+                    } else {
+                        applyHdrToneMapCompensation(frame.bitmap, frame.hdrKind)
+                            .also { if (it !== frame.bitmap) frame.bitmap.recycle() }
+                    }
+                    Log.d(TAG, "extractPreview ok(session): ${file.name} ${SystemClock.elapsedRealtime() - startedAt}ms")
+                    return FrameExtraction.Ok(mapped)
+                }
+                // 用户已松手：本次结果作废，保留会话（下次拖动接着用）
+                if (decode.isCancelled) return FrameExtraction.Failed
+                // 其它失败：关掉会话（下次重新 open 一次），本次退回 retriever
+                closePreviewSessionInternal()
+                if (decode.isUnsupported) {
+                    ffmpegUnsupported.add(key)
+                    Log.w(TAG, "preview session unsupported, fall back to retriever: ${file.name}")
+                }
+            }
+        }
+        return extractViaRetriever(storage, file, positionMs, exactFrame = true, skipDurationCheck = false, startedAt = startedAt)
+    }
+
+    /**
+     * 打断正在进行的预览取帧（非阻塞，可从主线程调用）。
+     *
+     * 正在解的那一帧会尽快收手，把解码资源让给真实播放；不影响会话本身。
+     */
+    fun cancelPreviewFrame() {
+        previewSession?.ffmpeg?.cancel()
+    }
+
+    /** 关闭预览会话并释放其持有的数据源与解码器（幂等）。 */
+    fun closePreviewSession() {
+        closePreviewSessionInternal()
+    }
+
+    private fun closePreviewSessionInternal() {
+        val session = previewSession ?: return
+        previewSession = null
+        try {
+            // close 会等 native 侧解码锁；先 cancel 保证它尽快返回
+            session.ffmpeg.cancel()
+            session.ffmpeg.close()
+        } catch (_: Exception) {
+        }
+        closeQuietly(session.source)
+    }
+
+    /**
+     * 取得（必要时建立）预览会话。
+     *
+     * 建立失败时返回 null：容器/编码器不识别的情况记入不支持名单，后续直接走 retriever。
+     */
+    private suspend fun ensurePreviewSession(
+        storage: Storage,
+        file: StorageFile,
+        key: String,
+    ): PreviewSession? {
+        previewSession?.let { if (it.key == key) return it }
+        closePreviewSessionInternal()
+        val source = openMediaDataSource(storage, file) ?: return null
+        val opened = FfmpegFrameDecoder.openSession(source, ThumbnailManager.MAX_WIDTH)
+        val session = opened.session
+        if (session == null) {
+            closeQuietly(source)
+            if (opened.error == FfmpegFrameDecoder.ERR_UNSUPPORTED) {
+                ffmpegUnsupported.add(key)
+                Log.w(TAG, "ffmpeg session unsupported, fall back to retriever: ${file.name}")
+            }
+            return null
+        }
+        Log.d(TAG, "preview session opened: ${file.name}")
+        return PreviewSession(key, source, session).also { previewSession = it }
+    }
+
+    /**
+     * retriever 兜底取帧：只有本地才用「就近解码」（精确、且本地读取便宜）；
+     * 远程兜底一律只用关键帧 —— 就近解码要自关键帧向前解码到目标帧，对高码率远程文件会
+     * 读穿单次读取预算（实测 8K 远程 MP4 直接取不到帧），用关键帧才能稳定出图。
+     */
+    private suspend fun extractViaRetriever(
+        storage: Storage,
+        file: StorageFile,
+        positionMs: Long,
+        exactFrame: Boolean,
+        skipDurationCheck: Boolean,
+        startedAt: Long,
+    ): FrameExtraction {
+        val isRemote = storage.library.mediaType != MediaType.LOCAL_STORAGE
         val localExact = exactFrame && !isRemote
         val option = if (localExact) {
             MediaMetadataRetriever.OPTION_CLOSEST

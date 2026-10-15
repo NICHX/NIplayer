@@ -2048,6 +2048,26 @@ fun PlayerScreen(
                     bottomEntryIds = bottomEntryIds,
                     ctrlButton = { id -> ctrlButtonUnit(id) },
                     previewFraction = seekPreviewFraction,
+                    onSeekPreview = { ms ->
+                        // 拖动进度条：复用横滑那套实时预览（居中 OSD + 画面卡），
+                        // 拖动期间只取帧不下发 seek，松手才由 onSeek 落点。
+                        seekDragging = true
+                        val maxPos = durationMs.coerceAtLeast(1L)
+                        val target = ms.coerceIn(0L, maxPos)
+                        val delta = target - viewModel.nxPlayer.positionMs.value
+                        seekOsdForward = delta >= 0
+                        seekOsdText = buildString {
+                            append(formatDuration(target))
+                            append('\n')
+                            append(if (delta >= 0) "+" else "-")
+                            append(formatDuration(abs(delta)))
+                        }
+                        viewModel.requestSeekPreview(target)
+                    },
+                    onSeekPreviewEnd = {
+                        seekDragging = false
+                        viewModel.stopSeekPreview()
+                    },
                 )
             }
         }
@@ -2247,6 +2267,8 @@ fun PlayerScreen(
                 deltaText = text.substringAfter('\n', ""),
                 previewFlow = viewModel.seekPreview,
                 modifier = Modifier.align(Alignment.Center),
+                // 预览卡按实际片源宽高比渲染，避免竖屏/宽银幕片源在 16:9 里留大黑边
+                aspectRatio = videoSize.takeIf { it.isValid }?.aspectRatio ?: (16f / 9f),
             )
         }
 
