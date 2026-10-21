@@ -1,7 +1,11 @@
 package com.nichx.niplayer.database.backup
 
+import androidx.room.withTransaction
 import com.nichx.niplayer.common.backup.BackupItem
+import com.nichx.niplayer.common.backup.DatabaseBackupItem
+import com.nichx.niplayer.common.backup.RestoreContext
 import com.nichx.niplayer.common.backup.RestoreMode
+import com.nichx.niplayer.database.NiplayerDatabase
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import org.json.JSONObject
@@ -11,9 +15,8 @@ import javax.inject.Singleton
 /**
  * 备份编排器（v2 架构）。
  *
- * 不再硬编码备份项清单，而是通过 Hilt 多绑定注入所有 [BackupItem]，
- * 仅负责组装 / 分发 / 版本兼容。新增备份项只需新建 BackupItem 子类 + @IntoSet 注册，
- * 本类无需改动（开闭原则）。
+ * 通过 Hilt 多绑定注入所有 [BackupItem]，仅负责组装 / 校验 / 分发 / 版本兼容。
+ * 新增备份项只需新建实现类 + @IntoSet 注册，本类无需改动（开闭原则）。
  *
  * 备份文件结构（v2）：
  * ```json
@@ -28,7 +31,13 @@ import javax.inject.Singleton
  *   }
  * }
  * ```
- * payload 内每个 key 对应一个 [BackupItem.key]，值为其 [BackupItem.snapshot] 返回的松散对象。
+ *
+ * ## 恢复流程（两阶段）
+ * 1. **校验**：把所有已知项解码一遍，任何一项失败即中止，不写任何数据；
+ * 2. **应用**：所有 [DatabaseBackupItem] 按 [BackupItem.restoreOrder] 在**同一个 Room 事务**内
+ *    恢复（存储源 → 扩展目录 → 加密文件夹 → 快速访问），事务提交后再写 MMKV 设置。
+ *
+ * 恢复模式与业务身份对账见 [BackupTable] / [planMerge]。
  *
  * v1 → v2 兼容：旧版备份是平铺字段（mediaLibraries/lrcApiUrl/appSettings 在顶层），
  * 导入时检测 version==1，把顶层字段搬到 payload 内，并把 lrcApiUrl/lrcApiAuth/assrtToken
@@ -36,6 +45,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class BackupManager @Inject constructor(
+    private val db: NiplayerDatabase,
     private val items: Set<@JvmSuppressWildcards BackupItem>,
 ) {
     private val payloadAdapter = Moshi.Builder().build()
@@ -47,17 +57,27 @@ class BackupManager @Inject constructor(
             ),
         )
 
+    private val databaseItems: List<DatabaseBackupItem>
+        get() = items.filterIsInstance<DatabaseBackupItem>()
+
+    private val nonDatabaseItems: List<BackupItem>
+        get() = items.filterNot { it is DatabaseBackupItem }
+
     /**
      * 导出用户数据为 JSON 字符串。
      *
-     * 遍历所有 [BackupItem]，收集非 null 快照，组装为 v2 备份结构。
-     * 返回的 [snapshot] 为 null 的项不包含在 payload 中（导出时跳过）。
+     * 数据库表在同一个读事务内取快照，避免并发写入导致「半新半旧」；
+     * 返回 null 的项不写入 payload。
      */
     suspend fun exportToJson(): String {
-        val payload = linkedMapOf<String, Any?>()
-        for (item in items.sortedBy { it.key }) {
-            val snapshot = item.snapshot() ?: continue
-            payload[item.key] = snapshot
+        val payload = sortedMapOf<String, Any?>()
+        db.withTransaction {
+            for (item in databaseItems.sortedBy { it.key }) {
+                item.snapshot()?.let { payload[item.key] = it }
+            }
+        }
+        for (item in nonDatabaseItems.sortedBy { it.key }) {
+            item.snapshot()?.let { payload[item.key] = it }
         }
         val root = linkedMapOf<String, Any?>(
             "version" to BACKUP_VERSION,
@@ -71,18 +91,18 @@ class BackupManager @Inject constructor(
      * 从 JSON 字符串恢复数据。
      *
      * @param json 备份文件内容
-     * @param mode 恢复模式：REPLACE 清空后重插（还原）/ MERGE 按主键合并（迁移）
-     * @return 恢复摘要列表，每项对应一个有数据的 BackupItem
+     * @param mode 恢复模式：MERGE 按业务身份合并（本机独有保留）；REPLACE 镜像到备份状态
+     * @return 恢复摘要与告警，供 UI 展示
+     * @throws IllegalArgumentException 备份结构无效 / 版本不支持 / 任一备份项解码失败
      */
     suspend fun importFromJson(
         json: String,
-        mode: RestoreMode = RestoreMode.REPLACE,
+        mode: RestoreMode = RestoreMode.MERGE,
     ): BackupSummary {
-        @Suppress("UNCHECKED_CAST")
-        val root = payloadAdapter.fromJsonValue(
+        val root: Map<String, Any?> = payloadAdapter.fromJsonValue(
             // 用 org.json.JSONObject 解析以区分 v1/v2
             JSONObject(json).toMap(),
-        ) as? Map<String, Any?> ?: throw IllegalArgumentException("无效的备份文件")
+        ) ?: throw IllegalArgumentException("无效的备份文件")
 
         val version = (root["version"] as? Number)?.toInt()
             ?: throw IllegalArgumentException("备份文件缺少版本号")
@@ -104,16 +124,41 @@ class BackupManager @Inject constructor(
             throw IllegalArgumentException("备份文件为空或内容无效")
         }
 
-        // 按 BackupItem 的 key 分发恢复，并收集摘要
+        val ctx = RestoreContext(mode)
         val itemByKey = items.associateBy { it.key }
-        val descriptions = mutableListOf<String>()
+        val entries = mutableListOf<Entry>()
         for ((key, data) in payload) {
-            val item = itemByKey[key] ?: continue // 未知 key（未来版本或已移除的项）跳过
-            item.restore(data, mode)
-            item.describe(data)?.let { descriptions.add(it) }
+            val item = itemByKey[key]
+            if (item == null) {
+                // 已下线的历史备份项（如 v1 的视频书签）静默跳过；其余未知项提示用户
+                if (key !in LEGACY_IGNORED_KEYS) ctx.warn("忽略未知备份项：$key")
+                continue
+            }
+            entries += Entry(key, item, data)
         }
 
-        return BackupSummary(descriptions)
+        // 阶段 1：全部解码校验，任何一项失败都不会产生写入
+        entries.forEach { it.item.validate(it.data) }
+
+        // 阶段 2a：数据库项统一事务，按依赖顺序恢复
+        val dbEntries = entries
+            .filter { it.item is DatabaseBackupItem }
+            .sortedWith(compareBy({ it.item.restoreOrder }, { it.key }))
+        db.withTransaction {
+            dbEntries.forEach { it.item.restore(it.data, ctx) }
+        }
+
+        // 阶段 2b：设置项在数据库提交后写入，并做库 id 重映射
+        entries
+            .filterNot { it.item is DatabaseBackupItem }
+            .sortedBy { it.key }
+            .forEach { entry ->
+                runCatching { entry.item.restore(entry.data, ctx) }
+                    .onFailure { ctx.warn("${entry.key} 恢复失败：${it.message ?: "未知错误"}") }
+            }
+
+        val descriptions = entries.mapNotNull { it.item.describe(it.data) }
+        return BackupSummary(descriptions, ctx.warnings)
     }
 
     /**
@@ -152,15 +197,29 @@ class BackupManager @Inject constructor(
         return payload
     }
 
+    private data class Entry(
+        val key: String,
+        val item: BackupItem,
+        val data: Any?,
+    )
+
     private companion object {
         const val BACKUP_VERSION = 2
+
+        /** 历史上存在、现已下线的备份 key：恢复时静默跳过，不打扰用户。 */
+        val LEGACY_IGNORED_KEYS = setOf("videoBookmarks")
     }
 }
 
-/** 备份摘要，供 UI 展示恢复结果。 */
+/**
+ * 备份摘要，供 UI 展示恢复结果。
+ *
+ * @param descriptions 各备份项的人类可读摘要（如 "存储源: 3 条"、"快速访问: 5 条"）
+ * @param warnings 跳过项 / 需用户注意的提示（未知 key、引用缺失、设置写入失败等）
+ */
 data class BackupSummary(
-    /** 各备份项的人类可读摘要（如 "存储源: 3 条"、"歌单: 2 个 (15 首曲目)"）。 */
     val descriptions: List<String>,
+    val warnings: List<String> = emptyList(),
 )
 
 /** JSONObject 转 Map<String, Any?> 的扩展（org.json 递归转 Moshi 松散对象）。 */

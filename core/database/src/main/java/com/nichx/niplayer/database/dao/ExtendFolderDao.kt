@@ -29,10 +29,6 @@ interface ExtendFolderDao {
     @Query("DELETE FROM extend_folder WHERE folder_path = (:folderPath)")
     suspend fun delete(folderPath: String)
 
-    /** 清空全表，用于恢复前清库。 */
-    @Query("DELETE FROM extend_folder")
-    suspend fun deleteAll()
-
     /** 获取自 [sinceTimestamp] 之后新增或更新的记录（按 updated_at 升序）。用于增量同步。 */
     @Query("SELECT * FROM extend_folder WHERE updated_at > :sinceTimestamp ORDER BY updated_at ASC")
     suspend fun getChangesSince(sinceTimestamp: Long): List<ExtendFolderEntity>

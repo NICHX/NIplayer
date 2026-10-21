@@ -53,10 +53,6 @@ interface QuickAccessDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: QuickAccessEntity)
 
-    /** 批量插入，用于恢复导入。 */
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(entities: List<QuickAccessEntity>)
-
     /**
      * 批量刷新排序序号。拖拽完成后按新顺序逐项传入 (id, newSortIndex)，
      * 在单个事务内批量更新，避免列表抖动与部分落库。
@@ -78,10 +74,6 @@ interface QuickAccessDao {
 
     @Query("DELETE FROM quick_access WHERE library_id = (:libraryId)")
     suspend fun deleteByLibrary(libraryId: Int)
-
-    /** 清空全表，用于恢复前清库。 */
-    @Query("DELETE FROM quick_access")
-    suspend fun deleteAll()
 
     /** 获取自 [sinceTimestamp] 之后新增或更新的记录（按 updated_at 升序）。用于增量同步。 */
     @Query("SELECT * FROM quick_access WHERE updated_at > :sinceTimestamp ORDER BY updated_at ASC")

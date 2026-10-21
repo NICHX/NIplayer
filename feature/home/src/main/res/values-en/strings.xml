@@ -104,14 +104,14 @@
     <string name="backup_restore_done_title">Restore complete</string>
     <string name="backup_restore_done_body">Settings have been restored</string>
     <string name="backup_history_untouched">Play history was not affected</string>
-    <string name="backup_failed">Backup failed: %1$s</string>
+    <string name="backup_restore_failed_title">Restore failed</string>
     <string name="backup_exported_to">Exported to “%1$s”</string>
     <string name="backup_webdav_failed">WebDAV operation failed: %1$s</string>
     <string name="backup_load_failed">Failed to read backup: %1$s</string>
     <string name="backup_webdav_restore_failed">Failed to restore from server: %1$s</string>
-    <string name="backup_restore_failed">Restore failed: %1$s</string>
-    <string name="backup_restore_confirm_body">This will restore all app settings from the selected file, including media libraries, quick access, extended folders, encrypted folders, playlists and tracks, and theme/player/subtitle/equalizer/thumbnail/file browser settings. Default merge mode: backup items overwrite same-key entries while local-only data is kept. Play history is not affected. This action cannot be undone. Continue?</string>
-    <string name="backup_webdav_restore_confirm_body">This will download “%1$s” from the server and restore all app settings, including media libraries, quick access, extended folders, encrypted folders, playlists and tracks, and theme/player/subtitle/equalizer/thumbnail/file browser settings. Default merge mode: backup items overwrite same-key entries while local-only data is kept. Play history is not affected. This action cannot be undone. Continue?</string>
+    <string name="backup_restore_confirm_body">This will restore media libraries, quick access, extended folders, encrypted folders, and all app settings (theme/player/subtitle/equalizer/thumbnail/file browser) from the selected file.\n\nDefault merge mode: entries are matched by storage address and path; backup entries overwrite the same item while local-only data is kept.\n\nPlay history is not affected. This action cannot be undone. Continue?</string>
+    <string name="backup_webdav_restore_confirm_body">This will download “%1$s” from the server and restore media libraries, quick access, extended folders, encrypted folders, and all app settings (theme/player/subtitle/equalizer/thumbnail/file browser).\n\nDefault merge mode: entries are matched by storage address and path; backup entries overwrite the same item while local-only data is kept.\n\nPlay history is not affected. This action cannot be undone. Continue?</string>
+    <string name="backup_restore_warnings">Some items were skipped or need attention:</string>
     <string name="backup_last_sync_success">Last synced: %1$s</string>
     <string name="backup_last_sync_with_message">Last synced: %1$s (%2$s)</string>
     <string name="backup_error_create_dir">Cannot create backup directory: %1$s</string>
@@ -201,11 +201,14 @@
 
     <!-- Play history (PlayHistoryScreen / PlayHistoryViewModel) -->
     <string name="play_history_title">Play history</string>
-    <string name="play_history_resume">Resume</string>
-    <string name="play_history_delete_record">Delete record</string>
     <string name="play_history_clear_all">Clear all</string>
     <string name="play_history_clear_all_confirm">Clear all play history?</string>
     <string name="play_history_clear_history">Clear history</string>
+    <string name="play_history_delete_selected">Delete selected</string>
+    <string name="play_history_delete_selected_confirm">Delete %1$d selected entries? This cannot be undone.</string>
+    <string name="history_selected_count">%1$d selected</string>
+    <string name="history_select_all">Select all</string>
+    <string name="history_deselect_all">Deselect all</string>
     <string name="play_history_sync_failed">Sync failed</string>
     <string name="play_history_sync_success">Sync succeeded</string>
     <string name="play_history_sync_error_detail">An error occurred during sync. Check your network or storage settings then retry.</string>

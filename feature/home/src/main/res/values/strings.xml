@@ -104,14 +104,14 @@
     <string name="backup_restore_done_title">恢复完成</string>
     <string name="backup_restore_done_body">配置已恢复</string>
     <string name="backup_history_untouched">历史记录未受影响</string>
-    <string name="backup_failed">备份失败：%1$s</string>
+    <string name="backup_restore_failed_title">恢复失败</string>
     <string name="backup_exported_to">已导出到「%1$s」</string>
     <string name="backup_webdav_failed">WebDAV 操作失败：%1$s</string>
     <string name="backup_load_failed">读取备份失败：%1$s</string>
     <string name="backup_webdav_restore_failed">从服务器恢复失败：%1$s</string>
-    <string name="backup_restore_failed">恢复失败：%1$s</string>
-    <string name="backup_restore_confirm_body">将从所选文件恢复存储源、快速访问、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图等全部应用设置。默认合并模式：备份覆盖同主键项，本机独有数据保留。播放历史不受影响。此操作不可撤销，是否继续？</string>
-    <string name="backup_webdav_restore_confirm_body">将从服务器下载备份文件「%1$s」并恢复存储源、快速访问、扩展目录、加密文件夹、歌单及曲目、主题/播放器/字幕/均衡器/缩略图等全部应用设置。默认合并模式：备份覆盖同主键项，本机独有数据保留。播放历史不受影响。此操作不可撤销，是否继续？</string>
+    <string name="backup_restore_confirm_body">将从所选文件恢复存储源、快速访问、扩展目录、加密文件夹，以及主题/播放器/字幕/均衡器/缩略图等全部应用设置。\n\n默认合并模式：按存储源地址与路径合并，备份覆盖同项，本机独有数据保留。\n\n播放历史不受影响。此操作不可撤销，是否继续？</string>
+    <string name="backup_webdav_restore_confirm_body">将从服务器下载备份文件「%1$s」并恢复存储源、快速访问、扩展目录、加密文件夹，以及主题/播放器/字幕/均衡器/缩略图等全部应用设置。\n\n默认合并模式：按存储源地址与路径合并，备份覆盖同项，本机独有数据保留。\n\n播放历史不受影响。此操作不可撤销，是否继续？</string>
+    <string name="backup_restore_warnings">以下项目已跳过或需注意：</string>
     <string name="backup_last_sync_success">上次同步成功：%1$s</string>
     <string name="backup_last_sync_with_message">上次同步：%1$s（%2$s）</string>
     <string name="backup_error_create_dir">无法创建备份目录：%1$s</string>
@@ -201,11 +201,14 @@
 
     <!-- 播放历史（PlayHistoryScreen / PlayHistoryViewModel） -->
     <string name="play_history_title">播放历史</string>
-    <string name="play_history_resume">继续播放</string>
-    <string name="play_history_delete_record">删除记录</string>
     <string name="play_history_clear_all">清空全部</string>
     <string name="play_history_clear_all_confirm">确定清空全部播放历史？</string>
     <string name="play_history_clear_history">清空历史</string>
+    <string name="play_history_delete_selected">删除所选</string>
+    <string name="play_history_delete_selected_confirm">确定删除选中的 %1$d 条播放记录？此操作不可撤销。</string>
+    <string name="history_selected_count">已选 %1$d 项</string>
+    <string name="history_select_all">全选</string>
+    <string name="history_deselect_all">取消全选</string>
     <string name="play_history_sync_failed">同步失败</string>
     <string name="play_history_sync_success">同步成功</string>
     <string name="play_history_sync_error_detail">同步过程中发生错误，请检查网络或存储配置后重试</string>

@@ -42,8 +42,4 @@ interface EncryptedFolderDao {
 
     @Query("DELETE FROM encrypted_folder WHERE storage_id = :storageId")
     suspend fun deleteByStorageId(storageId: Int)
-
-    /** 清空全表，用于恢复导入前清库。 */
-    @Query("DELETE FROM encrypted_folder")
-    suspend fun deleteAll()
 }

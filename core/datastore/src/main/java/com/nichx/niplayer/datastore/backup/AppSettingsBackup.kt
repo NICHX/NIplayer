@@ -1,7 +1,7 @@
 package com.nichx.niplayer.datastore.backup
 
 import com.nichx.niplayer.common.backup.BackupItem
-import com.nichx.niplayer.common.backup.RestoreMode
+import com.nichx.niplayer.common.backup.RestoreContext
 import com.nichx.niplayer.datastore.AudioPlayerStyle
 import com.nichx.niplayer.datastore.AudioSettings
 import com.nichx.niplayer.datastore.DownloadSettings
@@ -42,7 +42,9 @@ import javax.inject.Inject
  * 序列化采用 Moshi 原生 [JsonAdapter.toJsonValue] / [JsonAdapter.fromJsonValue] 模式
  * （基于 [Any] 松散对象），不依赖 JsonElement DOM（Moshi 1.15.2 不提供该 API）。
  *
- * 恢复语义：MMKV 设置均为"有就覆盖，没有就保留"，[RestoreMode] 对本项无影响。
+ * 恢复语义：MMKV 设置均为"有就覆盖，没有就保留"，恢复模式对本项无影响。
+ * 涉及存储源自增 id 的设置（缩略图按库配置、播放历史同步服务器）通过
+ * [RestoreContext] 的 id 映射换成本机 id，映射缺失时跳过并记录告警。
  */
 class AppSettingsBackup @Inject constructor() : BackupItem {
 
@@ -129,7 +131,11 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         return adapter.toJsonValue(data)
     }
 
-    override suspend fun restore(data: Any?, mode: RestoreMode) {
+    override fun validate(data: Any?) {
+        if (data != null) adapter.fromJsonValue(data)
+    }
+
+    override suspend fun restore(data: Any?, ctx: RestoreContext) {
         // mode 对 MMKV 设置无影响：设置都是"有就覆盖，没有就保留"
         if (data == null) return
         val s: AppSettingsData = adapter.fromJsonValue(data) ?: return
@@ -184,11 +190,21 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.thumbnailGenerationModeKey?.let { key ->
             ThumbnailSettings.generationMode = ThumbnailGenerationMode.fromKey(key)
         }
-        s.thumbnailLibraryModes?.forEach { (libId, key) ->
-            ThumbnailSettings.setLibraryGenerationMode(libId, ThumbnailGenerationMode.fromKey(key))
+        s.thumbnailLibraryModes?.forEach { (backupLibraryId, key) ->
+            val localId = ctx.mapLibraryId(backupLibraryId)
+            if (localId == null) {
+                ctx.warn("缩略图设置：存储源 #$backupLibraryId 不在备份中，已跳过")
+            } else {
+                ThumbnailSettings.setLibraryGenerationMode(localId, ThumbnailGenerationMode.fromKey(key))
+            }
         }
-        s.thumbnailLibraryWriteBacks?.forEach { (libId, enabled) ->
-            ThumbnailSettings.setLibraryWriteBack(libId, enabled)
+        s.thumbnailLibraryWriteBacks?.forEach { (backupLibraryId, enabled) ->
+            val localId = ctx.mapLibraryId(backupLibraryId)
+            if (localId == null) {
+                ctx.warn("缩略图回写设置：存储源 #$backupLibraryId 不在备份中，已跳过")
+            } else {
+                ThumbnailSettings.setLibraryWriteBack(localId, enabled)
+            }
         }
         // 文件浏览
         s.fileSortBy?.let { FileBrowserSettings.setSortBy(FileBrowserSettings.SortBy.fromValue(it)) }
@@ -211,12 +227,18 @@ class AppSettingsBackup @Inject constructor() : BackupItem {
         s.downloadDirPath?.let { DownloadSettings.downloadDirPath = it }
         s.downloadDirName?.let { DownloadSettings.downloadDirName = it }
         s.downloadLrcWithAudio?.let { DownloadSettings.downloadLrcWithAudio = it }
-        // 播放历史云同步：恢复开关与所选服务器，并重新生成设备标识
+        // 播放历史云同步：恢复开关与所选服务器。
+        // deviceId 不随备份恢复也不重置：设备标识是本机的，新设备本身就还没有标识；
+        // 在旧设备上重置只会破坏云备份文件名前缀与增量同步游标。
         s.historySyncEnabled?.let { PlayHistorySyncSettings.enabled = it }
         s.historySyncAutoSync?.let { PlayHistorySyncSettings.autoSync = it }
-        if (s.historySyncLibraryId != null) {
-            WebDavSettings.setLibraryId(s.historySyncLibraryId)
-            PlayHistorySyncSettings.resetDeviceId()
+        s.historySyncLibraryId?.let { backupLibraryId ->
+            val localId = ctx.mapLibraryId(backupLibraryId)
+            if (localId == null) {
+                ctx.warn("播放历史同步：服务器 #$backupLibraryId 不在备份中，已保留本机选择")
+            } else {
+                WebDavSettings.setLibraryId(localId)
+            }
         }
         // Assrt 字幕 token（仅非空时覆盖）
         s.assrtToken?.let { if (it.isNotBlank()) SubtitleSettings.assrtToken = it }

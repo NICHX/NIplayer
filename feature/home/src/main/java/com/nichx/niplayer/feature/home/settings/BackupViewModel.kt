@@ -41,7 +41,9 @@ sealed interface BackupUiState {
     data object Working : BackupUiState
     data class ExportSuccess(val message: String) : BackupUiState
     data class ImportSuccess(val summary: BackupSummary) : BackupUiState
-    data class Error(val message: String) : BackupUiState
+
+    /** @param title 弹窗标题（备份失败 / 恢复失败），与具体错误信息分开排版 */
+    data class Error(val title: String, val message: String) : BackupUiState
 }
 
 @HiltViewModel
@@ -129,15 +131,20 @@ class BackupViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = BackupUiState.Working
             try {
-                val json = backupManager.exportToJson()
-                val output = resolver.openOutputStream(uri)
-                    ?: throw IllegalStateException(context.getString(R.string.backup_error_open_target))
-                output.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+                withContext(Dispatchers.IO) {
+                    val json = backupManager.exportToJson()
+                    val output = resolver.openOutputStream(uri)
+                        ?: throw IllegalStateException(context.getString(R.string.backup_error_open_target))
+                    output.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+                }
                 _state.value = BackupUiState.ExportSuccess(context.getString(R.string.backup_export_success))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = BackupUiState.Error(context.getString(R.string.backup_failed, e.toUserMessage(context)))
+                _state.value = BackupUiState.Error(
+                    title = context.getString(R.string.backup_failed_title),
+                    message = e.toUserMessage(context),
+                )
             }
         }
     }
@@ -149,8 +156,8 @@ class BackupViewModel @Inject constructor(
             try {
                 val library = _webDavLibraries.value.firstOrNull { it.id == libraryId }
                     ?: throw IllegalStateException(context.getString(R.string.backup_error_webdav_not_found))
-                val json = backupManager.exportToJson()
                 withContext(Dispatchers.IO) {
+                    val json = backupManager.exportToJson()
                     val storage = storageFactory.create(library)
                         ?: throw IllegalStateException(context.getString(R.string.backup_error_connect_webdav))
                     try {
@@ -178,7 +185,10 @@ class BackupViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "WebDAV 备份失败", e)
-                _state.value = BackupUiState.Error(context.getString(R.string.backup_webdav_failed, e.toUserMessage(context)))
+                _state.value = BackupUiState.Error(
+                    title = context.getString(R.string.backup_failed_title),
+                    message = context.getString(R.string.backup_webdav_failed, e.toUserMessage(context)),
+                )
             }
         }
     }
@@ -258,13 +268,17 @@ class BackupViewModel @Inject constructor(
                         input.readBytes().toString(Charsets.UTF_8)
                     }
                 }
-                val summary = backupManager.importFromJson(json, mode)
+                val summary = withContext(Dispatchers.IO) { backupManager.importFromJson(json, mode) }
+                refreshAfterRestore()
                 _state.value = BackupUiState.ImportSuccess(summary)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "WebDAV 恢复失败", e)
-                _state.value = BackupUiState.Error(context.getString(R.string.backup_webdav_restore_failed, e.toUserMessage(context)))
+                _state.value = BackupUiState.Error(
+                    title = context.getString(R.string.backup_restore_failed_title),
+                    message = context.getString(R.string.backup_webdav_restore_failed, e.toUserMessage(context)),
+                )
             }
         }
     }
@@ -273,17 +287,49 @@ class BackupViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = BackupUiState.Working
             try {
-                val json = resolver.openInputStream(uri)?.use { input ->
-                    input.readBytes().toString(Charsets.UTF_8)
-                } ?: throw IllegalStateException(context.getString(R.string.backup_error_read_file))
-                val summary = backupManager.importFromJson(json, mode)
+                val summary = withContext(Dispatchers.IO) {
+                    val json = resolver.openInputStream(uri)?.use { input ->
+                        input.readBytes().toString(Charsets.UTF_8)
+                    } ?: throw IllegalStateException(context.getString(R.string.backup_error_read_file))
+                    backupManager.importFromJson(json, mode)
+                }
+                refreshAfterRestore()
                 _state.value = BackupUiState.ImportSuccess(summary)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = BackupUiState.Error(context.getString(R.string.backup_restore_failed, e.toUserMessage(context)))
+                _state.value = BackupUiState.Error(
+                    title = context.getString(R.string.backup_restore_failed_title),
+                    message = e.toUserMessage(context),
+                )
             }
         }
+    }
+
+    /**
+     * 恢复后刷新界面缓存。
+     *
+     * 恢复会改存储源表（跨设备时 id 会变），因此 WebDAV 卡片与云备份文件列表必须重新读取；
+     * 其余设置（主题 / 语言 / 玻璃等）由各自 StateFlow 自动生效。
+     */
+    private suspend fun refreshAfterRestore() {
+        val libs = mediaLibraryDao.getByMediaTypeSuspend(MediaType.WEBDAV_SERVER)
+        _webDavLibraries.value = libs
+        _webDavBackupFiles.value = emptyList()
+        _webDavBackupError.value = null
+
+        val saved = WebDavSettings.libraryId
+        when {
+            libs.any { it.id == saved } -> _selectedWebDavId.value = saved
+            libs.isNotEmpty() -> {
+                // 恢复后原选择失效：落到第一台服务器，但不改「云同步开关」等恢复出来的设置
+                val first = libs.first().id
+                WebDavSettings.setLibraryId(first)
+                _selectedWebDavId.value = first
+            }
+            else -> _selectedWebDavId.value = WebDavSettings.libraryId
+        }
+        _selectedWebDavId.value.takeIf { it > 0 }?.let { loadWebDavBackupFiles(it) }
     }
 
     fun resetState() {

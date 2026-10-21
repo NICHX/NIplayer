@@ -42,9 +42,9 @@ interface MediaLibraryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(vararg entity: MediaLibraryEntity)
 
-    /** 批量插入，用于恢复导入。 */
+    /** 单行写入并返回本机 id，用于备份恢复时的 id 映射登记。 */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(entities: List<MediaLibraryEntity>)
+    suspend fun insertReturningId(entity: MediaLibraryEntity): Long
 
     @Query("DELETE FROM media_library WHERE url = (:url) AND media_type = (:mediaType)")
     @TypeConverters(MediaTypeConverter::class)
@@ -52,10 +52,6 @@ interface MediaLibraryDao {
 
     @Query("DELETE FROM media_library WHERE id = (:id)")
     suspend fun deleteById(id: Int)
-
-    /** 清空全表，用于恢复前清库。 */
-    @Query("DELETE FROM media_library")
-    suspend fun deleteAll()
 
     /** 获取自 [sinceTimestamp] 之后新增或更新的记录（按 updated_at 升序）。用于增量同步。 */
     @Query("SELECT * FROM media_library WHERE updated_at > :sinceTimestamp ORDER BY updated_at ASC")
