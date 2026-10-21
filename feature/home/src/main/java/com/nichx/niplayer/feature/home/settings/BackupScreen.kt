@@ -196,19 +196,17 @@ fun BackupScreen(
             )
             s is BackupUiState.ImportSuccess -> BackupDialogState.Result(
                 title = stringResource(R.string.backup_restore_done_title),
-                message = buildString {
-                    append(stringResource(R.string.backup_restore_done_body))
-                    if (s.summary.descriptions.isEmpty()) {
-                        append(stringResource(R.string.backup_no_data))
-                    } else {
-                        s.summary.descriptions.forEach { append(it).append('\n') }
-                        append(stringResource(R.string.backup_history_untouched))
-                    }
+                message = stringResource(R.string.backup_restore_done_body),
+                details = s.summary.descriptions.ifEmpty {
+                    listOf(stringResource(R.string.backup_no_data))
                 },
+                warnings = s.summary.warnings,
+                footer = stringResource(R.string.backup_history_untouched),
             )
             s is BackupUiState.Error -> BackupDialogState.Result(
-                title = stringResource(R.string.backup_failed_title),
+                title = s.title,
                 message = s.message,
+                isError = true,
             )
             else -> null
         }

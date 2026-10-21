@@ -9,19 +9,25 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -648,10 +655,24 @@ internal sealed interface BackupDialogState {
         override val title: String? get() = null
     }
 
-    /** 结果（成功或失败）。 */
+    /**
+     * 结果（成功或失败）。
+     *
+     * 文字不再拼成一大段，而是拆成四个可分别排版的层次：
+     * 状态说明 / 恢复摘要 / 跳过项告警 / 底部补充说明。
+     */
     data class Result(
         override val title: String,
+        /** 状态说明（成功如“配置已恢复”，失败为具体错误）。 */
         val message: String,
+        /** 恢复摘要，如 "存储源: 3 条"。 */
+        val details: List<String> = emptyList(),
+        /** 跳过项 / 需要用户注意的提示。 */
+        val warnings: List<String> = emptyList(),
+        /** 底部补充说明（如“播放历史未受影响”）。 */
+        val footer: String? = null,
+        /** true = 失败结果，使用错误色与错误图标。 */
+        val isError: Boolean = false,
     ) : BackupDialogState
 }
 
@@ -707,8 +728,9 @@ internal fun BackupDialogHost(
                     when (s) {
                         is BackupDialogState.ConfirmRestore -> Text(
                             text = s.message,
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 21.sp,
                         )
                         BackupDialogState.Working -> Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -726,10 +748,7 @@ internal fun BackupDialogHost(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        is BackupDialogState.Result -> Text(
-                            text = s.message,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+                        is BackupDialogState.Result -> BackupResultContent(s)
                     }
                 }
                 when (s) {
@@ -742,7 +761,8 @@ internal fun BackupDialogHost(
                         TextButton(onClick = { currentDismiss() }) {
                             Text(stringResource(R.string.cancel))
                         }
-                        TextButton(onClick = { currentConfirm() }) {
+                        Spacer(Modifier.size(4.dp))
+                        Button(onClick = { currentConfirm() }) {
                             Text(stringResource(R.string.restore))
                         }
                     }
@@ -763,6 +783,175 @@ internal fun BackupDialogHost(
     }
     DisposableEffect(Unit) {
         onDispose { NiGlassOverlay.dismiss(BACKUP_DIALOG_ID) }
+    }
+}
+
+/**
+ * 结果弹窗内容。
+ *
+ * 视觉层次：
+ * 1. 状态行：成功 / 失败图标 + 状态说明；
+ * 2. 恢复摘要：每项一行，左侧名称、右侧数量，放在半透明浅底容器里；
+ * 3. 告警：警告图标 + 标题 + 逐条要点，使用错误色；
+ * 4. 底部说明：分隔线 + 弱化文字（如“播放历史未受影响”）。
+ *
+ * 摘要与告警区域限高可滚动，避免长列表把弹窗顶出屏幕。
+ */
+@Composable
+private fun BackupResultContent(result: BackupDialogState.Result) {
+    val extraColors = NiExtraColors.current
+    val errorColor = MaterialTheme.colorScheme.error
+    val statusColor = if (result.isError) errorColor else extraColors.success
+    // 按屏幕高度限制可滚动区域：竖屏留足空间，横屏也不会溢出
+    val maxListHeight = (LocalConfiguration.current.screenHeightDp * 0.42f)
+        .coerceIn(140f, 320f)
+        .dp
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(
+                imageVector = if (result.isError) Icons.Filled.ErrorOutline else Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = statusColor,
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .size(20.dp),
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(
+                text = result.message,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                lineHeight = 20.sp,
+            )
+        }
+
+        if (result.details.isNotEmpty() || result.warnings.isNotEmpty()) {
+            Spacer(Modifier.size(12.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = maxListHeight)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                if (result.details.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                            .padding(horizontal = 12.dp, vertical = 2.dp),
+                    ) {
+                        result.details.forEach { detail ->
+                            BackupSummaryRow(detail)
+                        }
+                    }
+                }
+
+                if (result.warnings.isNotEmpty()) {
+                    if (result.details.isNotEmpty()) Spacer(Modifier.size(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.Warning,
+                            contentDescription = null,
+                            tint = errorColor,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        Text(
+                            text = stringResource(R.string.backup_restore_warnings),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = errorColor,
+                        )
+                    }
+                    result.warnings.forEach { warning ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Text(
+                                text = "•",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = errorColor,
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
+                            Text(
+                                text = warning,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 18.sp,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        result.footer?.let { footer ->
+            Spacer(Modifier.size(12.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Spacer(Modifier.size(8.dp))
+            Text(
+                text = footer,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * 单条恢复摘要：`存储源: 3 条` 拆成左右两列。
+ *
+ * 没有 `": "` 分隔的行（如“暂无备份数据”）按普通说明文字渲染，不显示勾选图标。
+ */
+@Composable
+private fun BackupSummaryRow(detail: String) {
+    val separator = detail.lastIndexOf(": ")
+    val label = if (separator > 0) detail.substring(0, separator) else detail
+    val value = if (separator > 0) detail.substring(separator + 2) else null
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (value != null) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = NiExtraColors.current.success,
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.size(8.dp))
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (value == null) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            modifier = Modifier.weight(1f),
+        )
+        if (value != null) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
