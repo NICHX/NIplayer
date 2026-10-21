@@ -1,7 +1,7 @@
 package com.nichx.niplayer.feature.home.history
 
 import com.nichx.niplayer.feature.home.R
-import androidx.compose.foundation.clickable
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -18,11 +18,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,7 +47,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nichx.niplayer.database.entity.PlayHistoryEntity
 import com.nichx.niplayer.designsystem.components.NiConfirmDialog
 import com.nichx.niplayer.designsystem.components.NiEmptyState
 import com.nichx.niplayer.common.error.NiMessage
@@ -75,7 +73,6 @@ fun PlayHistoryScreen(
     var activeFilter by remember {
         mutableStateOf(HistoryFilter.entries.getOrElse(initialFilterOrdinal) { HistoryFilter.ALL })
     }
-    var selectedItem by remember { mutableStateOf<PlayHistoryEntity?>(null) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     // 分组方式：false=按日期（默认），true=按文件夹聚合
     var groupByFolder by remember { mutableStateOf(false) }
@@ -92,6 +89,42 @@ fun PlayHistoryScreen(
         HistoryFilter.VIDEO -> videoHistories
         HistoryFilter.AUDIO -> audioHistories
     }
+
+    // 多选删除状态：长按进入，点按切换；退出时清空选择
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var showDeleteSelectedDialog by remember { mutableStateOf(false) }
+    val exitSelection = {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
+    val toggleSelection: (Int) -> Unit = { id ->
+        val next = if (id in selectedIds) selectedIds - id else selectedIds + id
+        selectedIds = next
+        if (next.isEmpty()) selectionMode = false
+    }
+    val enterSelection: (Int) -> Unit = { id ->
+        selectionMode = true
+        selectedIds = setOf(id)
+    }
+
+    // 筛选切换后隐藏的项不应保持选中，直接退出多选
+    LaunchedEffect(activeFilter) {
+        if (selectionMode) exitSelection()
+    }
+    // 列表变化（删除 / 云同步）后剔除已不存在的选中项
+    LaunchedEffect(allHistory) {
+        if (selectionMode) {
+            val validIds = allHistory.mapTo(mutableSetOf()) { it.id }
+            val remaining = selectedIds.intersect(validIds)
+            if (remaining != selectedIds) selectedIds = remaining
+            if (remaining.isEmpty()) selectionMode = false
+        }
+    }
+    BackHandler(enabled = selectionMode) { exitSelection() }
+
+    val allVisibleSelected = displayHistory.isNotEmpty() &&
+        displayHistory.all { it.id in selectedIds }
 
     val grouped = displayHistory.groupBy {
         SimpleDateFormat("yyyy-MM-dd", LocalConfiguration.current.locales[0]).format(Date(it.playTime.time))
@@ -132,33 +165,81 @@ fun PlayHistoryScreen(
     NiScaffold(
         topBar = {
             NiTopBar(
-                title = stringResource(R.string.play_history_title),
-                actions = {
-                    if (syncConfig.enabled) {
-                        val isSyncing = syncState is SyncUiState.Syncing
-                        val done = syncState as? SyncUiState.Done
-                        val isError = done != null && !done.success
-                        // 三态：就绪/成功=cloud_done、失败=cloud_off、同步中=旋转
-                        val state = when {
-                            isSyncing -> SyncUiState.Syncing
-                            isError -> SyncUiState.Done(false, done?.message.orEmpty())
-                            else -> SyncUiState.Idle
+                title = if (selectionMode) {
+                    stringResource(R.string.history_selected_count, selectedIds.size)
+                } else {
+                    stringResource(R.string.play_history_title)
+                },
+                navigationIcon = {
+                    if (selectionMode) {
+                        IconButton(onClick = exitSelection) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.cancel),
+                            )
                         }
-                        SyncIndicator(
-                            state = state,
-                            onSyncClick = { viewModel.syncNow() },
-                            onErrorClick = { errorContent = done?.message },
-                            successContentDescription = stringResource(R.string.play_history_sync_success),
-                            idleContentDescription = stringResource(R.string.play_history_cloud_sync),
-                        )
                     }
-                    if (hasHistory) {
-                        IconButton(onClick = { showDeleteAllDialog = true }) {
+                },
+                actions = {
+                    if (selectionMode) {
+                        TextButton(
+                            onClick = {
+                                selectedIds = if (allVisibleSelected) {
+                                    emptySet()
+                                } else {
+                                    displayHistory.mapTo(mutableSetOf()) { it.id }
+                                }
+                                if (selectedIds.isEmpty()) selectionMode = false
+                            },
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (allVisibleSelected) R.string.history_deselect_all
+                                    else R.string.history_select_all,
+                                ),
+                            )
+                        }
+                        IconButton(
+                            onClick = { showDeleteSelectedDialog = true },
+                            enabled = selectedIds.isNotEmpty(),
+                        ) {
                             Icon(
                                 imageVector = Icons.Outlined.Delete,
-                                contentDescription = stringResource(R.string.play_history_clear_history),
-                                tint = MaterialTheme.colorScheme.onSurface,
+                                contentDescription = stringResource(R.string.play_history_delete_selected),
+                                tint = if (selectedIds.isEmpty()) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                },
                             )
+                        }
+                    } else {
+                        if (syncConfig.enabled) {
+                            val isSyncing = syncState is SyncUiState.Syncing
+                            val done = syncState as? SyncUiState.Done
+                            val isError = done != null && !done.success
+                            // 三态：就绪/成功=cloud_done、失败=cloud_off、同步中=旋转
+                            val state = when {
+                                isSyncing -> SyncUiState.Syncing
+                                isError -> SyncUiState.Done(false, done.message.orEmpty())
+                                else -> SyncUiState.Idle
+                            }
+                            SyncIndicator(
+                                state = state,
+                                onSyncClick = { viewModel.syncNow() },
+                                onErrorClick = { errorContent = done?.message },
+                                successContentDescription = stringResource(R.string.play_history_sync_success),
+                                idleContentDescription = stringResource(R.string.play_history_cloud_sync),
+                            )
+                        }
+                        if (hasHistory) {
+                            IconButton(onClick = { showDeleteAllDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Delete,
+                                    contentDescription = stringResource(R.string.play_history_clear_history),
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
                         }
                     }
                 },
@@ -270,8 +351,16 @@ fun PlayHistoryScreen(
                             HistoryItem(
                                 item = item,
                                 thumbPath = thumbnailUrls[item.url],
-                                onClick = { viewModel.resumePlay(item) },
-                                onLongClick = { selectedItem = item },
+                                selectionMode = selectionMode,
+                                selected = item.id in selectedIds,
+                                onClick = {
+                                    if (selectionMode) toggleSelection(item.id)
+                                    else viewModel.resumePlay(item)
+                                },
+                                onLongClick = {
+                                    if (selectionMode) toggleSelection(item.id)
+                                    else enterSelection(item.id)
+                                },
                             )
                         }
                     }
@@ -292,77 +381,20 @@ fun PlayHistoryScreen(
                         HistoryItem(
                             item = item,
                             thumbPath = thumbnailUrls[item.url],
-                            onClick = { viewModel.resumePlay(item) },
-                            onLongClick = { selectedItem = item },
+                            selectionMode = selectionMode,
+                            selected = item.id in selectedIds,
+                            onClick = {
+                                if (selectionMode) toggleSelection(item.id)
+                                else viewModel.resumePlay(item)
+                            },
+                            onLongClick = {
+                                if (selectionMode) toggleSelection(item.id)
+                                else enterSelection(item.id)
+                            },
                         )
                     }
                 }
             }
-        }
-    }
-
-    selectedItem?.let { item ->
-        val sheetId = "play_history_item_sheet_${item.id}"
-        DisposableEffect(item.id) {
-            onDispose { NiGlassOverlay.dismiss(sheetId) }
-        }
-        LaunchedEffect(sheetId, item.id) {
-            NiGlassOverlay.show(
-                NiGlassOverlayRequest(
-                    id = sheetId,
-                    kind = NiGlassOverlayKind.BottomSheet,
-                    title = item.videoName,
-                    onDismiss = { selectedItem = null },
-                ) {
-                    Column(modifier = Modifier.padding(bottom = 32.dp).fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedItem = null
-                                    viewModel.resumePlay(item)
-                                }
-                                .padding(horizontal = 24.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                text = stringResource(R.string.play_history_resume),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedItem = null
-                                    viewModel.deleteHistory(item.id)
-                                }
-                                .padding(horizontal = 24.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Delete,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                text = stringResource(R.string.play_history_delete_record),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    }
-                },
-            )
         }
     }
 
@@ -375,6 +407,20 @@ fun PlayHistoryScreen(
                 showDeleteAllDialog = false
             },
             onDismiss = { showDeleteAllDialog = false },
+        )
+    }
+
+    if (showDeleteSelectedDialog) {
+        NiConfirmDialog(
+            title = stringResource(R.string.play_history_delete_selected),
+            text = stringResource(R.string.play_history_delete_selected_confirm, selectedIds.size),
+            confirmDanger = true,
+            onConfirm = {
+                viewModel.deleteHistories(selectedIds)
+                showDeleteSelectedDialog = false
+                exitSelection()
+            },
+            onDismiss = { showDeleteSelectedDialog = false },
         )
     }
 

@@ -5,6 +5,7 @@ import com.nichx.niplayer.feature.home.mediaTypeLabel
 import com.nichx.niplayer.feature.home.formatPlayTime
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Sync
@@ -53,25 +55,82 @@ internal fun HistoryItem(
     thumbPath: String?,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
 ) {
     val progress = if (item.videoDuration > 0)
         item.videoPosition.toFloat() / item.videoDuration.toFloat() else 0f
     val isAudio = MediaFileTypes.isAudioFile(item.videoName)
 
-    NiThumbCard(
-        title = item.videoName,
-        durationText = "",
-        thumbnailModel = thumbPath,
-        progressFraction = progress,
-        contentScale = if (isAudio) ContentScale.Fit else ContentScale.Crop,
-        onClick = onClick,
-        onLongClick = onLongClick,
-        horizontal = true,
-        subtitleText = formatPlayTime(item.playTime),
-        mediaLabel = mediaTypeLabel(item.mediaType),
-        squareCover = isAudio,
-    )
+    Box(modifier = Modifier.fillMaxWidth()) {
+        NiThumbCard(
+            title = item.videoName,
+            durationText = "",
+            thumbnailModel = thumbPath,
+            progressFraction = progress,
+            contentScale = if (isAudio) ContentScale.Fit else ContentScale.Crop,
+            onClick = onClick,
+            onLongClick = onLongClick,
+            horizontal = true,
+            subtitleText = formatPlayTime(item.playTime),
+            mediaLabel = mediaTypeLabel(item.mediaType),
+            squareCover = isAudio,
+        )
+        if (selected) {
+            // 描边画在卡片上层，避免被卡片自身的不透明背景盖住
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(16.dp),
+                    ),
+            )
+        }
+        if (selectionMode) {
+            SelectionBadge(
+                selected = selected,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    // 对齐卡片内缩略图左上角（卡片 padding 12dp + 4dp 内缩）
+                    .padding(start = 16.dp, top = 16.dp),
+            )
+        }
+    }
     Spacer(Modifier.height(8.dp))
+}
+
+/** 多选角标：已选为实心主色 + 勾，未选为半透明黑底空心圆。 */
+@Composable
+private fun SelectionBadge(
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(20.dp)
+            .clip(CircleShape)
+            .background(
+                color = if (selected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.38f),
+                shape = CircleShape,
+            )
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.9f),
+                shape = CircleShape,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+    }
 }
 
 @Composable

@@ -49,7 +49,7 @@ import javax.inject.Inject
  * - [histories] 订阅全量播放历史（[PlayHistoryDao.getAll] → Flow，WhileSubscribed(5000)）
  * - [thumbnailUrls] 历史记录缩略图映射（url → 本地缓存路径）
  * - [resumePlay] 续播：委托 [PlayStarter.startFromHistory] 构造 PlaybackRequest 并写入 Holder
- * - [deleteHistory] 删除单条历史
+ * - [deleteHistories] 批量删除选中的历史（含同步 tombstone）
  * - [clearAll] 清空全部历史
  *
  * @param playHistoryDao 播放历史 Dao
@@ -287,12 +287,18 @@ class PlayHistoryViewModel @Inject constructor(
         }
     }
 
-    /** 删除单条历史，删除前记录同步 tombstone。 */
-    fun deleteHistory(id: Int) {
+    /**
+     * 批量删除选中的历史，删除前统一写入同步 tombstone。
+     *
+     * 与单条删除语义一致；一次性查询 + 一次性删除，避免逐条触发 Flow 刷新。
+     */
+    fun deleteHistories(ids: Set<Int>) {
+        if (ids.isEmpty()) return
         viewModelScope.launch {
-            val entity = playHistoryDao.getById(id) ?: return@launch
-            syncDeleter.tombstoneFor(entity)
-            playHistoryDao.delete(id)
+            val idList = ids.toList()
+            val entities = playHistoryDao.getByIds(idList)
+            syncDeleter.tombstoneFor(entities, System.currentTimeMillis())
+            playHistoryDao.deleteByIds(idList)
         }
     }
 
