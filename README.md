@@ -76,6 +76,10 @@
 
 正式版 APK 由 GitHub Actions 在打 tag 时自动构建并签名发布，可在 [Releases](https://github.com/nichx/NIplayer/releases) 页面下载（支持 Android 8.0+，覆盖安装保留历史数据）。
 
+### 🎤 歌词刮削
+
+配合 [musictag-lite](https://github.com/NICHX/musictag-lite) 为本地音乐批量刮削 LRC 歌词与标签，可直接被本应用识别播放。
+
 <details>
 <summary><b>📦 技术概览</b>（点击展开）</summary>
 
