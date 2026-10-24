@@ -8,6 +8,7 @@ import com.nichx.niplayer.common.backup.RestoreMode
 import com.nichx.niplayer.database.NiplayerDatabase
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
+import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -153,8 +154,15 @@ class BackupManager @Inject constructor(
             .filterNot { it.item is DatabaseBackupItem }
             .sortedBy { it.key }
             .forEach { entry ->
-                runCatching { entry.item.restore(entry.data, ctx) }
-                    .onFailure { ctx.warn("${entry.key} 恢复失败：${it.message ?: "未知错误"}") }
+                // 单项失败只记录警告、继续恢复其余设置项；但协程取消必须原样抛出，
+                // 否则 runCatching 会把 CancellationException 吞成「恢复失败」。
+                try {
+                    entry.item.restore(entry.data, ctx)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    ctx.warn("${entry.key} 恢复失败：${e.message ?: "未知错误"}")
+                }
             }
 
         val descriptions = entries.mapNotNull { it.item.describe(it.data) }
