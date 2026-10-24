@@ -221,7 +221,7 @@ fun PlayHistoryScreen(
                             // 三态：就绪/成功=cloud_done、失败=cloud_off、同步中=旋转
                             val state = when {
                                 isSyncing -> SyncUiState.Syncing
-                                isError -> SyncUiState.Done(false, done.message.orEmpty())
+                                isError -> SyncUiState.Done(false, done.message)
                                 else -> SyncUiState.Idle
                             }
                             SyncIndicator(
