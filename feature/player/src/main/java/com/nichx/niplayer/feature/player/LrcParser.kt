@@ -236,8 +236,17 @@ internal fun sungFraction(
     } else {
         estimatedLineMs(text.length)
     }
-    val lastWordEndMs = minOf(anchorTimeMs + typicalGapMs, endMs)
-        .coerceAtLeast(anchorTimeMs + 1L)
+    val gapEndMs = anchorTimeMs + typicalGapMs
+    // ⚠️ 不能用按字数估的行末（[estimatedLineMs]）无条件截断末词窗口：慢歌里
+    // 「约 220ms/字」的估算常常早于末词本身的开始时间（逐字时间戳来自歌词源，比估的准）。
+    // 若直接 min，末词窗口会塌成 1ms —— 表现为最后一个字在末词时间戳到达时**整字瞬间变色**，
+    // 看起来和倒数第二个字几乎同时亮（用户反馈）。已过期的估算值直接丢弃，
+    // 退回词间平均间隔；「下一行开始」是真实时间，仍独立生效。
+    val lastWordEndMs = listOfNotNull(
+        gapEndMs,
+        nextStartMs?.takeIf { it > anchorTimeMs },
+        estimatedEndMs.takeIf { it > anchorTimeMs },
+    ).min().coerceAtLeast(anchorTimeMs + 1L)
     val ratio = ((positionMs - anchorTimeMs).toFloat() / (lastWordEndMs - anchorTimeMs))
         .coerceIn(0f, 1f)
     return (anchorFraction + (1f - anchorFraction) * ratio).coerceIn(0f, 1f)

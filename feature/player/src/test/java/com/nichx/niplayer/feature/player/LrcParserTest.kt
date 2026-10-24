@@ -188,4 +188,32 @@ class LrcParserTest {
         assertEquals(1, lines.size)
         assertEquals("你好", lines[0].translation)
     }
+
+    @Test
+    fun `慢歌行末字按词间间隔收口而不是瞬间变色`() {
+        // 4 个字、每字间隔 600ms（慢歌）：按字数估的行末（4×220=880 → 夹到 1500ms）
+        // 早于末词开始时间 1800ms。旧实现用 min(末词+间隔, 估算行末) 会得到 1801ms，
+        // 末词窗口塌成 1ms —— 最后一个字整字闪一下，看起来和倒数第二个字同时变色。
+        val text = "一二三四"
+        val wordTimes = listOf("一" to 0L, "二" to 600L, "三" to 1_200L, "四" to 1_800L)
+
+        // 末词刚开始：应停在末词起点（3/4）
+        assertEquals(0.75f, sungFraction(text, wordTimes, 0L, null, 1_800L), 1e-3f)
+        // 末词演唱中：连续推进，而不是一步到 1
+        val mid = sungFraction(text, wordTimes, 0L, null, 2_100L)
+        assertTrue("末词应渐变推进，实际 $mid", mid > 0.75f && mid < 1f)
+        // 一个词间间隔之后收口
+        assertEquals(1f, sungFraction(text, wordTimes, 0L, null, 2_400L), 1e-3f)
+    }
+
+    @Test
+    fun `末词窗口仍受下一行开始时间约束`() {
+        // 下一行在末词开始后 200ms 就来了：末词窗口应收在下一行开始处，
+        // 不能因为「估算行末已过期」就按 600ms 的词间间隔继续擦到下一行。
+        val text = "一二三四"
+        val wordTimes = listOf("一" to 0L, "二" to 600L, "三" to 1_200L, "四" to 1_800L)
+
+        assertEquals(0.75f, sungFraction(text, wordTimes, 0L, 2_000L, 1_800L), 1e-3f)
+        assertEquals(1f, sungFraction(text, wordTimes, 0L, 2_000L, 2_000L), 1e-3f)
+    }
 }
