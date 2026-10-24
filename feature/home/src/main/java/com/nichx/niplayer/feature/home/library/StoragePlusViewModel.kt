@@ -174,11 +174,45 @@ class StoragePlusViewModel @Inject constructor(
             // 此处没有 CoroutineExceptionHandler，异常穿出 launch 会经 CrashHandler 交回
             // 系统 KillApplicationHandler 直接终止进程。移入 try 后统一降级为「测试失败」。
             var storage: Storage? = null
+            var retried: Storage? = null
             try {
                 storage = withContext(Dispatchers.IO) { storageFactory.create(library) }
-                val ok = if (storage != null) {
-                    withContext(Dispatchers.IO) { storage.testConnection() }
-                } else false
+                var ok = false
+                var failure: Exception? = null
+                try {
+                    ok = storage?.let { withContext(Dispatchers.IO) { it.testConnection() } } ?: false
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    failure = e
+                }
+                // SMB3 加密兜底：服务器强制加密共享时，未开加密的客户端会在树连接阶段被拒
+                //（界面只看到 ACCESS_DENIED）。此时自动用加密配置再试一次，成功则回填开关，
+                // 用户不必自己去「高级」里猜设置；失败仍返回第一次的原始错误。
+                val canRetryEncrypted = !ok && failure != null &&
+                    state.mediaType == MediaType.SMB_SERVER &&
+                    state.smbV2 && !state.smbEncryption
+                if (canRetryEncrypted) {
+                    retried = withContext(Dispatchers.IO) {
+                        storageFactory.create(library.copy(smbEncryption = true))
+                    }
+                    ok = try {
+                        retried?.let { withContext(Dispatchers.IO) { it.testConnection() } } ?: false
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        false
+                    }
+                    if (ok) {
+                        _uiState.update { it.copy(smbEncryption = true) }
+                        _events.tryEmit(
+                            StoragePlusEvent.ShowInfo(
+                                context.getString(R.string.storage_plus_auto_encryption_enabled),
+                            ),
+                        )
+                    }
+                }
+                if (!ok && failure != null) throw failure
                 _uiState.update {
                     it.copy(isTesting = false, testResult = ok)
                 }
@@ -202,7 +236,10 @@ class StoragePlusViewModel @Inject constructor(
             // BUG-10：storage 必须在任何路径下都被关闭。清理**移出 finally** —— finally 里的 suspend 调用
             // 在协程取消时会被直接跳过，而 detekt 只接受「finally 里裸 withContext(NonCancellable)」，
             // 那样会丢掉 Dispatchers.IO。上面 catch(Exception) 不重抛，故此处必然执行。
-            withContext(Dispatchers.IO + NonCancellable) { storage?.close() }
+            withContext(Dispatchers.IO + NonCancellable) {
+                storage?.close()
+                retried?.close()
+            }
         }
     }
 
@@ -462,4 +499,5 @@ sealed class StoragePlusEvent {
     object Saved : StoragePlusEvent()
     object NavigateBack : StoragePlusEvent()
     data class ShowError(val message: String) : StoragePlusEvent()
+    data class ShowInfo(val message: String) : StoragePlusEvent()
 }

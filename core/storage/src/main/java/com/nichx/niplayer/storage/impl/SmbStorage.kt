@@ -15,10 +15,15 @@ import org.codelibs.jcifs.smb.CIFSContext
 import org.codelibs.jcifs.smb.config.PropertyConfiguration
 import org.codelibs.jcifs.smb.context.BaseContext
 import org.codelibs.jcifs.smb.impl.NtlmPasswordAuthenticator
+import org.codelibs.jcifs.smb.impl.SmbAuthException
 import org.codelibs.jcifs.smb.impl.SmbFile
+import org.codelibs.jcifs.smb.util.transport.TransportException
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.Properties
 
 /**
@@ -62,7 +67,8 @@ class SmbStorage(
     /**
      * 构建 [CIFSContext]（替代 smbj 的 SMBClient + SmbConfig）。
      *
-     * 根据 [MediaLibraryEntity.smbV2] 和 [MediaLibraryEntity.smbEncryption] 配置协议版本与加密。
+     * 协议版本始终按 SMB1～SMB3.1.1 全范围协商（自动取双方共同支持的最高版本）；
+     * [MediaLibraryEntity.smbV2] 与 [MediaLibraryEntity.smbEncryption] 决定是否开启 SMB3 加密。
      * codelibs/jcifs 对 SMB3 加密提供完整支持（AES-128-CCM/GCM），非实验性。
      */
     private val smbContext: CIFSContext by lazy {
@@ -83,29 +89,48 @@ class SmbStorage(
             // TCP 低延迟
             setProperty("jcifs.smb.client.tcpNoDelay", "true")
 
-            if (library.smbV2) {
-                setProperty("jcifs.smb.client.minVersion", "SMB210")
-                setProperty("jcifs.smb.client.maxVersion", "SMB311")
-                if (library.smbEncryption) {
-                    setProperty("jcifs.smb.client.encryptData", "true")
-                    setProperty("jcifs.smb.client.signingEnabled", "true")
-                }
-            } else {
-                setProperty("jcifs.smb.client.minVersion", "SMB1")
-                setProperty("jcifs.smb.client.maxVersion", "SMB311")
+            // 下限固定 SMB1、上限 SMB3.1.1：minVersion 只是协商下限，服务器支持 SMB2/3 时
+            // jcifs 仍会协商到双方共同的最高版本；写死 SMB210 会把只支持 SMB1 / SMB2.0.2
+            // 的老 NAS、老 Windows 共享直接挡在门外（表现为「无法连接」）。
+            setProperty("jcifs.smb.client.minVersion", "SMB1")
+            setProperty("jcifs.smb.client.maxVersion", "SMB311")
+
+            // SMB 签名默认必须开启：jcifs 的 signingEnabled 默认为 false，而 Windows 11 24H2 /
+            // Windows Server 2025 起默认要求 SMB 签名，Samba 也可配置为强制签名。客户端未启用签名时
+            // 服务端会直接拒绝连接（ACCESS_DENIED / 协商失败），表现为「账号密码都对却连不上」。
+            // 开启后仅当服务端要求时才实际签名（signingPreferred 仍为 false），不额外增加常规开销。
+            setProperty("jcifs.smb.client.signingEnabled", "true")
+
+            if (library.smbV2 && library.smbEncryption) {
+                setProperty("jcifs.smb.client.encryptData", "true")
             }
         }
         val config = PropertyConfiguration(props)
         val auth = if (library.isAnonymous) {
             NtlmPasswordAuthenticator(NtlmPasswordAuthenticator.AuthenticationType.NULL)
         } else {
-            NtlmPasswordAuthenticator(
-                library.domain?.takeIf { it.isNotBlank() },
-                library.account,
-                library.password ?: "",
-            )
+            val (domain, account) = normalizedCredentials()
+            NtlmPasswordAuthenticator(domain, account, library.password ?: "")
         }
         BaseContext(config).withCredentials(auth)
+    }
+
+    /**
+     * 账号/域归一化。
+     *
+     * 很多用户会把 Windows 习惯的 `NAS\user` 整串填进「用户名」框（域留空）。
+     * 原实现把这串原样当用户名提交，服务端无法解析出域，直接返回 `ACCESS_DENIED`
+     *（界面表现为「访问被拒绝」或「无法连接」）。这里把 `域\用户` 拆开；
+     * 显式填写了「域」时以显式值为准。
+     */
+    private fun normalizedCredentials(): Pair<String?, String> {
+        val rawAccount = library.account?.trim().orEmpty()
+        val explicitDomain = library.domain?.trim()?.takeIf { it.isNotEmpty() }
+        if (explicitDomain != null || !rawAccount.contains('\\')) {
+            return explicitDomain to rawAccount
+        }
+        val domain = rawAccount.substringBefore('\\').trim().takeIf { it.isNotEmpty() }
+        return domain to rawAccount.substringAfter('\\').trim()
     }
 
     /** 播放专用的独立 CIFSContext（共享配置但使用独立连接池）。 */
@@ -232,7 +257,7 @@ class SmbStorage(
                 Log.w(TAG, "SMB listFiles 失败(第 ${attempt + 1} 次): ${e.message}")
             }
         }
-        throw lastException ?: IOException("SMB listFiles 失败")
+        throw describeError(lastException ?: IOException("SMB listFiles 失败"))
     }
 
     private suspend fun listFilesInternal(directory: StorageFile): List<StorageFile> {
@@ -720,30 +745,68 @@ class SmbStorage(
     }
 
     override suspend fun testConnection(): Boolean {
-        val name = shareName
-        if (!name.isNullOrBlank()) {
-            val shareOnly = name.trim('/').split("/").first().trim()
-            if (shareOnly.isBlank()) {
-                throw IOException("SMB 共享名不能为空")
-            }
-            // 通过创建 SmbFile 并验证 exists 来测试 share 可达性
-            val smbFile = SmbFile(address.shareBaseUrl(), smbContext)
-            if (!smbFile.exists()) {
-                throw IOException("无法访问共享「$shareOnly」")
-            }
-            connectMutex.withLock {
-                if (shareRootPrefix.isEmpty()) {
-                    val sub = name.trim('/').split("/").drop(1).joinToString("/")
-                    shareRootPrefix = if (sub.isEmpty()) "" else "$sub/"
+        try {
+            val name = shareName
+            if (!name.isNullOrBlank()) {
+                val shareOnly = name.trim('/').split("/").first().trim()
+                if (shareOnly.isBlank()) {
+                    throw IOException("SMB 共享名不能为空")
                 }
+                // 通过创建 SmbFile 并验证 exists 来测试 share 可达性
+                val smbFile = SmbFile(address.shareBaseUrl(), smbContext)
+                if (!smbFile.exists()) {
+                    // exists() 对部分服务器会把 ACCESS_DENIED 吞成 false，此处补上排查方向
+                    throw IOException(
+                        "无法访问共享「$shareOnly」：请检查共享名是否正确，账号/密码与共享权限是否匹配；" +
+                            "使用匿名访问时服务器可能已禁用来宾登录",
+                    )
+                }
+                connectMutex.withLock {
+                    if (shareRootPrefix.isEmpty()) {
+                        val sub = name.trim('/').split("/").drop(1).joinToString("/")
+                        shareRootPrefix = if (sub.isEmpty()) "" else "$sub/"
+                    }
+                }
+            } else {
+                // 无 share 配置时通过枚举服务器共享验证主机可达与凭据有效
+                //（根目录 listFiles 触发 IPC$ 树连接与共享枚举，成功即登录通过）
+                SmbFile(address.shareBaseUrl(), smbContext).listFiles()
             }
-        } else {
-            // 无 share 配置时通过枚举服务器共享验证主机可达与凭据有效
-            //（根目录 listFiles 触发 IPC$ 树连接与共享枚举，成功即登录通过）
-            SmbFile(address.shareBaseUrl(), smbContext).listFiles()
+            return true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw describeError(e)
         }
-        return true
     }
+
+    /**
+     * 把 jcifs 的异常翻译成用户能照着排查的中文提示。
+     *
+     * `Access is denied`、`Transport1 timed out` 这类英文原文对用户没有信息量，
+     * 但完全丢掉又会让线上反馈无从定位，故原始 message 以括号形式保留。
+     */
+    private fun describeError(e: Throwable): IOException {
+        val detail = e.message?.takeIf { it.isNotBlank() }
+        val hint = when {
+            e.hasCause<SmbAuthException>() ->
+                "访问被拒绝：账号/密码或域不正确，或该账号没有此共享的访问权限；" +
+                    "匿名访问时服务器可能已禁用来宾登录"
+            e.hasCause<UnknownHostException>() ->
+                "找不到服务器 $host，请检查地址是否正确"
+            e.hasCause<SocketTimeoutException>() ||
+                e.hasCause<ConnectException>() ||
+                e.hasCause<TransportException>() ->
+                "连接 $host:$port 失败或超时：请检查服务器地址与端口、防火墙和网络连通性；" +
+                    "Android 17 及以上还需授予「本地网络」权限"
+            else -> e.message ?: "SMB 操作失败"
+        }
+        return IOException(if (detail == null) hint else "$hint（$detail）", e)
+    }
+
+    private inline fun <reified T : Throwable> Throwable.hasCause(): Boolean =
+        // 限制深度：异常链理论上可能自引用/成环，逐层判断时必须有界
+        generateSequence(this) { it.cause }.take(8).any { it is T }
 
     override suspend fun close() {
         synchronized(activeStreams) {

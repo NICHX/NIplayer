@@ -83,6 +83,9 @@ fun StoragePlusScreen(
                 is StoragePlusEvent.ShowError ->
                 messageController.post(NiMessage.error(event.message))
 
+                is StoragePlusEvent.ShowInfo ->
+                messageController.post(NiMessage.info(event.message))
+
                 StoragePlusEvent.NavigateBack -> onBack()
                 StoragePlusEvent.Saved -> Unit
             }
