@@ -70,8 +70,11 @@ class SmbStorage(
      * 协议版本始终按 SMB1～SMB3.1.1 全范围协商（自动取双方共同支持的最高版本）；
      * [MediaLibraryEntity.smbV2] 与 [MediaLibraryEntity.smbEncryption] 决定是否开启 SMB3 加密。
      * codelibs/jcifs 对 SMB3 加密提供完整支持（AES-128-CCM/GCM），非实验性。
+     *
+     * 用显式 [Lazy] 持有而非 `by lazy`：仅当确实建立过连接时，[close] 才需要关闭它，
+     * 不能为「未使用过的实例」白白初始化为关闭它而构造 context。
      */
-    private val smbContext: CIFSContext by lazy {
+    private val smbContextHolder: Lazy<CIFSContext> = lazy {
         val props = Properties().apply {
             // 连接超时 10s：服务器不可达时快速失败，避免长时间无响应
             setProperty("jcifs.smb.client.connTimeout", CONN_TIMEOUT_MS.toString())
@@ -133,10 +136,14 @@ class SmbStorage(
         return domain to rawAccount.substringAfter('\\').trim()
     }
 
+    private val smbContext: CIFSContext get() = smbContextHolder.value
+
     /** 播放专用的独立 CIFSContext（共享配置但使用独立连接池）。 */
-    private val playContext: CIFSContext by lazy {
+    private val playContextHolder: Lazy<CIFSContext> = lazy {
         BaseContext(smbContext.config).withCredentials(smbContext.credentials)
     }
+
+    private val playContext: CIFSContext get() = playContextHolder.value
 
     /**
      * 当前活跃的 [InputStream] 列表。
@@ -822,6 +829,17 @@ class SmbStorage(
                 try { iter.next().close() } catch (_: Exception) {}
                 iter.remove()
             }
+        }
+        // 释放 jcifs 传输池：仅关闭文件流不会注销 SMB 会话、也不会断开 TCP 连接，
+        // 服务端（尤其 Windows 客户端版共享，并发连接上限约 20）会一直保留这些连接。
+        // 本实例在测试连接 / 首页可达性探测 / 播放退出 / 下载等场景**每次都会新建并 close**，
+        // 若不关 context 会持续堆积连接，耗尽后新建会话卡住或超时——表现为
+        // 「测试连接成功，之后却连接不上」。CIFSContext.close() 才是释放会话/连接的入口。
+        if (smbContextHolder.isInitialized()) {
+            try { smbContextHolder.value.close() } catch (_: Exception) {}
+        }
+        if (playContextHolder.isInitialized()) {
+            try { playContextHolder.value.close() } catch (_: Exception) {}
         }
     }
 
